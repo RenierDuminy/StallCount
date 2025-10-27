@@ -83,8 +83,8 @@ const leagueTeams = [
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur-sm">
+    <div className="min-h-screen bg-slate-50">
+      <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
           <div className="flex items-center gap-2">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand/10 ring-1 ring-brand/20">
@@ -122,7 +122,7 @@ export default function HomePage() {
               to="/login"
               className="rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-600 transition hover:border-brand/60 hover:text-brand-dark"
             >
-              Log in
+              Advanced log in
             </Link>
             <Link
               to="/dashboard"
@@ -141,12 +141,13 @@ export default function HomePage() {
               Control every call
             </span>
             <h1 className="text-4xl font-semibold tracking-tight text-slate-900 md:text-5xl">
-              A modern command center for ultimate officiating crews.
+              A modern command center built for open league insight.
             </h1>
             <p className="text-lg leading-relaxed text-slate-600">
               StallCount keeps your crew in sync with live statistics, offline
-              resilience, and analytics designed for post-match reviews. Bring a
-              polished, collaborative workflow to every tournament table.
+              resilience, and analytics designed for post-match reviews. Most
+              schedules, standings, and reports are open to every visitor, while
+              secure workspaces protect officiating teams.
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <Link
@@ -164,8 +165,7 @@ export default function HomePage() {
             </div>
           </div>
           <div className="relative" id="highlights">
-            <div className="absolute -inset-6 rounded-3xl bg-gradient-to-br from-brand/20 via-brand/5 to-transparent blur-2xl" />
-            <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-lg shadow-brand/10">
+            <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
                 <p className="text-sm font-medium text-slate-500">
                   Tournament overview
@@ -218,6 +218,16 @@ export default function HomePage() {
               </div>
             </div>
           </div>
+          <p className="text-sm text-slate-500">
+            Need access to admin, media publishing, score capture, or captain
+            tools?{" "}
+            <Link
+              to="/login"
+              className="font-semibold text-brand-dark underline underline-offset-2"
+            >
+              Sign in here.
+            </Link>
+          </p>
         </section>
 
         <section id="features" className="space-y-8">
@@ -234,7 +244,7 @@ export default function HomePage() {
             {features.map((feature) => (
               <div
                 key={feature.title}
-                className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg hover:shadow-brand/10"
+                className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:bg-slate-50"
               >
                 <div className="h-12 w-12 rounded-2xl bg-brand/10 ring-1 ring-brand/20" />
                 <h3 className="text-lg font-semibold text-slate-900">
@@ -467,7 +477,7 @@ export default function HomePage() {
 
         <section
           id="cta"
-          className="overflow-hidden rounded-3xl border border-slate-200 bg-white px-8 py-12 shadow-lg shadow-brand/10"
+          className="overflow-hidden rounded-3xl border border-slate-200 bg-white px-8 py-12 shadow-sm"
         >
           <div className="grid gap-10 md:grid-cols-[2fr,1fr] md:items-center">
             <div className="space-y-4">
@@ -483,7 +493,7 @@ export default function HomePage() {
                   to="/login"
                   className="inline-flex items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white shadow-card transition hover:bg-brand-dark"
                 >
-                  Sign in to continue
+                  Sign in for advanced tools
                 </Link>
                 <Link
                   to="/realtime-test"
@@ -508,6 +518,10 @@ export default function HomePage() {
                   <dt>Team onboarding</dt>
                   <dd className="font-semibold text-slate-900">Under 5 minutes</dd>
                 </div>
+                <div className="flex items-center justify-between">
+                  <dt>Advanced access</dt>
+                  <dd className="font-semibold text-slate-900">Admins & media login</dd>
+                </div>
               </dl>
             </div>
           </div>
@@ -522,7 +536,7 @@ export default function HomePage() {
               Features
             </a>
             <Link to="/login" className="transition hover:text-slate-900">
-              Log in
+              Advanced log in
             </Link>
             <Link to="/dashboard" className="transition hover:text-slate-900">
               Dashboard
