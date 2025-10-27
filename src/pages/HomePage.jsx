@@ -24,6 +24,63 @@ const highlights = [
   { label: "Decisions Reviewed", value: "640" },
 ];
 
+const standings = [
+  { rank: 1, team: "Skyline Surge", record: "7-1", diff: "+24" },
+  { rank: 2, team: "Harbor Lights", record: "6-2", diff: "+18" },
+  { rank: 3, team: "Metro Flyers", record: "5-3", diff: "+12" },
+];
+
+const playerRankings = [
+  { rank: 1, name: "Mia Harper", team: "Skyline Surge", points: 68 },
+  { rank: 2, name: "Eli Watkins", team: "Harbor Lights", points: 63 },
+  { rank: 3, name: "Zoe Chen", team: "Metro Flyers", points: 59 },
+];
+
+const spiritRankings = [
+  { rank: 1, team: "Harbor Lights", score: "4.9" },
+  { rank: 2, team: "Northside Arcs", score: "4.7" },
+  { rank: 3, team: "Coastal Horizon", score: "4.6" },
+];
+
+const fixtureGroups = [
+  {
+    title: "Upcoming",
+    matches: [
+      { teams: "Skyline Surge vs Harbor Lights", date: "Nov 24, 6:00 PM", venue: "Field 2" },
+      { teams: "Metro Flyers vs Northside Arcs", date: "Nov 25, 4:30 PM", venue: "Field 1" },
+    ],
+  },
+  {
+    title: "Current",
+    matches: [
+      { teams: "Coastal Horizon vs Harbor Lights", date: "Live Now", venue: "Field 3" },
+      { teams: "Capital Comets vs Skyline Surge", date: "Live Now", venue: "Field 4" },
+    ],
+  },
+  {
+    title: "Past",
+    matches: [
+      { teams: "Northside Arcs vs Metro Flyers", date: "Final, 15-12", venue: "Nov 18" },
+      { teams: "Harbor Lights vs Capital Comets", date: "Final, 13-11", venue: "Nov 17" },
+    ],
+  },
+];
+
+const leagueDivisions = [
+  { name: "Open Division", teams: 12, highlight: "Fast-paced play with elite squads." },
+  { name: "Mixed Division", teams: 10, highlight: "Balanced rosters with co-ed lineups." },
+  { name: "Masters Division", teams: 6, highlight: "Veteran strategy with experience." },
+];
+
+const leagueTeams = [
+  { name: "Skyline Surge", division: "Open", record: "7-1" },
+  { name: "Harbor Lights", division: "Mixed", record: "6-2" },
+  { name: "Metro Flyers", division: "Open", record: "5-3" },
+  { name: "Northside Arcs", division: "Mixed", record: "5-3" },
+  { name: "Coastal Horizon", division: "Masters", record: "4-2" },
+  { name: "Capital Comets", division: "Open", record: "4-4" },
+];
+
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
@@ -46,6 +103,15 @@ export default function HomePage() {
             </a>
             <a href="#highlights" className="transition-colors hover:text-slate-900">
               Highlights
+            </a>
+            <a href="#statistics" className="transition-colors hover:text-slate-900">
+              Statistics
+            </a>
+            <a href="#fixtures" className="transition-colors hover:text-slate-900">
+              Fixtures
+            </a>
+            <a href="#league" className="transition-colors hover:text-slate-900">
+              League
             </a>
             <a href="#cta" className="transition-colors hover:text-slate-900">
               Get Started
@@ -179,6 +245,223 @@ export default function HomePage() {
                 </p>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section id="statistics" className="space-y-8">
+          <div className="flex flex-col gap-4">
+            <h2 className="text-2xl font-semibold text-slate-900">
+              League statistics at a glance
+            </h2>
+            <p className="max-w-3xl text-base text-slate-600">
+              Stay ahead with live standings, player performance, and spirit
+              scores updated straight from the field crew.
+            </p>
+          </div>
+          <div className="grid gap-6 md:grid-cols-3">
+            <article className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Team standings
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Live table refreshed after each round.
+                </p>
+              </div>
+              <ol className="space-y-3 text-sm text-slate-600">
+                {standings.map((team) => (
+                  <li
+                    key={team.rank}
+                    className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand/10 text-xs font-semibold text-brand-dark">
+                        {team.rank}
+                      </span>
+                      <div>
+                        <p className="font-medium text-slate-900">{team.team}</p>
+                        <p className="text-xs text-slate-500">Record {team.record}</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-emerald-600">
+                      {team.diff}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </article>
+            <article className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Player rankings
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Top performers by total involvement score.
+                </p>
+              </div>
+              <ol className="space-y-3 text-sm text-slate-600">
+                {playerRankings.map((player) => (
+                  <li
+                    key={player.rank}
+                    className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand/10 text-xs font-semibold text-brand-dark">
+                        {player.rank}
+                      </span>
+                      <div>
+                        <p className="font-medium text-slate-900">{player.name}</p>
+                        <p className="text-xs text-slate-500">{player.team}</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-500">
+                      {player.points} pts
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </article>
+            <article className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Spirit rankings
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Aggregated spirit-of-the-game scores per match.
+                </p>
+              </div>
+              <ol className="space-y-3 text-sm text-slate-600">
+                {spiritRankings.map((entry) => (
+                  <li
+                    key={entry.rank}
+                    className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand/10 text-xs font-semibold text-brand-dark">
+                        {entry.rank}
+                      </span>
+                      <p className="font-medium text-slate-900">{entry.team}</p>
+                    </div>
+                    <span className="text-xs font-semibold text-emerald-600">
+                      {entry.score}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </article>
+          </div>
+        </section>
+
+        <section id="fixtures" className="space-y-8">
+          <div className="flex flex-col gap-4">
+            <h2 className="text-2xl font-semibold text-slate-900">
+              Fixtures and match flow
+            </h2>
+            <p className="max-w-3xl text-base text-slate-600">
+              Plan around upcoming clashes, monitor games in progress, and review
+              final scores with one glance.
+            </p>
+          </div>
+          <div className="grid gap-6 md:grid-cols-3">
+            {fixtureGroups.map((group) => (
+              <article
+                key={group.title}
+                className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    {group.title}
+                  </h3>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-brand-dark">
+                    {group.matches.length} games
+                  </span>
+                </div>
+                <ul className="space-y-3 text-sm text-slate-600">
+                  {group.matches.map((match) => (
+                    <li
+                      key={`${group.title}-${match.teams}-${match.date}`}
+                      className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
+                    >
+                      <p className="font-medium text-slate-900">{match.teams}</p>
+                      <p className="text-xs text-slate-500">{match.date}</p>
+                      <p className="text-xs text-slate-500">Venue: {match.venue}</p>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section id="league" className="space-y-8">
+          <div className="flex flex-col gap-4">
+            <h2 className="text-2xl font-semibold text-slate-900">
+              League information
+            </h2>
+            <p className="max-w-3xl text-base text-slate-600">
+              Understand the structure behind StallCount tournaments and the
+              teams competing this season.
+            </p>
+          </div>
+          <div className="grid gap-6 md:grid-cols-[0.9fr,1.1fr]">
+            <article className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Divisions</h3>
+                <p className="text-sm text-slate-500">
+                  Tailored formats to match experience and roster makeup.
+                </p>
+              </div>
+              <ul className="space-y-3 text-sm text-slate-600">
+                {leagueDivisions.map((division) => (
+                  <li
+                    key={division.name}
+                    className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-slate-900">{division.name}</p>
+                      <span className="text-xs font-semibold text-slate-500">
+                        {division.teams} teams
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500">
+                      {division.highlight}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </article>
+            <article className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Teams</h3>
+                  <p className="text-sm text-slate-500">
+                    Active rosters aligned with their division and record.
+                  </p>
+                </div>
+                <Link
+                  to="/dashboard"
+                  className="text-xs font-semibold text-brand-dark underline underline-offset-4"
+                >
+                  View all
+                </Link>
+              </div>
+              <ul className="space-y-3 text-sm text-slate-600">
+                {leagueTeams.map((team) => (
+                  <li
+                    key={team.name}
+                    className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-900">{team.name}</p>
+                      <p className="text-xs text-slate-500">{team.division} Division</p>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-500">
+                      {team.record}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </article>
           </div>
         </section>
 
