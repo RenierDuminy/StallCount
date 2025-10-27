@@ -5,17 +5,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 import TestMatches from "./pages/TestMatches";
 import RealtimeTest from "./pages/RealtimeTest";
-
-function HomePage() {
-  return (
-    <div className="flex flex-col justify-center items-center h-screen">
-      <h1 className="text-3xl font-bold">StallCount</h1>
-      <a href="/login" className="mt-4 text-blue-600 underline">
-        Login
-      </a>
-    </div>
-  );
-}
+import HomePage from "./pages/HomePage";
 
 export default function AppRoutes() {
   return (
