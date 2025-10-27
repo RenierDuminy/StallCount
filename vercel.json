@@ -1,8 +1,0 @@
-{
-  "buildCommand": "pnpm run build",
-  "installCommand": "corepack enable && pnpm install --no-frozen-lockfile",
-  "framework": "vite",
-  "engines": {
-    "node": "20.x"
-  }
-}
