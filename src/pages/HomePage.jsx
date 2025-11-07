@@ -3,11 +3,13 @@ import { Link } from "react-router-dom";
 import { getAllTeams } from "../services/teamService";
 import { getDivisions, getRecentEvents } from "../services/leagueService";
 import { getTableCount } from "../services/statsService";
+import { getRecentMatches } from "../services/matchService";
 
 export default function HomePage() {
   const [featuredTeams, setFeaturedTeams] = useState([]);
   const [divisions, setDivisions] = useState([]);
   const [events, setEvents] = useState([]);
+  const [matches, setMatches] = useState([]);
   const [stats, setStats] = useState({ teams: 0, players: 0, events: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,6 +24,7 @@ export default function HomePage() {
           teamsData,
           divisionsData,
           eventsData,
+          matchesData,
           playerCount,
           teamCount,
           eventCount,
@@ -29,6 +32,7 @@ export default function HomePage() {
           getAllTeams(6),
           getDivisions(4),
           getRecentEvents(4),
+          getRecentMatches(6),
           getTableCount("players"),
           getTableCount("teams"),
           getTableCount("events"),
@@ -38,6 +42,7 @@ export default function HomePage() {
           setFeaturedTeams(teamsData);
           setDivisions(divisionsData);
           setEvents(eventsData);
+          setMatches(matchesData);
           setStats({
             players: playerCount,
             teams: teamCount,
@@ -63,6 +68,7 @@ export default function HomePage() {
 
   const safeDivisions = useMemo(() => divisions ?? [], [divisions]);
   const safeEvents = useMemo(() => events ?? [], [events]);
+  const safeMatches = useMemo(() => matches ?? [], [matches]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -81,14 +87,17 @@ export default function HomePage() {
             <a href="#stats" className="transition-colors hover:text-slate-900">
               Overview
             </a>
-            <a href="#teams" className="transition-colors hover:text-slate-900">
-              Teams
+            <a href="#events" className="transition-colors hover:text-slate-900">
+              Events
             </a>
             <a href="#divisions" className="transition-colors hover:text-slate-900">
               Divisions
             </a>
-            <a href="#events" className="transition-colors hover:text-slate-900">
-              Events
+            <a href="#matches" className="transition-colors hover:text-slate-900">
+              Matches
+            </a>
+            <a href="#teams" className="transition-colors hover:text-slate-900">
+              Teams
             </a>
             <Link to="/teams" className="transition-colors hover:text-slate-900">
               League DB
@@ -168,37 +177,42 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="teams" className="space-y-6">
+        <section id="events" className="space-y-6">
           <div className="flex flex-col gap-2">
-            <h2 className="text-2xl font-semibold text-slate-900">Teams spotlight</h2>
+            <h2 className="text-2xl font-semibold text-slate-900">Events timeline</h2>
             <p className="text-base text-slate-600">
-              Pulled directly from the `teams` table. Add a record in Supabase and it appears here
-              immediately.
+              Shows the most recent entries from the `events` table with dates and locations.
             </p>
           </div>
-          {loading && featuredTeams.length === 0 ? (
+          {loading && safeEvents.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-              Loading teams...
+              Loading events...
             </div>
-          ) : featuredTeams.length === 0 ? (
+          ) : safeEvents.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-              No teams found. Add entries to the Supabase `teams` table to populate this view.
+              No events recorded yet.
             </div>
           ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {featuredTeams.map((team) => (
-                <article key={team.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Team ID
-                  </p>
-                  <p className="truncate text-xs font-mono text-slate-500">{team.id}</p>
-                  <h3 className="mt-3 text-xl font-semibold text-slate-900">{team.name}</h3>
-                  {team.short_name && (
-                    <p className="text-sm text-slate-500">Short name: {team.short_name}</p>
+            <div className="space-y-4">
+              {safeEvents.map((event) => (
+                <article
+                  key={event.id}
+                  className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+                >
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        {event.type}
+                      </p>
+                      <h3 className="text-xl font-semibold text-slate-900">{event.name}</h3>
+                    </div>
+                    <p className="text-sm text-slate-500">
+                      {formatDateRange(event.start_date, event.end_date)}
+                    </p>
+                  </div>
+                  {event.location && (
+                    <p className="mt-1 text-sm text-slate-500">Location: {event.location}</p>
                   )}
-                  <p className="mt-4 text-xs text-slate-400">
-                    Added {new Date(team.created_at).toLocaleDateString()}
-                  </p>
                 </article>
               ))}
             </div>
@@ -248,47 +262,88 @@ export default function HomePage() {
           )}
         </section>
 
-        <section id="events" className="space-y-6">
+        <section id="matches" className="space-y-6">
           <div className="flex flex-col gap-2">
-            <h2 className="text-2xl font-semibold text-slate-900">Events timeline</h2>
+            <h2 className="text-2xl font-semibold text-slate-900">Matches</h2>
             <p className="text-base text-slate-600">
-              Shows the most recent entries from the `events` table with dates and locations.
+              Recent fixtures with scores and kickoff times pulled from the `matches` table.
             </p>
           </div>
-          {loading && safeEvents.length === 0 ? (
+          {loading && safeMatches.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-              Loading events...
+              Loading matches...
             </div>
-          ) : safeEvents.length === 0 ? (
+          ) : safeMatches.length === 0 ? (
             <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-              No events recorded yet.
+              No matches recorded yet.
             </div>
           ) : (
             <div className="space-y-4">
-              {safeEvents.map((event) => (
+              {safeMatches.map((match) => (
                 <article
-                  key={event.id}
+                  key={match.id}
                   className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
                 >
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        {event.type}
+                        {match.event?.name || "Match"}
                       </p>
-                      <h3 className="text-xl font-semibold text-slate-900">{event.name}</h3>
+                      <h3 className="text-xl font-semibold text-slate-900">
+                        {formatMatchup(match)}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {formatMatchTime(match.start_time)}
+                      </p>
                     </div>
-                    <p className="text-sm text-slate-500">
-                      {formatDateRange(event.start_date, event.end_date)}
-                    </p>
+                    <div className="text-right">
+                      <p className="text-3xl font-semibold text-slate-900">
+                        {match.score_a} <span className="text-slate-400">-</span> {match.score_b}
+                      </p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        {match.status || "scheduled"}
+                      </p>
+                    </div>
                   </div>
-                  {event.location && (
-                    <p className="mt-1 text-sm text-slate-500">Location: {event.location}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section id="teams" className="space-y-6">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-2xl font-semibold text-slate-900">Teams spotlight</h2>
+            <p className="text-base text-slate-600">
+              Pulled directly from the `teams` table. Add a record in Supabase and it appears here
+              immediately.
+            </p>
+          </div>
+          {loading && featuredTeams.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+              Loading teams...
+            </div>
+          ) : featuredTeams.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+              No teams found. Add entries to the Supabase `teams` table to populate this view.
+            </div>
+          ) : (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {featuredTeams.map((team) => (
+                <article
+                  key={team.id}
+                  className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+                >
+                  <h3 className="text-xl font-semibold text-slate-900">{team.name}</h3>
+                  {team.short_name && (
+                    <p className="mt-2 text-sm text-slate-500">Short name: {team.short_name}</p>
                   )}
                 </article>
               ))}
             </div>
           )}
         </section>
+
       </main>
 
       <footer className="border-t border-slate-200 bg-white/80">
@@ -316,4 +371,19 @@ function formatDateRange(start, end) {
   const startDate = start ? new Date(start).toLocaleDateString() : "TBD";
   const endDate = end ? new Date(end).toLocaleDateString() : null;
   return endDate && endDate !== startDate ? `${startDate} – ${endDate}` : startDate;
+}
+
+function formatMatchTime(timestamp) {
+  if (!timestamp) return "Start time pending";
+  const date = new Date(timestamp);
+  return `${date.toLocaleDateString()} • ${date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
+function formatMatchup(match) {
+  const teamA = match.team_a?.name || "Team A";
+  const teamB = match.team_b?.name || "Team B";
+  return `${teamA} vs ${teamB}`;
 }

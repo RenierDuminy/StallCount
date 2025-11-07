@@ -134,14 +134,13 @@ CREATE TABLE public.matches (
   abba_pattern text,
   status text NOT NULL,
   start_time timestamp with time zone,
-  duration_min integer,
-  halftime_min integer,
   score_a integer NOT NULL DEFAULT 0,
   score_b integer NOT NULL DEFAULT 0,
   captain_confirmed_a boolean NOT NULL DEFAULT false,
   captain_confirmed_b boolean NOT NULL DEFAULT false,
   confirmed_at timestamp with time zone,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  scorekeeper uuid,
   CONSTRAINT matches_pkey PRIMARY KEY (id),
   CONSTRAINT matches_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
   CONSTRAINT matches_division_id_fkey FOREIGN KEY (division_id) REFERENCES public.divisions(id),
@@ -150,13 +149,16 @@ CREATE TABLE public.matches (
   CONSTRAINT matches_team_a_fkey FOREIGN KEY (team_a) REFERENCES public.teams(id),
   CONSTRAINT matches_team_b_fkey FOREIGN KEY (team_b) REFERENCES public.teams(id),
   CONSTRAINT matches_starting_team_id_fkey FOREIGN KEY (starting_team_id) REFERENCES public.teams(id),
-  CONSTRAINT matches_status_fkey FOREIGN KEY (status) REFERENCES public.match_status(code)
+  CONSTRAINT matches_status_fkey FOREIGN KEY (status) REFERENCES public.match_status(code),
+  CONSTRAINT matches_scorekeeper_fkey FOREIGN KEY (scorekeeper) REFERENCES auth.users(id)
 );
 CREATE TABLE public.players (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
   gender_code text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  search tsvector,
+  jersey_number integer,
   CONSTRAINT players_pkey PRIMARY KEY (id),
   CONSTRAINT players_gender_code_fkey FOREIGN KEY (gender_code) REFERENCES public.genders(code)
 );
