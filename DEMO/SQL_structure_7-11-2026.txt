@@ -1,0 +1,286 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.audit_log (
+  id bigint NOT NULL DEFAULT nextval('audit_log_id_seq'::regclass),
+  table_name text NOT NULL,
+  record_id uuid,
+  action text NOT NULL CHECK (action = ANY (ARRAY['INSERT'::text, 'UPDATE'::text, 'DELETE'::text])),
+  actor_id uuid,
+  change_data jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT audit_log_pkey PRIMARY KEY (id),
+  CONSTRAINT audit_log_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.bracket_nodes (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  bracket_id uuid NOT NULL,
+  round integer NOT NULL,
+  position integer NOT NULL,
+  match_id uuid UNIQUE,
+  source_a jsonb NOT NULL,
+  source_b jsonb NOT NULL,
+  advance_to_winner uuid,
+  advance_to_winner_side character CHECK (advance_to_winner_side = ANY (ARRAY['A'::bpchar, 'B'::bpchar])),
+  advance_to_loser uuid,
+  advance_to_loser_side character CHECK (advance_to_loser_side = ANY (ARRAY['A'::bpchar, 'B'::bpchar])),
+  CONSTRAINT bracket_nodes_pkey PRIMARY KEY (id),
+  CONSTRAINT bracket_nodes_bracket_id_fkey FOREIGN KEY (bracket_id) REFERENCES public.brackets(id),
+  CONSTRAINT bracket_nodes_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
+  CONSTRAINT bracket_nodes_advance_to_winner_fkey FOREIGN KEY (advance_to_winner) REFERENCES public.bracket_nodes(id),
+  CONSTRAINT bracket_nodes_advance_to_loser_fkey FOREIGN KEY (advance_to_loser) REFERENCES public.bracket_nodes(id)
+);
+CREATE TABLE public.brackets (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  event_id uuid NOT NULL,
+  name text NOT NULL,
+  type text NOT NULL CHECK (type = ANY (ARRAY['single_elim'::text, 'double_elim'::text, 'play_in'::text, 'placement'::text])),
+  is_locked boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT brackets_pkey PRIMARY KEY (id),
+  CONSTRAINT brackets_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id)
+);
+CREATE TABLE public.division_teams (
+  division_id uuid NOT NULL,
+  team_id uuid NOT NULL,
+  CONSTRAINT division_teams_pkey PRIMARY KEY (division_id, team_id),
+  CONSTRAINT division_teams_division_id_fkey FOREIGN KEY (division_id) REFERENCES public.divisions(id),
+  CONSTRAINT division_teams_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id)
+);
+CREATE TABLE public.divisions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  event_id uuid NOT NULL,
+  name text NOT NULL,
+  level text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT divisions_pkey PRIMARY KEY (id),
+  CONSTRAINT divisions_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id)
+);
+CREATE TABLE public.event_types (
+  id smallint NOT NULL DEFAULT nextval('event_types_id_seq'::regclass),
+  code text NOT NULL UNIQUE,
+  description text,
+  category text,
+  CONSTRAINT event_types_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.events (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  type text NOT NULL CHECK (type = ANY (ARRAY['league'::text, 'tournament'::text, 'season'::text])),
+  start_date date,
+  end_date date,
+  location text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT events_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.genders (
+  code text NOT NULL,
+  label text,
+  CONSTRAINT genders_pkey PRIMARY KEY (code)
+);
+CREATE TABLE public.live_events (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  match_id uuid NOT NULL,
+  event_type text NOT NULL,
+  data jsonb,
+  sent boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT live_events_pkey PRIMARY KEY (id),
+  CONSTRAINT live_events_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
+  CONSTRAINT live_events_event_type_fkey FOREIGN KEY (event_type) REFERENCES public.event_types(code)
+);
+CREATE TABLE public.match_logs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  match_id uuid NOT NULL,
+  event_type_id smallint NOT NULL,
+  team_id uuid,
+  scorer_id uuid,
+  assist_id uuid,
+  period text,
+  elapsed_seconds integer CHECK (elapsed_seconds >= 0),
+  snapshot_score_a integer,
+  snapshot_score_b integer,
+  payload jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT match_logs_pkey PRIMARY KEY (id),
+  CONSTRAINT match_logs_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
+  CONSTRAINT match_logs_event_type_id_fkey FOREIGN KEY (event_type_id) REFERENCES public.event_types(id),
+  CONSTRAINT match_logs_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
+  CONSTRAINT match_logs_scorer_id_fkey FOREIGN KEY (scorer_id) REFERENCES public.players(id),
+  CONSTRAINT match_logs_assist_id_fkey FOREIGN KEY (assist_id) REFERENCES public.players(id)
+);
+CREATE TABLE public.match_status (
+  code text NOT NULL,
+  CONSTRAINT match_status_pkey PRIMARY KEY (code)
+);
+CREATE TABLE public.match_subscriptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  match_id uuid NOT NULL,
+  profile_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT match_subscriptions_pkey PRIMARY KEY (id),
+  CONSTRAINT match_subscriptions_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
+  CONSTRAINT match_subscriptions_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.matches (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  event_id uuid NOT NULL,
+  division_id uuid,
+  pool_id uuid,
+  venue_id uuid,
+  team_a uuid,
+  team_b uuid,
+  starting_team_id uuid,
+  abba_pattern text,
+  status text NOT NULL,
+  start_time timestamp with time zone,
+  duration_min integer,
+  halftime_min integer,
+  score_a integer NOT NULL DEFAULT 0,
+  score_b integer NOT NULL DEFAULT 0,
+  captain_confirmed_a boolean NOT NULL DEFAULT false,
+  captain_confirmed_b boolean NOT NULL DEFAULT false,
+  confirmed_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT matches_pkey PRIMARY KEY (id),
+  CONSTRAINT matches_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
+  CONSTRAINT matches_division_id_fkey FOREIGN KEY (division_id) REFERENCES public.divisions(id),
+  CONSTRAINT matches_pool_id_fkey FOREIGN KEY (pool_id) REFERENCES public.pools(id),
+  CONSTRAINT matches_venue_id_fkey FOREIGN KEY (venue_id) REFERENCES public.venues(id),
+  CONSTRAINT matches_team_a_fkey FOREIGN KEY (team_a) REFERENCES public.teams(id),
+  CONSTRAINT matches_team_b_fkey FOREIGN KEY (team_b) REFERENCES public.teams(id),
+  CONSTRAINT matches_starting_team_id_fkey FOREIGN KEY (starting_team_id) REFERENCES public.teams(id),
+  CONSTRAINT matches_status_fkey FOREIGN KEY (status) REFERENCES public.match_status(code)
+);
+CREATE TABLE public.players (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  gender_code text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT players_pkey PRIMARY KEY (id),
+  CONSTRAINT players_gender_code_fkey FOREIGN KEY (gender_code) REFERENCES public.genders(code)
+);
+CREATE TABLE public.pool_teams (
+  pool_id uuid NOT NULL,
+  team_id uuid NOT NULL,
+  seed integer CHECK (seed >= 1),
+  CONSTRAINT pool_teams_pkey PRIMARY KEY (pool_id, team_id),
+  CONSTRAINT pool_teams_pool_id_fkey FOREIGN KEY (pool_id) REFERENCES public.pools(id),
+  CONSTRAINT pool_teams_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id)
+);
+CREATE TABLE public.pools (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  division_id uuid NOT NULL,
+  name text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT pools_pkey PRIMARY KEY (id),
+  CONSTRAINT pools_division_id_fkey FOREIGN KEY (division_id) REFERENCES public.divisions(id)
+);
+CREATE TABLE public.profiles (
+  id uuid NOT NULL,
+  email text UNIQUE,
+  full_name text,
+  role_id smallint,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT profiles_pkey PRIMARY KEY (id),
+  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
+  CONSTRAINT profiles_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id)
+);
+CREATE TABLE public.push_subscriptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  profile_id uuid NOT NULL,
+  endpoint text NOT NULL UNIQUE,
+  p256dh_key text NOT NULL,
+  auth_key text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT push_subscriptions_pkey PRIMARY KEY (id),
+  CONSTRAINT push_subscriptions_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.roles (
+  id smallint NOT NULL DEFAULT nextval('roles_id_seq'::regclass),
+  name text NOT NULL UNIQUE,
+  description text,
+  CONSTRAINT roles_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.spirit_scores (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  match_id uuid NOT NULL,
+  rated_team_id uuid NOT NULL,
+  rater_team_id uuid,
+  source text NOT NULL CHECK (source = ANY (ARRAY['captain'::text, 'observer'::text, 'td'::text])),
+  rules_knowledge smallint CHECK (rules_knowledge >= 0 AND rules_knowledge <= 5),
+  fouls_fairness smallint CHECK (fouls_fairness >= 0 AND fouls_fairness <= 5),
+  positive_attitude smallint CHECK (positive_attitude >= 0 AND positive_attitude <= 5),
+  communication smallint CHECK (communication >= 0 AND communication <= 5),
+  self_control smallint CHECK (self_control >= 0 AND self_control <= 5),
+  total smallint DEFAULT ((((COALESCE((rules_knowledge)::integer, 0) + COALESCE((fouls_fairness)::integer, 0)) + COALESCE((positive_attitude)::integer, 0)) + COALESCE((communication)::integer, 0)) + COALESCE((self_control)::integer, 0)),
+  comments text,
+  submitted_by uuid,
+  submitted_at timestamp with time zone NOT NULL DEFAULT now(),
+  is_final boolean NOT NULL DEFAULT false,
+  CONSTRAINT spirit_scores_pkey PRIMARY KEY (id),
+  CONSTRAINT spirit_scores_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
+  CONSTRAINT spirit_scores_rated_team_id_fkey FOREIGN KEY (rated_team_id) REFERENCES public.teams(id),
+  CONSTRAINT spirit_scores_rater_team_id_fkey FOREIGN KEY (rater_team_id) REFERENCES public.teams(id),
+  CONSTRAINT spirit_scores_submitted_by_fkey FOREIGN KEY (submitted_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.team_roster (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  event_id uuid NOT NULL,
+  team_id uuid NOT NULL,
+  player_id uuid NOT NULL,
+  jersey_number integer,
+  is_captain boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT team_roster_pkey PRIMARY KEY (id),
+  CONSTRAINT team_roster_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
+  CONSTRAINT team_roster_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
+  CONSTRAINT team_roster_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.players(id)
+);
+CREATE TABLE public.teams (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL UNIQUE,
+  short_name text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT teams_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.timeouts (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  match_id uuid NOT NULL,
+  team_id uuid,
+  type text NOT NULL CHECK (type = ANY (ARRAY['timeout'::text, 'injury'::text, 'half'::text, 'stoppage'::text, 'lightning'::text])),
+  elapsed_seconds integer CHECK (elapsed_seconds >= 0),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT timeouts_pkey PRIMARY KEY (id),
+  CONSTRAINT timeouts_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
+  CONSTRAINT timeouts_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id)
+);
+CREATE TABLE public.venues (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  location text,
+  notes text,
+  CONSTRAINT venues_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.webhook_deliveries (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  webhook_id uuid NOT NULL,
+  live_event_id uuid,
+  status_code integer,
+  response_ms integer,
+  error text,
+  delivered_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT webhook_deliveries_pkey PRIMARY KEY (id),
+  CONSTRAINT webhook_deliveries_webhook_id_fkey FOREIGN KEY (webhook_id) REFERENCES public.webhook_endpoints(id),
+  CONSTRAINT webhook_deliveries_live_event_id_fkey FOREIGN KEY (live_event_id) REFERENCES public.live_events(id)
+);
+CREATE TABLE public.webhook_endpoints (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  match_id uuid,
+  url text NOT NULL,
+  secret text,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT webhook_endpoints_pkey PRIMARY KEY (id),
+  CONSTRAINT webhook_endpoints_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id)
+);
