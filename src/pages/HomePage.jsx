@@ -18,39 +18,78 @@ export default function HomePage() {
     let ignore = false;
 
     async function load() {
+      setLoading(true);
+      setError(null);
       try {
-        setLoading(true);
-        const [
-          teamsData,
-          divisionsData,
-          eventsData,
-          matchesData,
-          playerCount,
-          teamCount,
-          eventCount,
-        ] = await Promise.all([
-          getAllTeams(6),
-          getDivisions(4),
-          getRecentEvents(4),
-          getRecentMatches(6),
-          getTableCount("players"),
-          getTableCount("teams"),
-          getTableCount("events"),
+        const results = await Promise.all([
+          toSettled(getAllTeams(6)),
+          toSettled(getDivisions(4)),
+          toSettled(getRecentEvents(4)),
+          toSettled(getRecentMatches(6)),
+          toSettled(getTableCount("players")),
+          toSettled(getTableCount("teams")),
+          toSettled(getTableCount("events")),
         ]);
 
-        if (!ignore) {
-          setFeaturedTeams(teamsData);
-          setDivisions(divisionsData);
-          setEvents(eventsData);
-          setMatches(matchesData);
-          setStats({
-            players: playerCount,
-            teams: teamCount,
-            events: eventCount,
-          });
+        if (ignore) return;
+
+        const [
+          teamsResult,
+          divisionsResult,
+          eventsResult,
+          matchesResult,
+          playersCountResult,
+          teamsCountResult,
+          eventsCountResult,
+        ] = results;
+
+        const failures = [];
+
+        if (teamsResult.status === "fulfilled") {
+          setFeaturedTeams(teamsResult.value);
+        } else {
+          failures.push("teams");
+          console.error("[HomePage] Failed to load teams:", teamsResult.reason);
+        }
+
+        if (divisionsResult.status === "fulfilled") {
+          setDivisions(divisionsResult.value);
+        } else {
+          failures.push("divisions");
+          console.error("[HomePage] Failed to load divisions:", divisionsResult.reason);
+        }
+
+        if (eventsResult.status === "fulfilled") {
+          setEvents(eventsResult.value);
+        } else {
+          failures.push("events");
+          console.error("[HomePage] Failed to load events:", eventsResult.reason);
+        }
+
+        if (matchesResult.status === "fulfilled") {
+          setMatches(matchesResult.value);
+        } else {
+          failures.push("matches");
+          console.error("[HomePage] Failed to load matches:", matchesResult.reason);
+        }
+
+        setStats({
+          players:
+            playersCountResult.status === "fulfilled" ? playersCountResult.value : 0,
+          teams: teamsCountResult.status === "fulfilled" ? teamsCountResult.value : 0,
+          events: eventsCountResult.status === "fulfilled" ? eventsCountResult.value : 0,
+        });
+
+        if (failures.length > 0) {
+          setError(
+            `Unable to load ${failures.join(
+              ", "
+            )}. Check Supabase policies or network access and try again.`
+          );
         }
       } catch (err) {
         if (!ignore) {
+          console.error("[HomePage] Unexpected load error:", err);
           setError(err.message || "Unable to load league data.");
         }
       } finally {
@@ -371,6 +410,12 @@ function formatDateRange(start, end) {
   const startDate = start ? new Date(start).toLocaleDateString() : "TBD";
   const endDate = end ? new Date(end).toLocaleDateString() : null;
   return endDate && endDate !== startDate ? `${startDate} – ${endDate}` : startDate;
+}
+
+function toSettled(promise) {
+  return promise
+    .then((value) => ({ status: "fulfilled", value }))
+    .catch((reason) => ({ status: "rejected", reason }));
 }
 
 function formatMatchTime(timestamp) {

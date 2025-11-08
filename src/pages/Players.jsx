@@ -149,8 +149,6 @@ export default function Players() {
                           <th className="px-4 py-3">#</th>
                           <th className="px-4 py-3">Player</th>
                           <th className="px-4 py-3">Gender</th>
-                          <th className="px-4 py-3">Team ID</th>
-                          <th className="px-4 py-3">Event ID</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -175,12 +173,6 @@ export default function Players() {
                               ) : (
                                 <span className="text-slate-400">—</span>
                               )}
-                            </td>
-                            <td className="px-4 py-3 text-xs font-mono text-slate-500">
-                              {player.team_id || "—"}
-                            </td>
-                            <td className="px-4 py-3 text-xs font-mono text-slate-500">
-                              {player.event_id || "—"}
                             </td>
                           </tr>
                         ))}

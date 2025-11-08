@@ -44,12 +44,54 @@ export async function getOpenMatches(limit = 12) {
   return data ?? [];
 }
 
+export async function getMatchesByEvent(eventId, limit = 24) {
+  const { data, error } = await supabase
+    .from("matches")
+    .select(MATCH_FIELDS)
+    .eq("event_id", eventId)
+    .order("start_time", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(error.message || "Failed to load matches for event");
+  }
+
+  return data ?? [];
+}
+
+export async function getMatchById(matchId) {
+  const { data, error } = await supabase
+    .from("matches")
+    .select(MATCH_FIELDS)
+    .eq("id", matchId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to load match");
+  }
+
+  return data || null;
+}
+
+const MATCH_STATUS_CODES = new Set([
+  "canceled",
+  "completed",
+  "finished",
+  "halftime",
+  "live",
+  "scheduled",
+]);
+
 export async function initialiseMatch(matchId, payload) {
+  const desiredStatus = MATCH_STATUS_CODES.has(payload.status)
+    ? payload.status
+    : "live";
+
   const updatePayload = {
     start_time: payload.start_time,
     starting_team_id: payload.starting_team_id,
     abba_pattern: payload.abba_pattern,
-    status: "live",
+    status: desiredStatus,
   };
 
   if (payload.scorekeeper) {
@@ -61,11 +103,20 @@ export async function initialiseMatch(matchId, payload) {
     .update(updatePayload)
     .eq("id", matchId)
     .select(MATCH_FIELDS)
-    .single();
+    .maybeSingle();
 
   if (error) {
     throw new Error(error.message || "Failed to initialise match");
   }
 
-  return data;
+  if (data) {
+    return data;
+  }
+
+  const fallback = await getMatchById(matchId);
+  if (fallback) {
+    return fallback;
+  }
+
+  throw new Error("Match not found after initialisation");
 }

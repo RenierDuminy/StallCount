@@ -56,13 +56,6 @@ CREATE TABLE public.divisions (
   CONSTRAINT divisions_pkey PRIMARY KEY (id),
   CONSTRAINT divisions_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id)
 );
-CREATE TABLE public.event_types (
-  id smallint NOT NULL DEFAULT nextval('event_types_id_seq'::regclass),
-  code text NOT NULL UNIQUE,
-  description text,
-  category text,
-  CONSTRAINT event_types_pkey PRIMARY KEY (id)
-);
 CREATE TABLE public.events (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -87,7 +80,14 @@ CREATE TABLE public.live_events (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT live_events_pkey PRIMARY KEY (id),
   CONSTRAINT live_events_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
-  CONSTRAINT live_events_event_type_fkey FOREIGN KEY (event_type) REFERENCES public.event_types(code)
+  CONSTRAINT live_events_event_type_fkey FOREIGN KEY (event_type) REFERENCES public.match_events(code)
+);
+CREATE TABLE public.match_events (
+  id smallint NOT NULL DEFAULT nextval('event_types_id_seq'::regclass),
+  code text NOT NULL UNIQUE,
+  description text,
+  category text,
+  CONSTRAINT match_events_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.match_logs (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -96,15 +96,10 @@ CREATE TABLE public.match_logs (
   team_id uuid,
   scorer_id uuid,
   assist_id uuid,
-  period text,
-  elapsed_seconds integer CHECK (elapsed_seconds >= 0),
-  snapshot_score_a integer,
-  snapshot_score_b integer,
-  payload jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT match_logs_pkey PRIMARY KEY (id),
   CONSTRAINT match_logs_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
-  CONSTRAINT match_logs_event_type_id_fkey FOREIGN KEY (event_type_id) REFERENCES public.event_types(id),
+  CONSTRAINT match_logs_event_type_id_fkey FOREIGN KEY (event_type_id) REFERENCES public.match_events(id),
   CONSTRAINT match_logs_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
   CONSTRAINT match_logs_scorer_id_fkey FOREIGN KEY (scorer_id) REFERENCES public.players(id),
   CONSTRAINT match_logs_assist_id_fkey FOREIGN KEY (assist_id) REFERENCES public.players(id)
@@ -136,8 +131,7 @@ CREATE TABLE public.matches (
   start_time timestamp with time zone,
   score_a integer NOT NULL DEFAULT 0,
   score_b integer NOT NULL DEFAULT 0,
-  captain_confirmed_a boolean NOT NULL DEFAULT false,
-  captain_confirmed_b boolean NOT NULL DEFAULT false,
+  captains_confirmed boolean NOT NULL DEFAULT false,
   confirmed_at timestamp with time zone,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   scorekeeper uuid,
@@ -152,6 +146,19 @@ CREATE TABLE public.matches (
   CONSTRAINT matches_status_fkey FOREIGN KEY (status) REFERENCES public.match_status(code),
   CONSTRAINT matches_scorekeeper_fkey FOREIGN KEY (scorekeeper) REFERENCES auth.users(id)
 );
+CREATE TABLE public.player_match_stats (
+  match_id uuid NOT NULL,
+  player_id uuid NOT NULL,
+  team_id uuid NOT NULL,
+  goals integer NOT NULL DEFAULT 0,
+  assists integer NOT NULL DEFAULT 0,
+  blocks integer NOT NULL DEFAULT 0,
+  turnovers integer NOT NULL DEFAULT 0,
+  CONSTRAINT player_match_stats_pkey PRIMARY KEY (match_id, player_id),
+  CONSTRAINT player_match_stats_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
+  CONSTRAINT player_match_stats_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.players(id),
+  CONSTRAINT player_match_stats_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id)
+);
 CREATE TABLE public.players (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -159,6 +166,8 @@ CREATE TABLE public.players (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   search tsvector,
   jersey_number integer,
+  Birthday date,
+  Description text,
   CONSTRAINT players_pkey PRIMARY KEY (id),
   CONSTRAINT players_gender_code_fkey FOREIGN KEY (gender_code) REFERENCES public.genders(code)
 );
@@ -208,14 +217,12 @@ CREATE TABLE public.spirit_scores (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   match_id uuid NOT NULL,
   rated_team_id uuid NOT NULL,
-  rater_team_id uuid,
-  source text NOT NULL CHECK (source = ANY (ARRAY['captain'::text, 'observer'::text, 'td'::text])),
   rules_knowledge smallint CHECK (rules_knowledge >= 0 AND rules_knowledge <= 5),
-  fouls_fairness smallint CHECK (fouls_fairness >= 0 AND fouls_fairness <= 5),
+  fouls_contact smallint CHECK (fouls_contact >= 0 AND fouls_contact <= 5),
   positive_attitude smallint CHECK (positive_attitude >= 0 AND positive_attitude <= 5),
   communication smallint CHECK (communication >= 0 AND communication <= 5),
   self_control smallint CHECK (self_control >= 0 AND self_control <= 5),
-  total smallint DEFAULT ((((COALESCE((rules_knowledge)::integer, 0) + COALESCE((fouls_fairness)::integer, 0)) + COALESCE((positive_attitude)::integer, 0)) + COALESCE((communication)::integer, 0)) + COALESCE((self_control)::integer, 0)),
+  total smallint DEFAULT ((((COALESCE((rules_knowledge)::integer, 0) + COALESCE((fouls_contact)::integer, 0)) + COALESCE((positive_attitude)::integer, 0)) + COALESCE((communication)::integer, 0)) + COALESCE((self_control)::integer, 0)),
   comments text,
   submitted_by uuid,
   submitted_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -223,15 +230,13 @@ CREATE TABLE public.spirit_scores (
   CONSTRAINT spirit_scores_pkey PRIMARY KEY (id),
   CONSTRAINT spirit_scores_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
   CONSTRAINT spirit_scores_rated_team_id_fkey FOREIGN KEY (rated_team_id) REFERENCES public.teams(id),
-  CONSTRAINT spirit_scores_rater_team_id_fkey FOREIGN KEY (rater_team_id) REFERENCES public.teams(id),
-  CONSTRAINT spirit_scores_submitted_by_fkey FOREIGN KEY (submitted_by) REFERENCES public.profiles(id)
+  CONSTRAINT spirit_scores_submitted_by_fkey1 FOREIGN KEY (submitted_by) REFERENCES auth.users(id)
 );
 CREATE TABLE public.team_roster (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   event_id uuid NOT NULL,
   team_id uuid NOT NULL,
   player_id uuid NOT NULL,
-  jersey_number integer,
   is_captain boolean NOT NULL DEFAULT false,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT team_roster_pkey PRIMARY KEY (id),
@@ -245,17 +250,6 @@ CREATE TABLE public.teams (
   short_name text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT teams_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.timeouts (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  match_id uuid NOT NULL,
-  team_id uuid,
-  type text NOT NULL CHECK (type = ANY (ARRAY['timeout'::text, 'injury'::text, 'half'::text, 'stoppage'::text, 'lightning'::text])),
-  elapsed_seconds integer CHECK (elapsed_seconds >= 0),
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT timeouts_pkey PRIMARY KEY (id),
-  CONSTRAINT timeouts_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
-  CONSTRAINT timeouts_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id)
 );
 CREATE TABLE public.venues (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

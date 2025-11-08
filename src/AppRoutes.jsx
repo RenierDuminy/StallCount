@@ -3,8 +3,6 @@ import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-import TestMatches from "./pages/TestMatches";
-import RealtimeTest from "./pages/RealtimeTest";
 import HomePage from "./pages/HomePage";
 import AdminPage from "./pages/AdminPage";
 import ScoreKeeperPage from "./pages/ScoreKeeperPage";
@@ -20,8 +18,6 @@ export default function AppRoutes() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/test-matches" element={<TestMatches />} />
-        <Route path="/realtime-test" element={<RealtimeTest />} />
         <Route path="/players" element={<Players />} />
         <Route path="/teams" element={<Teams />} />
         <Route

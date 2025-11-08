@@ -44,3 +44,17 @@ export async function getRecentEvents(limit = 4): Promise<EventRow[]> {
 
   return (data ?? []) as EventRow[];
 }
+
+export async function getEventsList(limit = 12): Promise<EventRow[]> {
+  const { data, error } = await supabase
+    .from("events")
+    .select("id, name, type, start_date, end_date, location, created_at")
+    .order("start_date", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(error.message || "Failed to load events");
+  }
+
+  return (data ?? []) as EventRow[];
+}
