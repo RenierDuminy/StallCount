@@ -2,6 +2,8 @@ import { supabase } from "./supabaseClient";
 
 export const MATCH_LOG_EVENT_CODES = {
   SCORE: "score",
+  MATCH_START: "match_start",
+  TURNOVER: "turnover",
 } as const;
 
 export type MatchLogInput = {
@@ -20,6 +22,12 @@ export type MatchLogRow = {
   scorer_id: string | null;
   assist_id: string | null;
   created_at: string;
+  event?: {
+    id: number;
+    code: string | null;
+    description: string | null;
+    category: string | null;
+  } | null;
   scorer?: { id: string; name: string | null } | null;
   assist?: { id: string; name: string | null } | null;
 };
@@ -33,7 +41,7 @@ export type MatchLogUpdate = {
 const eventTypeCache = new Map<string, number>();
 
 const MATCH_LOG_SELECT =
-  "id, match_id, event_type_id, team_id, scorer_id, assist_id, created_at, scorer:players!match_logs_scorer_id_fkey(id, name), assist:players!match_logs_assist_id_fkey(id, name)";
+  "id, match_id, event_type_id, team_id, scorer_id, assist_id, created_at, event:match_events!match_logs_event_type_id_fkey(id, code, description, category), scorer:players!match_logs_scorer_id_fkey(id, name), assist:players!match_logs_assist_id_fkey(id, name)";
 
 async function resolveEventTypeId(eventTypeCode: string): Promise<number> {
   if (eventTypeCache.has(eventTypeCode)) {
@@ -138,4 +146,17 @@ export async function deleteMatchLogEntry(logId: string) {
   if (error) {
     throw new Error(error.message || "Failed to delete match log");
   }
+}
+
+export async function getMatchEventDefinitions() {
+  const { data, error } = await supabase
+    .from("match_events")
+    .select("id, code, description, category")
+    .order("code", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message || "Failed to load match event definitions");
+  }
+
+  return data ?? [];
 }

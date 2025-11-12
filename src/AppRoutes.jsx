@@ -10,6 +10,7 @@ import CaptainPage from "./pages/CaptainPage";
 import SysAdminPage from "./pages/SysAdminPage";
 import Players from "./pages/Players";
 import Teams from "./pages/Teams";
+import SpiritScoresPage from "./pages/SpiritScoresPage";
 import AppLayout from "./components/AppLayout";
 
 
@@ -30,14 +31,22 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/score-keeper"
-            element={
-              <ProtectedRoute>
-                <ScoreKeeperPage />
+        <Route
+          path="/score-keeper"
+          element={
+            <ProtectedRoute>
+              <ScoreKeeperPage />
               </ProtectedRoute>
-            }
-          />
+          }
+        />
+        <Route
+          path="/spirit-scores"
+          element={
+            <ProtectedRoute>
+              <SpiritScoresPage />
+            </ProtectedRoute>
+          }
+        />
           <Route
             path="/captain"
             element={

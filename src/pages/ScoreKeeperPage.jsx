@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getEventsList } from "../services/leagueService";
 import { getMatchesByEvent, initialiseMatch } from "../services/matchService";
@@ -11,11 +11,14 @@ import {
   deleteMatchLogEntry,
   getMatchLogs,
   updateMatchLogEntry,
+  getMatchEventDefinitions,
 } from "../services/matchLogService";
+
 
 const DEFAULT_DURATION = 90;
 
 export default function ScoreKeeperPage() {
+  const navigate = useNavigate();
   const { session } = useAuth();
   const userId = session?.user?.id ?? null;
 
@@ -50,31 +53,78 @@ export default function ScoreKeeperPage() {
   const [score, setScore] = useState({ a: 0, b: 0 });
   const [logs, setLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [matchEventOptions, setMatchEventOptions] = useState([]);
+  const [matchEventsError, setMatchEventsError] = useState(null);
+  const [pendingEntries, setPendingEntries] = useState([]);
   const [timerSeconds, setTimerSeconds] = useState(DEFAULT_DURATION * 60);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [secondarySeconds, setSecondarySeconds] = useState(75);
-  const [secondaryRunning, setSecondaryRunning] = useState(false);
-  const [secondaryLabel, setSecondaryLabel] = useState("Secondary timer");
+const [secondarySeconds, setSecondarySeconds] = useState(75);
+const [secondaryRunning, setSecondaryRunning] = useState(false);
+const [secondaryLabel, setSecondaryLabel] = useState("Time out");
   const [consoleError, setConsoleError] = useState(null);
   const [rosters, setRosters] = useState({ teamA: [], teamB: [] });
   const [rostersLoading, setRostersLoading] = useState(false);
   const [rostersError, setRostersError] = useState(null);
   const [timeModalOpen, setTimeModalOpen] = useState(false);
   const [setupModalOpen, setSetupModalOpen] = useState(false);
-  const [scoreModalState, setScoreModalState] = useState({
-    open: false,
-    team: null,
-    mode: "add",
-    logIndex: null,
-  });
-  const [scoreForm, setScoreForm] = useState({ scorerId: "", assistId: "" });
-  const [timeoutUsage, setTimeoutUsage] = useState({ A: 0, B: 0 });
-  const initialScoreRef = useRef({ a: 0, b: 0 });
-  const currentMatchScoreRef = useRef({ a: 0, b: 0 });
-  const matchIdRef = useRef(null);
-  const refreshMatchLogsRef = useRef(null);
+const [scoreModalState, setScoreModalState] = useState({
+  open: false,
+  team: null,
+  mode: "add",
+  logIndex: null,
+});
+const [scoreForm, setScoreForm] = useState({ scorerId: "", assistId: "" });
+const [timeoutUsage, setTimeoutUsage] = useState({ A: 0, B: 0 });
+const [timerLabel, setTimerLabel] = useState("Game time");
+const [secondaryTotalSeconds, setSecondaryTotalSeconds] = useState(rules.timeoutSeconds);
+const [secondaryFlashActive, setSecondaryFlashActive] = useState(false);
+const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
+const [possessionTeam, setPossessionTeam] = useState(null);
+
+  const fetchRostersForTeams = useCallback(async (teamAId, teamBId) => {
+    const [teamAPlayers, teamBPlayers] = await Promise.all([
+      teamAId ? getPlayersByTeam(teamAId) : [],
+      teamBId ? getPlayersByTeam(teamBId) : [],
+    ]);
+    return {
+      teamA: teamAPlayers,
+      teamB: teamBPlayers,
+    };
+  }, []);
+
+  const loadMatchEventDefinitions = useCallback(async () => {
+    try {
+      const data = await getMatchEventDefinitions();
+      setMatchEventOptions(data ?? []);
+      setMatchEventsError(null);
+      return data ?? [];
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unable to load match event definitions.";
+      setMatchEventsError(message);
+      return [];
+    }
+  }, []);
+
+  const resolveEventTypeIdLocal = useCallback(
+    async (code) => {
+      const existing = matchEventOptions.find((option) => option.code === code);
+      if (existing) return existing.id;
+      const fresh = await loadMatchEventDefinitions();
+      const match = fresh.find((option) => option.code === code);
+      return match ? match.id : null;
+    },
+    [matchEventOptions, loadMatchEventDefinitions]
+  );
+const initialScoreRef = useRef({ a: 0, b: 0 });
+const currentMatchScoreRef = useRef({ a: 0, b: 0 });
+const matchIdRef = useRef(null);
+const refreshMatchLogsRef = useRef(null);
+const primaryResetRef = useRef(null);
+const secondaryResetRef = useRef(null);
   const [matchStarted, setMatchStarted] = useState(false);
   const consoleReady = Boolean(activeMatch);
+  const matchSettingsLocked = matchStarted;
 
   const selectedMatch = useMemo(
     () => matches.find((m) => m.id === selectedMatchId) || null,
@@ -84,6 +134,10 @@ export default function ScoreKeeperPage() {
   useEffect(() => {
     loadEvents();
   }, []);
+
+  useEffect(() => {
+    loadMatchEventDefinitions();
+  }, [loadMatchEventDefinitions]);
 
   useEffect(() => {
     if (!selectedEventId) {
@@ -106,52 +160,84 @@ export default function ScoreKeeperPage() {
       return;
     }
 
-    let cancelled = false;
+    let ignore = false;
+    setRostersLoading(true);
+    setRostersError(null);
 
-    async function fetchRosters() {
-      setRostersLoading(true);
-      setRostersError(null);
-      try {
-        const [teamAPlayers, teamBPlayers] = await Promise.all([
-          teamA ? getPlayersByTeam(teamA) : [],
-          teamB ? getPlayersByTeam(teamB) : [],
-        ]);
-        if (!cancelled) {
-          setRosters({
-            teamA: teamAPlayers,
-            teamB: teamBPlayers,
-          });
+    fetchRostersForTeams(teamA, teamB)
+      .then((data) => {
+        if (!ignore) {
+          setRosters(data);
         }
-      } catch (err) {
-        if (!cancelled) {
+      })
+      .catch((err) => {
+        if (!ignore) {
           setRostersError(err.message || "Failed to load rosters.");
         }
-      } finally {
-        if (!cancelled) {
+      })
+      .finally(() => {
+        if (!ignore) {
           setRostersLoading(false);
         }
-      }
-    }
+      });
 
-    fetchRosters();
     refreshMatchLogsRef.current?.(targetMatchId, currentMatchScoreRef.current);
 
     return () => {
-      cancelled = true;
+      ignore = true;
     };
-  }, [activeMatch?.id, selectedMatch?.id]);
+  }, [activeMatch?.id, selectedMatch?.id, fetchRostersForTeams]);
 
-  useEffect(() => {
-    setTimeoutUsage({ A: 0, B: 0 });
-  }, [rules.timeoutsTotal, rules.timeoutsPerHalf]);
+useEffect(() => {
+  setTimeoutUsage({ A: 0, B: 0 });
+}, [rules.timeoutsTotal, rules.timeoutsPerHalf]);
 
-  useEffect(() => {
-    if (!consoleReady) {
-      setMatchStarted(false);
-      return;
-    }
+useEffect(() => {
+  if (!consoleReady) {
     setMatchStarted(false);
-  }, [consoleReady, activeMatch?.id]);
+    return;
+  }
+  setMatchStarted(false);
+}, [consoleReady, activeMatch?.id]);
+
+useEffect(() => {
+  if (!secondaryRunning) {
+    setSecondaryFlashActive(false);
+    setSecondaryFlashPulse(false);
+    return;
+  }
+  if (secondaryTotalSeconds >= 60 && secondaryTotalSeconds - secondarySeconds >= 60) {
+    setSecondaryFlashActive(true);
+  } else {
+    setSecondaryFlashActive(false);
+    setSecondaryFlashPulse(false);
+  }
+}, [secondaryRunning, secondarySeconds, secondaryTotalSeconds]);
+
+useEffect(() => {
+  if (!secondaryFlashActive) return undefined;
+  const interval = setInterval(() => {
+    setSecondaryFlashPulse((prev) => !prev);
+  }, 250);
+  return () => clearInterval(interval);
+}, [secondaryFlashActive]);
+
+useEffect(() => {
+  if (!secondaryRunning) {
+    setSecondaryTotalSeconds(rules.timeoutSeconds);
+  }
+}, [rules.timeoutSeconds, secondaryRunning]);
+
+useEffect(() => {
+  return () => {
+    if (primaryResetRef.current) {
+      clearTimeout(primaryResetRef.current);
+    }
+    if (secondaryResetRef.current) {
+      clearTimeout(secondaryResetRef.current);
+    }
+  };
+}, []);
 
   useEffect(() => {
     if (!timerRunning) return undefined;
@@ -191,17 +277,25 @@ export default function ScoreKeeperPage() {
           selectedMatch.team_b?.id ||
           "",
       });
-      setRules((prev) => ({
-        ...prev,
-        abbaPattern: selectedMatch.abba_pattern || prev.abbaPattern || "none",
-      }));
+      if (!matchSettingsLocked) {
+        setRules((prev) => ({
+          ...prev,
+          abbaPattern: selectedMatch.abba_pattern || prev.abbaPattern || "none",
+        }));
+      }
     } else {
       setSetupForm({
         startTime: toDateTimeLocal(),
         startingTeamId: "",
       });
     }
-  }, [selectedMatch]);
+  }, [selectedMatch, matchSettingsLocked]);
+
+  useEffect(() => {
+    if (!matchStarted) {
+      setPossessionTeam(null);
+    }
+  }, [selectedMatchId, activeMatch?.id, matchStarted]);
 
   useEffect(() => {
     if (!activeMatch) {
@@ -238,7 +332,7 @@ export default function ScoreKeeperPage() {
     "Select a match to begin";
   const displayTeamA =
     activeMatch?.team_a?.name || selectedMatch?.team_a?.name || "Team A";
-  const displayTeamB =
+  const displayTeamB = 
     activeMatch?.team_b?.name || selectedMatch?.team_b?.name || "Team B";
   const displayTeamAShort =
     activeMatch?.team_a?.short_name ||
@@ -256,15 +350,24 @@ export default function ScoreKeeperPage() {
   const abbaLabel =
     rules.abbaPattern === "male"
       ? "ABBA: Male"
-      : rules.abbaPattern === "female"
+    : rules.abbaPattern === "female"
         ? "ABBA: Female"
         : "ABBA: None";
   const startingTeamId = activeMatch?.starting_team_id || setupForm.startingTeamId;
+  const matchStartingTeamKey = startingTeamId === teamBId ? "B" : "A";
   const matchDuration = rules.matchDuration;
   const remainingTimeouts = {
     A: Math.max(rules.timeoutsTotal - timeoutUsage.A, 0),
     B: Math.max(rules.timeoutsTotal - timeoutUsage.B, 0),
   };
+  const canEndMatch = matchStarted;
+  const possessionValue = possessionTeam === "A" ? 0 : possessionTeam === "B" ? 100 : 50;
+  const possessionLeader =
+    possessionTeam === "A"
+      ? displayTeamA
+      : possessionTeam === "B"
+        ? displayTeamB
+        : "Contested";
   const halfRemainingLabel = (teamKey) =>
     rules.timeoutsPerHalf > 0 ? Math.max(rules.timeoutsPerHalf - timeoutUsage[teamKey], 0) : "N/A";
   const sortedRosters = useMemo(
@@ -287,7 +390,75 @@ export default function ScoreKeeperPage() {
 
   const formattedPrimaryClock = formatClock(timerSeconds);
   const formattedSecondaryClock = formatClock(secondarySeconds);
-  const rosterNameLookup = useMemo(() => {
+  const orderedLogs = useMemo(() => {
+    const toEpoch = (entry = {}) => {
+      const source = entry.timestamp || entry.createdAt || entry.created_at || null;
+      const parsed = source ? new Date(source).getTime() : 0;
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    return [...logs].sort((a, b) => toEpoch(b) - toEpoch(a));
+  }, [logs]);
+const recordPendingEntry = useCallback((entry) => {
+  console.log("[ScoreKeeper] Pending DB payload:", entry);
+  setPendingEntries((prev) => [...prev, entry]);
+}, []);
+
+const primaryTimerBg =
+  timerRunning ? "bg-[#e6f9ed]" : timerSeconds === 0 ? "bg-[#fee2e2]" : "bg-white";
+const secondaryTimerBg = secondaryRunning
+  ? secondaryFlashActive
+    ? secondaryFlashPulse
+      ? "bg-[#fff7d6]"
+      : "bg-[#ffefb3]"
+    : "bg-[#e6f9ed]"
+  : secondarySeconds === 0
+    ? "bg-[#fee2e2]"
+    : "bg-white";
+
+const startSecondaryTimer = useCallback(
+  (duration, label) => {
+    if (!duration) return;
+    setSecondarySeconds(duration);
+    setSecondaryTotalSeconds(duration);
+    setSecondaryLabel(label || "Time out");
+    setSecondaryRunning(true);
+    setSecondaryFlashActive(false);
+    setSecondaryFlashPulse(false);
+  },
+  []
+);
+
+function startPrimaryHoldReset() {
+  cancelPrimaryHoldReset();
+  primaryResetRef.current = setTimeout(() => {
+    setTimerRunning(false);
+    setTimerSeconds(matchDuration * 60);
+    setTimerLabel("Game time");
+  }, 800);
+}
+
+function cancelPrimaryHoldReset() {
+  if (primaryResetRef.current) {
+    clearTimeout(primaryResetRef.current);
+    primaryResetRef.current = null;
+  }
+}
+
+function startSecondaryHoldReset() {
+  cancelSecondaryHoldReset();
+  secondaryResetRef.current = setTimeout(() => {
+    handleSecondaryReset();
+  }, 800);
+}
+
+function cancelSecondaryHoldReset() {
+  if (secondaryResetRef.current) {
+    clearTimeout(secondaryResetRef.current);
+    secondaryResetRef.current = null;
+  }
+}
+
+const rosterNameLookup = useMemo(() => {
     const map = new Map();
     sortedRosters.teamA.forEach((player) => {
       if (player.id) {
@@ -301,6 +472,112 @@ export default function ScoreKeeperPage() {
     });
     return map;
   }, [sortedRosters]);
+
+  const describeEvent = useCallback(
+    (eventTypeId) => {
+      if (!eventTypeId) return "Match event";
+      const match = matchEventOptions.find((option) => option.id === eventTypeId);
+      if (!match) return "Match event";
+      return match.description || match.code || "Match event";
+    },
+    [matchEventOptions]
+  );
+
+  const appendLocalLog = useCallback(
+    ({ team, timestamp, scorerId, assistId, totals, eventDescription }) => {
+      setLogs((prev) => [
+        ...prev,
+        {
+          id: `local-${prev.length + 1}`,
+          team,
+          timestamp,
+          scorerName:
+            rosterNameLookup.get(scorerId || "") ||
+            (scorerId ? "Unknown player" : "Unassigned"),
+          scorerId: scorerId || null,
+          assistName:
+            rosterNameLookup.get(assistId || "") ||
+            (assistId ? "Unknown player" : null),
+          assistId: assistId || null,
+          totalA: totals.a,
+          totalB: totals.b,
+          eventDescription,
+        },
+      ]);
+    },
+    [rosterNameLookup]
+  );
+
+  const handleEndMatchNavigation = useCallback(() => {
+    if (!canEndMatch) return;
+    const confirmed =
+      typeof window !== "undefined"
+        ? window.confirm("End match and continue to spirit scoring?")
+        : true;
+    if (!confirmed) return;
+    const target = activeMatch?.id ? `/spirit-scores?matchId=${activeMatch.id}` : "/spirit-scores";
+    navigate(target);
+  }, [canEndMatch, activeMatch?.id, navigate]);
+
+  const updatePossession = useCallback(
+    async (teamKey, { logTurnover = true } = {}) => {
+      if (!teamKey || teamKey === possessionTeam) return;
+      if (logTurnover && !matchStarted) return;
+      setPossessionTeam(teamKey);
+
+      if (!logTurnover || !consoleReady || !activeMatch?.id) return;
+
+      try {
+        const eventTypeId = await resolveEventTypeIdLocal(MATCH_LOG_EVENT_CODES.TURNOVER);
+        if (!eventTypeId) {
+          setConsoleError(
+            "Missing `turnover` event type in match_events. Please add it in Supabase before logging."
+          );
+          return;
+        }
+        const targetTeamId = teamKey === "A" ? teamAId : teamBId;
+        if (!targetTeamId) {
+          setConsoleError("Missing team mapping for turnover entry.");
+          return;
+        }
+        const timestamp = new Date().toISOString();
+        const entry = {
+          matchId: activeMatch.id,
+          eventTypeId,
+          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
+          teamId: targetTeamId,
+          createdAt: timestamp,
+        };
+        recordPendingEntry(entry);
+        const totalsSnapshot = score;
+        appendLocalLog({
+          team: teamKey,
+          timestamp,
+          scorerId: null,
+          assistId: null,
+          totals: totalsSnapshot,
+          eventDescription: describeEvent(eventTypeId),
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to log turnover.";
+        setConsoleError(message);
+      }
+    },
+    [
+      possessionTeam,
+      matchStarted,
+      consoleReady,
+      activeMatch?.id,
+      teamAId,
+      teamBId,
+      recordPendingEntry,
+      appendLocalLog,
+      describeEvent,
+      resolveEventTypeIdLocal,
+      setConsoleError,
+      score,
+    ]
+  );
   const matchLogMatchId = activeMatch?.id || selectedMatch?.id || null;
   const currentMatchScore = useMemo(
     () => ({
@@ -368,6 +645,9 @@ export default function ScoreKeeperPage() {
           assistId: row.assist_id ?? null,
           totalA: runningA,
           totalB: runningB,
+          eventCode: row.event?.code || null,
+          eventDescription: row.event?.description || row.event?.code || "Event",
+          eventCategory: row.event?.category || null,
         };
       });
 
@@ -471,10 +751,36 @@ export default function ScoreKeeperPage() {
       setSelectedMatchId(updated.id);
       setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
       await loadMatches();
-      await refreshMatchLogs(updated.id, {
-        a: updated.score_a ?? 0,
-        b: updated.score_b ?? 0,
-      });
+
+      const rosterPromise = (async () => {
+        const teamA = updated.team_a?.id || null;
+        const teamB = updated.team_b?.id || null;
+        if (!teamA && !teamB) {
+          setRosters({ teamA: [], teamB: [] });
+          return;
+        }
+        setRostersLoading(true);
+        setRostersError(null);
+        try {
+          const rosterData = await fetchRostersForTeams(teamA, teamB);
+          setRosters(rosterData);
+        } catch (err) {
+          setRostersError(
+            err instanceof Error ? err.message : "Failed to load rosters."
+          );
+        } finally {
+          setRostersLoading(false);
+        }
+      })();
+
+      await Promise.all([
+        rosterPromise,
+        loadMatchEventDefinitions(),
+        refreshMatchLogs(updated.id, {
+          a: updated.score_a ?? 0,
+          b: updated.score_b ?? 0,
+        }),
+      ]);
       setSetupModalOpen(false);
     } catch (err) {
       setConsoleError(err.message || "Failed to initialise match.");
@@ -483,34 +789,35 @@ export default function ScoreKeeperPage() {
     }
   }
 
-  function handleToggleTimer() {
-    if (!consoleReady) return;
-    if (timerSeconds === 0) {
-      setTimerSeconds(matchDuration * 60);
-    }
-    setTimerRunning((prev) => !prev);
-  }
-
-  function handleResetTimer() {
-    setTimerRunning(false);
+function handleToggleTimer() {
+  cancelPrimaryHoldReset();
+  if (!consoleReady) return;
+  if (timerSeconds === 0) {
     setTimerSeconds(matchDuration * 60);
   }
-
-  function handleSecondaryToggle(label) {
-    if (!consoleReady) return;
-    if (secondarySeconds === 0) {
-      setSecondarySeconds(rules.timeoutSeconds);
-    }
-    if (label) {
-      setSecondaryLabel(label);
-    }
-    setSecondaryRunning((prev) => !prev);
+  setTimerRunning((prev) => !prev);
   }
 
-  function handleSecondaryReset() {
-    setSecondaryRunning(false);
-    setSecondarySeconds(rules.timeoutSeconds);
+function handleSecondaryToggle(label) {
+  cancelSecondaryHoldReset();
+  if (!consoleReady) return;
+  const resolvedLabel = label || secondaryLabel || "Time out";
+  if (!secondaryRunning && secondarySeconds === 0) {
+    startSecondaryTimer(rules.timeoutSeconds || 75, resolvedLabel);
+    return;
   }
+  if (label) {
+    setSecondaryLabel(label);
+  }
+  setSecondaryRunning((prev) => !prev);
+}
+
+function handleSecondaryReset() {
+  setSecondaryRunning(false);
+  setSecondarySeconds(secondaryTotalSeconds);
+  setSecondaryFlashActive(false);
+  setSecondaryFlashPulse(false);
+}
 
   function handleStartMatch() {
     if (!consoleReady) return;
@@ -518,6 +825,44 @@ export default function ScoreKeeperPage() {
       handleToggleTimer();
     }
     setMatchStarted(true);
+    setTimerLabel("Game time");
+    logMatchStartEvent();
+    const receivingTeam = matchStartingTeamKey === "A" ? "B" : "A";
+    if (receivingTeam) {
+      void updatePossession(receivingTeam, { logTurnover: false });
+    }
+  }
+
+  async function logMatchStartEvent() {
+    if (!activeMatch?.id) return;
+    const eventTypeId = await resolveEventTypeIdLocal(
+      MATCH_LOG_EVENT_CODES.MATCH_START
+    );
+    if (!eventTypeId) {
+      setConsoleError(
+        "Missing `match_start` event type in match_events. Please add it in Supabase."
+      );
+      return;
+    }
+    const pullTeamId = startingTeamId || teamAId || teamBId;
+    const teamKey = pullTeamId === teamBId ? "B" : "A";
+    const timestamp = new Date().toISOString();
+    const entry = {
+      matchId: activeMatch.id,
+      eventTypeId,
+      eventCode: MATCH_LOG_EVENT_CODES.MATCH_START,
+      teamId: pullTeamId || null,
+      createdAt: timestamp,
+    };
+      recordPendingEntry(entry);
+    appendLocalLog({
+      team: teamKey,
+      timestamp,
+      scorerId: null,
+      assistId: null,
+      totals: score,
+      eventDescription: describeEvent(eventTypeId),
+    });
   }
 
   function handleResetConsole() {
@@ -531,36 +876,58 @@ export default function ScoreKeeperPage() {
     setLogs([]);
     setTimerSeconds(matchDuration * 60);
     setTimerRunning(false);
+    setTimerLabel("Game time");
     handleSecondaryReset();
     setTimeoutUsage({ A: 0, B: 0 });
   }
 
   async function handleAddScore(team, scorerId = null, assistId = null) {
     if (!consoleReady || !activeMatch?.id) return;
+    const eventTypeId = await resolveEventTypeIdLocal(MATCH_LOG_EVENT_CODES.SCORE);
+    if (!eventTypeId) {
+      setConsoleError(
+        "Missing `score` event type in match_events. Please add it in Supabase before logging."
+      );
+      return;
+    }
     const targetTeamId = team === "A" ? teamAId : teamBId;
     if (!targetTeamId) {
       setConsoleError("Missing team mapping for this match.");
       return;
     }
 
-    try {
-      await createMatchLogEntry({
-        matchId: activeMatch.id,
-        eventTypeCode: MATCH_LOG_EVENT_CODES.SCORE,
-        teamId: targetTeamId,
-        scorerId,
-        assistId,
-      });
+    const nextTotals = {
+      a: score.a + (team === "A" ? 1 : 0),
+      b: score.b + (team === "B" ? 1 : 0),
+    };
+    setScore(nextTotals);
 
-      const totals = await refreshMatchLogs(activeMatch.id, currentMatchScoreRef.current);
-      if (totals) {
-        await syncActiveMatchScore(totals);
-      }
-    } catch (err) {
-      setConsoleError(
-        err instanceof Error ? err.message : "Failed to record score."
-      );
+    const timestamp = new Date().toISOString();
+    const entry = {
+      matchId: activeMatch.id,
+      eventTypeId,
+      eventCode: MATCH_LOG_EVENT_CODES.SCORE,
+      teamId: targetTeamId,
+      team,
+      scorerId,
+      assistId,
+      createdAt: timestamp,
+    };
+
+    recordPendingEntry(entry);
+    appendLocalLog({
+      team,
+      timestamp,
+      scorerId,
+      assistId,
+      totals: nextTotals,
+      eventDescription: describeEvent(eventTypeId),
+    });
+    const receivingTeam = team === "A" ? "B" : "A";
+    if (receivingTeam) {
+      void updatePossession(receivingTeam, { logTurnover: false });
     }
+    startSecondaryTimer(75, "Inter point");
   }
 
   async function syncActiveMatchScore(nextScore) {
@@ -583,6 +950,7 @@ export default function ScoreKeeperPage() {
   }
 
   function handleRuleChange(field, value) {
+    if (matchSettingsLocked) return;
     setRules((prev) => ({
       ...prev,
       [field]: value,
@@ -621,27 +989,12 @@ export default function ScoreKeeperPage() {
   async function handleScoreModalSubmit(event) {
     event.preventDefault();
     if (!scoreModalState.team) return;
-    const roster =
-      scoreModalState.team === "A" ? rosters.teamA : rosters.teamB;
-    const scorerOption = roster.find((player) => player.id === scoreForm.scorerId);
-    const assistOption = roster.find((player) => player.id === scoreForm.assistId);
-    const scorerName = scorerOption?.name || "";
-    const assistName = assistOption?.name || "";
 
-    if (scoreModalState.mode === "add") {
-      await handleAddScore(
-        scoreModalState.team,
-        scoreForm.scorerId || null,
-        scoreForm.assistId || null
-      );
-    } else if (scoreModalState.mode === "edit" && scoreModalState.logIndex !== null) {
-      await handleUpdateLog(scoreModalState.logIndex, {
-        scorerName: scorerName || null,
-        scorerId: scoreForm.scorerId || null,
-        assistName: assistName || null,
-        assistId: scoreForm.assistId || null,
-      });
-    }
+    await handleAddScore(
+      scoreModalState.team,
+      scoreForm.scorerId || null,
+      scoreForm.assistId || null
+    );
 
     closeScoreModal();
   }
@@ -689,23 +1042,28 @@ export default function ScoreKeeperPage() {
     const remaining = Math.max(rules.timeoutsTotal - timeoutUsage[team], 0);
     if (remaining === 0) return;
     setTimeoutUsage((prev) => ({ ...prev, [team]: prev[team] + 1 }));
-    handleSecondaryToggle(`${team === "A" ? displayTeamA : displayTeamB} timeout`);
+    startSecondaryTimer(
+      rules.timeoutSeconds || 75,
+      `${team === "A" ? displayTeamA : displayTeamB} timeout`
+    );
+    setTimeModalOpen(false);
   }
 
   function handleHalfTimeTrigger() {
-    handleSecondaryToggle("Halftime break");
+    const breakSeconds = Math.max(1, (rules.halftimeBreakMinutes || 0) * 60);
+    startSecondaryTimer(breakSeconds || 60, "Halftime break");
     setTimeModalOpen(false);
   }
 
   function handleGameStoppage() {
-    handleSecondaryToggle("Game stoppage");
+    startSecondaryTimer(rules.timeoutSeconds || 75, "Game stoppage");
     setTimeModalOpen(false);
   }
 
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-6 md:flex-row md:items-center md:justify-between">
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-3 py-3 md:flex-row md:items-center md:justify-between">
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-dark">
               Backend workspace
@@ -727,10 +1085,10 @@ export default function ScoreKeeperPage() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl px-6 py-10">
+      <main className="mx-auto w-full max-w-5xl px-3 py-5">
         {consoleReady ? (
-          <section className="space-y-8">
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card/40">
+          <section className="space-y-4">
+            <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-card/40">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -753,13 +1111,20 @@ export default function ScoreKeeperPage() {
               </div>
             </div>
 
-            <div className="space-y-4 rounded-3xl border-2 border-[#6d1030] bg-white p-4 shadow-inner">
+            <div className="space-y-4 rounded-3xl border-2 border-[#6d1030] bg-white p-2 shadow-inner">
               <div className="divide-y divide-[#6d1030]/50 rounded-2xl border border-[#6d1030]/50">
-                <div className="grid gap-4 p-6 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="text-center text-[#6d1030]">
-                    <p className="text-[70px] font-semibold leading-none sm:text-[90px]">
-                      {formattedPrimaryClock}
-                    </p>
+                <div className="grid gap-2 p-3 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="rounded-2xl p-2 text-center text-[#6d1030]">
+                    <div
+                      className={`mx-auto inline-flex flex-col items-center rounded-2xl border border-slate-200 px-4 py-2 transition-colors ${primaryTimerBg}`}
+                    >
+                      <p className="text-[70px] font-semibold leading-none sm:text-[90px]">
+                        {formattedPrimaryClock}
+                      </p>
+                      <p className="text-xs uppercase tracking-wide text-[#6d1030]/70">
+                        {timerLabel}
+                      </p>
+                    </div>
                     <label className="mt-4 inline-flex items-center gap-2 text-sm font-semibold">
                       Set Time (min):
                       <input
@@ -769,32 +1134,41 @@ export default function ScoreKeeperPage() {
                         onChange={(event) =>
                           handleRuleChange("matchDuration", Number(event.target.value) || 0)
                         }
-                        className="w-20 rounded border border-[#6d1030] px-2 py-1 text-center text-[#6d1030]"
+                        disabled={matchSettingsLocked}
+                        className="w-20 rounded border border-[#6d1030] px-2 py-1 text-center text-[#6d1030] disabled:cursor-not-allowed disabled:opacity-50"
                       />
                     </label>
                   </div>
-                  <div className="flex flex-col items-center gap-3">
+                  <div className="flex flex-col items-center gap-2">
                     <button
                       type="button"
                       onClick={handleToggleTimer}
+                      onMouseDown={startPrimaryHoldReset}
+                      onMouseUp={cancelPrimaryHoldReset}
+                      onMouseLeave={cancelPrimaryHoldReset}
+                      onTouchStart={startPrimaryHoldReset}
+                      onTouchEnd={cancelPrimaryHoldReset}
                       className="w-28 rounded-full bg-[#6d1030] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#510b24]"
                     >
                       {timerRunning ? "Pause" : "Play"}
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleResetTimer}
-                      className="w-28 rounded-full border border-[#6d1030]/40 px-4 py-2 text-xs font-semibold text-[#6d1030]"
-                    >
-                      Reset
-                    </button>
+                    <p className="text-[10px] uppercase tracking-wide text-[#6d1030]/70">
+                      Hold to reset
+                    </p>
                   </div>
                 </div>
-                <div className="grid gap-4 p-6 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="text-center text-[#6d1030]">
-                    <p className="text-[60px] font-semibold leading-none sm:text-[80px]">
-                      {formattedSecondaryClock}
-                    </p>
+                <div className="grid gap-2 p-3 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="rounded-2xl p-2 text-center text-[#6d1030]">
+                    <div
+                      className={`mx-auto inline-flex flex-col items-center rounded-2xl border border-slate-200 px-4 py-2 transition-colors ${secondaryTimerBg}`}
+                    >
+                      <p className="text-[60px] font-semibold leading-none sm:text-[80px]">
+                        {formattedSecondaryClock}
+                      </p>
+                      <p className="text-xs uppercase tracking-wide text-[#6d1030]/70">
+                        {secondaryLabel}
+                      </p>
+                    </div>
                     <label className="mt-4 inline-flex items-center gap-2 text-sm font-semibold">
                       Set Time (sec):
                       <input
@@ -804,30 +1178,31 @@ export default function ScoreKeeperPage() {
                         onChange={(event) =>
                           handleRuleChange("timeoutSeconds", Number(event.target.value) || 0)
                         }
-                        className="w-24 rounded border border-[#6d1030] px-2 py-1 text-center text-[#6d1030]"
+                        disabled={matchSettingsLocked}
+                        className="w-24 rounded border border-[#6d1030] px-2 py-1 text-center text-[#6d1030] disabled:cursor-not-allowed disabled:opacity-50"
                       />
                     </label>
                   </div>
-                  <div className="flex flex-col items-center gap-3">
-                    <span className="text-xs font-semibold text-[#6d1030]">Reset (hold 5s)</span>
+                  <div className="flex flex-col items-center gap-2">
                     <button
                       type="button"
                       onClick={handleSecondaryToggle}
+                      onMouseDown={startSecondaryHoldReset}
+                      onMouseUp={cancelSecondaryHoldReset}
+                      onMouseLeave={cancelSecondaryHoldReset}
+                      onTouchStart={startSecondaryHoldReset}
+                      onTouchEnd={cancelSecondaryHoldReset}
                       className="w-28 rounded-full bg-[#6d1030] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#510b24]"
                     >
                       {secondaryRunning ? "Pause" : "Play"}
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleSecondaryReset}
-                      className="w-28 rounded-full border border-[#6d1030]/40 px-4 py-2 text-xs font-semibold text-[#6d1030]"
-                    >
-                      Reset
-                    </button>
+                    <p className="text-[10px] uppercase tracking-wide text-[#6d1030]/70">
+                      Hold to reset
+                    </p>
                   </div>
                 </div>
               </div>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   type="button"
                   onClick={() => setTimeModalOpen(true)}
@@ -838,13 +1213,48 @@ export default function ScoreKeeperPage() {
               </div>
             </div>
 
-            <div className="space-y-4 rounded-3xl border border-[#6d1030]/40 bg-white p-6 shadow-card/30">
+            {matchStarted && (
+              <div className="rounded-3xl border border-[#6d1030]/30 bg-white p-3 shadow-card/20">
+                <div className="flex flex-col gap-1 text-[#6d1030] sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="text-xl font-semibold">Possession</h3>
+                  <p className="text-sm font-semibold">
+                    {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
+                  </p>
+                </div>
+                <div className="mt-3 flex items-center gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#6d1030]">
+                    {displayTeamAShort}
+                  </span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="100"
+                    value={possessionValue}
+                    onChange={(event) => {
+                      const nextValue = Number(event.target.value);
+                      const nextTeam = nextValue >= 50 ? "B" : "A";
+                      void updatePossession(nextTeam);
+                    }}
+                    className="h-2 flex-1 cursor-pointer accent-[#6d1030]"
+                  />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#6d1030]">
+                    {displayTeamBShort}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-4 rounded-3xl border border-[#6d1030]/40 bg-white p-3 shadow-card/30">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-xl font-semibold text-[#6d1030]">Score table</h3>
+                <h3 className="text-xl font-semibold text-[#6d1030]">Match events</h3>
                 <p className="text-sm font-semibold text-[#6d1030]">
                   {displayTeamAShort}: {score.a} - {displayTeamBShort}: {score.b}
                 </p>
               </div>
+              {matchEventsError && (
+                <p className="text-xs text-rose-600">{matchEventsError}</p>
+              )}
               <div className="space-y-3">
                 {!matchStarted ? (
                   <button
@@ -873,80 +1283,93 @@ export default function ScoreKeeperPage() {
                   </div>
                 )}
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full table-fixed border-collapse text-sm text-[#6d1030]">
-                  <thead className="bg-[#fce8ef] text-xs uppercase">
-                    <tr>
-                      <th className="border border-[#6d1030]/30 px-2 py-2">ABBA</th>
-                      <th className="border border-[#6d1030]/30 px-2 py-2">Score A</th>
-                      <th className="border border-[#6d1030]/30 px-2 py-2">Assist A</th>
-                      <th className="border border-[#6d1030]/30 px-2 py-2">Total</th>
-                      <th className="border border-[#6d1030]/30 px-2 py-2">Score B</th>
-                      <th className="border border-[#6d1030]/30 px-2 py-2">Assist B</th>
-                      <th className="border border-[#6d1030]/30 px-2 py-2">Edit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {logsLoading ? (
-                      <tr>
-                        <td
-                          colSpan={7}
-                          className="border border-[#6d1030]/30 px-4 py-3 text-center text-xs text-slate-500"
-                        >
-                          Syncing logs...
-                        </td>
-                      </tr>
-                    ) : logs.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={7}
-                          className="border border-[#6d1030]/30 px-4 py-3 text-center text-sm text-slate-500"
-                        >
-                          No scores recorded yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      logs.map((log, index) => (
-                        <tr key={log.id} className="odd:bg-[#fdf1f4]">
-                          <td className="border border-[#6d1030]/30 px-2 py-2 text-center text-xs font-semibold">
-                            {abbaLabel}
-                          </td>
-                          <td className="border border-[#6d1030]/30 px-2 py-2">
-                            {log.team === "A" ? log.scorerName : "-"}
-                          </td>
-                          <td className="border border-[#6d1030]/30 px-2 py-2">
-                            {log.team === "A" ? log.assistName ?? "-" : "-"}
-                          </td>
-                          <td className="border border-[#6d1030]/30 px-2 py-2 text-center font-semibold">
+              <div className="space-y-3">
+                {logsLoading ? (
+                  <div className="rounded-2xl border border-dashed border-[#6d1030]/30 px-4 py-3 text-center text-xs text-slate-500">
+                    Syncing logs...
+                  </div>
+                ) : logs.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[#6d1030]/30 px-4 py-3 text-center text-sm text-slate-500">
+                    No match events captured yet. Use the buttons above to log an event.
+                  </div>
+                ) : (
+                  orderedLogs.map((log, index) => {
+                    const displayNumber = orderedLogs.length - index;
+                    return (
+                      <div
+                        key={log.id}
+                        className="rounded-2xl border border-[#6d1030]/20 bg-[#fdf1f4] px-4 py-3 text-sm text-[#6d1030]"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-[#6d1030]/80">
+                              {log.eventDescription} - {abbaLabel}
+                            </p>
+                            <p className="text-base font-semibold">
+                              #{displayNumber} - {log.team === "A" ? displayTeamAShort : displayTeamBShort}
+                            </p>
+                            <p className="text-xs text-[#6d1030]/70">
+                              {new Date(log.timestamp).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          </div>
+                          <div className="text-right text-base font-semibold">
                             {log.totalA} - {log.totalB}
-                          </td>
-                          <td className="border border-[#6d1030]/30 px-2 py-2">
-                            {log.team === "B" ? log.scorerName : "-"}
-                          </td>
-                          <td className="border border-[#6d1030]/30 px-2 py-2">
-                            {log.team === "B" ? log.assistName ?? "-" : "-"}
-                          </td>
-                          <td className="border border-[#6d1030]/30 px-2 py-2 text-center">
-                            <button
-                              type="button"
-                              onClick={() => openScoreModal(log.team, "edit", index)}
-                              className="rounded-full border border-[#6d1030]/40 px-3 py-1 text-xs font-semibold text-[#6d1030] transition hover:bg-[#fdf1f4]"
-                            >
-                              Edit
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                          <div>
+                            <p className="font-semibold">
+                              {log.team === "A" ? displayTeamA : displayTeamB}
+                            </p>
+                            <p className="text-[#6d1030]/70">
+                              Scorer: {log.scorerName || "Unassigned"}
+                              {log.assistName ? ` - Assist: ${log.assistName}` : ""}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openScoreModal(log.team, "edit", index)}
+                            className="ml-auto rounded-full border border-[#6d1030]/40 px-4 py-1 text-xs font-semibold text-[#6d1030] transition hover:bg-white"
+                          >
+                            Edit event
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <button
+                  type="button"
+                  onClick={handleEndMatchNavigation}
+                  disabled={!canEndMatch}
+                  className="block w-full rounded-full bg-[#6d1030] px-5 py-3 text-center text-sm font-semibold text-white transition hover:bg-[#510b24] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  End match / Enter spirit scores
+                </button>
+                {pendingEntries.length > 0 && (
+                  <div className="rounded-2xl border border-[#6d1030]/30 bg-white/90 p-2 text-sm text-[#6d1030]">
+                    <h4 className="text-base font-semibold text-[#6d1030]">
+                      Pending database payloads
+                    </h4>
+                    <p className="mt-1 text-xs text-[#6d1030]/70">
+                      These entries show exactly what would be sent to `public.match_logs` once RLS
+                      permits inserts.
+                    </p>
+                    <pre className="mt-3 max-h-64 overflow-y-auto rounded-xl bg-[#fdf1f4] p-3 text-xs text-[#6d1030]">
+                      {JSON.stringify(pendingEntries, null, 2)}
+                    </pre>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-3 rounded-3xl border border-[#6d1030]/30 bg-white p-4 shadow-card/20">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-3 rounded-3xl border border-[#6d1030]/30 bg-white p-2 shadow-card/20">
                 <h3 className="text-center text-xl font-semibold text-[#6d1030]">Team A Players</h3>
-                <div className="max-h-64 space-y-2 overflow-y-auto rounded-2xl border border-[#6d1030]/20 bg-[#fdf1f4] p-3 text-sm text-[#6d1030]">
+                <div className="space-y-2 rounded-2xl border border-[#6d1030]/20 bg-[#fdf1f4] p-3 text-sm text-[#6d1030]">
                   {rostersLoading ? (
                     <p className="text-center text-xs">Loading roster...</p>
                   ) : sortedRosters.teamA.length === 0 ? (
@@ -961,9 +1384,9 @@ export default function ScoreKeeperPage() {
                   )}
                 </div>
               </div>
-              <div className="space-y-3 rounded-3xl border border-[#6d1030]/30 bg-white p-4 shadow-card/20">
+              <div className="space-y-3 rounded-3xl border border-[#6d1030]/30 bg-white p-2 shadow-card/20">
                 <h3 className="text-center text-xl font-semibold text-[#6d1030]">Team B Players</h3>
-                <div className="max-h-64 space-y-2 overflow-y-auto rounded-2xl border border-[#6d1030]/20 bg-[#fdf1f4] p-3 text-sm text-[#6d1030]">
+                <div className="space-y-2 rounded-2xl border border-[#6d1030]/20 bg-[#fdf1f4] p-3 text-sm text-[#6d1030]">
                   {rostersLoading ? (
                     <p className="text-center text-xs">Loading roster...</p>
                   ) : sortedRosters.teamB.length === 0 ? (
@@ -985,7 +1408,7 @@ export default function ScoreKeeperPage() {
             )}
           </section>
         ) : (
-          <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-card/40">
+          <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-3 text-center shadow-card/40">
             <p className="text-sm text-slate-600">
               Launch the match setup modal to choose an event, pick the relevant match, and confirm
               the timing parameters before going live.
@@ -1008,6 +1431,11 @@ export default function ScoreKeeperPage() {
       {setupModalOpen && (
         <ActionModal title="Match setup" onClose={() => setSetupModalOpen(false)}>
           <form className="space-y-5" onSubmit={handleInitialiseMatch}>
+            {matchSettingsLocked && (
+              <p className="rounded-2xl bg-[#fce8ee] px-3 py-2 text-xs font-semibold text-[#6d1030]">
+                Match already started. Settings unlock once the match is reset.
+              </p>
+            )}
             <div className="space-y-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1029,7 +1457,8 @@ export default function ScoreKeeperPage() {
                       setSelectedEventId(value);
                       setSelectedMatchId(null);
                     }}
-                    className="mt-2 w-full rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-2 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/40"
+                    disabled={matchSettingsLocked}
+                    className="mt-2 w-full rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-2 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">Select an event...</option>
                     {events.map((event) => (
@@ -1065,7 +1494,7 @@ export default function ScoreKeeperPage() {
                   <select
                     value={selectedMatchId || ""}
                     onChange={(event) => setSelectedMatchId(event.target.value || null)}
-                    disabled={!selectedEventId || matches.length === 0}
+                    disabled={!selectedEventId || matches.length === 0 || matchSettingsLocked}
                     className="mt-2 w-full rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-2 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">
@@ -1085,9 +1514,9 @@ export default function ScoreKeeperPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="text-sm font-semibold text-[#6d1030]">
-                Match duration
+            <div className="grid gap-2 md:grid-cols-2">
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6d1030]">
+                <span className="shrink-0">Match duration</span>
                 <input
                   type="number"
                   min="1"
@@ -1098,11 +1527,12 @@ export default function ScoreKeeperPage() {
                       matchDuration: Number(event.target.value) || 0,
                     }))
                   }
-                  className="mt-1 w-full rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-2 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30"
+                  disabled={matchSettingsLocked}
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-1.5 text-right text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              <label className="text-sm font-semibold text-[#6d1030]">
-                Halftime (min)
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6d1030]">
+                <span className="shrink-0">Halftime (min)</span>
                 <input
                   type="number"
                   min="0"
@@ -1113,11 +1543,12 @@ export default function ScoreKeeperPage() {
                       halftimeMinutes: Number(event.target.value) || 0,
                     }))
                   }
-                  className="mt-1 w-full rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-2 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30"
+                  disabled={matchSettingsLocked}
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-1.5 text-right text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              <label className="text-sm font-semibold text-[#6d1030]">
-                Halftime duration (min)
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6d1030]">
+                <span className="shrink-0">Halftime duration (min)</span>
                 <input
                   type="number"
                   min="0"
@@ -1128,11 +1559,12 @@ export default function ScoreKeeperPage() {
                       halftimeBreakMinutes: Number(event.target.value) || 0,
                     }))
                   }
-                  className="mt-1 w-full rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-2 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30"
+                  disabled={matchSettingsLocked}
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-1.5 text-right text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              <label className="text-sm font-semibold text-[#6d1030]">
-                Timeout duration (sec)
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6d1030]">
+                <span className="shrink-0">Timeout duration (sec)</span>
                 <input
                   type="number"
                   min="0"
@@ -1143,11 +1575,12 @@ export default function ScoreKeeperPage() {
                       timeoutSeconds: Number(event.target.value) || 0,
                     }))
                   }
-                  className="mt-1 w-full rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-2 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30"
+                  disabled={matchSettingsLocked}
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-1.5 text-right text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              <label className="text-sm font-semibold text-[#6d1030]">
-                Timeouts total
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6d1030]">
+                <span className="shrink-0">Timeouts total</span>
                 <input
                   type="number"
                   min="0"
@@ -1158,11 +1591,12 @@ export default function ScoreKeeperPage() {
                       timeoutsTotal: Number(event.target.value) || 0,
                     }))
                   }
-                  className="mt-1 w-full rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-2 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30"
+                  disabled={matchSettingsLocked}
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-1.5 text-right text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              <label className="text-sm font-semibold text-[#6d1030]">
-                Timeouts per half
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6d1030]">
+                <span className="shrink-0">Timeouts per half</span>
                 <input
                   type="number"
                   min="0"
@@ -1173,11 +1607,30 @@ export default function ScoreKeeperPage() {
                       timeoutsPerHalf: Number(event.target.value) || 0,
                     }))
                   }
-                  className="mt-1 w-full rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-2 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30"
+                  disabled={matchSettingsLocked}
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-1.5 text-right text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              <label className="text-sm font-semibold text-[#6d1030]">
-                ABBA
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6d1030]">
+                <span className="shrink-0">Pulling team</span>
+                <select
+                  value={setupForm.startingTeamId || ""}
+                  onChange={(event) =>
+                    setSetupForm((prev) => ({
+                      ...prev,
+                      startingTeamId: event.target.value || "",
+                    }))
+                  }
+                  disabled={matchSettingsLocked}
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-1.5 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">Select team...</option>
+                  {teamAId && <option value={teamAId}>{displayTeamA}</option>}
+                  {teamBId && <option value={teamBId}>{displayTeamB}</option>}
+                </select>
+              </label>
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#6d1030]">
+                <span className="shrink-0">ABBA</span>
                 <select
                   value={rules.abbaPattern}
                   onChange={(event) =>
@@ -1186,7 +1639,8 @@ export default function ScoreKeeperPage() {
                       abbaPattern: event.target.value,
                     }))
                   }
-                  className="mt-1 w-full rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-2 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30"
+                  disabled={matchSettingsLocked}
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-1.5 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none focus:ring-2 focus:ring-[#c35c6f]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="none">None</option>
                   <option value="male">Male</option>
@@ -1196,7 +1650,7 @@ export default function ScoreKeeperPage() {
             </div>
             <button
               type="submit"
-              disabled={initialising || !selectedMatch}
+              disabled={initialising || !selectedMatch || matchSettingsLocked}
               className="w-full rounded-full bg-[#6d1030] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#510b24] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {initialising ? "Initialising..." : "Initialise"}
@@ -1205,11 +1659,11 @@ export default function ScoreKeeperPage() {
         </ActionModal>
       )}
 
-      {timeModalOpen && (
-        <ActionModal title="Time additions" onClose={() => setTimeModalOpen(false)}>
-          <div className="space-y-4 text-center text-sm text-[#6d1030]">
-            <button
-              type="button"
+  {timeModalOpen && (
+    <ActionModal title="Time additions" onClose={() => setTimeModalOpen(false)}>
+      <div className="space-y-4 text-center text-sm text-[#6d1030]">
+        <button
+          type="button"
               onClick={() => {
                 handleHalfTimeTrigger();
               }}
@@ -1262,10 +1716,11 @@ export default function ScoreKeeperPage() {
               className="w-full rounded-full bg-[#ff9dad] px-4 py-3 text-sm font-semibold text-[#6d1030] transition hover:bg-[#ff8094]"
             >
               Game stoppage
-            </button>
-          </div>
-        </ActionModal>
-      )}
+        </button>
+      </div>
+    </ActionModal>
+  )}
+
 
       {scoreModalState.open && (
         <ActionModal
@@ -1273,24 +1728,9 @@ export default function ScoreKeeperPage() {
           onClose={closeScoreModal}
         >
           <form className="space-y-4" onSubmit={handleScoreModalSubmit}>
-            {scoreModalState.mode === "add" && (
-              <label className="block text-base font-semibold text-[#6d1030]">
-                Team
-                <select
-                  value={scoreModalState.team || "A"}
-                  onChange={(event) =>
-                    setScoreModalState((prev) => ({
-                      ...prev,
-                      team: event.target.value || "A",
-                    }))
-                  }
-                  className="mt-2 w-full rounded-full border border-[#6d1030]/40 bg-[#f6e7eb] px-4 py-2 text-sm text-[#6d1030] focus:border-[#6d1030] focus:outline-none"
-                >
-                  <option value="A">{displayTeamAShort}</option>
-                  <option value="B">{displayTeamBShort}</option>
-                </select>
-              </label>
-            )}
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#6d1030]/70">
+              Team: {scoreModalState.team === "B" ? displayTeamB : displayTeamA}
+            </p>
             <label className="block text-base font-semibold text-[#6d1030]">
               Scorer:
               <select
@@ -1419,8 +1859,8 @@ function sortRoster(list = []) {
 
 function ActionModal({ title, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6">
-      <div className="w-full max-w-sm rounded-[32px] bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-3">
+      <div className="w-full max-w-sm rounded-[32px] bg-white p-3 shadow-2xl">
         <div className="mb-2 flex items-start justify-between">
           <h3 className="text-2xl font-semibold text-[#6d1030]">{title}</h3>
           <button

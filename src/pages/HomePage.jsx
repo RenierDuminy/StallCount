@@ -27,7 +27,7 @@ export default function HomePage() {
       setError(null);
       try {
         const results = await Promise.all([
-          toSettled(getAllTeams(6)),
+          toSettled(getAllTeams()),
           toSettled(getDivisions(4)),
           toSettled(getRecentEvents(4)),
           toSettled(getRecentMatches(6)),
