@@ -16,6 +16,8 @@ import {
 
 
 const DEFAULT_DURATION = 90;
+const HALFTIME_SCORE_THRESHOLD = 8;
+const ABBA_SEQUENCE = ["1st", "2nd", "2nd", "1st"];
 
 export default function ScoreKeeperPage() {
   const navigate = useNavigate();
@@ -80,6 +82,7 @@ const [secondaryTotalSeconds, setSecondaryTotalSeconds] = useState(rules.timeout
 const [secondaryFlashActive, setSecondaryFlashActive] = useState(false);
 const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
 const [possessionTeam, setPossessionTeam] = useState(null);
+const [halftimeTriggered, setHalftimeTriggered] = useState(false);
 
   const fetchRostersForTeams = useCallback(async (teamAId, teamBId) => {
     const [teamAPlayers, teamBPlayers] = await Promise.all([
@@ -298,6 +301,16 @@ useEffect(() => {
   }, [selectedMatchId, activeMatch?.id, matchStarted]);
 
   useEffect(() => {
+    if (!consoleReady) {
+      setHalftimeTriggered(false);
+    }
+  }, [consoleReady]);
+
+  useEffect(() => {
+    setHalftimeTriggered(false);
+  }, [activeMatch?.id]);
+
+  useEffect(() => {
     if (!activeMatch) {
       matchIdRef.current = null;
       initialScoreRef.current = { a: 0, b: 0 };
@@ -347,12 +360,12 @@ useEffect(() => {
   const teamBId = activeMatch?.team_b?.id || selectedMatch?.team_b?.id || null;
   const venueName = activeMatch?.venue?.name || selectedMatch?.venue?.name || null;
   const statusLabel = (activeMatch?.status || selectedMatch?.status || "pending").toUpperCase();
-  const abbaLabel =
-    rules.abbaPattern === "male"
-      ? "ABBA: Male"
-    : rules.abbaPattern === "female"
-        ? "ABBA: Female"
-        : "ABBA: None";
+  const getAbbaDescriptor = (orderIndex) => {
+    if (!["male", "female"].includes(rules.abbaPattern) || orderIndex < 0) return null;
+    const prefix = rules.abbaPattern === "male" ? "Male" : "Female";
+    const position = ABBA_SEQUENCE[orderIndex % ABBA_SEQUENCE.length];
+    return `${prefix} ${position}`;
+  };
   const startingTeamId = activeMatch?.starting_team_id || setupForm.startingTeamId;
   const matchStartingTeamKey = startingTeamId === teamBId ? "B" : "A";
   const matchDuration = rules.matchDuration;
@@ -428,6 +441,7 @@ const startSecondaryTimer = useCallback(
   []
 );
 
+
 function startPrimaryHoldReset() {
   cancelPrimaryHoldReset();
   primaryResetRef.current = setTimeout(() => {
@@ -484,7 +498,7 @@ const rosterNameLookup = useMemo(() => {
   );
 
   const appendLocalLog = useCallback(
-    ({ team, timestamp, scorerId, assistId, totals, eventDescription }) => {
+    ({ team, timestamp, scorerId, assistId, totals, eventDescription, eventCode }) => {
       setLogs((prev) => [
         ...prev,
         {
@@ -502,11 +516,91 @@ const rosterNameLookup = useMemo(() => {
           totalA: totals.a,
           totalB: totals.b,
           eventDescription,
+          eventCode: eventCode || null,
         },
       ]);
     },
     [rosterNameLookup]
   );
+
+  const logSimpleEvent = useCallback(
+    async (eventCode, { teamKey = null } = {}) => {
+      if (!consoleReady || !activeMatch?.id) return;
+      try {
+        const eventTypeId = await resolveEventTypeIdLocal(eventCode);
+        if (!eventTypeId) {
+          setConsoleError(
+            `Missing \`${eventCode}\` event type in match_events. Please add it in Supabase before logging.`
+          );
+          return;
+        }
+        const timestamp = new Date().toISOString();
+        const entry = {
+          matchId: activeMatch.id,
+          eventTypeId,
+          eventCode,
+          teamId: teamKey === "A" ? teamAId : teamKey === "B" ? teamBId : null,
+          createdAt: timestamp,
+        };
+        recordPendingEntry(entry);
+        appendLocalLog({
+          team: teamKey,
+          timestamp,
+          scorerId: null,
+          assistId: null,
+          totals: currentMatchScoreRef.current || score,
+          eventDescription: describeEvent(eventTypeId),
+          eventCode,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to record match event.";
+        setConsoleError(message);
+      }
+    },
+    [
+      consoleReady,
+      activeMatch?.id,
+      resolveEventTypeIdLocal,
+      teamAId,
+      teamBId,
+      recordPendingEntry,
+      appendLocalLog,
+      describeEvent,
+      score,
+    ]
+  );
+
+  const triggerHalftime = useCallback(async () => {
+    if (halftimeTriggered || !matchStarted) return;
+    setHalftimeTriggered(true);
+    setTimerRunning(false);
+    await logSimpleEvent(MATCH_LOG_EVENT_CODES.HALFTIME);
+    const breakSeconds = Math.max(1, (rules.halftimeBreakMinutes || 0) * 60);
+    startSecondaryTimer(breakSeconds || 60, "Halftime break");
+  }, [
+    halftimeTriggered,
+    matchStarted,
+    logSimpleEvent,
+    rules.halftimeBreakMinutes,
+    startSecondaryTimer,
+  ]);
+
+  useEffect(() => {
+    if (!matchStarted || halftimeTriggered) return;
+    const halftimeMinutes = rules.halftimeMinutes || 0;
+    if (halftimeMinutes <= 0) return;
+    const elapsedSeconds = matchDuration * 60 - timerSeconds;
+    if (elapsedSeconds >= halftimeMinutes * 60) {
+      void triggerHalftime();
+    }
+  }, [
+    matchStarted,
+    halftimeTriggered,
+    rules.halftimeMinutes,
+    matchDuration,
+    timerSeconds,
+    triggerHalftime,
+  ]);
 
   const handleEndMatchNavigation = useCallback(() => {
     if (!canEndMatch) return;
@@ -557,6 +651,7 @@ const rosterNameLookup = useMemo(() => {
           assistId: null,
           totals: totalsSnapshot,
           eventDescription: describeEvent(eventTypeId),
+          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to log turnover.";
@@ -597,11 +692,18 @@ const rosterNameLookup = useMemo(() => {
       let rawB = 0;
       rows.forEach((row) => {
         const teamKey =
-          row.team_id && row.team_id === teamBId ? "B" : "A";
-        if (teamKey === "A") {
-          rawA += 1;
-        } else {
-          rawB += 1;
+          row.team_id && row.team_id === teamBId
+            ? "B"
+            : row.team_id && row.team_id === teamAId
+              ? "A"
+              : null;
+        const isScoreEvent = row.event?.code === MATCH_LOG_EVENT_CODES.SCORE;
+        if (isScoreEvent) {
+          if (teamKey === "A") {
+            rawA += 1;
+          } else if (teamKey === "B") {
+            rawB += 1;
+          }
         }
       });
 
@@ -619,11 +721,14 @@ const rosterNameLookup = useMemo(() => {
             ? "B"
             : row.team_id && row.team_id === teamAId
               ? "A"
-              : "A";
-        if (teamKey === "A") {
-          runningA += 1;
-        } else {
-          runningB += 1;
+              : null;
+        const isScoreEvent = row.event?.code === MATCH_LOG_EVENT_CODES.SCORE;
+        if (isScoreEvent) {
+          if (teamKey === "A") {
+            runningA += 1;
+          } else if (teamKey === "B") {
+            runningB += 1;
+          }
         }
 
         const scorerName =
@@ -862,6 +967,7 @@ function handleSecondaryReset() {
       assistId: null,
       totals: score,
       eventDescription: describeEvent(eventTypeId),
+      eventCode: MATCH_LOG_EVENT_CODES.MATCH_START,
     });
   }
 
@@ -879,6 +985,7 @@ function handleSecondaryReset() {
     setTimerLabel("Game time");
     handleSecondaryReset();
     setTimeoutUsage({ A: 0, B: 0 });
+    setHalftimeTriggered(false);
   }
 
   async function handleAddScore(team, scorerId = null, assistId = null) {
@@ -922,10 +1029,14 @@ function handleSecondaryReset() {
       assistId,
       totals: nextTotals,
       eventDescription: describeEvent(eventTypeId),
+      eventCode: MATCH_LOG_EVENT_CODES.SCORE,
     });
     const receivingTeam = team === "A" ? "B" : "A";
     if (receivingTeam) {
       void updatePossession(receivingTeam, { logTurnover: false });
+    }
+    if (!halftimeTriggered && Math.max(nextTotals.a, nextTotals.b) >= HALFTIME_SCORE_THRESHOLD) {
+      await triggerHalftime();
     }
     startSecondaryTimer(75, "Inter point");
   }
@@ -1037,7 +1148,7 @@ function handleSecondaryReset() {
     }
   }
 
-  function handleTimeoutTrigger(team) {
+  async function handleTimeoutTrigger(team) {
     if (!consoleReady) return;
     const remaining = Math.max(rules.timeoutsTotal - timeoutUsage[team], 0);
     if (remaining === 0) return;
@@ -1046,54 +1157,47 @@ function handleSecondaryReset() {
       rules.timeoutSeconds || 75,
       `${team === "A" ? displayTeamA : displayTeamB} timeout`
     );
+    await logSimpleEvent(MATCH_LOG_EVENT_CODES.TIMEOUT, { teamKey: team });
     setTimeModalOpen(false);
   }
 
-  function handleHalfTimeTrigger() {
-    const breakSeconds = Math.max(1, (rules.halftimeBreakMinutes || 0) * 60);
-    startSecondaryTimer(breakSeconds || 60, "Halftime break");
+  async function handleHalfTimeTrigger() {
+    await triggerHalftime();
     setTimeModalOpen(false);
   }
 
-  function handleGameStoppage() {
-    startSecondaryTimer(rules.timeoutSeconds || 75, "Game stoppage");
+  async function handleGameStoppage() {
+    setTimerRunning(false);
+    setSecondaryRunning(false);
+    setSecondaryFlashActive(false);
+    setSecondaryFlashPulse(false);
+    setSecondaryLabel("Game stoppage");
+    await logSimpleEvent(MATCH_LOG_EVENT_CODES.STOPPAGE);
     setTimeModalOpen(false);
   }
 
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-3 py-3 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand-dark">
-              Backend workspace
-            </p>
-            <h1 className="text-3xl font-semibold text-slate-900">
-              Score keeper console
-            </h1>
-            <p className="text-sm text-slate-500 md:max-w-2xl">
-              Select a match, initialise the setup, and capture every score in one StallCount-native
-              interface.
-            </p>
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-3 py-2">
+          <div className="flex flex-col leading-tight">
+            <h1 className="text-xl font-semibold text-slate-900">Score keeper console</h1>
           </div>
           <Link
             to="/admin"
-            className="inline-flex items-center justify-center rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white shadow-card transition hover:bg-brand-dark"
+            className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-brand hover:text-brand-dark"
           >
             Back to admin hub
           </Link>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl px-3 py-5">
+      <main className="mx-auto w-full max-w-5xl px-2 py-3">
         {consoleReady ? (
-          <section className="space-y-4">
-            <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-card/40">
+          <section className="space-y-2">
+            <div className="rounded-3xl border border-slate-200 bg-white p-2 shadow-card/40">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Match in progress
-                  </p>
                   <h2 className="text-2xl font-semibold text-slate-900">
                     {displayTeamA} vs {displayTeamB}
                   </h2>
@@ -1111,12 +1215,12 @@ function handleSecondaryReset() {
               </div>
             </div>
 
-            <div className="space-y-4 rounded-3xl border-2 border-[#6d1030] bg-white p-2 shadow-inner">
+            <div className="space-y-2 rounded-3xl border-2 border-[#6d1030] bg-white p-1.5 shadow-inner">
               <div className="divide-y divide-[#6d1030]/50 rounded-2xl border border-[#6d1030]/50">
-                <div className="grid gap-2 p-3 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="rounded-2xl p-2 text-center text-[#6d1030]">
+                <div className="grid gap-2 p-2 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="rounded-2xl p-1.5 text-center text-[#6d1030]">
                     <div
-                      className={`mx-auto inline-flex flex-col items-center rounded-2xl border border-slate-200 px-4 py-2 transition-colors ${primaryTimerBg}`}
+                      className={`mx-auto inline-flex flex-col items-center rounded-2xl border border-slate-200 px-3 py-1.5 transition-colors ${primaryTimerBg}`}
                     >
                       <p className="text-[70px] font-semibold leading-none sm:text-[90px]">
                         {formattedPrimaryClock}
@@ -1125,42 +1229,44 @@ function handleSecondaryReset() {
                         {timerLabel}
                       </p>
                     </div>
-                    <label className="mt-4 inline-flex items-center gap-2 text-sm font-semibold">
-                      Set Time (min):
-                      <input
-                        type="number"
-                        min="1"
-                        value={rules.matchDuration}
-                        onChange={(event) =>
-                          handleRuleChange("matchDuration", Number(event.target.value) || 0)
-                        }
-                        disabled={matchSettingsLocked}
-                        className="w-20 rounded border border-[#6d1030] px-2 py-1 text-center text-[#6d1030] disabled:cursor-not-allowed disabled:opacity-50"
-                      />
-                    </label>
-                  </div>
-                  <div className="flex flex-col items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleToggleTimer}
-                      onMouseDown={startPrimaryHoldReset}
-                      onMouseUp={cancelPrimaryHoldReset}
-                      onMouseLeave={cancelPrimaryHoldReset}
-                      onTouchStart={startPrimaryHoldReset}
-                      onTouchEnd={cancelPrimaryHoldReset}
-                      className="w-28 rounded-full bg-[#6d1030] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#510b24]"
-                    >
-                      {timerRunning ? "Pause" : "Play"}
-                    </button>
-                    <p className="text-[10px] uppercase tracking-wide text-[#6d1030]/70">
-                      Hold to reset
-                    </p>
+                    <div className="mt-3 flex flex-col items-center gap-1">
+                      <div className="flex items-center gap-2">
+                        <label className="inline-flex items-center gap-2 text-sm font-semibold">
+                          Set Time (min):
+                          <input
+                            type="number"
+                            min="1"
+                            value={rules.matchDuration}
+                            onChange={(event) =>
+                              handleRuleChange("matchDuration", Number(event.target.value) || 0)
+                            }
+                            disabled={matchSettingsLocked}
+                            className="w-20 rounded border border-[#6d1030] px-2 py-1 text-center text-[#6d1030] disabled:cursor-not-allowed disabled:opacity-50"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleToggleTimer}
+                          onMouseDown={startPrimaryHoldReset}
+                          onMouseUp={cancelPrimaryHoldReset}
+                          onMouseLeave={cancelPrimaryHoldReset}
+                          onTouchStart={startPrimaryHoldReset}
+                          onTouchEnd={cancelPrimaryHoldReset}
+                          className="w-24 rounded-full bg-[#6d1030] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#510b24]"
+                        >
+                          {timerRunning ? "Pause" : "Play"}
+                        </button>
+                      </div>
+                      <p className="text-[10px] uppercase tracking-wide text-[#6d1030]/70">
+                        Hold to reset
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <div className="grid gap-2 p-3 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="rounded-2xl p-2 text-center text-[#6d1030]">
+                <div className="grid gap-2 p-2 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="rounded-2xl p-1.5 text-center text-[#6d1030]">
                     <div
-                      className={`mx-auto inline-flex flex-col items-center rounded-2xl border border-slate-200 px-4 py-2 transition-colors ${secondaryTimerBg}`}
+                      className={`mx-auto inline-flex flex-col items-center rounded-2xl border border-slate-200 px-3 py-1.5 transition-colors ${secondaryTimerBg}`}
                     >
                       <p className="text-[60px] font-semibold leading-none sm:text-[80px]">
                         {formattedSecondaryClock}
@@ -1169,36 +1275,38 @@ function handleSecondaryReset() {
                         {secondaryLabel}
                       </p>
                     </div>
-                    <label className="mt-4 inline-flex items-center gap-2 text-sm font-semibold">
-                      Set Time (sec):
-                      <input
-                        type="number"
-                        min="0"
-                        value={rules.timeoutSeconds}
-                        onChange={(event) =>
-                          handleRuleChange("timeoutSeconds", Number(event.target.value) || 0)
-                        }
-                        disabled={matchSettingsLocked}
-                        className="w-24 rounded border border-[#6d1030] px-2 py-1 text-center text-[#6d1030] disabled:cursor-not-allowed disabled:opacity-50"
-                      />
-                    </label>
-                  </div>
-                  <div className="flex flex-col items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSecondaryToggle}
-                      onMouseDown={startSecondaryHoldReset}
-                      onMouseUp={cancelSecondaryHoldReset}
-                      onMouseLeave={cancelSecondaryHoldReset}
-                      onTouchStart={startSecondaryHoldReset}
-                      onTouchEnd={cancelSecondaryHoldReset}
-                      className="w-28 rounded-full bg-[#6d1030] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#510b24]"
-                    >
-                      {secondaryRunning ? "Pause" : "Play"}
-                    </button>
-                    <p className="text-[10px] uppercase tracking-wide text-[#6d1030]/70">
-                      Hold to reset
-                    </p>
+                    <div className="mt-3 flex flex-col items-center gap-1">
+                      <div className="flex items-center gap-2">
+                        <label className="inline-flex items-center gap-2 text-sm font-semibold">
+                          Set Time (sec):
+                          <input
+                            type="number"
+                            min="0"
+                            value={rules.timeoutSeconds}
+                            onChange={(event) =>
+                              handleRuleChange("timeoutSeconds", Number(event.target.value) || 0)
+                            }
+                            disabled={matchSettingsLocked}
+                            className="w-24 rounded border border-[#6d1030] px-2 py-1 text-center text-[#6d1030] disabled:cursor-not-allowed disabled:opacity-50"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleSecondaryToggle}
+                          onMouseDown={startSecondaryHoldReset}
+                          onMouseUp={cancelSecondaryHoldReset}
+                          onMouseLeave={cancelSecondaryHoldReset}
+                          onTouchStart={startSecondaryHoldReset}
+                          onTouchEnd={cancelSecondaryHoldReset}
+                          className="w-24 rounded-full bg-[#6d1030] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#510b24]"
+                        >
+                          {secondaryRunning ? "Pause" : "Play"}
+                        </button>
+                      </div>
+                      <p className="text-[10px] uppercase tracking-wide text-[#6d1030]/70">
+                        Hold to reset
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1213,15 +1321,15 @@ function handleSecondaryReset() {
               </div>
             </div>
 
-            {matchStarted && (
-              <div className="rounded-3xl border border-[#6d1030]/30 bg-white p-3 shadow-card/20">
-                <div className="flex flex-col gap-1 text-[#6d1030] sm:flex-row sm:items-center sm:justify-between">
-                  <h3 className="text-xl font-semibold">Possession</h3>
-                  <p className="text-sm font-semibold">
-                    {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
-                  </p>
-                </div>
-                <div className="mt-3 flex items-center gap-3">
+              {matchStarted && (
+                <div className="rounded-3xl border border-[#6d1030]/30 bg-white p-2 shadow-card/20">
+                  <div className="flex flex-col gap-1 text-[#6d1030] sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="text-xl font-semibold">Possession</h3>
+                    <p className="text-sm font-semibold">
+                      {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
+                    </p>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[#6d1030]">
                     {displayTeamAShort}
                   </span>
@@ -1245,102 +1353,117 @@ function handleSecondaryReset() {
               </div>
             )}
 
-            <div className="space-y-4 rounded-3xl border border-[#6d1030]/40 bg-white p-3 shadow-card/30">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-xl font-semibold text-[#6d1030]">Match events</h3>
-                <p className="text-sm font-semibold text-[#6d1030]">
-                  {displayTeamAShort}: {score.a} - {displayTeamBShort}: {score.b}
-                </p>
-              </div>
-              {matchEventsError && (
-                <p className="text-xs text-rose-600">{matchEventsError}</p>
-              )}
-              <div className="space-y-3">
-                {!matchStarted ? (
-                  <button
-                    type="button"
-                    onClick={handleStartMatch}
-                    className="w-full rounded-full bg-[#6d1030] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#510b24]"
-                  >
-                    Start match
-                  </button>
-                ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => openScoreModal("A")}
-                      className="rounded-full border border-[#6d1030]/30 bg-[#fdf1f4] px-4 py-2 text-sm font-semibold text-[#6d1030] transition hover:bg-[#f8e0e9]"
-                    >
-                      Add score - {displayTeamAShort}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openScoreModal("B")}
-                      className="rounded-full border border-[#6d1030]/30 bg-[#fdf1f4] px-4 py-2 text-sm font-semibold text-[#6d1030] transition hover:bg-[#f8e0e9]"
-                    >
-                      Add score - {displayTeamBShort}
-                    </button>
-                  </div>
+              <div className="space-y-2 rounded-3xl border border-[#6d1030]/40 bg-white p-2 shadow-card/30">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                </div>
+                {matchEventsError && (
+                  <p className="text-xs text-rose-600">{matchEventsError}</p>
                 )}
-              </div>
-              <div className="space-y-3">
-                {logsLoading ? (
-                  <div className="rounded-2xl border border-dashed border-[#6d1030]/30 px-4 py-3 text-center text-xs text-slate-500">
-                    Syncing logs...
-                  </div>
-                ) : logs.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-[#6d1030]/30 px-4 py-3 text-center text-sm text-slate-500">
-                    No match events captured yet. Use the buttons above to log an event.
-                  </div>
-                ) : (
-                  orderedLogs.map((log, index) => {
-                    const displayNumber = orderedLogs.length - index;
-                    return (
-                      <div
-                        key={log.id}
-                        className="rounded-2xl border border-[#6d1030]/20 bg-[#fdf1f4] px-4 py-3 text-sm text-[#6d1030]"
+                <div className="space-y-2">
+                  {!matchStarted ? (
+                    <button
+                      type="button"
+                      onClick={handleStartMatch}
+                      className="w-full rounded-full bg-[#6d1030] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#510b24]"
+                    >
+                      Start match
+                    </button>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openScoreModal("A")}
+                        className="rounded-full border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-1.5 text-xs font-semibold text-[#6d1030] transition hover:bg-[#f8e0e9]"
                       >
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-[#6d1030]/80">
-                              {log.eventDescription} - {abbaLabel}
-                            </p>
-                            <p className="text-base font-semibold">
-                              #{displayNumber} - {log.team === "A" ? displayTeamAShort : displayTeamBShort}
-                            </p>
-                            <p className="text-xs text-[#6d1030]/70">
-                              {new Date(log.timestamp).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </p>
+                        Add score - {displayTeamAShort}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openScoreModal("B")}
+                        className="rounded-full border border-[#6d1030]/30 bg-[#fdf1f4] px-3 py-1.5 text-xs font-semibold text-[#6d1030] transition hover:bg-[#f8e0e9]"
+                      >
+                        Add score - {displayTeamBShort}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {logsLoading ? (
+                    <div className="rounded-2xl border border-dashed border-[#6d1030]/30 px-3 py-2 text-center text-xs text-slate-500">
+                      Syncing logs...
+                    </div>
+                  ) : logs.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-[#6d1030]/30 px-3 py-2 text-center text-xs text-slate-500">
+                      No match events captured yet. Use the buttons above to log an event.
+                    </div>
+                  ) : (
+                    orderedLogs.map((log) => {
+                      const chronologicalIndex = logs.findIndex((entry) => entry.id === log.id);
+                      const editIndex =
+                        chronologicalIndex >= 0 ? chronologicalIndex : logs.indexOf(log);
+                      const isScoreLog = log.eventCode === MATCH_LOG_EVENT_CODES.SCORE;
+                      const isMatchStartLog = log.eventCode === MATCH_LOG_EVENT_CODES.MATCH_START;
+                      const shortTeamLabel =
+                        log.team === "B" ? displayTeamBShort : log.team === "A" ? displayTeamAShort : null;
+                      const fullTeamLabel =
+                        log.team === "B" ? displayTeamB : log.team === "A" ? displayTeamA : null;
+                      const abbaDescriptor = isScoreLog ? getAbbaDescriptor(chronologicalIndex) : null;
+                      const eventTime = new Date(log.timestamp).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      });
+                      return (
+                        <div
+                          key={log.id}
+                          className="rounded-2xl border border-[#6d1030]/20 bg-[#fdf1f4] px-3 py-2 text-sm text-[#6d1030]"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-[#6d1030]/80">
+                                {isMatchStartLog ? "Match start" : log.eventDescription || "Match event"}
+                                {!isMatchStartLog && abbaDescriptor ? ` - ${abbaDescriptor}` : ""}
+                                {!isScoreLog && !isMatchStartLog && shortTeamLabel ? ` - ${shortTeamLabel}` : ""}
+                              </p>
+                              {isMatchStartLog && (
+                                <p className="text-sm text-[#6d1030]/80">
+                                  Pulling team: {fullTeamLabel || "Unassigned"}
+                                </p>
+                              )}
+                              {isScoreLog && shortTeamLabel && (
+                                <p className="text-base font-semibold">{shortTeamLabel}</p>
+                              )}
+                              <p className="text-xs text-[#6d1030]/70">{eventTime}</p>
+                            </div>
+                            {isScoreLog && (
+                              <div className="text-right text-base font-semibold">
+                                {log.totalA} - {log.totalB}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-right text-base font-semibold">
-                            {log.totalA} - {log.totalB}
-                          </div>
+                          {isScoreLog && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                              <div>
+                                <p className="font-semibold">
+                                  {log.team === "A" ? displayTeamA : displayTeamB}
+                                </p>
+                                <p className="text-[#6d1030]/70">
+                                  Scorer: {log.scorerName || "Unassigned"}
+                                  {log.assistName ? ` - Assist: ${log.assistName}` : ""}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => openScoreModal(log.team, "edit", editIndex)}
+                                className="ml-auto rounded-full border border-[#6d1030]/40 px-4 py-1 text-xs font-semibold text-[#6d1030] transition hover:bg-white"
+                              >
+                                Edit event
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                          <div>
-                            <p className="font-semibold">
-                              {log.team === "A" ? displayTeamA : displayTeamB}
-                            </p>
-                            <p className="text-[#6d1030]/70">
-                              Scorer: {log.scorerName || "Unassigned"}
-                              {log.assistName ? ` - Assist: ${log.assistName}` : ""}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => openScoreModal(log.team, "edit", index)}
-                            className="ml-auto rounded-full border border-[#6d1030]/40 px-4 py-1 text-xs font-semibold text-[#6d1030] transition hover:bg-white"
-                          >
-                            Edit event
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
+                      );
+                    })
+                  )}
                 <button
                   type="button"
                   onClick={handleEndMatchNavigation}
@@ -1366,10 +1489,10 @@ function handleSecondaryReset() {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-3 rounded-3xl border border-[#6d1030]/30 bg-white p-2 shadow-card/20">
-                <h3 className="text-center text-xl font-semibold text-[#6d1030]">Team A Players</h3>
-                <div className="space-y-2 rounded-2xl border border-[#6d1030]/20 bg-[#fdf1f4] p-3 text-sm text-[#6d1030]">
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="space-y-2 rounded-3xl border border-[#6d1030]/30 bg-white p-1.5 shadow-card/20">
+                <h3 className="text-center text-lg font-semibold text-[#6d1030]">Team A Players</h3>
+                <div className="space-y-1.5 rounded-2xl border border-[#6d1030]/20 bg-[#fdf1f4] p-2 text-sm text-[#6d1030]">
                   {rostersLoading ? (
                     <p className="text-center text-xs">Loading roster...</p>
                   ) : sortedRosters.teamA.length === 0 ? (
@@ -1384,9 +1507,9 @@ function handleSecondaryReset() {
                   )}
                 </div>
               </div>
-              <div className="space-y-3 rounded-3xl border border-[#6d1030]/30 bg-white p-2 shadow-card/20">
-                <h3 className="text-center text-xl font-semibold text-[#6d1030]">Team B Players</h3>
-                <div className="space-y-2 rounded-2xl border border-[#6d1030]/20 bg-[#fdf1f4] p-3 text-sm text-[#6d1030]">
+              <div className="space-y-2 rounded-3xl border border-[#6d1030]/30 bg-white p-1.5 shadow-card/20">
+                <h3 className="text-center text-lg font-semibold text-[#6d1030]">Team B Players</h3>
+                <div className="space-y-1.5 rounded-2xl border border-[#6d1030]/20 bg-[#fdf1f4] p-2 text-sm text-[#6d1030]">
                   {rostersLoading ? (
                     <p className="text-center text-xs">Loading roster...</p>
                   ) : sortedRosters.teamB.length === 0 ? (
@@ -1408,16 +1531,12 @@ function handleSecondaryReset() {
             )}
           </section>
         ) : (
-          <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-3 text-center shadow-card/40">
-            <p className="text-sm text-slate-600">
-              Launch the match setup modal to choose an event, pick the relevant match, and confirm
-              the timing parameters before going live.
-            </p>
+          <section className="space-y-2 rounded-3xl border border-slate-200 bg-white p-2 text-center shadow-card/40">
             <button
               type="button"
               onClick={() => setSetupModalOpen(true)}
               disabled={initialising}
-              className="inline-flex w-full items-center justify-center rounded-full bg-brand px-5 py-3 text-sm font-semibold text-white shadow-card transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white shadow-card transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
               {initialising ? "Initialising..." : "Match setup"}
             </button>
@@ -1430,13 +1549,13 @@ function handleSecondaryReset() {
 
       {setupModalOpen && (
         <ActionModal title="Match setup" onClose={() => setSetupModalOpen(false)}>
-          <form className="space-y-5" onSubmit={handleInitialiseMatch}>
+          <form className="space-y-4" onSubmit={handleInitialiseMatch}>
             {matchSettingsLocked && (
               <p className="rounded-2xl bg-[#fce8ee] px-3 py-2 text-xs font-semibold text-[#6d1030]">
                 Match already started. Settings unlock once the match is reset.
               </p>
             )}
-            <div className="space-y-4">
+            <div className="space-y-2">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Event
@@ -1661,13 +1780,13 @@ function handleSecondaryReset() {
 
   {timeModalOpen && (
     <ActionModal title="Time additions" onClose={() => setTimeModalOpen(false)}>
-      <div className="space-y-4 text-center text-sm text-[#6d1030]">
+      <div className="space-y-2 text-center text-sm text-[#6d1030]">
         <button
           type="button"
               onClick={() => {
                 handleHalfTimeTrigger();
               }}
-              className="w-full rounded-full bg-[#6d1030] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#510b24]"
+              className="w-full rounded-full bg-[#6d1030] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#510b24]"
             >
               Half Time
             </button>
@@ -1680,11 +1799,11 @@ function handleSecondaryReset() {
                   handleTimeoutTrigger("A");
                 }}
                 disabled={remainingTimeouts.A === 0}
-                className="mt-2 w-full rounded-full bg-[#6d1030] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#510b24] disabled:cursor-not-allowed disabled:opacity-40"
+                className="mt-1.5 w-full rounded-full bg-[#6d1030] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#510b24] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Timeout A
               </button>
-              <p className="mt-2 text-xs">
+              <p className="mt-1 text-xs">
                 Remaining (total): {remainingTimeouts.A}
                 <br />
                 Remaining (half): {halfRemainingLabel("A")}
@@ -1699,11 +1818,11 @@ function handleSecondaryReset() {
                   handleTimeoutTrigger("B");
                 }}
                 disabled={remainingTimeouts.B === 0}
-                className="mt-2 w-full rounded-full bg-[#6d1030] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#510b24] disabled:cursor-not-allowed disabled:opacity-40"
+                className="mt-1.5 w-full rounded-full bg-[#6d1030] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#510b24] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Timeout B
               </button>
-              <p className="mt-2 text-xs">
+              <p className="mt-1 text-xs">
                 Remaining (total): {remainingTimeouts.B}
                 <br />
                 Remaining (half): {halfRemainingLabel("B")}
@@ -1713,7 +1832,7 @@ function handleSecondaryReset() {
             <button
               type="button"
               onClick={handleGameStoppage}
-              className="w-full rounded-full bg-[#ff9dad] px-4 py-3 text-sm font-semibold text-[#6d1030] transition hover:bg-[#ff8094]"
+              className="w-full rounded-full bg-[#ff9dad] px-3 py-2 text-sm font-semibold text-[#6d1030] transition hover:bg-[#ff8094]"
             >
               Game stoppage
         </button>
@@ -1727,7 +1846,7 @@ function handleSecondaryReset() {
           title={scoreModalState.mode === "edit" ? "Edit score" : "Add score"}
           onClose={closeScoreModal}
         >
-          <form className="space-y-4" onSubmit={handleScoreModalSubmit}>
+          <form className="space-y-2" onSubmit={handleScoreModalSubmit}>
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6d1030]/70">
               Team: {scoreModalState.team === "B" ? displayTeamB : displayTeamA}
             </p>
@@ -1765,10 +1884,10 @@ function handleSecondaryReset() {
                 ))}
               </select>
             </label>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <button
                 type="submit"
-                className="w-full rounded-full bg-[#6d1030] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#510b24]"
+                className="w-full rounded-full bg-[#6d1030] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#510b24]"
               >
                 {scoreModalState.mode === "edit" ? "Update score" : "Add score"}
               </button>
@@ -1776,7 +1895,7 @@ function handleSecondaryReset() {
                 <button
                   type="button"
                   onClick={() => handleDeleteLog(scoreModalState.logIndex)}
-                  className="w-full rounded-full bg-[#c1352c] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#9f271f]"
+                  className="w-full rounded-full bg-[#c1352c] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#9f271f]"
                 >
                   Delete
                 </button>
