@@ -1,107 +1,231 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { getAllPlayers } from "../services/playerService";
+import {
+  getPlayerDirectory,
+  upsertPlayer,
+  getRosterEntries,
+  addPlayerToRoster,
+  removePlayerFromRoster,
+  updateRosterCaptainRole,
+} from "../services/playerService";
+import { getAllTeams } from "../services/teamService";
+import { getEventsList } from "../services/leagueService";
 
-const PREFERRED_FIELD_ORDER = [
-  "team",
-  "team_name",
-  "team_id",
-  "number",
-  "jersey_number",
-  "first_name",
-  "last_name",
-  "full_name",
-  "nickname",
-  "position",
-  "role",
-  "email",
-  "phone",
-  "status",
-  "availability",
-];
-
-const HIDDEN_FIELDS = new Set(["id", "created_at", "updated_at", "inserted_at"]);
+const EMPTY_PLAYER_FORM = {
+  id: "",
+  name: "",
+  gender_code: "",
+  jersey_number: "",
+  birthday: "",
+  description: "",
+};
 
 export default function CaptainPage() {
-  const [players, setPlayers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [playerDirectory, setPlayerDirectory] = useState([]);
+  const [playerFilter, setPlayerFilter] = useState("");
+  const [playerForm, setPlayerForm] = useState(EMPTY_PLAYER_FORM);
+  const [playerSaving, setPlayerSaving] = useState(false);
+  const [playerAlert, setPlayerAlert] = useState(null);
+
+  const [teams, setTeams] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [selectedEventId, setSelectedEventId] = useState("");
+  const [rosterEntries, setRosterEntries] = useState([]);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterAlert, setRosterAlert] = useState(null);
+  const [assignPlayerId, setAssignPlayerId] = useState("");
+  const [assignCaptainRole, setAssignCaptainRole] = useState("");
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function load() {
-      try {
-        setLoading(true);
-        const data = await getAllPlayers();
-        if (isMounted) {
-          setPlayers(Array.isArray(data) ? data : []);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err.message || "Unable to load players");
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    load();
-    const interval = setInterval(load, 60_000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
+    loadDirectory();
+    getAllTeams()
+      .then((data) => setTeams(data ?? []))
+      .catch(() => setTeams([]));
+    getEventsList(50)
+      .then((data) => setEvents(data ?? []))
+      .catch(() => setEvents([]));
   }, []);
 
-  const columns = useMemo(() => {
-    if (players.length === 0) return [];
+  useEffect(() => {
+    if (!selectedTeamId) {
+      setRosterEntries([]);
+      return;
+    }
+    loadRoster(selectedTeamId, selectedEventId);
+  }, [selectedTeamId, selectedEventId]);
 
-    const values = new Set();
-    players.forEach((player) => {
-      Object.keys(player || {}).forEach((key) => {
-        if (!HIDDEN_FIELDS.has(key)) {
-          values.add(key);
-        }
+  const selectedPlayer = useMemo(
+    () => playerDirectory.find((player) => player.id === playerForm.id),
+    [playerDirectory, playerForm.id]
+  );
+
+  const filteredPlayers = useMemo(() => {
+    const term = playerFilter.trim().toLowerCase();
+    if (!term) return playerDirectory;
+    return playerDirectory.filter((player) => {
+      const haystack = [player.name, player.gender_code, player.jersey_number]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [playerDirectory, playerFilter]);
+
+  async function loadDirectory() {
+    try {
+      const data = await getPlayerDirectory();
+      setPlayerDirectory(data ?? []);
+    } catch (err) {
+      setPlayerAlert({ tone: "error", message: err.message || "Unable to load players." });
+    }
+  }
+
+  async function loadRoster(teamId, eventId) {
+    setRosterLoading(true);
+    setRosterAlert(null);
+    try {
+      const data = await getRosterEntries(teamId, eventId);
+      setRosterEntries(data ?? []);
+    } catch (err) {
+      setRosterAlert({ tone: "error", message: err.message || "Unable to load roster." });
+    } finally {
+      setRosterLoading(false);
+    }
+  }
+
+  function handlePlayerFieldChange(field, value) {
+    setPlayerForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  function handleSelectPlayer(player) {
+    setPlayerForm({
+      id: player.id,
+      name: player.name || "",
+      gender_code: player.gender_code || "",
+      jersey_number: player.jersey_number ?? "",
+      birthday: player.birthday ?? "",
+      description: player.description ?? "",
+    });
+    setPlayerAlert(null);
+  }
+
+  function resetPlayerForm() {
+    setPlayerForm(EMPTY_PLAYER_FORM);
+    setPlayerAlert(null);
+  }
+
+  async function handlePlayerSubmit(event) {
+    event.preventDefault();
+    if (!playerForm.name.trim()) {
+      setPlayerAlert({ tone: "error", message: "Player name is required." });
+      return;
+    }
+
+    setPlayerSaving(true);
+    setPlayerAlert(null);
+
+    try {
+      const jerseyNumber =
+        playerForm.jersey_number !== "" ? Number(playerForm.jersey_number) : null;
+
+      await upsertPlayer({
+        id: playerForm.id || undefined,
+        name: playerForm.name,
+        gender_code: playerForm.gender_code || null,
+        birthday: playerForm.birthday || null,
+        description: playerForm.description || null,
+        jersey_number: jerseyNumber ?? null,
       });
-    });
 
-    const asArray = Array.from(values);
-    return asArray.sort((a, b) => {
-      const indexA = PREFERRED_FIELD_ORDER.indexOf(a);
-      const indexB = PREFERRED_FIELD_ORDER.indexOf(b);
-      if (indexA === -1 && indexB === -1) {
-        return a.localeCompare(b);
+      setPlayerAlert({
+        tone: "success",
+        message: playerForm.id ? "Player updated." : "Player added.",
+      });
+      await loadDirectory();
+      if (!playerForm.id) {
+        setPlayerForm(EMPTY_PLAYER_FORM);
       }
-      if (indexA === -1) return 1;
-      if (indexB === -1) return -1;
-      return indexA - indexB;
-    });
-  }, [players]);
+    } catch (err) {
+      setPlayerAlert({
+        tone: "error",
+        message: err.message || "Unable to save player.",
+      });
+    } finally {
+      setPlayerSaving(false);
+    }
+  }
 
-  const teams = useMemo(() => {
-    const grouped = new Map();
-    players.forEach((player) => {
-      const teamName =
-        player?.team ||
-        player?.team_name ||
-        player?.teamName ||
-        player?.squad ||
-        "Unassigned";
+  async function handleAddToRoster(event) {
+    event.preventDefault();
+    if (!selectedTeamId || !selectedEventId || !assignPlayerId) {
+      setRosterAlert({
+        tone: "error",
+        message: "Select a team, event, and player before adding.",
+      });
+      return;
+    }
 
-      if (!grouped.has(teamName)) {
-        grouped.set(teamName, []);
-      }
-      grouped.get(teamName).push(player);
-    });
+    setAssigning(true);
+    setRosterAlert(null);
 
-    return Array.from(grouped.entries()).sort(([teamA], [teamB]) =>
-      teamA.localeCompare(teamB)
+    try {
+      await addPlayerToRoster({
+        playerId: assignPlayerId,
+        teamId: selectedTeamId,
+        eventId: selectedEventId,
+        captainRole: assignCaptainRole || null,
+      });
+      setRosterAlert({ tone: "success", message: "Player added to roster." });
+      setAssignPlayerId("");
+      setAssignCaptainRole("");
+      await loadRoster(selectedTeamId, selectedEventId);
+    } catch (err) {
+      setRosterAlert({
+        tone: "error",
+        message: err.message || "Unable to add the player to the roster.",
+      });
+    } finally {
+      setAssigning(false);
+    }
+  }
+
+  async function handleRemoveRosterEntry(entryId) {
+    const confirmed = window.confirm(
+      "Remove this player from the roster? This action cannot be undone."
     );
-  }, [players]);
+    if (!confirmed) return;
+
+    setRosterAlert(null);
+    try {
+      await removePlayerFromRoster(entryId);
+      setRosterAlert({ tone: "success", message: "Roster entry removed." });
+      await loadRoster(selectedTeamId, selectedEventId);
+    } catch (err) {
+      setRosterAlert({
+        tone: "error",
+        message: err.message || "Unable to remove the player.",
+      });
+    }
+  }
+
+  async function handleUpdateCaptain(entryId, roleValue) {
+    setRosterAlert(null);
+    try {
+      await updateRosterCaptainRole(entryId, roleValue || null);
+      setRosterAlert({ tone: "success", message: "Captain assignment updated." });
+      await loadRoster(selectedTeamId, selectedEventId);
+    } catch (err) {
+      setRosterAlert({
+        tone: "error",
+        message: err.message || "Unable to update captain assignment.",
+      });
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -111,12 +235,9 @@ export default function CaptainPage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Backend workspace
             </p>
-            <h1 className="text-3xl font-semibold text-slate-900">
-              Captain workspace
-            </h1>
+            <h1 className="text-3xl font-semibold text-slate-900">Captain workspace</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Review rosters, coordinate availability, and keep your squad aligned before
-              first pull.
+              Maintain your player list and control the roster assignments for current events.
             </p>
           </div>
           <Link
@@ -128,128 +249,318 @@ export default function CaptainPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-10">
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">Team rosters</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                Listing sourced directly from the Supabase `players` table. Refreshes every
-                minute so late edits are captured in the field.
-              </p>
+      <main className="mx-auto max-w-6xl px-6 py-10 space-y-10">
+        <section className="grid gap-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.1fr,0.9fr]">
+          <div>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Player directory</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Add new players or update jersey numbers, names, and bios in the `public.players`
+                  table.
+                </p>
+              </div>
             </div>
-            <div className="text-right text-xs text-slate-400">
-              {loading ? "Updating…" : `Total players: ${players.length}`}
-              {error && (
-                <p className="mt-1 text-rose-500">Error loading data: {error}</p>
+
+            <form className="mt-6 space-y-4" onSubmit={handlePlayerSubmit}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Player name
+                  <input
+                    type="text"
+                    className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                    value={playerForm.name}
+                    onChange={(event) => handlePlayerFieldChange("name", event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="text-sm font-medium text-slate-700">
+                  Jersey #
+                  <input
+                    type="number"
+                    className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                    value={playerForm.jersey_number}
+                    onChange={(event) => handlePlayerFieldChange("jersey_number", event.target.value)}
+                    min="0"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Gender code
+                  <select
+                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                    value={playerForm.gender_code}
+                    onChange={(event) => handlePlayerFieldChange("gender_code", event.target.value)}
+                  >
+                    <option value="">Select</option>
+                    <option value="M">M</option>
+                    <option value="W">W</option>
+                  </select>
+                </label>
+                <label className="text-sm font-medium text-slate-700">
+                  Birthday
+                  <input
+                    type="date"
+                    className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                    value={playerForm.birthday}
+                    onChange={(event) => handlePlayerFieldChange("birthday", event.target.value)}
+                  />
+                </label>
+              </div>
+
+              <label className="text-sm font-medium text-slate-700">
+                Description / Notes
+                <textarea
+                  className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                  rows={3}
+                  value={playerForm.description}
+                  onChange={(event) => handlePlayerFieldChange("description", event.target.value)}
+                />
+              </label>
+
+              {playerAlert && (
+                <p
+                  className={`text-sm ${
+                    playerAlert.tone === "error" ? "text-rose-600" : "text-emerald-600"
+                  }`}
+                >
+                  {playerAlert.message}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={playerSaving}
+                  className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {playerSaving ? "Saving..." : playerForm.id ? "Update player" : "Add player"}
+                </button>
+                <button
+                  type="button"
+                  onClick={resetPlayerForm}
+                  className="text-sm font-semibold text-slate-500 transition hover:text-slate-900"
+                >
+                  Clear form
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Existing players
+              </h3>
+              <span className="text-xs text-slate-400">{playerDirectory.length} total</span>
+            </div>
+
+            <label className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Search roster
+              <input
+                type="search"
+                placeholder="Search by name, jersey, or gender"
+                className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                value={playerFilter}
+                onChange={(event) => setPlayerFilter(event.target.value)}
+              />
+            </label>
+
+            <div className="mt-4">
+              {filteredPlayers.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
+                  {playerDirectory.length === 0
+                    ? "No players yet. Use the form to add your first athlete."
+                    : "No players match your search."}
+                </div>
+              ) : (
+                <select
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                  value={playerForm.id}
+                  onChange={(event) => {
+                    const player = playerDirectory.find((p) => p.id === event.target.value);
+                    if (player) {
+                      handleSelectPlayer(player);
+                    } else {
+                      resetPlayerForm();
+                    }
+                  }}
+                >
+                  <option value="">Select player to edit</option>
+                  {filteredPlayers.map((player) => (
+                    <option key={player.id} value={player.id}>
+                      {player.name} #{player.jersey_number || "—"} ({player.gender_code || "-"})
+                    </option>
+                  ))}
+                </select>
               )}
             </div>
           </div>
+        </section>
 
-          <div className="mt-6 space-y-6">
-            {loading && players.length === 0 ? (
-              <div className="flex min-h-[160px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50">
-                <div className="flex items-center gap-3 text-sm font-medium text-slate-500">
-                  <span className="h-3 w-3 animate-ping rounded-full bg-brand-light" />
-                  Fetching players from Supabase…
-                </div>
-              </div>
-            ) : teams.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-                No players were returned from Supabase. Add records to the `players` table to
-                populate this view.
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">Team roster control</h2>
+            <p className="text-sm text-slate-600">
+              Link players to specific events and teams via `public.team_roster`. Pick the team + event,
+              then add or remove assignments.
+            </p>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <label className="text-sm font-medium text-slate-700">
+              Select team
+              <select
+                className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                value={selectedTeamId}
+                onChange={(event) => setSelectedTeamId(event.target.value)}
+              >
+                <option value="">Choose a team</option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Select event
+              <select
+                className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                value={selectedEventId}
+                onChange={(event) => setSelectedEventId(event.target.value)}
+                disabled={!selectedTeamId}
+              >
+                <option value="">Choose an event</option>
+                {events.map((eventItem) => (
+                  <option key={eventItem.id} value={eventItem.id}>
+                    {eventItem.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-sm font-medium text-slate-700">
+              Player to assign
+              <select
+                className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                value={assignPlayerId}
+                onChange={(event) => setAssignPlayerId(event.target.value)}
+                disabled={!selectedTeamId || !selectedEventId}
+              >
+                <option value="">Select player</option>
+                {playerDirectory.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.name} #{player.jersey_number || "—"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <form
+            className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-700"
+            onSubmit={handleAddToRoster}
+          >
+            <label className="text-sm font-medium text-slate-700">
+              Captain role
+              <select
+                className="mt-1 w-48 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                value={assignCaptainRole}
+                onChange={(event) => setAssignCaptainRole(event.target.value)}
+                disabled={!selectedTeamId || !selectedEventId}
+              >
+                <option value="">None</option>
+                <option value="captain">Captain</option>
+                <option value="spirit">Spirit Captain</option>
+              </select>
+            </label>
+            <button
+              type="submit"
+              disabled={assigning || !selectedTeamId || !selectedEventId}
+              className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {assigning ? "Adding..." : "Add to roster"}
+            </button>
+          </form>
+
+          {rosterAlert && (
+            <p
+              className={`mt-3 text-sm ${
+                rosterAlert.tone === "error" ? "text-rose-600" : "text-emerald-600"
+              }`}
+            >
+              {rosterAlert.message}
+            </p>
+          )}
+
+          <div className="mt-6 rounded-2xl border border-slate-200">
+            {rosterLoading ? (
+              <div className="p-6 text-center text-sm text-slate-500">Loading roster…</div>
+            ) : rosterEntries.length === 0 ? (
+              <div className="p-6 text-center text-sm text-slate-500">
+                {selectedTeamId
+                  ? "No roster entries for this filter yet."
+                  : "Select a team to view its roster."}
               </div>
             ) : (
-              teams.map(([teamName, roster]) => (
-                <section
-                  key={teamName}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-inner"
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <h3 className="text-base font-semibold text-slate-900">
-                        {teamName}
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        Players: {roster.length.toString().padStart(2, "0")}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-                    <table className="min-w-full divide-y divide-slate-200 text-sm">
-                      <thead className="bg-slate-100/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        <tr>
-                          {columns.map((column) => (
-                            <th key={column} className="px-4 py-3">
-                              {prettifyHeading(column)}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-slate-700">
-                        {roster.map((player, index) => {
-                          const rowKey =
-                            player.id ||
-                            player.uuid ||
-                            player.player_id ||
-                            player.email ||
-                            player.full_name ||
-                            `${teamName}-${index}`;
-
-                          return (
-                            <tr key={rowKey}>
-                              {columns.map((column) => (
-                                <td key={column} className="px-4 py-3 align-top">
-                                  {formatCell(player[column])}
-                                </td>
-                              ))}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              ))
+              <ul className="divide-y divide-slate-100">
+                {rosterEntries.map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 text-sm text-slate-700"
+                    >
+                      <div>
+                        <p className="font-semibold text-slate-900">
+                          {entry.player?.name || "Unnamed player"}{" "}
+                          {entry.player?.jersey_number != null
+                            ? `#${entry.player.jersey_number}`
+                            : ""}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {entry.team?.name || "Team"} · {entry.event?.name || "Event"}
+                          {entry.is_captain
+                            ? " · Captain"
+                            : entry.is_spirit_captain
+                              ? " · Spirit Captain"
+                              : ""}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-xs">
+                        <label className="flex items-center gap-2 text-slate-500">
+                          Role
+                          <select
+                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-900 focus:border-brand focus:outline-none"
+                            value={
+                              entry.is_captain ? "captain" : entry.is_spirit_captain ? "spirit" : ""
+                            }
+                            onChange={(event) =>
+                              handleUpdateCaptain(entry.id, event.target.value || null)
+                            }
+                          >
+                            <option value="">None</option>
+                            <option value="captain">Captain</option>
+                            <option value="spirit">Spirit Captain</option>
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRosterEntry(entry.id)}
+                          className="font-semibold uppercase tracking-wide text-rose-500 transition hover:text-rose-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+              </ul>
             )}
           </div>
         </section>
       </main>
     </div>
   );
-}
-
-function prettifyHeading(key) {
-  return key
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function formatCell(value) {
-  if (value === null || value === undefined || value === "") {
-    return <span className="text-slate-400">—</span>;
-  }
-
-  if (Array.isArray(value)) {
-    return value.length > 0 ? value.join(", ") : <span className="text-slate-400">—</span>;
-  }
-
-  if (typeof value === "object") {
-    return (
-      <code className="text-xs text-slate-500">
-        {JSON.stringify(value, null, 2)}
-      </code>
-    );
-  }
-
-  if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
-  }
-
-  if (typeof value === "number") {
-    return value;
-  }
-
-  return value;
 }

@@ -130,35 +130,42 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto flex max-w-7xl flex-col gap-16 px-6 py-16 md:py-20">
-        <section className="grid gap-12 md:grid-cols-[1.1fr,0.9fr] md:items-center">
-          <div className="space-y-6">
-            <span className="inline-flex rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-dark">
+    <div className="relative min-h-screen bg-slate-950 text-slate-50">
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.22),transparent_60%)]"
+        aria-hidden="true"
+      />
+      <div className="relative mx-auto flex max-w-7xl flex-col gap-16 px-6 py-16 md:py-20">
+        <section className="grid gap-10 lg:grid-cols-[1.1fr,0.9fr] lg:items-center">
+          <div className="space-y-6 rounded-[32px] border border-white/10 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 p-10 text-white shadow-2xl">
+            <span className="inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-200">
               Live league data
             </span>
-            <h1 className="text-4xl font-semibold tracking-tight text-slate-900 md:text-5xl">
+            <h1 className="text-4xl font-semibold tracking-tight text-white md:text-5xl">
               All the teams, all the players, all the action, all in one place
             </h1>
-            <p className="text-lg leading-relaxed text-slate-600">
-              Live updates of all matches + Notifications + Reports
+            <p className="text-lg leading-relaxed text-white/80">
+              Live updates, push-ready match intelligence, and transparent reports flowing straight from Supabase.
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <Link
                 to="/teams"
-                className="inline-flex items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white shadow-card transition hover:bg-brand-dark"
+                className="inline-flex items-center justify-center rounded-full bg-white/90 px-6 py-3 text-sm font-semibold text-slate-900 shadow-lg transition hover:bg-white"
               >
-                Teams
+                Teams database
               </Link>
               <Link
                 to="/players"
-                className="inline-flex items-center justify-center rounded-full border border-transparent bg-white px-6 py-3 text-sm font-semibold text-brand-dark ring-1 ring-brand/30 transition hover:bg-brand/5"
+                className="inline-flex items-center justify-center rounded-full border border-white/40 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
               >
                 Team rosters
               </Link>
             </div>
           </div>
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm" id="stats">
+          <div
+            className="rounded-[32px] border border-white/20 bg-white/95 p-6 text-slate-900 shadow-2xl backdrop-blur"
+            id="stats"
+          >
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               Current totals
             </h2>
@@ -175,7 +182,7 @@ export default function HomePage() {
               ].map((item) => (
                 <article
                   key={item.label}
-                  className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-center"
+                  className="rounded-2xl border border-slate-100 bg-white p-4 text-center shadow-sm"
                 >
                   <p className="text-xs font-semibold uppercase text-slate-500">{item.label}</p>
                   <p className="mt-2 text-2xl font-semibold text-slate-900">
@@ -187,7 +194,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="events" className="space-y-6">
+        <section id="events" className="space-y-6 rounded-[32px] border border-white/10 bg-white/95 p-8 text-slate-900 shadow-xl">
           <div className="flex flex-col gap-2">
             <h2 className="text-2xl font-semibold text-slate-900">Events timeline</h2>
             <p className="text-base text-slate-600">
@@ -229,7 +236,7 @@ export default function HomePage() {
           )}
         </section>
 
-        <section id="divisions" className="space-y-6">
+        <section id="divisions" className="space-y-6 rounded-[32px] border border-white/10 bg-white/95 p-8 text-slate-900 shadow-xl">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-2xl font-semibold text-slate-900">Active divisions</h2>
@@ -272,7 +279,7 @@ export default function HomePage() {
           )}
         </section>
 
-        <section id="matches" className="space-y-6">
+        <section id="matches" className="space-y-6 rounded-[32px] border border-white/10 bg-white/95 p-8 text-slate-900 shadow-xl">
           <div className="flex flex-col gap-2">
             <h2 className="text-2xl font-semibold text-slate-900">Matches</h2>
             <p className="text-base text-slate-600">
@@ -321,7 +328,7 @@ export default function HomePage() {
           )}
         </section>
 
-        <section id="teams" className="space-y-6">
+        <section id="teams" className="space-y-6 rounded-[32px] border border-white/10 bg-white/95 p-8 text-slate-900 shadow-xl">
           <div className="flex flex-col gap-2">
             <h2 className="text-2xl font-semibold text-slate-900">Teams spotlight</h2>
             <p className="text-base text-slate-600">
@@ -356,17 +363,17 @@ export default function HomePage() {
 
       </div>
 
-      <footer className="border-t border-slate-200 bg-white/80">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-6 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
+      <footer className="border-t border-white/10 bg-slate-900/80">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-6 text-sm text-slate-300 md:flex-row md:items-center md:justify-between">
           <p>&copy; {new Date().getFullYear()} StallCount. Live Supabase data.</p>
           <div className="flex flex-wrap items-center gap-3 md:gap-5">
-            <a href="#stats" className="transition hover:text-slate-900">
+            <a href="#stats" className="transition hover:text-white">
               Overview
             </a>
-            <Link to="/teams" className="transition hover:text-slate-900">
+            <Link to="/teams" className="transition hover:text-white">
               Teams
             </Link>
-            <Link to="/players" className="transition hover:text-slate-900">
+            <Link to="/players" className="transition hover:text-white">
               Players
             </Link>
             {session && (
@@ -374,7 +381,7 @@ export default function HomePage() {
                 type="button"
                 onClick={handleLogout}
                 disabled={signingOut}
-                className="rounded-full border border-slate-200 px-4 py-1 text-sm font-semibold text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-full border border-white/20 px-4 py-1 text-sm font-semibold text-white transition hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {signingOut ? "Signing out..." : "Log out"}
               </button>
@@ -382,7 +389,7 @@ export default function HomePage() {
           </div>
         </div>
         {signOutError && (
-          <p className="mx-auto max-w-7xl px-6 pb-4 text-xs text-rose-600">
+          <p className="mx-auto max-w-7xl px-6 pb-4 text-xs text-rose-300">
             {signOutError}
           </p>
         )}

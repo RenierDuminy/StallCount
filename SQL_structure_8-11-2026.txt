@@ -166,8 +166,9 @@ CREATE TABLE public.players (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   search tsvector,
   jersey_number integer,
-  Birthday date,
-  Description text,
+  birthday date,
+  description text,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT players_pkey PRIMARY KEY (id),
   CONSTRAINT players_gender_code_fkey FOREIGN KEY (gender_code) REFERENCES public.genders(code)
 );
@@ -239,6 +240,8 @@ CREATE TABLE public.team_roster (
   player_id uuid NOT NULL,
   is_captain boolean NOT NULL DEFAULT false,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  is_spirit_captain boolean NOT NULL DEFAULT false,
   CONSTRAINT team_roster_pkey PRIMARY KEY (id),
   CONSTRAINT team_roster_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
   CONSTRAINT team_roster_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
