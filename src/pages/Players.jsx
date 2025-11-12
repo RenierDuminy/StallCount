@@ -146,7 +146,7 @@ export default function Players() {
                     <table className="min-w-full divide-y divide-slate-200 text-sm">
                       <thead className="bg-slate-100/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                         <tr>
-                          <th className="px-4 py-3">#</th>
+                          <th className="px-4 py-3">Number</th>
                           <th className="px-4 py-3">Player</th>
                           <th className="px-4 py-3">Gender</th>
                         </tr>

@@ -1,0 +1,104 @@
+StallCount application overview
+===============================
+
+Purpose and stack
+-----------------
+StallCount is a Vite + React single-page application that surfaces live
+Supabase data for tournament crews. It uses functional React components,
+Tailwind CSS utility classes, and the `vite-plugin-pwa` plugin to ship an
+installable progressive web app with offline awareness.
+
+Routing, layout, and state
+-------------------------
+- `src/AppRoutes.jsx` wires `BrowserRouter` routes. Each route renders
+  inside `AppLayout`, which applies the global `SiteHeader` and reserves
+  space for page content via `<Outlet />`.
+- `SiteHeader` centralizes the logo, navigation, login link, and a mobile
+  dropdown menu so the same header appears everywhere.
+- `AuthContext` (`src/context/AuthContext.jsx`) bootstraps Supabase auth,
+  keeps the current session in state, and broadcasts `{ session, loading }`
+  through React context.
+- `ProtectedRoute` gates admin-only routes. While auth is loading it shows a
+  placeholder, and if there is no session it redirects to `/login`.
+- `ConnectionBanner` + `useInstallPrompt` detect offline status and the
+  `beforeinstallprompt` event to encourage installing the PWA or warn when
+  the device goes offline.
+
+Authentication workflow
+-----------------------
+1. Environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`,
+   `VITE_SUPABASE_REDIRECT_URL`) are read at build time inside
+   `src/services/supabaseClient.ts`. Missing values throw during startup,
+   so the same variables must exist locally and in production.
+2. `supabaseClient.ts` exports a configured `createClient` instance shared
+   across services and the Auth context.
+3. `LoginPage.jsx` renders Supabase's hosted `<Auth />` component. It passes
+   the redirect URL (env override or current location) and whitelists Google
+   as the provider. After Sign In, Supabase redirects back to `/login`, the
+   Auth context receives the new session, and `<Navigate replace>` sends the
+   user to `/admin`.
+
+Data layer
+----------
+Every data fetch goes through files in `src/services/` and runs against the
+Supabase REST API:
+- `teamService.ts`, `playerService.ts`, `leagueService.ts`, `matchService.js`,
+  etc. build typed queries with `.select()` clauses to pull relational data
+  (e.g., `team_a:teams!matches_team_a_fkey (...)`).
+- `statsService.ts` wraps lightweight `select('count')` calls for summary
+  numbers.
+- `matchLogService.ts` and `realtimeService.js` provide write helpers for
+  scoring flows (initialising matches, updating point-by-point logs).
+
+Pages and flows
+---------------
+- `HomePage.jsx` is the public landing dashboard. It loads multiple
+  Supabase queries in parallel via `Promise.all`, displays hero messaging,
+  summary stats, recent events, divisions, matches, and highlighted teams,
+  and exposes anchor IDs so header links can scroll to the relevant
+  sections.
+- `LoginPage.jsx` handles staff authentication and lists the internal
+  modules (Score keeper, Captain, Sys admin) with contextual copy.
+- `Dashboard.jsx`, `AdminPage.jsx`, `ScoreKeeperPage.jsx`, `CaptainPage.jsx`,
+  and `SysAdminPage.jsx` (not all shown here) are wrapped with
+  `ProtectedRoute` so they render only when a Supabase session exists.
+- `Players.jsx` and `Teams.jsx` provide read-only tables of Supabase data
+  for quick lookups without needing to authenticate.
+
+Offline + PWA details
+---------------------
+- `vite.config.js` registers the PWA plugin with `registerType: autoUpdate`
+  so Workbox precaches the build output and refreshes automatically.
+- `public/assets/` stores the SVG + PNG logo variants; `favicon.svg` mirrors
+  the SVG so browser tabs show the brand mark.
+- The `ConnectionBanner` shows an “Install StallCount” CTA when the PWA
+  install prompt can fire, and swaps to an offline warning when the browser
+  reports `navigator.onLine === false`.
+
+Build and deployment
+--------------------
+- `npm install` installs dependencies; `npm run dev` starts Vite on port
+  5173; `npm run build` emits a production bundle into `dist/`.
+- `vercel.json` tells Vercel to run the same install/build commands when
+  deploying.
+- For production auth to succeed, the Supabase project must allow the
+  deployed origin in Authentication → URL Configuration, and the Google
+  OAuth client (if used) must list the same origins/redirect URIs.
+
+High-level request lifecycle
+----------------------------
+1. User loads the site, Vite serves `index.html`, and React bootstraps.
+2. `AuthProvider` immediately calls `supabase.auth.getSession()` and starts
+   listening for `onAuthStateChange`.
+3. Pages request their data through the service helpers. Supabase responds
+  with JSON, and the components render cards/tables with loading and error
+  messaging.
+4. When a user navigates to protected routes, `ProtectedRoute` either
+   renders the child component (if `session` exists) or redirects to `/login`.
+5. Any mutations (init match, update score, etc.) go back through the same
+   Supabase client. Errors bubble up as thrown `Error` objects so pages can
+   notify operators.
+
+That combination of declarative routing, a shared auth context, typed
+Supabase service helpers, and the PWA shell is how StallCount keeps league
+data, scoring, and admin workflows in sync across devices.

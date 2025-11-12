@@ -29,7 +29,7 @@ export default function LoginPage() {
     (typeof window !== "undefined" ? window.location.href : undefined);
 
   if (!loading && session) {
-    return <Navigate to="/admin" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return (

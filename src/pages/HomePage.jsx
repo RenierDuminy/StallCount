@@ -4,6 +4,8 @@ import { getAllTeams } from "../services/teamService";
 import { getDivisions, getRecentEvents } from "../services/leagueService";
 import { getTableCount } from "../services/statsService";
 import { getRecentMatches } from "../services/matchService";
+import { useAuth } from "../context/AuthContext";
+import { supabase } from "../services/supabaseClient";
 
 export default function HomePage() {
   const [featuredTeams, setFeaturedTeams] = useState([]);
@@ -13,6 +15,9 @@ export default function HomePage() {
   const [stats, setStats] = useState({ teams: 0, players: 0, events: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState(null);
+  const { session } = useAuth();
 
   useEffect(() => {
     let ignore = false;
@@ -109,6 +114,21 @@ export default function HomePage() {
   const safeEvents = useMemo(() => events ?? [], [events]);
   const safeMatches = useMemo(() => matches ?? [], [matches]);
 
+  async function handleLogout() {
+    setSignOutError(null);
+    setSigningOut(true);
+    try {
+      const { error: signOutErr } = await supabase.auth.signOut();
+      if (signOutErr) {
+        throw signOutErr;
+      }
+    } catch (err) {
+      setSignOutError(err?.message || "Unable to log out right now.");
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto flex max-w-7xl flex-col gap-16 px-6 py-16 md:py-20">
@@ -118,24 +138,23 @@ export default function HomePage() {
               Live league data
             </span>
             <h1 className="text-4xl font-semibold tracking-tight text-slate-900 md:text-5xl">
-              All crews on the same page, powered directly by Supabase.
+              All the teams, all the players, all the action, all in one place
             </h1>
             <p className="text-lg leading-relaxed text-slate-600">
-              This site reflects the actual SQL records for teams, divisions, and events.
-              No demo filler—just the tournament data your staff maintains.
+              Live updates of all matches + Notifications + Reports
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <Link
                 to="/teams"
                 className="inline-flex items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white shadow-card transition hover:bg-brand-dark"
               >
-                Open teams database
+                Teams
               </Link>
               <Link
                 to="/players"
                 className="inline-flex items-center justify-center rounded-full border border-transparent bg-white px-6 py-3 text-sm font-semibold text-brand-dark ring-1 ring-brand/30 transition hover:bg-brand/5"
               >
-                View player roster
+                Team rosters
               </Link>
             </div>
           </div>
@@ -340,7 +359,7 @@ export default function HomePage() {
       <footer className="border-t border-slate-200 bg-white/80">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-6 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
           <p>&copy; {new Date().getFullYear()} StallCount. Live Supabase data.</p>
-          <div className="flex items-center gap-5">
+          <div className="flex flex-wrap items-center gap-3 md:gap-5">
             <a href="#stats" className="transition hover:text-slate-900">
               Overview
             </a>
@@ -350,8 +369,23 @@ export default function HomePage() {
             <Link to="/players" className="transition hover:text-slate-900">
               Players
             </Link>
+            {session && (
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={signingOut}
+                className="rounded-full border border-slate-200 px-4 py-1 text-sm font-semibold text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {signingOut ? "Signing out..." : "Log out"}
+              </button>
+            )}
           </div>
         </div>
+        {signOutError && (
+          <p className="mx-auto max-w-7xl px-6 pb-4 text-xs text-rose-600">
+            {signOutError}
+          </p>
+        )}
       </footer>
     </div>
   );

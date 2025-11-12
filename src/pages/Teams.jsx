@@ -125,23 +125,13 @@ export default function TeamsPage() {
                   key={team.id}
                   className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
                 >
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Team ID
-                  </p>
-                  <p className="truncate text-xs font-mono text-slate-500">
-                    {team.id}
-                  </p>
+
                   <h3 className="mt-3 text-xl font-semibold text-slate-900">
                     {team.name}
                   </h3>
                   {team.short_name && (
                     <p className="text-sm text-slate-500">
                       Short name: {team.short_name}
-                    </p>
-                  )}
-                  {team.created_at && (
-                    <p className="mt-4 text-xs text-slate-400">
-                      Added {new Date(team.created_at).toLocaleDateString()}
                     </p>
                   )}
                 </article>
