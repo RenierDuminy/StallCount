@@ -24,6 +24,9 @@ const ADMIN_MODULES = [
 
 export default function LoginPage() {
   const { session, loading } = useAuth();
+  const authRedirectTo =
+    import.meta.env.VITE_SUPABASE_REDIRECT_URL?.trim() ||
+    (typeof window !== "undefined" ? window.location.href : undefined);
 
   if (!loading && session) {
     return <Navigate to="/admin" replace />;
@@ -78,6 +81,7 @@ export default function LoginPage() {
                   appearance={{ theme: ThemeSupa }}
                   theme="default"
                   providers={["google"]}
+                  redirectTo={authRedirectTo}
                 />
               </div>
               <p className="text-xs text-slate-500">

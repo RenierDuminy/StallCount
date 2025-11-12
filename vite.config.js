@@ -7,7 +7,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg", "robots.txt"],
+      includeAssets: [
+        "favicon.svg",
+        "robots.txt",
+        "assets/stallcount-logo.svg",
+        "assets/stallcount-logo.png",
+      ],
       manifest: {
         name: "StallCount",
         short_name: "StallCount",

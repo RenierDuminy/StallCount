@@ -14,3 +14,15 @@ The React Compiler is not enabled on this template because of its impact on dev 
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+## Supabase authentication
+
+Create an `.env` file with the Supabase keys plus the origin that Supabase should redirect back to after Google or magic link flows:
+
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+VITE_SUPABASE_REDIRECT_URL=http://localhost:3000/login
+```
+
+Whatever value you supply for `VITE_SUPABASE_REDIRECT_URL` **must** also be included in **Authentication → URL Configuration → Redirect URLs** inside the Supabase dashboard. During local development you can switch the origin (for example to `http://localhost:5173/login`) without touching the code—just update the env variable and restart Vite.

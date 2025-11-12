@@ -111,55 +111,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-          <div className="flex items-center gap-2">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand/10 ring-1 ring-brand/20">
-              <span className="text-xl font-semibold text-brand-dark">SC</span>
-            </div>
-            <div>
-              <p className="text-lg font-semibold text-slate-900">StallCount</p>
-              <p className="text-sm text-slate-500">Supabase-backed officiating.</p>
-            </div>
-          </div>
-          <nav className="hidden items-center gap-10 text-sm font-medium text-slate-500 md:flex">
-            <a href="#stats" className="transition-colors hover:text-slate-900">
-              Overview
-            </a>
-            <a href="#events" className="transition-colors hover:text-slate-900">
-              Events
-            </a>
-            <a href="#divisions" className="transition-colors hover:text-slate-900">
-              Divisions
-            </a>
-            <a href="#matches" className="transition-colors hover:text-slate-900">
-              Matches
-            </a>
-            <a href="#teams" className="transition-colors hover:text-slate-900">
-              Teams
-            </a>
-            <Link to="/teams" className="transition-colors hover:text-slate-900">
-              League DB
-            </Link>
-          </nav>
-          <div className="flex items-center gap-3">
-            <Link
-              to="/login"
-              className="rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-600 transition hover:border-brand/60 hover:text-brand-dark"
-            >
-              Admin log in
-            </Link>
-            <Link
-              to="/dashboard"
-              className="hidden rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white shadow-card transition hover:bg-brand-dark md:inline-flex"
-            >
-              Go to dashboard
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto flex max-w-7xl flex-col gap-16 px-6 py-16 md:py-20">
+      <div className="mx-auto flex max-w-7xl flex-col gap-16 px-6 py-16 md:py-20">
         <section className="grid gap-12 md:grid-cols-[1.1fr,0.9fr] md:items-center">
           <div className="space-y-6">
             <span className="inline-flex rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-dark">
@@ -383,7 +335,7 @@ export default function HomePage() {
           )}
         </section>
 
-      </main>
+      </div>
 
       <footer className="border-t border-slate-200 bg-white/80">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-6 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
