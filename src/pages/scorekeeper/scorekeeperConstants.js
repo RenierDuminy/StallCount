@@ -1,0 +1,9 @@
+export const DEFAULT_DURATION = 90;
+export const HALFTIME_SCORE_THRESHOLD = 8;
+export const ABBA_SEQUENCE = ["1st", "2nd", "2nd", "1st"];
+export const DEFAULT_SETUP_FORM = { startTime: "", startingTeamId: "" };
+export const DEFAULT_TIMEOUT_USAGE = { A: 0, B: 0 };
+export const DEFAULT_TIMER_LABEL = "Game time";
+export const DEFAULT_SECONDARY_LABEL = "Time out";
+export const SESSION_SAVE_DEBOUNCE_MS = 400;
+export const TIMER_TICK_INTERVAL_MS = 500;

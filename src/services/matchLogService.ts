@@ -3,10 +3,14 @@ import { supabase } from "./supabaseClient";
 export const MATCH_LOG_EVENT_CODES = {
   SCORE: "score",
   MATCH_START: "match_start",
-  TIMEOUT: "timeout",
-  HALFTIME: "halftime",
-  STOPPAGE: "stoppage",
+  MATCH_END: "match_end",
   TURNOVER: "turnover",
+  TIMEOUT_START: "timeout_start",
+  TIMEOUT_END: "timeout_end",
+  HALFTIME_START: "halftime_start",
+  HALFTIME_END: "halftime_end",
+  STOPPAGE_START: "stoppage_start",
+  STOPPAGE_END: "stoppage_end",
 } as const;
 
 export type MatchLogInput = {
