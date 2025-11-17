@@ -620,7 +620,10 @@ useEffect(() => {
   const scoreEventCount = useMemo(() => {
     return logs.reduce(
       (count, entry) =>
-        entry.eventCode === MATCH_LOG_EVENT_CODES.SCORE ? count + 1 : count,
+        entry.eventCode === MATCH_LOG_EVENT_CODES.SCORE ||
+        entry.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN
+          ? count + 1
+          : count,
       0
     );
   }, [logs]);
@@ -803,14 +806,19 @@ const rosterNameLookup = useMemo(() => {
     ({ team, timestamp, scorerId, assistId, totals, eventDescription, eventCode }) => {
       setLogs((prev) => {
         const normalizedCode = eventCode || null;
-        const nextScoreOrder =
-          normalizedCode === MATCH_LOG_EVENT_CODES.SCORE
-            ? prev.reduce(
-                (count, entry) =>
-                  entry.eventCode === MATCH_LOG_EVENT_CODES.SCORE ? count + 1 : count,
-                0
-              )
-            : null;
+        const isScoringEvent =
+          normalizedCode === MATCH_LOG_EVENT_CODES.SCORE ||
+          normalizedCode === MATCH_LOG_EVENT_CODES.CALAHAN;
+        const nextScoreOrder = isScoringEvent
+          ? prev.reduce(
+              (count, entry) =>
+                entry.eventCode === MATCH_LOG_EVENT_CODES.SCORE ||
+                entry.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN
+                  ? count + 1
+                  : count,
+              0
+            )
+          : null;
 
         return [
           ...prev,
@@ -823,8 +831,10 @@ const rosterNameLookup = useMemo(() => {
               (scorerId ? "Unknown player" : "Unassigned"),
             scorerId: scorerId || null,
             assistName:
-              rosterNameLookup.get(assistId || "") ||
-              (assistId ? "Unknown player" : null),
+              normalizedCode === MATCH_LOG_EVENT_CODES.CALAHAN
+                ? "CALAHAN!!"
+                : rosterNameLookup.get(assistId || "") ||
+                  (assistId ? "Unknown player" : null),
             assistId: assistId || null,
             totalA: totals.a,
             totalB: totals.b,
@@ -1047,7 +1057,9 @@ const rosterNameLookup = useMemo(() => {
             : row.team_id && row.team_id === teamAId
               ? "A"
               : null;
-        const isScoreEvent = row.event?.code === MATCH_LOG_EVENT_CODES.SCORE;
+        const isScoreEvent =
+          row.event?.code === MATCH_LOG_EVENT_CODES.SCORE ||
+          row.event?.code === MATCH_LOG_EVENT_CODES.CALAHAN;
         if (isScoreEvent) {
           if (teamKey === "A") {
             rawA += 1;
@@ -1073,7 +1085,9 @@ const rosterNameLookup = useMemo(() => {
             : row.team_id && row.team_id === teamAId
               ? "A"
               : null;
-        const isScoreEvent = row.event?.code === MATCH_LOG_EVENT_CODES.SCORE;
+        const isScoreEvent =
+          row.event?.code === MATCH_LOG_EVENT_CODES.SCORE ||
+          row.event?.code === MATCH_LOG_EVENT_CODES.CALAHAN;
         let scoreOrderIndex = null;
         if (isScoreEvent) {
           scoreOrderIndex = scoreOrderIndexCounter;

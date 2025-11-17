@@ -11,6 +11,7 @@ import {
   DEFAULT_SECONDARY_LABEL,
   DEFAULT_TIMER_LABEL,
   HALFTIME_SCORE_THRESHOLD,
+  CALAHAN_ASSIST_VALUE,
 } from "./scorekeeperConstants";
 
 export function useScoreKeeperActions(controller) {
@@ -211,9 +212,11 @@ export function useScoreKeeperActions(controller) {
     await controller.logSimpleEvent(MATCH_LOG_EVENT_CODES.MATCH_END);
   }
 
-  async function handleAddScore(team, scorerId = null, assistId = null) {
+  async function handleAddScore(team, scorerId = null, assistId = null, options = {}) {
     if (!controller.consoleReady || !controller.activeMatch?.id) return;
-    const eventTypeId = await controller.resolveEventTypeIdLocal(MATCH_LOG_EVENT_CODES.SCORE);
+    const { isCalahan = false } = options;
+    const eventCode = isCalahan ? MATCH_LOG_EVENT_CODES.CALAHAN : MATCH_LOG_EVENT_CODES.SCORE;
+    const eventTypeId = await controller.resolveEventTypeIdLocal(eventCode);
     if (!eventTypeId) {
       controller.setConsoleError(
         "Missing `score` event type in match_events. Please add it in Supabase before logging."
@@ -252,7 +255,7 @@ export function useScoreKeeperActions(controller) {
       assistId,
       totals: nextTotals,
       eventDescription: controller.describeEvent(eventTypeId),
-      eventCode: MATCH_LOG_EVENT_CODES.SCORE,
+      eventCode,
     });
     const receivingTeam = team === "A" ? "B" : "A";
     if (receivingTeam) {
@@ -313,7 +316,10 @@ export function useScoreKeeperActions(controller) {
       const log = controller.logs[logIndex];
       controller.setScoreForm({
         scorerId: log?.scorerId || "",
-        assistId: log?.assistId || "",
+        assistId:
+          log?.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN
+            ? CALAHAN_ASSIST_VALUE
+            : log?.assistId || "",
       });
     } else {
       controller.setScoreForm({ scorerId: "", assistId: "" });
@@ -328,17 +334,24 @@ export function useScoreKeeperActions(controller) {
   async function handleScoreModalSubmit(event) {
     event.preventDefault();
     if (!controller.scoreModalState.team) return;
+    if (!controller.scoreForm.scorerId || !controller.scoreForm.assistId) {
+      return;
+    }
+    const isCalahan = controller.scoreForm.assistId === CALAHAN_ASSIST_VALUE;
+    const normalizedAssistId = isCalahan ? null : controller.scoreForm.assistId;
 
     if (controller.scoreModalState.mode === "edit" && controller.scoreModalState.logIndex !== null) {
       await handleUpdateLog(controller.scoreModalState.logIndex, {
         scorerId: controller.scoreForm.scorerId || null,
-        assistId: controller.scoreForm.assistId || null,
+        assistId: normalizedAssistId || null,
+        eventCode: isCalahan ? MATCH_LOG_EVENT_CODES.CALAHAN : MATCH_LOG_EVENT_CODES.SCORE,
       });
     } else {
       await handleAddScore(
         controller.scoreModalState.team,
         controller.scoreForm.scorerId || null,
-        controller.scoreForm.assistId || null
+        normalizedAssistId || null,
+        { isCalahan }
       );
     }
 
@@ -351,14 +364,32 @@ export function useScoreKeeperActions(controller) {
     if (!targetLog?.id) return;
 
     try {
-      await updateMatchLogEntry(targetLog.id, {
-        scorerId: Object.prototype.hasOwnProperty.call(updates, "scorerId")
-          ? updates.scorerId
-          : targetLog.scorerId ?? null,
-        assistId: Object.prototype.hasOwnProperty.call(updates, "assistId")
-          ? updates.assistId
-          : targetLog.assistId ?? null,
-      });
+      const payload = {};
+      if (Object.prototype.hasOwnProperty.call(updates, "teamKey")) {
+        const teamId =
+          updates.teamKey === "B"
+            ? controller.teamBId
+            : updates.teamKey === "A"
+              ? controller.teamAId
+              : null;
+        payload.teamId = teamId ?? null;
+      }
+      if (Object.prototype.hasOwnProperty.call(updates, "scorerId")) {
+        payload.scorerId =
+          Object.prototype.hasOwnProperty.call(updates, "scorerId") && updates.scorerId !== undefined
+            ? updates.scorerId
+            : targetLog.scorerId ?? null;
+      }
+      if (Object.prototype.hasOwnProperty.call(updates, "assistId")) {
+        payload.assistId =
+          Object.prototype.hasOwnProperty.call(updates, "assistId") && updates.assistId !== undefined
+            ? updates.assistId
+            : targetLog.assistId ?? null;
+      }
+      if (Object.prototype.hasOwnProperty.call(updates, "eventCode") && updates.eventCode) {
+        payload.eventTypeCode = updates.eventCode;
+      }
+      await updateMatchLogEntry(targetLog.id, payload);
       const totals = await controller.refreshMatchLogs(
         controller.matchLogMatchId,
         controller.currentMatchScoreRef.current

@@ -11,6 +11,7 @@ export const MATCH_LOG_EVENT_CODES = {
   HALFTIME_END: "halftime_end",
   STOPPAGE_START: "stoppage_start",
   STOPPAGE_END: "stoppage_end",
+  CALAHAN: "calahan",
 } as const;
 
 export type MatchLogInput = {
@@ -43,6 +44,7 @@ export type MatchLogUpdate = {
   teamId?: string | null;
   scorerId?: string | null;
   assistId?: string | null;
+  eventTypeCode?: keyof typeof MATCH_LOG_EVENT_CODES | string;
 };
 
 const eventTypeCache = new Map<string, number>();
@@ -118,6 +120,10 @@ export async function updateMatchLogEntry(logId: string, updates: MatchLogUpdate
   }
   if (Object.prototype.hasOwnProperty.call(updates, "assistId")) {
     updatePayload.assist_id = updates.assistId ?? null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, "eventTypeCode") && updates.eventTypeCode) {
+    updatePayload.event_type_id = await resolveEventTypeId(updates.eventTypeCode);
   }
 
   if (Object.keys(updatePayload).length === 0) {

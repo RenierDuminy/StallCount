@@ -7,3 +7,4 @@ export const DEFAULT_TIMER_LABEL = "Game time";
 export const DEFAULT_SECONDARY_LABEL = "Time out";
 export const SESSION_SAVE_DEBOUNCE_MS = 400;
 export const TIMER_TICK_INTERVAL_MS = 500;
+export const CALAHAN_ASSIST_VALUE = "__CALAHAN_ASSIST__";
