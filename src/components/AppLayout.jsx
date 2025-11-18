@@ -3,9 +3,10 @@ import SiteHeader from "./SiteHeader";
 
 export default function AppLayout() {
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="sc-page flex min-h-screen flex-col">
+      <div className="sc-page__glow" aria-hidden="true" />
       <SiteHeader />
-      <main className="flex-1">
+      <main className="relative flex-1">
         <Outlet />
       </main>
     </div>

@@ -49,43 +49,39 @@ export default function TeamsPage() {
   }, [teams, query]);
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-6 md:flex-row md:items-center md:justify-between">
+    <div className="sc-shell space-y-8">
+      <header className="sc-card">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
               League overview
             </p>
-            <h1 className="text-3xl font-semibold text-slate-900">
-              Registered teams
-            </h1>
-            <p className="mt-2 text-sm text-slate-600">
-              Live data from the Supabase `teams` table. Use this view to scout
-              rosters or verify entries before publishing matchups.
+            <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">Registered teams</h1>
+            <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">
+              Live data from the Supabase `teams` table. Use this view to scout rosters or verify entries before
+              publishing matchups.
             </p>
           </div>
           <Link
             to="/"
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+            className="inline-flex items-center justify-center rounded-full border border-[var(--sc-border)] px-4 py-2 text-sm font-semibold text-[var(--sc-accent)] transition hover:border-[var(--sc-accent)] hover:bg-[#fff0f5]"
           >
             Back to site
           </Link>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-10">
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <main className="sc-card">
+        <section>
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Teams list</h2>
-              <p className="text-sm text-slate-500">
-                {loading
-                  ? "Loading..."
-                  : `${filteredTeams.length} of ${teams.length} teams shown`}
+              <h2 className="text-lg font-semibold text-[var(--sc-ink)]">Teams list</h2>
+              <p className="text-sm text-[var(--sc-ink-muted)]">
+                {loading ? "Loading..." : `${filteredTeams.length} of ${teams.length} teams shown`}
               </p>
             </div>
-            <label className="flex w-full max-w-xs items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 focus-within:border-brand focus-within:bg-white focus-within:ring-2 focus-within:ring-brand/20">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <label className="flex w-full max-w-xs items-center gap-2 rounded-full border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-3 py-2 text-sm text-[var(--sc-ink-muted)] focus-within:border-[var(--sc-accent)] focus-within:bg-white focus-within:ring-2 focus-within:ring-[var(--sc-accent)]/20">
+              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
                 Search
               </span>
               <input
@@ -93,7 +89,7 @@ export default function TeamsPage() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Team name or short code"
-                className="w-full bg-transparent text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                className="w-full bg-transparent text-[var(--sc-ink)] placeholder:text-[var(--sc-ink-muted)] focus:outline-none"
               />
             </label>
           </div>
@@ -109,32 +105,33 @@ export default function TeamsPage() {
               Array.from({ length: 6 }).map((_, index) => (
                 <div
                   key={index}
-                  className="animate-pulse rounded-2xl border border-slate-100 bg-slate-50 p-5"
+                  className="animate-pulse rounded-2xl border border-[var(--sc-border-strong)] bg-[var(--sc-surface-muted)] p-5"
                 >
-                  <div className="h-4 w-1/2 rounded-full bg-slate-200" />
-                  <div className="mt-2 h-3 w-1/3 rounded-full bg-slate-200" />
+                  <div className="h-4 w-1/2 rounded-full bg-white/40" />
+                  <div className="mt-2 h-3 w-1/3 rounded-full bg-white/30" />
                 </div>
               ))
             ) : filteredTeams.length === 0 ? (
-              <div className="col-span-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+              <div className="col-span-full rounded-2xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-6 py-10 text-center text-sm text-[var(--sc-ink-muted)]">
                 No teams match your search.
               </div>
             ) : (
               filteredTeams.map((team) => (
-                <article
+                <Link
                   key={team.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                  to={`/teams/${team.id}`}
+                  className="group rounded-2xl border border-[var(--sc-border)] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--sc-accent)]/60 hover:shadow-lg"
                 >
-
-                  <h3 className="mt-3 text-xl font-semibold text-slate-900">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                    Team
+                  </p>
+                  <h3 className="mt-3 text-xl font-semibold text-[var(--sc-ink)] group-hover:text-[var(--sc-accent)]">
                     {team.name}
                   </h3>
                   {team.short_name && (
-                    <p className="text-sm text-slate-500">
-                      Short name: {team.short_name}
-                    </p>
+                    <p className="text-sm text-[var(--sc-ink-muted)]">Short name: {team.short_name}</p>
                   )}
-                </article>
+                </Link>
               ))
             )}
           </div>

@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { initialiseMatch } from "../../services/matchService";
+import { initialiseMatch, updateMatchStatus } from "../../services/matchService";
 import { updateScore } from "../../services/realtimeService";
 import {
   MATCH_LOG_EVENT_CODES,
@@ -72,7 +72,6 @@ export function useScoreKeeperActions(controller) {
       controller.setActiveMatch(updated);
       controller.setSelectedMatchId(updated.id);
       controller.setMatches((prev) => prev.map((match) => (match.id === updated.id ? updated : match)));
-      await controller.loadMatches();
 
       const rosterPromise = (async () => {
         const teamA = updated.team_a?.id || null;
@@ -103,6 +102,8 @@ export function useScoreKeeperActions(controller) {
           b: updated.score_b ?? 0,
         }),
       ]);
+
+      await controller.loadMatches(undefined, { preferredMatchId: updated.id });
 
       controller.setSetupModalOpen(false);
     } catch (err) {
@@ -188,15 +189,7 @@ export function useScoreKeeperActions(controller) {
     const pullTeamId = controller.startingTeamId || controller.teamAId || controller.teamBId;
     const teamKey = pullTeamId === controller.teamBId ? "B" : "A";
     const timestamp = new Date().toISOString();
-    const entry = {
-      matchId: controller.activeMatch.id,
-      eventTypeId,
-      eventCode: MATCH_LOG_EVENT_CODES.MATCH_START,
-      teamId: pullTeamId || null,
-      createdAt: timestamp,
-    };
-    controller.recordPendingEntry(entry);
-    controller.appendLocalLog({
+    const appended = controller.appendLocalLog({
       team: teamKey,
       timestamp,
       scorerId: null,
@@ -205,6 +198,15 @@ export function useScoreKeeperActions(controller) {
       eventDescription: controller.describeEvent(eventTypeId),
       eventCode: MATCH_LOG_EVENT_CODES.MATCH_START,
     });
+    const entry = {
+      matchId: controller.activeMatch.id,
+      eventTypeId,
+      eventCode: MATCH_LOG_EVENT_CODES.MATCH_START,
+      teamId: pullTeamId || null,
+      createdAt: timestamp,
+      abbaLine: appended.abbaLine,
+    };
+    controller.recordPendingEntry(entry);
   }
 
   async function logMatchEndEvent() {
@@ -236,6 +238,15 @@ export function useScoreKeeperActions(controller) {
     controller.setScore(nextTotals);
 
     const timestamp = new Date().toISOString();
+    const appended = controller.appendLocalLog({
+      team,
+      timestamp,
+      scorerId,
+      assistId,
+      totals: nextTotals,
+      eventDescription: controller.describeEvent(eventTypeId),
+      eventCode,
+    });
     const entry = {
       matchId: controller.activeMatch.id,
       eventTypeId,
@@ -245,18 +256,10 @@ export function useScoreKeeperActions(controller) {
       scorerId,
       assistId,
       createdAt: timestamp,
+      abbaLine: appended.abbaLine,
     };
 
     controller.recordPendingEntry(entry);
-    controller.appendLocalLog({
-      team,
-      timestamp,
-      scorerId,
-      assistId,
-      totals: nextTotals,
-      eventDescription: controller.describeEvent(eventTypeId),
-      eventCode,
-    });
     const receivingTeam = team === "A" ? "B" : "A";
     if (receivingTeam) {
       void controller.updatePossession(receivingTeam, { logTurnover: false });
@@ -464,8 +467,22 @@ export function useScoreKeeperActions(controller) {
 
   async function handleEndMatchNavigation() {
     if (!controller.canEndMatch || !controller.activeMatch?.id) return;
-    await logMatchEndEvent();
-    navigate("/spirit-scores");
+    try {
+      await logMatchEndEvent();
+      const updated = await updateMatchStatus(controller.activeMatch.id, "finished");
+      if (updated) {
+        controller.setActiveMatch(updated);
+        controller.setMatches((prev) =>
+          prev.map((match) => (match.id === updated.id ? updated : match))
+        );
+      }
+      const spiritUrl = `/spirit-scores${controller.activeMatch?.id ? `?matchId=${controller.activeMatch.id}` : ""}`;
+      navigate(spiritUrl);
+    } catch (err) {
+      controller.setConsoleError(
+        err instanceof Error ? err.message : "Failed to close the match."
+      );
+    }
   }
 
   return {

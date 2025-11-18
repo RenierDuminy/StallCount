@@ -7,18 +7,62 @@
 @layer base {
   :root {
     color-scheme: light;
+    --sc-bg: #01150c;
+    --sc-bg-accent: #033b21;
+    --sc-surface: rgba(236, 253, 243, 0.96);
+    --sc-surface-muted: rgba(226, 252, 236, 0.85);
+    --sc-border: #9ae6b4;
+    --sc-border-strong: #c6f6d5;
+    --sc-ink: #052b1d;
+    --sc-ink-muted: #1d5a3b;
+    --sc-accent: #0f5132;
+    --sc-accent-strong: #0a3b24;
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 font-sans antialiased;
-    font-size: 0.5rem; /* soften overall scale */
+    @apply font-sans antialiased;
+    background-image: radial-gradient(circle at top, rgba(226, 252, 236, 0.45), transparent 55%),
+      radial-gradient(circle at 20% 20%, rgba(4, 59, 36, 0.35), transparent 60%),
+      linear-gradient(135deg, var(--sc-bg), var(--sc-bg-accent));
+    background-attachment: fixed;
+    color: var(--sc-ink);
+    font-size: 16px;
   }
 
   #root {
     @apply min-h-screen;
   }
+}
 
-  main {
-    @apply text-left;
+@layer components {
+  .sc-page {
+    @apply relative min-h-screen;
+    color: var(--sc-ink);
+  }
+
+  .sc-page__glow {
+    @apply pointer-events-none absolute inset-x-0 top-0 h-[280px];
+    background: radial-gradient(circle at top, rgba(209, 250, 229, 0.55), transparent 70%);
+  }
+
+  .sc-shell {
+    @apply relative mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8;
+  }
+
+  .sc-card {
+    @apply rounded-[32px] border bg-white/90 p-6 shadow-xl sm:p-8;
+    border-color: var(--sc-border);
+    color: var(--sc-ink);
+  }
+
+  .sc-card-muted {
+    @apply rounded-[32px] border bg-[var(--sc-surface-muted)] p-6 shadow-inner sm:p-8;
+    border-color: var(--sc-border-strong);
+  }
+
+  .sc-pill {
+    @apply inline-flex items-center gap-2 rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide;
+    border-color: var(--sc-border);
+    color: var(--sc-accent);
   }
 }

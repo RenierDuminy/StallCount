@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { getRecentMatches, getMatchById } from "../services/matchService";
+import { submitSpiritScores } from "../services/spiritScoreService";
 
 const SPIRIT_CATEGORIES = [
   { key: "rulesKnowledge", label: "Rules knowledge & use" },
@@ -20,6 +22,8 @@ const createDefaultScores = () => ({
 });
 
 export default function SpiritScoresPage() {
+  const { session } = useAuth();
+  const userId = session?.user?.id ?? null;
   const [searchParams] = useSearchParams();
   const prefilledMatchId = searchParams.get("matchId") || "";
 
@@ -32,6 +36,8 @@ export default function SpiritScoresPage() {
     teamA: createDefaultScores(),
     teamB: createDefaultScores(),
   });
+  const [submitState, setSubmitState] = useState({ message: null, variant: null });
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     async function loadMatches() {
@@ -118,8 +124,7 @@ export default function SpiritScoresPage() {
             </p>
             <h1 className="text-3xl font-semibold text-slate-900">Spirit scores</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Capture spirit scores for both teams after the final whistle. This mock screen does not
-              submit data—it simply mirrors the intended workflow.
+              Capture spirit scores for both teams after the final whistle and submit them directly to the event database.
             </p>
           </div>
           <Link
@@ -135,9 +140,55 @@ export default function SpiritScoresPage() {
         <section className="space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <form
             className="space-y-8"
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault();
-              alert("Spirit scores would be submitted here (mock).");
+              if (!selectedMatchId) {
+                setSubmitState({ message: "Select a match before submitting.", variant: "error" });
+                return;
+              }
+              if (!selectedMatch?.team_a?.id || !selectedMatch?.team_b?.id) {
+                setSubmitState({
+                  message: "The selected match is missing team assignments.",
+                  variant: "error",
+                });
+                return;
+              }
+
+              setSubmitting(true);
+              setSubmitState({ message: null, variant: null });
+
+              try {
+                const buildEntry = (teamKey, ratedTeamId) => ({
+                  ratedTeamId,
+                  rulesKnowledge: teamScores[teamKey].rulesKnowledge,
+                  fouls: teamScores[teamKey].fouls,
+                  fairness: teamScores[teamKey].fairness,
+                  positiveAttitude: teamScores[teamKey].positiveAttitude,
+                  communication: teamScores[teamKey].communication,
+                  notes: teamScores[teamKey].notes,
+                });
+
+                await submitSpiritScores(
+                  selectedMatchId,
+                  [
+                    buildEntry("teamA", selectedMatch.team_a.id),
+                    buildEntry("teamB", selectedMatch.team_b.id),
+                  ],
+                  { submittedBy: userId ?? undefined }
+                );
+
+                setSubmitState({
+                  message: "Spirit scores submitted successfully.",
+                  variant: "success",
+                });
+              } catch (err) {
+                setSubmitState({
+                  message: err instanceof Error ? err.message : "Failed to submit spirit scores.",
+                  variant: "error",
+                });
+              } finally {
+                setSubmitting(false);
+              }
             }}
           >
             <div className="grid gap-4 md:grid-cols-2">
@@ -228,12 +279,25 @@ export default function SpiritScoresPage() {
               ))}
             </div>
 
+            {submitState.message && (
+              <p
+                className={`rounded-2xl px-3 py-2 text-sm ${
+                  submitState.variant === "success"
+                    ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                    : "border border-rose-200 bg-rose-50 text-rose-700"
+                }`}
+              >
+                {submitState.message}
+              </p>
+            )}
+
             <div className="flex flex-wrap gap-3">
               <button
                 type="submit"
-                className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark"
+                disabled={submitting}
+                className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Submit spirit scores (mock)
+                {submitting ? "Submitting..." : "Submit spirit scores"}
               </button>
               <Link
                 to="/score-keeper"

@@ -10,7 +10,9 @@ import CaptainPage from "./pages/CaptainPage";
 import SysAdminPage from "./pages/SysAdminPage";
 import Players from "./pages/Players";
 import Teams from "./pages/Teams";
+import TeamProfilePage from "./pages/TeamProfile";
 import SpiritScoresPage from "./pages/SpiritScoresPage";
+import UserPage from "./pages/UserPage";
 import AppLayout from "./components/AppLayout";
 
 
@@ -23,6 +25,8 @@ export default function AppRoutes() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/players" element={<Players />} />
           <Route path="/teams" element={<Teams />} />
+          <Route path="/teams/:teamId" element={<TeamProfilePage />} />
+          <Route path="/user" element={<UserPage />} />
           <Route
             path="/admin"
             element={

@@ -1,6 +1,7 @@
 export const DEFAULT_DURATION = 90;
 export const HALFTIME_SCORE_THRESHOLD = 8;
 export const ABBA_SEQUENCE = ["1st", "2nd", "2nd", "1st"];
+export const ABBA_LINE_SEQUENCE = ["2", "1", "2", "1"];
 export const DEFAULT_SETUP_FORM = { startTime: "", startingTeamId: "" };
 export const DEFAULT_TIMEOUT_USAGE = { A: 0, B: 0 };
 export const DEFAULT_TIMER_LABEL = "Game time";

@@ -1,6 +1,11 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+CREATE TABLE public.abba_line (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  line text NOT NULL UNIQUE,
+  CONSTRAINT abba_line_pkey PRIMARY KEY (id, line)
+);
 CREATE TABLE public.audit_log (
   id bigint NOT NULL DEFAULT nextval('audit_log_id_seq'::regclass),
   table_name text NOT NULL,
@@ -97,12 +102,14 @@ CREATE TABLE public.match_logs (
   scorer_id uuid,
   assist_id uuid,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  abba_line text,
   CONSTRAINT match_logs_pkey PRIMARY KEY (id),
   CONSTRAINT match_logs_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
   CONSTRAINT match_logs_event_type_id_fkey FOREIGN KEY (event_type_id) REFERENCES public.match_events(id),
   CONSTRAINT match_logs_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
   CONSTRAINT match_logs_scorer_id_fkey FOREIGN KEY (scorer_id) REFERENCES public.players(id),
-  CONSTRAINT match_logs_assist_id_fkey FOREIGN KEY (assist_id) REFERENCES public.players(id)
+  CONSTRAINT match_logs_assist_id_fkey FOREIGN KEY (assist_id) REFERENCES public.players(id),
+  CONSTRAINT match_logs_abba_line_fkey FOREIGN KEY (abba_line) REFERENCES public.abba_line(line)
 );
 CREATE TABLE public.match_status (
   code text NOT NULL,

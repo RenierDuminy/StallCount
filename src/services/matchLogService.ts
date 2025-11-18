@@ -16,10 +16,13 @@ export const MATCH_LOG_EVENT_CODES = {
 
 export type MatchLogInput = {
   matchId: string;
-  eventTypeCode: keyof typeof MATCH_LOG_EVENT_CODES | string;
+  eventTypeCode?: keyof typeof MATCH_LOG_EVENT_CODES | string;
+  eventTypeId?: number | null;
   teamId?: string | null;
   scorerId?: string | null;
   assistId?: string | null;
+  abbaLine?: string | null;
+  createdAt?: string | null;
 };
 
 export type MatchLogRow = {
@@ -29,6 +32,7 @@ export type MatchLogRow = {
   team_id: string | null;
   scorer_id: string | null;
   assist_id: string | null;
+  abba_line: string | null;
   created_at: string;
   event?: {
     id: number;
@@ -45,12 +49,13 @@ export type MatchLogUpdate = {
   scorerId?: string | null;
   assistId?: string | null;
   eventTypeCode?: keyof typeof MATCH_LOG_EVENT_CODES | string;
+  abbaLine?: string | null;
 };
 
 const eventTypeCache = new Map<string, number>();
 
 const MATCH_LOG_SELECT =
-  "id, match_id, event_type_id, team_id, scorer_id, assist_id, created_at, event:match_events!match_logs_event_type_id_fkey(id, code, description, category), scorer:players!match_logs_scorer_id_fkey(id, name), assist:players!match_logs_assist_id_fkey(id, name)";
+  "id, match_id, event_type_id, team_id, scorer_id, assist_id, abba_line, created_at, event:match_events!match_logs_event_type_id_fkey(id, code, description, category), scorer:players!match_logs_scorer_id_fkey(id, name), assist:players!match_logs_assist_id_fkey(id, name)";
 
 async function resolveEventTypeId(eventTypeCode: string): Promise<number> {
   if (eventTypeCache.has(eventTypeCode)) {
@@ -88,16 +93,27 @@ export async function getMatchLogs(matchId: string) {
 }
 
 export async function createMatchLogEntry(input: MatchLogInput) {
-  const eventTypeId = await resolveEventTypeId(input.eventTypeCode);
+  const resolvedEventTypeId =
+    typeof input.eventTypeId === "number" && Number.isFinite(input.eventTypeId)
+      ? input.eventTypeId
+      : input.eventTypeCode
+        ? await resolveEventTypeId(input.eventTypeCode)
+        : null;
+
+  if (!resolvedEventTypeId) {
+    throw new Error("eventTypeId or eventTypeCode is required to create a match log entry.");
+  }
 
   const { data, error } = await supabase
     .from("match_logs")
     .insert({
       match_id: input.matchId,
-      event_type_id: eventTypeId,
+      event_type_id: resolvedEventTypeId,
       team_id: input.teamId ?? null,
       scorer_id: input.scorerId ?? null,
       assist_id: input.assistId ?? null,
+      abba_line: input.abbaLine ?? null,
+      created_at: input.createdAt || undefined,
     })
     .select(MATCH_LOG_SELECT)
     .maybeSingle();
@@ -124,6 +140,9 @@ export async function updateMatchLogEntry(logId: string, updates: MatchLogUpdate
 
   if (Object.prototype.hasOwnProperty.call(updates, "eventTypeCode") && updates.eventTypeCode) {
     updatePayload.event_type_id = await resolveEventTypeId(updates.eventTypeCode);
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "abbaLine")) {
+    updatePayload.abba_line = updates.abbaLine ?? null;
   }
 
   if (Object.keys(updatePayload).length === 0) {

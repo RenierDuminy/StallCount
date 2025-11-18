@@ -12,9 +12,8 @@ const NAV_LINKS = [
 ];
 
 const ROLE_LINKS = [
-  { label: "Score keeper", to: "/score-keeper" },
-  { label: "Captain", to: "/captain" },
-  { label: "Admin", to: "/admin" },
+  { label: "User", to: "/user" },
+  { label: "Admin tools", to: "/admin" },
 ];
 
 function isLinkActive(linkTo, location) {
@@ -49,31 +48,29 @@ export default function SiteHeader() {
 
   return (
     <>
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <Link to="/" className="flex items-center gap-2">
-          <img
-            src="/assets/stallcount-logo.svg"
-            alt="StallCount logo"
-            className="h-11 w-11 rounded-2xl object-contain ring-1 ring-brand/20"
-            loading="lazy"
-          />
-          <div>
-            <p className="text-lg font-semibold text-slate-900">StallCount</p>
-            <p className="text-sm text-slate-500">Frisbee League Tracker</p>
-          </div>
-        </Link>
+      <header className="border-b border-[var(--sc-border)]/40 bg-[#04140c]/90 text-emerald-50 backdrop-blur">
+        <div className="sc-shell flex items-center justify-between py-4">
+          <Link to="/" className="flex items-center gap-3 text-emerald-50">
+            <img
+              src="/assets/stallcount-logo.svg"
+              alt="StallCount logo"
+              className="h-11 w-11 rounded-2xl border border-white/10 bg-white/10 object-contain p-1"
+              loading="lazy"
+            />
+            <div>
+              <p className="text-lg font-semibold leading-tight">StallCount</p>
+              <p className="text-sm text-emerald-200">Frisbee League Tracker</p>
+            </div>
+          </Link>
 
-        <nav className="hidden items-center gap-8 text-sm font-medium text-slate-500 md:flex">
+        <nav className="hidden items-center gap-8 text-sm font-medium text-emerald-200 md:flex">
           {NAV_LINKS.map((link) => {
             const active = isLinkActive(link.to, location);
             return (
               <Link
                 key={link.to}
                 to={link.to}
-                className={`transition-colors hover:text-slate-900 ${
-                  active ? "text-slate-900" : ""
-                }`}
+                className={`transition-colors hover:text-white ${active ? "text-white" : ""}`}
               >
                 {link.label}
               </Link>
@@ -81,12 +78,12 @@ export default function SiteHeader() {
           })}
         </nav>
 
-        <div className="hidden items-center gap-1 rounded-full bg-slate-100 p-1 text-xs font-semibold text-slate-600 lg:flex">
+        <div className="hidden items-center gap-1 rounded-full bg-white/10 p-1 text-xs font-semibold text-emerald-50 lg:flex">
           {ROLE_LINKS.map((role) => (
             <Link
               key={role.to}
               to={role.to}
-              className="rounded-full px-3 py-1 transition hover:bg-white hover:text-slate-900"
+              className="rounded-full px-3 py-1 transition hover:bg-white/20"
             >
               {role.label}
             </Link>
@@ -97,19 +94,19 @@ export default function SiteHeader() {
           <button
             type="button"
             onClick={handleInstallClick}
-            className="hidden rounded-full border border-brand/30 px-4 py-2 text-sm font-semibold text-brand-dark transition hover:bg-brand/10 md:inline-flex"
+            className="hidden rounded-full border border-emerald-300/50 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 md:inline-flex"
           >
             Install app
           </button>
           <Link
             to="/login"
-            className="hidden rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900 md:inline-flex"
+            className="hidden rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 md:inline-flex"
           >
             Log in
           </Link>
           <button
             type="button"
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900 md:hidden"
+            className="inline-flex items-center justify-center rounded-full border border-white/20 px-3 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 md:hidden"
             onClick={() => setMenuOpen((prev) => !prev)}
             aria-label="Toggle navigation menu"
             aria-expanded={menuOpen}
@@ -120,10 +117,14 @@ export default function SiteHeader() {
 
         </div>
         {menuOpen && (
-          <div className="border-t border-slate-200 bg-white px-6 py-4 md:hidden">
-            <nav className="flex flex-col gap-3 text-sm font-semibold text-slate-700">
+          <div className="border-t border-[var(--sc-border)]/40 bg-[#04140c] px-6 py-4 text-emerald-50 md:hidden">
+            <nav className="flex flex-col gap-3 text-sm font-semibold">
               {NAV_LINKS.map((link) => (
-                <Link key={link.to} to={link.to} className="rounded px-2 py-1 hover:bg-slate-100">
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className="rounded px-2 py-1 transition hover:bg-white/10"
+                >
                   {link.label}
                 </Link>
               ))}
@@ -131,7 +132,7 @@ export default function SiteHeader() {
                 <Link
                   key={role.to}
                   to={role.to}
-                  className="rounded px-2 py-1 hover:bg-slate-100"
+                  className="rounded px-2 py-1 transition hover:bg-white/10"
                 >
                   {role.label}
                 </Link>
@@ -139,13 +140,13 @@ export default function SiteHeader() {
               <button
                 type="button"
                 onClick={handleInstallClick}
-                className="rounded-full border border-brand/30 px-4 py-2 text-center text-sm font-semibold text-brand-dark transition hover:bg-brand/10"
+                className="rounded-full border border-emerald-300/50 px-4 py-2 text-center text-sm font-semibold text-emerald-50 transition hover:bg-white/10"
               >
                 Install app
               </button>
               <Link
                 to="/login"
-                className="rounded-full border border-slate-200 px-4 py-2 text-center text-sm font-semibold text-slate-700 transition hover:border-slate-900 hover:text-slate-900"
+                className="rounded-full border border-white/20 px-4 py-2 text-center text-sm font-semibold text-emerald-50 transition hover:bg-white/10"
               >
                 Log in
               </Link>
@@ -155,14 +156,14 @@ export default function SiteHeader() {
       </header>
 
       {showInstallGuide && (
-        <div className="border-b border-slate-200 bg-white/95">
-          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-4 text-sm text-slate-600">
+        <div className="border-b border-[var(--sc-border)]/40 bg-white/95 text-[var(--sc-ink)]">
+          <div className="sc-shell flex flex-col gap-3 py-4 text-sm text-[var(--sc-ink-muted)]">
             <div className="flex items-start justify-between gap-4">
-              <p className="text-base font-semibold text-slate-900">Install StallCount</p>
+              <p className="text-base font-semibold text-[var(--sc-ink)]">Install StallCount</p>
               <button
                 type="button"
                 onClick={() => setShowInstallGuide(false)}
-                className="text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-700"
+                className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)] hover:text-[var(--sc-ink)]"
               >
                 Close
               </button>
@@ -176,7 +177,7 @@ export default function SiteHeader() {
               <li>Confirm the prompt to pin StallCount to your device.</li>
             </ol>
             {!canInstall && (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-[var(--sc-ink-muted)]">
                 If you do not see the option, make sure you are using the latest version of Chrome, Edge, Safari,
                 or Firefox on a supported device.
               </p>

@@ -7,7 +7,9 @@ import {
   MATCH_LOG_EVENT_CODES,
   getMatchLogs,
   getMatchEventDefinitions,
+  createMatchLogEntry,
 } from "../../services/matchLogService";
+import { supabase } from "../../services/supabaseClient";
 import {
   loadScorekeeperSession,
   saveScorekeeperSession,
@@ -29,7 +31,10 @@ import {
   DEFAULT_SECONDARY_LABEL,
   SESSION_SAVE_DEBOUNCE_MS,
   TIMER_TICK_INTERVAL_MS,
+  ABBA_LINE_SEQUENCE,
 } from "./scorekeeperConstants";
+
+const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 
 function clonePendingEntries(entries = []) {
   return entries.map((entry) => ({ ...entry }));
@@ -95,6 +100,7 @@ export function useScoreKeeperData() {
 
   const [activeMatch, setActiveMatch] = useState(null);
   const [initialising, setInitialising] = useState(false);
+  const [abbaLines, setAbbaLines] = useState(DEFAULT_ABBA_LINES);
 
   const [setupForm, setSetupForm] = useState(() => ({ ...DEFAULT_SETUP_FORM }));
 
@@ -144,6 +150,28 @@ const [resumeHandled, setResumeHandled] = useState(false);
 const [resumeBusy, setResumeBusy] = useState(false);
 const [resumeError, setResumeError] = useState(null);
 const [stoppageActive, setStoppageActive] = useState(false);
+
+  useEffect(() => {
+    let ignore = false;
+    const loadAbbaLines = async () => {
+      const { data, error } = await supabase.from("abba_line").select("line");
+      if (error) {
+        console.error("[ScoreKeeper] Failed to load ABBA lines:", error.message);
+        return;
+      }
+      const fetched = (data || [])
+        .map((row) => row.line)
+        .filter((value) => typeof value === "string" && value.trim().length > 0);
+      const nextLines = Array.from(new Set([...DEFAULT_ABBA_LINES, ...fetched]));
+      if (!ignore) {
+        setAbbaLines(nextLines);
+      }
+    };
+    void loadAbbaLines();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const fetchRostersForTeams = useCallback(async (teamAId, teamBId) => {
     const [teamAPlayers, teamBPlayers] = await Promise.all([
@@ -198,26 +226,36 @@ const [stoppageActive, setStoppageActive] = useState(false);
   }, [selectedEventId]);
 
   const loadMatches = useCallback(
-    async (eventIdOverride) => {
+    async (eventIdOverride, options = {}) => {
       const targetEventId = eventIdOverride ?? selectedEventId;
       if (!targetEventId) return;
+
+      const { preferredMatchId = null, preserveSelection = true } = options;
+
       setMatchesLoading(true);
       setMatchesError(null);
       try {
         const data = await getMatchesByEvent(targetEventId, 24);
         setMatches(data);
-        if (data.length > 0) {
-          setSelectedMatchId(data[0].id);
-        } else {
+
+        if (data.length === 0) {
           setSelectedMatchId(null);
+          return;
         }
+
+        const requestedId =
+          preferredMatchId ||
+          (preserveSelection ? selectedMatchId : null) ||
+          null;
+        const matchExists = requestedId && data.some((match) => match.id === requestedId);
+        setSelectedMatchId(matchExists ? requestedId : data[0].id);
       } catch (err) {
         setMatchesError(err.message || "Unable to load matches.");
       } finally {
         setMatchesLoading(false);
       }
     },
-    [selectedEventId]
+    [selectedEventId, selectedMatchId]
   );
 const initialScoreRef = useRef({ a: 0, b: 0 });
 const currentMatchScoreRef = useRef({ a: 0, b: 0 });
@@ -460,29 +498,28 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, [secondaryRunning, getSecondaryRemainingSeconds, commitSecondaryTimerState]);
 
-  useEffect(() => {
-    if (selectedMatch) {
-      setSetupForm({
-        startTime: toDateTimeLocal(selectedMatch.start_time),
-        startingTeamId:
-          selectedMatch.starting_team_id ||
-          selectedMatch.team_a?.id ||
-          selectedMatch.team_b?.id ||
-          "",
-      });
-      if (!matchSettingsLocked) {
-        setRules((prev) => ({
-          ...prev,
-          abbaPattern: selectedMatch.abba_pattern || prev.abbaPattern || "none",
-        }));
-      }
-    } else {
-      setSetupForm({
-        startTime: toDateTimeLocal(),
-        startingTeamId: "",
-      });
-    }
-  }, [selectedMatch, matchSettingsLocked]);
+useEffect(() => {
+  const matchSource = activeMatch || selectedMatch || null;
+  if (matchSource) {
+    setSetupForm({
+      startTime: toDateTimeLocal(matchSource.start_time),
+      startingTeamId:
+        matchSource.starting_team_id ||
+        matchSource.team_a?.id ||
+        matchSource.team_b?.id ||
+        "",
+    });
+    setRules((prev) => ({
+      ...prev,
+      abbaPattern: matchSource.abba_pattern || prev.abbaPattern || "none",
+    }));
+  } else {
+    setSetupForm({
+      startTime: toDateTimeLocal(),
+      startingTeamId: "",
+    });
+  }
+}, [activeMatch, selectedMatch]);
 
 useEffect(() => {
   if (!matchStarted) {
@@ -571,6 +608,32 @@ useEffect(() => {
     },
     [rules.abbaPattern]
   );
+  const normalizeAbbaLine = useCallback(
+    (line) => {
+      const candidate = (line || "none").trim() || "none";
+      return abbaLines.includes(candidate) ? candidate : "none";
+    },
+    [abbaLines]
+  );
+
+const getAbbaLineCode = useCallback(
+  (orderIndex) => {
+    if (!["male", "female"].includes(rules.abbaPattern)) {
+      return "none";
+    }
+    if (typeof orderIndex !== "number" || orderIndex < 0) {
+      return "none";
+    }
+    const startCode = rules.abbaPattern === "male" ? "M" : "F";
+    const alternateCode = startCode === "M" ? "F" : "M";
+    const step = orderIndex % ABBA_LINE_SEQUENCE.length;
+    const suffix = ABBA_LINE_SEQUENCE[step] ?? "2";
+    const useStartCode = step === 0 || step === ABBA_LINE_SEQUENCE.length - 1;
+    const prefix = useStartCode ? startCode : alternateCode;
+    return normalizeAbbaLine(`${prefix}${suffix}`);
+  },
+  [rules.abbaPattern, normalizeAbbaLine]
+);
   const startingTeamId = activeMatch?.starting_team_id || setupForm.startingTeamId;
   const matchStartingTeamKey = startingTeamId === teamBId ? "B" : "A";
   const matchDuration = rules.matchDuration;
@@ -732,10 +795,60 @@ useEffect(() => {
       window.removeEventListener("beforeunload", persistNow);
     };
   }, [buildSessionSnapshot, resumeHandled, userId]);
-const recordPendingEntry = useCallback((entry) => {
-  console.log("[ScoreKeeper] Pending DB payload:", entry);
-  setPendingEntries((prev) => [...prev, entry]);
-}, []);
+const recordPendingEntry = useCallback(
+  (entry) => {
+    const includeAbbaLine =
+      entry?.eventCode === MATCH_LOG_EVENT_CODES.SCORE ||
+      entry?.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
+    const normalizedEntry = {
+      ...entry,
+      abbaLine: includeAbbaLine ? normalizeAbbaLine(entry?.abbaLine) : null,
+      eventTypeId: entry?.eventTypeId ?? null,
+    };
+    const dbPayload = {
+      matchId: normalizedEntry.matchId,
+      teamId: normalizedEntry.teamId ?? null,
+      scorerId: normalizedEntry.scorerId ?? null,
+      assistId: normalizedEntry.assistId ?? null,
+      abbaLine: normalizedEntry.abbaLine ?? null,
+      createdAt: normalizedEntry.createdAt ?? null,
+    };
+    if (normalizedEntry.eventTypeId) {
+      dbPayload.eventTypeId = normalizedEntry.eventTypeId;
+    } else if (normalizedEntry.eventCode) {
+      dbPayload.eventTypeCode = normalizedEntry.eventCode;
+    }
+    const supabasePayload = {
+      match_id: dbPayload.matchId,
+      event_type_id: dbPayload.eventTypeId ?? null,
+      team_id: dbPayload.teamId,
+      scorer_id: dbPayload.scorerId,
+      assist_id: dbPayload.assistId,
+      abba_line: dbPayload.abbaLine,
+      created_at: dbPayload.createdAt,
+    };
+    if (!supabasePayload.event_type_id && dbPayload.eventTypeCode) {
+      supabasePayload.event_type_code = dbPayload.eventTypeCode;
+    }
+
+    console.log("[ScoreKeeper] Pending DB payload:", supabasePayload);
+    setPendingEntries((prev) => [...prev, supabasePayload]);
+    if (!dbPayload.matchId || (!dbPayload.eventTypeCode && !dbPayload.eventTypeId)) {
+      return;
+    }
+    void (async () => {
+      try {
+        await createMatchLogEntry(dbPayload);
+      } catch (err) {
+        console.error("[ScoreKeeper] Failed to persist match log entry:", err);
+        setConsoleError((prev) =>
+          prev || (err instanceof Error ? err.message : "Failed to submit match log entry.")
+        );
+      }
+    })();
+  },
+  [setPendingEntries, setConsoleError, normalizeAbbaLine]
+);
 
 const primaryTimerBg =
   timerSeconds === 0 ? "bg-[#f8cad6]" : timerRunning ? "bg-[#c9ead6]" : "bg-[#f8f1ff]";
@@ -804,6 +917,7 @@ const rosterNameLookup = useMemo(() => {
 
   const appendLocalLog = useCallback(
     ({ team, timestamp, scorerId, assistId, totals, eventDescription, eventCode }) => {
+      let derivedInfo = { scoreOrderIndex: null, abbaLine: getAbbaLineCode(null) };
       setLogs((prev) => {
         const normalizedCode = eventCode || null;
         const isScoringEvent =
@@ -819,6 +933,8 @@ const rosterNameLookup = useMemo(() => {
               0
             )
           : null;
+        const abbaLine = normalizeAbbaLine(getAbbaLineCode(nextScoreOrder));
+        derivedInfo = { scoreOrderIndex: nextScoreOrder, abbaLine };
 
         return [
           ...prev,
@@ -841,11 +957,13 @@ const rosterNameLookup = useMemo(() => {
             eventDescription,
             eventCode: normalizedCode,
             scoreOrderIndex: nextScoreOrder,
+            abbaLine,
           },
         ];
       });
+      return derivedInfo;
     },
-    [rosterNameLookup]
+    [rosterNameLookup, getAbbaLineCode, normalizeAbbaLine]
   );
 
   const logSimpleEvent = useCallback(
@@ -860,15 +978,7 @@ const rosterNameLookup = useMemo(() => {
           return;
         }
         const timestamp = new Date().toISOString();
-        const entry = {
-          matchId: activeMatch.id,
-          eventTypeId,
-          eventCode,
-          teamId: teamKey === "A" ? teamAId : teamKey === "B" ? teamBId : null,
-          createdAt: timestamp,
-        };
-        recordPendingEntry(entry);
-        appendLocalLog({
+        const appended = appendLocalLog({
           team: teamKey,
           timestamp,
           scorerId: null,
@@ -877,6 +987,15 @@ const rosterNameLookup = useMemo(() => {
           eventDescription: describeEvent(eventTypeId),
           eventCode,
         });
+        const entry = {
+          matchId: activeMatch.id,
+          eventTypeId,
+          eventCode,
+          teamId: teamKey === "A" ? teamAId : teamKey === "B" ? teamBId : null,
+          createdAt: timestamp,
+          abbaLine: appended.abbaLine,
+        };
+        recordPendingEntry(entry);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unable to record match event.";
         setConsoleError(message);
@@ -995,16 +1114,8 @@ const rosterNameLookup = useMemo(() => {
           return;
         }
         const timestamp = new Date().toISOString();
-        const entry = {
-          matchId: activeMatch.id,
-          eventTypeId,
-          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
-          teamId: targetTeamId,
-          createdAt: timestamp,
-        };
-        recordPendingEntry(entry);
         const totalsSnapshot = score;
-        appendLocalLog({
+        const appended = appendLocalLog({
           team: teamKey,
           timestamp,
           scorerId: null,
@@ -1013,6 +1124,15 @@ const rosterNameLookup = useMemo(() => {
           eventDescription: describeEvent(eventTypeId),
           eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
         });
+        const entry = {
+          matchId: activeMatch.id,
+          eventTypeId,
+          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
+          teamId: targetTeamId,
+          createdAt: timestamp,
+          abbaLine: appended.abbaLine,
+        };
+        recordPendingEntry(entry);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to log turnover.";
         setConsoleError(message);
@@ -1122,6 +1242,7 @@ const rosterNameLookup = useMemo(() => {
           eventDescription: row.event?.description || row.event?.code || "Event",
           eventCategory: row.event?.category || null,
           scoreOrderIndex,
+          abbaLine: normalizeAbbaLine(row.abba_line || getAbbaLineCode(scoreOrderIndex)),
         };
       });
 
@@ -1131,7 +1252,7 @@ const rosterNameLookup = useMemo(() => {
         logs: mappedLogs,
       };
     },
-    [rosterNameLookup, teamAId, teamBId]
+    [rosterNameLookup, teamAId, teamBId, getAbbaLineCode]
   );
 
   const refreshMatchLogs = useCallback(

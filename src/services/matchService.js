@@ -120,3 +120,19 @@ export async function initialiseMatch(matchId, payload) {
 
   throw new Error("Match not found after initialisation");
 }
+
+export async function updateMatchStatus(matchId, nextStatus = "finished") {
+  const status = MATCH_STATUS_CODES.has(nextStatus) ? nextStatus : "finished";
+  const { data, error } = await supabase
+    .from("matches")
+    .update({ status })
+    .eq("id", matchId)
+    .select(MATCH_FIELDS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to update match status");
+  }
+
+  return data || null;
+}

@@ -157,6 +157,16 @@ export default function ScoreKeeperView() {
     toDateTimeLocal
   } = data;
 
+  const safeTeamAName = displayTeamA || "Team A";
+  const safeTeamBName = displayTeamB || "Team B";
+
+  const formatPlayerSelectLabel = (player) => {
+    if (!player) return "Unassigned";
+    const jersey = player.jersey_number ?? "-";
+    const name = player.name || "Player";
+    return `${jersey} ${name}`;
+  };
+
   const {
     cancelPrimaryHoldReset,
     startPrimaryHoldReset,
@@ -308,9 +318,9 @@ export default function ScoreKeeperView() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-slate-900">
-                    <TeamQuickLink teamId={teamAId}>{displayTeamA}</TeamQuickLink>
+                    <span>{safeTeamAName}</span>
                     <span className="text-base text-slate-400">vs</span>
-                    <TeamQuickLink teamId={teamBId}>{displayTeamB}</TeamQuickLink>
+                    <span>{safeTeamBName}</span>
                   </h2>
                   <p className="text-sm text-slate-500">
                     {kickoffLabel} - {venueName || "Venue TBD"} - {statusLabel}
@@ -580,7 +590,9 @@ export default function ScoreKeeperView() {
             )}
             <div className="grid gap-2 md:grid-cols-2">
               <div className="space-y-2 rounded-3xl border border-[#0f5132]/30 bg-white p-1.5 shadow-card/20">
-                <h3 className="text-center text-lg font-semibold text-[#0f5132]">Team A Players</h3>
+                <h3 className="text-center text-lg font-semibold text-[#0f5132]">
+                  {safeTeamAName} Players
+                </h3>
                 <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2 text-sm text-[#0f5132]">
                   {rostersLoading ? (
                     <p className="text-center text-xs">Loading roster...</p>
@@ -590,14 +602,16 @@ export default function ScoreKeeperView() {
                     sortedRosters.teamA.map((player) => (
                       <p key={player.id} className="border-b border-white/40 pb-1 last:border-b-0">
                         <span className="font-semibold">{player.jersey_number ?? "-"}</span>{" "}
-                        {player.name}
+                        {formatPlayerSelectLabel(player)}
                       </p>
                     ))
                   )}
                 </div>
               </div>
               <div className="space-y-2 rounded-3xl border border-[#0f5132]/30 bg-white p-1.5 shadow-card/20">
-                <h3 className="text-center text-lg font-semibold text-[#0f5132]">Team B Players</h3>
+                <h3 className="text-center text-lg font-semibold text-[#0f5132]">
+                  {safeTeamBName} Players
+                </h3>
                 <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2 text-sm text-[#0f5132]">
                   {rostersLoading ? (
                     <p className="text-center text-xs">Loading roster...</p>
@@ -607,7 +621,7 @@ export default function ScoreKeeperView() {
                     sortedRosters.teamB.map((player) => (
                       <p key={player.id} className="border-b border-white/40 pb-1 last:border-b-0">
                         <span className="font-semibold">{player.jersey_number ?? "-"}</span>{" "}
-                        {player.name}
+                        {formatPlayerSelectLabel(player)}
                       </p>
                     ))
                   )}
@@ -938,11 +952,7 @@ export default function ScoreKeeperView() {
         </button>
 
             <div>
-              <p className="text-base font-semibold">
-                <TeamQuickLink teamId={teamAId} variant="subtle">
-                  {displayTeamA}
-                </TeamQuickLink>
-              </p>
+              <p className="text-base font-semibold">{displayTeamA}</p>
               <button
                 type="button"
                 onClick={() => {
@@ -961,11 +971,7 @@ export default function ScoreKeeperView() {
             </div>
 
             <div>
-              <p className="text-base font-semibold">
-                <TeamQuickLink teamId={teamBId} variant="subtle">
-                  {displayTeamB}
-                </TeamQuickLink>
-              </p>
+              <p className="text-base font-semibold">{displayTeamB}</p>
               <button
                 type="button"
                 onClick={() => {
@@ -1022,13 +1028,7 @@ export default function ScoreKeeperView() {
         >
           <form className="space-y-2" onSubmit={handleScoreModalSubmit}>
             <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
-              Team:{" "}
-              <TeamQuickLink
-                teamId={scoreModalState.team === "B" ? teamBId : teamAId}
-                variant="subtle"
-              >
-                {scoreModalState.team === "B" ? displayTeamB : displayTeamA}
-              </TeamQuickLink>
+              Team: {scoreModalState.team === "B" ? displayTeamB : displayTeamA}
             </p>
             <label className="block text-base font-semibold text-[#0f5132]">
               Scorer:
@@ -1043,7 +1043,7 @@ export default function ScoreKeeperView() {
                 <option value="">Select Scorer</option>
                 {rosterOptionsForModal.map((player) => (
                   <option key={player.id} value={player.id}>
-                    {player.name}
+                    {formatPlayerSelectLabel(player)}
                   </option>
                 ))}
               </select>
@@ -1061,7 +1061,7 @@ export default function ScoreKeeperView() {
                 <option value="">Select Assist</option>
                 {rosterOptionsForModal.map((player) => (
                   <option key={player.id} value={player.id}>
-                    {player.name}
+                    {formatPlayerSelectLabel(player)}
                   </option>
                 ))}
                 <option value={CALAHAN_ASSIST_VALUE}>CALAHAN!!</option>
@@ -1168,23 +1168,6 @@ function ActionModal({ title, onClose, children, disableClose = false }) {
   );
 }
 
-function TeamQuickLink({ teamId, children, variant = "pill" }) {
-  if (!teamId) {
-    return <span>{children}</span>;
-  }
-
-  const baseClass =
-    variant === "subtle"
-      ? "inline-flex items-center gap-1 text-[#0f5132] underline decoration-dotted decoration-[#0f5132]/60 underline-offset-4 transition hover:text-[#0a3b24]"
-      : "inline-flex items-center gap-1 rounded-full border border-[#0f5132]/30 px-2 py-0.5 text-[#0f5132] transition hover:border-[#0f5132]/60 hover:bg-[#ecfdf3]";
-
-  return (
-    <Link to={`/teams/${teamId}`} className={baseClass}>
-      {children}
-    </Link>
-  );
-}
-
 function MatchLogCard({
   log,
   chronologicalIndex,
@@ -1280,9 +1263,10 @@ function MatchLogCard({
         ? `${shortTeamLabel || "Team"} possession`
         : isHalftimeLog
           ? "Halftime reached"
-          : isStoppageStart
-            ? "Match stoppage"
-            : null;
+        : isStoppageStart
+          ? "Match stoppage"
+          : null;
+  const abbaLineLabel = log.abbaLine && log.abbaLine !== "none" ? log.abbaLine : null;
 
   return (
     <article
@@ -1300,6 +1284,11 @@ function MatchLogCard({
             </p>
           )}
           {description && <p className="text-xs text-[var(--sc-ink-muted)]">{description}</p>}
+          {abbaLineLabel && (
+            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]">
+              Line {abbaLineLabel}
+            </p>
+          )}
         </div>
         <div className="text-right text-xs text-[var(--sc-ink-muted)]">{eventTime}</div>
       </div>
@@ -1359,6 +1348,7 @@ function MatchLogCard({
     </article>
   );
 }
+
 
 
 
