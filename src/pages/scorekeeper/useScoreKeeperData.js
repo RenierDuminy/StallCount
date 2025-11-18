@@ -797,12 +797,10 @@ const getAbbaLineCode = useCallback(
   }, [buildSessionSnapshot, resumeHandled, userId]);
 const recordPendingEntry = useCallback(
   (entry) => {
-    const includeAbbaLine =
-      entry?.eventCode === MATCH_LOG_EVENT_CODES.SCORE ||
-      entry?.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
     const normalizedEntry = {
       ...entry,
-      abbaLine: includeAbbaLine ? normalizeAbbaLine(entry?.abbaLine) : null,
+      abbaLine:
+        typeof entry?.abbaLine === "string" ? normalizeAbbaLine(entry.abbaLine) : entry?.abbaLine ?? null,
       eventTypeId: entry?.eventTypeId ?? null,
     };
     const dbPayload = {
@@ -993,7 +991,7 @@ const rosterNameLookup = useMemo(() => {
           eventCode,
           teamId: teamKey === "A" ? teamAId : teamKey === "B" ? teamBId : null,
           createdAt: timestamp,
-          abbaLine: appended.abbaLine,
+          abbaLine: appended.scoreOrderIndex !== null ? appended.abbaLine : null,
         };
         recordPendingEntry(entry);
       } catch (err) {
@@ -1130,7 +1128,7 @@ const rosterNameLookup = useMemo(() => {
           eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
           teamId: targetTeamId,
           createdAt: timestamp,
-          abbaLine: appended.abbaLine,
+          abbaLine: appended.scoreOrderIndex !== null ? appended.abbaLine : null,
         };
         recordPendingEntry(entry);
       } catch (err) {

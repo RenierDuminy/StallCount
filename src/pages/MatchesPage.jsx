@@ -1,0 +1,730 @@
+import { useEffect, useMemo, useState } from "react";
+import { MATCH_LOG_EVENT_CODES, getMatchLogs } from "../services/matchLogService";
+import { getMatchById, getRecentMatches } from "../services/matchService";
+
+const SERIES_COLORS = {
+  teamA: "#1d4ed8",
+  teamB: "#b91c1c",
+};
+
+const BAND_COLORS = {
+  timeout: "rgba(59, 130, 246, 0.1)",
+  stoppage: "rgba(59, 130, 246, 0.18)",
+  halftime: "rgba(16, 185, 129, 0.18)",
+};
+
+const MATCH_EVENT_ID_HINTS = {
+  MATCH_START: 8,
+  MATCH_END: 9,
+};
+
+export default function MatchesPage() {
+  const [matches, setMatches] = useState([]);
+  const [selectedMatchId, setSelectedMatchId] = useState("");
+  const [selectedMatch, setSelectedMatch] = useState(null);
+  const [matchLoading, setMatchLoading] = useState(true);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState(null);
+  const [matchLogs, setMatchLogs] = useState([]);
+
+  useEffect(() => {
+    let ignore = false;
+    async function loadRecentMatches() {
+      setMatchLoading(true);
+      try {
+        const recent = await getRecentMatches(24);
+        if (!ignore) {
+          setMatches(recent ?? []);
+          if (!selectedMatchId && recent?.[0]?.id) {
+            setSelectedMatchId(recent[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("[MatchesPage] Failed to load matches", err);
+      } finally {
+        if (!ignore) {
+          setMatchLoading(false);
+        }
+      }
+    }
+    loadRecentMatches();
+    return () => {
+      ignore = true;
+    };
+  }, [selectedMatchId]);
+
+  useEffect(() => {
+    if (!selectedMatchId) {
+      setSelectedMatch(null);
+      setMatchLogs([]);
+      return;
+    }
+    let ignore = false;
+    async function loadMatchData() {
+      setLogsLoading(true);
+      setLogsError(null);
+      try {
+        const [match, logs] = await Promise.all([
+          getMatchById(selectedMatchId),
+          getMatchLogs(selectedMatchId),
+        ]);
+        if (!ignore) {
+          setSelectedMatch(match);
+          setMatchLogs(logs ?? []);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setLogsError(err.message || "Unable to load match details.");
+          setSelectedMatch(null);
+          setMatchLogs([]);
+        }
+      } finally {
+        if (!ignore) {
+          setLogsLoading(false);
+        }
+      }
+    }
+    loadMatchData();
+    return () => {
+      ignore = true;
+    };
+  }, [selectedMatchId]);
+
+  const derived = useMemo(() => deriveMatchInsights(selectedMatch, matchLogs), [selectedMatch, matchLogs]);
+
+  return (
+    <div className="min-h-screen bg-[#f3f7f4] pb-16">
+      <header className="border-b border-emerald-900/10 bg-[#072013] py-10 text-emerald-50">
+        <div className="sc-shell">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Matches</p>
+          <h1 className="text-4xl font-semibold">Match timeline</h1>
+          <p className="mt-2 max-w-3xl text-sm text-emerald-100">
+            Explore completed matches, view the scoring progression, and dig into a detailed point-by-point log.
+          </p>
+          <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center">
+            <label className="text-sm font-semibold">
+              Select match
+              <div className="relative mt-2 w-full md:w-96">
+                <div className="pointer-events-none absolute inset-0 rounded-2xl border border-white/10 bg-gradient-to-r from-white/10 via-transparent to-white/5 blur-[1px]" aria-hidden="true" />
+                <div className="pointer-events-none absolute inset-y-0 left-4 z-10 flex items-center text-emerald-50/70">
+                  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h8m-10 4h12m-9 4h6" />
+                    <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="3" />
+                  </svg>
+                </div>
+                <select
+                  value={selectedMatchId}
+                  disabled={matchLoading}
+                  onChange={(event) => setSelectedMatchId(event.target.value)}
+                  className="relative z-10 w-full appearance-none rounded-2xl border border-white/20 hover:border-white/60 bg-white/20 backdrop-blur-sm px-12 py-3 text-sm font-semibold text-white shadow-[0_10px_35px_rgba(5,32,19,0.2)] transition focus:border-white focus:ring-2 focus:ring-emerald-200/70 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">Pick a recent match...</option>
+                  {matches.map((match) => (
+                    <option key={match.id} value={match.id}>
+                      {formatMatchLabel(match)}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-4 z-10 flex items-center text-emerald-50/70">
+                  <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.117l3.71-3.886a.75.75 0 0 1 1.08 1.04l-4.24 4.44a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" />
+                  </svg>
+                </div>
+              </div>
+            </label>
+            {selectedMatch && (
+              <div className="rounded-2xl border border-emerald-300/20 bg-emerald-900/30 px-4 py-3 text-sm">
+                <p className="text-xs uppercase tracking-wide text-emerald-200">Current selection</p>
+                <p className="font-semibold text-white">
+                  {selectedMatch.team_a?.name} vs {selectedMatch.team_b?.name}
+                </p>
+                <p className="text-xs text-emerald-200">
+                  Kickoff {formatKickoff(selectedMatch.start_time)} · Status {selectedMatch.status}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <main className="sc-shell space-y-8 py-10">
+        {logsError && (
+          <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{logsError}</p>
+        )}
+        {!selectedMatchId ? (
+          <div className="rounded-3xl border border-dashed border-emerald-400/30 bg-white/70 px-6 py-12 text-center text-sm text-emerald-800">
+            Choose a match to see the scoring timeline and full log.
+          </div>
+        ) : logsLoading || !derived ? (
+          <div className="rounded-3xl border border-emerald-200 bg-white/90 px-6 py-12 text-center text-sm text-emerald-700">
+            Loading match data…
+          </div>
+        ) : (
+          <>
+            <section className="space-y-4 rounded-3xl border border-emerald-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Score progression</p>
+                  <h2 className="text-2xl font-semibold text-[#052b1d]">Match timeline</h2>
+                </div>
+                <div className="flex items-center gap-4 text-sm font-semibold">
+                  <span className="flex items-center gap-2 text-[#1d4ed8]">
+                    <span className="inline-block h-2 w-8 rounded-full bg-[#1d4ed8]" />
+                    {selectedMatch?.team_a?.name || "Team A"}
+                  </span>
+                  <span className="flex items-center gap-2 text-[#b91c1c]">
+                    <span className="inline-block h-2 w-8 rounded-full bg-[#b91c1c]" />
+                    {selectedMatch?.team_b?.name || "Team B"}
+                  </span>
+                </div>
+              </div>
+              <TimelineChart match={selectedMatch} timeline={derived.timeline} />
+              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                <LegendSwatch color={BAND_COLORS.timeout} label="Timeout window" />
+                <LegendSwatch color={BAND_COLORS.stoppage} label="Stoppage window" />
+                <LegendSwatch color={BAND_COLORS.halftime} label="Halftime break" />
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-emerald-200 bg-white p-6 shadow-sm">
+              <div className="mb-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                  Point-by-point log
+                </p>
+                <h2 className="text-2xl font-semibold text-[#052b1d]">Event breakdown</h2>
+              </div>
+              <PointLogTable rows={derived.logRows} teamAName={selectedMatch?.team_a?.name} teamBName={selectedMatch?.team_b?.name} />
+            </section>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function LegendSwatch({ color, label }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="inline-block h-4 w-6 rounded-sm" style={{ backgroundColor: color }} />
+      {label}
+    </span>
+  );
+}
+
+function TimelineChart({ match, timeline }) {
+  if (!match || !timeline) {
+    return (
+      <div className="rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+        Timeline data unavailable.
+      </div>
+    );
+  }
+
+  const width = 900;
+  const height = 340;
+  const padding = { top: 30, right: 50, bottom: 70, left: 60 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const yMax = Math.max(10, timeline.maxScore);
+
+  const getX = (time) => {
+    const ratio = (time - timeline.minTime) / (timeline.maxTime - timeline.minTime || 1);
+    return padding.left + ratio * chartWidth;
+  };
+
+  const getY = (score) => {
+    const ratio = score / (yMax || 1);
+    return padding.top + (1 - ratio) * chartHeight;
+  };
+
+  const renderLinePath = (points, color) => {
+    if (!points.length) return null;
+    const sorted = [...points].sort((a, b) => a.time - b.time);
+    let path = `M${getX(sorted[0].time)},${getY(sorted[0].score)}`;
+    for (let i = 1; i < sorted.length; i += 1) {
+      const curr = sorted[i];
+      path += ` L${getX(curr.time)},${getY(curr.score)}`;
+    }
+    return <path d={path} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" />;
+  };
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
+      <rect x="0" y="0" width={width} height={height} fill="white" rx="18" />
+
+      {timeline.bands.map((band) => (
+        <rect
+          key={`${band.type}-${band.start}`}
+          x={getX(band.start)}
+          y={padding.top}
+          width={Math.max(2, getX(band.end) - getX(band.start))}
+          height={chartHeight}
+          fill={BAND_COLORS[band.type] || "rgba(125,125,125,0.15)"}
+        />
+      ))}
+
+      <line
+        x1={padding.left}
+        y1={padding.top + chartHeight}
+        x2={padding.left + chartWidth}
+        y2={padding.top + chartHeight}
+        stroke="#cbd5f5"
+        strokeWidth="1"
+      />
+      <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + chartHeight} stroke="#cbd5f5" strokeWidth="1" />
+
+      {Array.from({ length: yMax + 1 }).map((_, index) => {
+        const y = getY(index);
+        return (
+          <g key={index}>
+            <line x1={padding.left} x2={padding.left + chartWidth} y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="4 6" strokeWidth="0.5" />
+            <text x={padding.left - 10} y={y + 4} fontSize="11" textAnchor="end" fill="#475569">
+              {index}
+            </text>
+          </g>
+        );
+      })}
+
+  {timeline.timeTicks.map((tick) => {
+    const x = getX(tick.value);
+    const y = height - 12;
+    return (
+      <g key={tick.value}>
+        <text
+          fontSize="11"
+          fill="#475569"
+          transform={`rotate(-35 ${x} ${y})`}
+          textAnchor="end"
+          dominantBaseline="middle"
+          x={x}
+          y={y}
+        >
+          {tick.label}
+        </text>
+        <line
+          x1={x}
+          x2={x}
+          y1={padding.top + chartHeight}
+          y2={padding.top + chartHeight + 8}
+          stroke="#94a3b8"
+          strokeWidth="1"
+        />
+      </g>
+    );
+  })}
+
+  {renderLinePath(timeline.series.teamA, SERIES_COLORS.teamA)}
+  {renderLinePath(timeline.series.teamB, SERIES_COLORS.teamB)}
+
+  {timeline.scoringPoints.map((point) => (
+    <circle
+      key={`${point.team}-${point.time}`}
+      cx={getX(point.time)}
+      cy={getY(point.score)}
+      r={4}
+      fill={SERIES_COLORS[point.team]}
+      stroke="white"
+      strokeWidth="1.5"
+    />
+  ))}
+
+      <text x={width / 2} y={20} textAnchor="middle" fontSize="16" fontWeight="600" fill="#0f172a">
+        Score vs Time
+      </text>
+      <text x={width / 2} y={height - 5} textAnchor="middle" fontSize="12" fill="#475569">
+        Time
+      </text>
+      <text
+        x="14"
+        y={height / 2}
+        textAnchor="middle"
+        fontSize="12"
+        transform={`rotate(-90 14 ${height / 2})`}
+        fill="#475569"
+      >
+        Score
+      </text>
+    </svg>
+  );
+}
+
+function PointLogTable({ rows, teamAName, teamBName }) {
+  if (!rows.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+        No match events recorded yet.
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-left text-sm text-[#0b3825]">
+        <thead>
+          <tr className="uppercase tracking-wide text-[11px] text-slate-500">
+            <th className="px-3 py-2">#</th>
+            <th className="px-3 py-2">Time</th>
+            <th className="px-3 py-2">Team</th>
+            <th className="px-3 py-2">Scorer</th>
+            <th className="px-3 py-2">Assist</th>
+            <th className="px-3 py-2">Details</th>
+            <th className="px-3 py-2 text-right">Gap</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={`${row.index}-${row.timestamp}`}
+              className={`border-b border-slate-100 last:border-none ${row.variant === "timeout" ? "bg-sky-50/70" : row.variant === "halftime" ? "bg-emerald-50/70" : ""}`}
+            >
+              <td className="px-3 py-2 font-semibold text-slate-500">{row.label}</td>
+              <td className="px-3 py-2">{row.formattedTime}</td>
+              <td className="px-3 py-2 font-semibold">{row.teamLabel}</td>
+              <td className="px-3 py-2">{row.scorer || "—"}</td>
+              <td className="px-3 py-2">{row.assist || "—"}</td>
+              <td className="px-3 py-2 text-slate-500">{row.description}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs text-slate-500">{row.gap}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function deriveMatchInsights(match, logs) {
+  if (!match) return null;
+  const teamAId = match.team_a?.id || null;
+  const teamBId = match.team_b?.id || null;
+  const teamAName = match.team_a?.name || "Team A";
+  const teamBName = match.team_b?.name || "Team B";
+
+  let scoreA = 0;
+  let scoreB = 0;
+  const snapshots = [];
+  const scoringPoints = [];
+  const timestamps = [];
+  const pendingBands = {
+    timeout: null,
+    stoppage: null,
+    halftime: null,
+  };
+  const bands = [];
+  const logRows = [];
+  let previousTime = null;
+  let pointIndex = 1;
+
+  const toClockMs = (value) => {
+    const parts = parseTimeParts(value);
+    if (!parts) return null;
+    return (
+      parts.hours * 3600000 + parts.minutes * 60000 + parts.seconds * 1000 + parts.milliseconds
+    );
+  };
+
+  let timelineStart = toClockMs(match.start_time);
+  let timelineEnd = null;
+  let matchStartEventTime = null;
+  let matchEndEventTime = null;
+
+  const pushSnapshot = (time) => {
+    if (!Number.isFinite(time)) return;
+    timestamps.push(time);
+    snapshots.push({ time, scoreA, scoreB });
+  };
+
+  if (Number.isFinite(timelineStart)) {
+    snapshots.push({ time: timelineStart, scoreA: 0, scoreB: 0 });
+    timestamps.push(timelineStart);
+  }
+
+  for (const log of logs) {
+    const code = log.event?.code;
+    const typeId = Number(log.event_type_id) || null;
+    const timestamp = toClockMs(log.created_at);
+    if (!Number.isFinite(timestamp)) {
+      continue;
+    }
+
+    const formattedTime = formatTimeLabel(timestamp, true);
+    const gap = previousTime ? formatGap(timestamp - previousTime) : "0:00";
+
+    const isMatchStart =
+      code === MATCH_LOG_EVENT_CODES.MATCH_START || typeId === MATCH_EVENT_ID_HINTS.MATCH_START;
+    const isMatchEnd =
+      code === MATCH_LOG_EVENT_CODES.MATCH_END || typeId === MATCH_EVENT_ID_HINTS.MATCH_END;
+
+    if (isMatchStart) {
+      if (!matchStartEventTime || timestamp < matchStartEventTime) {
+        matchStartEventTime = timestamp;
+      }
+      timelineStart = matchStartEventTime;
+      snapshots.unshift({ time: matchStartEventTime, scoreA: 0, scoreB: 0 });
+      timestamps.push(matchStartEventTime);
+      previousTime = matchStartEventTime;
+      continue;
+    }
+    if (isMatchEnd) {
+      if (!matchEndEventTime || timestamp > matchEndEventTime) {
+        matchEndEventTime = timestamp;
+      }
+      timelineEnd = matchEndEventTime;
+      pushSnapshot(matchEndEventTime);
+      previousTime = matchEndEventTime;
+      continue;
+    }
+
+    if (code === MATCH_LOG_EVENT_CODES.SCORE || code === MATCH_LOG_EVENT_CODES.CALAHAN) {
+      const teamLabel = log.team_id === teamAId ? teamAName : teamBName;
+      if (log.team_id === teamAId) {
+        scoreA += 1;
+        scoringPoints.push({ team: "teamA", time: timestamp, score: scoreA });
+      } else if (log.team_id === teamBId) {
+        scoreB += 1;
+        scoringPoints.push({ team: "teamB", time: timestamp, score: scoreB });
+      }
+      pushSnapshot(timestamp);
+      logRows.push({
+        label: pointIndex.toString(),
+        index: pointIndex,
+        timestamp,
+        formattedTime,
+        teamLabel,
+        scorer: log.scorer?.name ?? log.scorer_name ?? "N/A",
+        assist: log.assist?.name ?? log.assist_name ?? (code === MATCH_LOG_EVENT_CODES.CALAHAN ? "Callahan" : ""),
+        description: code === MATCH_LOG_EVENT_CODES.CALAHAN ? "Callahan goal" : "Scored",
+        gap,
+      });
+      previousTime = timestamp;
+      pointIndex += 1;
+      continue;
+    }
+
+    if (code === MATCH_LOG_EVENT_CODES.TIMEOUT_START) {
+      pendingBands.timeout = timestamp;
+      pushSnapshot(timestamp);
+      logRows.push({
+        label: "TO",
+        index: pointIndex,
+        timestamp,
+        formattedTime,
+        teamLabel: log.team_id === teamAId ? teamAName : teamBName,
+        scorer: "—",
+        assist: "—",
+        description: "Timeout",
+        gap,
+        variant: "timeout",
+      });
+      previousTime = timestamp;
+      continue;
+    }
+    if (code === MATCH_LOG_EVENT_CODES.TIMEOUT_END && pendingBands.timeout) {
+      bands.push({ type: "timeout", start: pendingBands.timeout, end: timestamp });
+      pendingBands.timeout = null;
+      pushSnapshot(timestamp);
+      previousTime = timestamp;
+      continue;
+    }
+    if (code === MATCH_LOG_EVENT_CODES.STOPPAGE_START) {
+      pendingBands.stoppage = timestamp;
+      pushSnapshot(timestamp);
+      logRows.push({
+        label: "ST",
+        index: pointIndex,
+        timestamp,
+        formattedTime,
+        teamLabel: "—",
+        scorer: "—",
+        assist: "—",
+        description: "Stoppage",
+        gap,
+        variant: "timeout",
+      });
+      previousTime = timestamp;
+      continue;
+    }
+    if (code === MATCH_LOG_EVENT_CODES.STOPPAGE_END && pendingBands.stoppage) {
+      bands.push({ type: "stoppage", start: pendingBands.stoppage, end: timestamp });
+      pendingBands.stoppage = null;
+      pushSnapshot(timestamp);
+      previousTime = timestamp;
+      continue;
+    }
+    if (code === MATCH_LOG_EVENT_CODES.HALFTIME_START) {
+      pendingBands.halftime = timestamp;
+      pushSnapshot(timestamp);
+      logRows.push({
+        label: "HT",
+        index: pointIndex,
+        timestamp,
+        formattedTime,
+        teamLabel: "—",
+        scorer: "—",
+        assist: "—",
+        description: "Halftime",
+        gap,
+        variant: "halftime",
+      });
+      previousTime = timestamp;
+      continue;
+    }
+    if (code === MATCH_LOG_EVENT_CODES.HALFTIME_END && pendingBands.halftime) {
+      bands.push({ type: "halftime", start: pendingBands.halftime, end: timestamp });
+      pendingBands.halftime = null;
+      pushSnapshot(timestamp);
+      previousTime = timestamp;
+      continue;
+    }
+  }
+
+  Object.entries(pendingBands).forEach(([type, start]) => {
+    if (start) {
+      bands.push({
+        type,
+        start,
+        end: timestamps[timestamps.length - 1] || start + 60_000,
+      });
+    }
+  });
+
+  const defaultStart = Number.isFinite(timelineStart)
+    ? timelineStart
+    : timestamps.length > 0
+      ? Math.min(...timestamps)
+      : toClockMs(new Date().toISOString());
+
+  let defaultEnd = Number.isFinite(timelineEnd)
+    ? timelineEnd
+    : timestamps.length > 0
+      ? Math.max(...timestamps)
+      : defaultStart + 5 * 60_000;
+
+  if (defaultEnd <= defaultStart) {
+    defaultEnd = defaultStart + 5 * 60_000;
+  }
+
+  const axisStart = Number.isFinite(matchStartEventTime) ? matchStartEventTime : defaultStart;
+  let axisEnd = Number.isFinite(matchEndEventTime) ? matchEndEventTime : defaultEnd;
+  if (axisEnd <= axisStart) {
+    axisEnd = axisStart + 5 * 60_000;
+  }
+
+  if (!snapshots.some((snap) => snap.time === axisStart)) {
+    snapshots.unshift({ time: axisStart, scoreA: 0, scoreB: 0 });
+    timestamps.push(axisStart);
+  }
+  if (!snapshots.some((snap) => snap.time === axisEnd)) {
+    snapshots.push({ time: axisEnd, scoreA, scoreB });
+    timestamps.push(axisEnd);
+  }
+
+  const boundedSnapshots = [...snapshots]
+    .sort((a, b) => a.time - b.time)
+    .filter((snap) => snap.time >= axisStart && snap.time <= axisEnd);
+
+  const boundedScoringPoints = scoringPoints.filter(
+    (point) => point.time >= axisStart && point.time <= axisEnd,
+  );
+
+  const boundedBands = bands
+    .map((band) => {
+      const start = Math.max(axisStart, band.start);
+      const end = Math.min(axisEnd, band.end);
+      if (!(Number.isFinite(start) && Number.isFinite(end))) {
+        return null;
+      }
+      return start < end
+        ? {
+            ...band,
+            start,
+            end,
+          }
+        : null;
+    })
+    .filter(Boolean);
+
+  const timeline = {
+    minTime: axisStart,
+    maxTime: axisEnd,
+    maxScore: Math.max(scoreA, scoreB),
+    series: {
+      teamA: boundedSnapshots.map((snap) => ({ time: snap.time, score: snap.scoreA })),
+      teamB: boundedSnapshots.map((snap) => ({ time: snap.time, score: snap.scoreB })),
+    },
+    scoringPoints: boundedScoringPoints,
+    bands: boundedBands,
+    timeTicks: buildTimeTicks(axisStart, axisEnd),
+  };
+
+  return { timeline, logRows };
+}
+
+function buildTimeTicks(start, end) {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return [];
+  }
+  const durationMinutes = (end - start) / 60000;
+  const intervalMinutes =
+    durationMinutes > 90 ? 20 : durationMinutes > 60 ? 15 : durationMinutes > 30 ? 10 : 5;
+  const intervalMs = intervalMinutes * 60000;
+  const ticks = [];
+  let cursor = start - (start % intervalMs) + intervalMs;
+  while (cursor < end) {
+    ticks.push({ value: cursor, label: formatTimeLabel(cursor) });
+    cursor += intervalMs;
+  }
+  ticks.push({ value: end, label: formatTimeLabel(end) });
+  return ticks;
+}
+
+function formatMatchLabel(match) {
+  const teamA = match.team_a?.short_name || match.team_a?.name || "Team A";
+  const teamB = match.team_b?.short_name || match.team_b?.name || "Team B";
+  const kickoff = formatKickoff(match.start_time);
+  return `${kickoff} – ${teamA} vs ${teamB}`;
+}
+
+function formatKickoff(timestamp) {
+  if (!timestamp) return "TBD";
+  return new Date(timestamp).toLocaleString([], {
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatGap(diffMs) {
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return "0:00";
+  const minutes = Math.floor(diffMs / 60000);
+  const seconds = Math.floor((diffMs % 60000) / 1000)
+    .toString()
+    .padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function parseTimeParts(value) {
+  if (!value) return null;
+  const text = typeof value === "string" ? value : value?.toISOString?.();
+  if (typeof text !== "string") return null;
+  const match = text.match(/(?:T|\s)(\d{2}):(\d{2}):(\d{2})(\.(\d+))?/);
+  if (!match) return null;
+  const milliText = match[5] ? match[5].padEnd(3, "0").slice(0, 3) : "0";
+  return {
+    hours: Number(match[1]),
+    minutes: Number(match[2]),
+    seconds: Number(match[3]),
+    milliseconds: Number(milliText),
+  };
+}
+
+function formatTimeLabel(ms, includeSeconds = false) {
+  if (!Number.isFinite(ms)) return "--:--";
+  const hours = Math.floor(ms / 3600000) % 24;
+  const minutes = Math.floor((ms % 3600000) / 60000);
+  const seconds = Math.floor((ms % 60000) / 1000);
+  const base = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  return includeSeconds ? `${base}:${String(seconds).padStart(2, "0")}` : base;
+}
+
+
+
+

@@ -204,7 +204,7 @@ export function useScoreKeeperActions(controller) {
       eventCode: MATCH_LOG_EVENT_CODES.MATCH_START,
       teamId: pullTeamId || null,
       createdAt: timestamp,
-      abbaLine: appended.abbaLine,
+      abbaLine: null,
     };
     controller.recordPendingEntry(entry);
   }
@@ -250,7 +250,7 @@ export function useScoreKeeperActions(controller) {
     const entry = {
       matchId: controller.activeMatch.id,
       eventTypeId,
-      eventCode: MATCH_LOG_EVENT_CODES.SCORE,
+      eventCode,
       teamId: targetTeamId,
       team,
       scorerId,

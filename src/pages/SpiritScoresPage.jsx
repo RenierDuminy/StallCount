@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { getRecentMatches, getMatchById } from "../services/matchService";
+import { getRecentMatches, getMatchById, updateMatchStatus } from "../services/matchService";
 import { submitSpiritScores } from "../services/spiritScoreService";
 
 const SPIRIT_CATEGORIES = [
@@ -176,6 +176,8 @@ export default function SpiritScoresPage() {
                   ],
                   { submittedBy: userId ?? undefined }
                 );
+
+                await updateMatchStatus(selectedMatchId, "completed");
 
                 setSubmitState({
                   message: "Spirit scores submitted successfully.",

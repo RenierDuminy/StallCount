@@ -6,7 +6,7 @@ const NAV_LINKS = [
   { label: "Overview", to: "/#stats" },
   { label: "Events", to: "/#events" },
   { label: "Divisions", to: "/#divisions" },
-  { label: "Matches", to: "/#matches" },
+  { label: "Matches", to: "/matches" },
   { label: "Teams", to: "/#teams" },
   { label: "League DB", to: "/teams" },
 ];
