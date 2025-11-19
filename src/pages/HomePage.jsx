@@ -130,151 +130,150 @@ export default function HomePage() {
   }
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-[#01150c] via-[#033b21] to-[#e6f9ed] text-[#052b1d]">
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-[320px] bg-[radial-gradient(circle_at_top,_rgba(253,241,244,0.45),transparent_70%)]"
-        aria-hidden="true"
-      />
-      <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,_rgba(109,16,48,0.25),transparent_55%)]"
-        aria-hidden="true"
-      />
-      <div className="relative mx-auto flex max-w-7xl flex-col gap-16 px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
-        <section className="grid gap-10 lg:grid-cols-[1.1fr,0.9fr] lg:items-stretch">
-          <div className="space-y-8 rounded-[36px] border border-white/20 bg-gradient-to-br from-[#0a3b24] via-[#0f5132] to-[#052b1d] p-10 text-white shadow-[0_40px_120px_rgba(4,20,12,0.6)]">
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-rose-100">
-              <span className="h-2 w-2 rounded-full bg-emerald-300" aria-hidden="true" />
-              Live league data
-            </span>
-            <h1 className="text-4xl font-semibold tracking-tight text-white md:text-5xl">
-              Bring every Stall Count update into one beautiful hub
-            </h1>
-            <p className="text-lg leading-relaxed text-white/85">
-              Follow matches, manage rosters, and share scores instantly. Every section on this page reflects the Supabase tables powering the experience.
+    <div className="bg-[#f3f7f4] pb-16 text-[var(--sc-ink)]">
+      <header className="border-b border-emerald-900/10 bg-[#072013] py-6 text-emerald-50">
+        <div className="sc-shell space-y-6">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Home</p>
+            <h1 className="text-3xl font-semibold">League command center</h1>
+            <p className="mt-1.5 max-w-3xl text-sm text-emerald-100">
+              Follow matches, manage rosters, and keep every Supabase table in sync with the public hub.
             </p>
-            <div className="flex flex-wrap items-center gap-4">
-              <Link
-                to="/teams"
-                className="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-[#0f5132] shadow-lg transition hover:-translate-y-0.5 hover:bg-emerald-50"
-              >
-                Teams database
-              </Link>
-              <Link
-                to="/players"
-                className="inline-flex items-center justify-center rounded-full border border-white/40 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-              >
-                Team rosters
-              </Link>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/20 bg-white/10 p-4 shadow-inner">
-                <p className="text-xs font-semibold uppercase tracking-wide text-white/70">
-                  Next match
-                </p>
-                <p className="mt-1 text-lg font-semibold">
-                  {nextMatch ? formatMatchup(nextMatch) : "Awaiting schedule"}
-                </p>
-                <p className="text-sm text-white/70">
-                  {nextMatch
-                    ? formatMatchTime(nextMatch.start_time)
-                    : "Add matches in Supabase to populate this card."}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-white/20 bg-white/5 p-4 shadow-inner">
-                <p className="text-xs font-semibold uppercase tracking-wide text-white/70">
-                  Spotlight event
-                </p>
-                <p className="mt-1 text-lg font-semibold">
-                  {highlightedEvent ? highlightedEvent.name : "Nothing scheduled yet"}
-                </p>
-                <p className="text-sm text-white/70">
-                  {highlightedEvent
-                    ? formatDateRange(highlightedEvent.start_date, highlightedEvent.end_date)
-                    : "Create events to highlight seasons, tournaments, or showcases."}
-                </p>
-              </div>
-            </div>
           </div>
-          <div
-            className="rounded-[36px] border border-[#9ae6b4] bg-white/95 p-6 text-[#052b1d] shadow-2xl backdrop-blur"
-            id="stats"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[#1b7b4b]">
-                League snapshot
-              </h2>
-              <span className="inline-flex items-center gap-1 rounded-full border border-[#c6f6d5] px-3 py-1 text-xs font-semibold text-[#0f5132]">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
-                Realtime
+          <div className="grid gap-6 lg:grid-cols-[1.1fr,0.9fr] lg:items-stretch">
+            <div className="space-y-6 rounded-[32px] border border-white/10 bg-gradient-to-br from-[#0a3b24] via-[#0f5132] to-[#052b1d] p-8 text-white shadow-[0_35px_80px_rgba(5,32,19,0.5)]">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-rose-100">
+                <span className="h-2 w-2 rounded-full bg-emerald-300" aria-hidden="true" />
+                Live league data
               </span>
-            </div>
-            {error && (
-              <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {error}
+              <h2 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
+                Bring every Stall Count update into one beautiful hub
+              </h2>
+              <p className="text-base leading-relaxed text-white/85">
+                Every section on this page reflects the Supabase tables powering the experience.
               </p>
-            )}
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              {[
-                { label: "Registered teams", value: stats.teams },
-                { label: "Rostered players", value: stats.players },
-                { label: "Tracked events", value: stats.events },
-              ].map((item) => (
-                <article
-                  key={item.label}
-                  className="rounded-2xl border border-[#c6f6d5] bg-[#f0fff4] p-4 text-center shadow-sm"
+              <div className="flex flex-wrap items-center gap-3">
+                <Link
+                  to="/teams"
+                  className="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-[var(--sc-accent)] shadow-lg transition hover:-translate-y-0.5 hover:bg-emerald-50"
                 >
-                  <p className="text-xs font-semibold uppercase text-[#1b7b4b]">{item.label}</p>
-                  <p className="mt-2 text-2xl font-semibold text-[#052b1d]">
-                    {loading ? "�" : item.value}
+                  Teams database
+                </Link>
+                <Link
+                  to="/players"
+                  className="inline-flex items-center justify-center rounded-full border border-white/40 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+                >
+                  Team rosters
+                </Link>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-white/20 bg-white/10 p-4 shadow-inner">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-white/70">
+                    Next match
                   </p>
-                </article>
-              ))}
+                  <p className="mt-1 text-lg font-semibold">
+                    {nextMatch ? formatMatchup(nextMatch) : "Awaiting schedule"}
+                  </p>
+                  <p className="text-sm text-white/70">
+                    {nextMatch
+                      ? formatMatchTime(nextMatch.start_time)
+                      : "Add matches in Supabase to populate this card."}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/20 bg-white/5 p-4 shadow-inner">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-white/70">
+                    Spotlight event
+                  </p>
+                  <p className="mt-1 text-lg font-semibold">
+                    {highlightedEvent ? highlightedEvent.name : "Nothing scheduled yet"}
+                  </p>
+                  <p className="text-sm text-white/70">
+                    {highlightedEvent
+                      ? formatDateRange(highlightedEvent.start_date, highlightedEvent.end_date)
+                      : "Create events to highlight seasons, tournaments, or showcases."}
+                  </p>
+                </div>
+              </div>
             </div>
-            <div className="mt-6 rounded-2xl border border-[#c6f6d5] bg-[#f0fff4] p-4 text-sm text-[#0f5132]">
-              Live counts reflect whatever is currently stored in Supabase. Add or edit rows and this dashboard updates automatically.
+            <div id="stats" className="sc-card space-y-6 bg-white/95 text-[var(--sc-ink)] shadow-2xl backdrop-blur">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-accent)]">
+                    League snapshot
+                  </p>
+                  <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Realtime status</h2>
+                </div>
+                <span className="inline-flex items-center gap-1 rounded-full border border-[var(--sc-border)] px-3 py-1 text-xs font-semibold text-[var(--sc-accent)]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+                  Synced
+                </span>
+              </div>
+              {error && (
+                <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {error}
+                </p>
+              )}
+              <div className="grid gap-4 sm:grid-cols-3">
+                {[
+                  { label: "Registered teams", value: stats.teams },
+                  { label: "Rostered players", value: stats.players },
+                  { label: "Tracked events", value: stats.events },
+                ].map((item) => (
+                  <article
+                    key={item.label}
+                    className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface)] p-1 text-center shadow-sm"
+                  >
+                    <p className="text-xs font-semibold uppercase text-[var(--sc-accent)]">{item.label}</p>
+                    <p className="mt-2 text-2xl font-semibold text-[var(--sc-ink)]">
+                      {loading ? "..." : item.value}
+                    </p>
+                  </article>
+                ))}
+              </div>
             </div>
           </div>
-        </section>
+        </div>
+      </header>
 
-        <section
-          id="events"
-          className="space-y-6 rounded-[32px] border border-[#9ae6b4] bg-white/90 p-8 text-[#052b1d] shadow-xl"
-        >
+      <main className="sc-shell space-y-6 py-6">
+
+
+        <section id="events" className="sc-card space-y-5">
           <div className="flex flex-col gap-2">
-            <h2 className="text-2xl font-semibold text-[#052b1d]">Events timeline</h2>
-            <p className="text-base text-[#1d5a3b]">
+            <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Events timeline</h2>
+            <p className="text-sm text-[var(--sc-ink-muted)] sm:text-base">
               Shows the most recent entries from the `events` table with dates and locations.
             </p>
           </div>
           {loading && safeEvents.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-[#c6f6d5] bg-[#f0fff4] px-6 py-10 text-center text-sm text-[#1d5a3b]">
+            <div className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-5 py-8 text-center text-sm text-[var(--sc-ink-muted)]">
               Loading events...
             </div>
           ) : safeEvents.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-[#c6f6d5] bg-[#f0fff4] px-6 py-10 text-center text-sm text-[#1d5a3b]">
+            <div className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-5 py-8 text-center text-sm text-[var(--sc-ink-muted)]">
               No events recorded yet.
             </div>
           ) : (
-            <div className="relative border-l-2 border-dashed border-[#9ae6b4] pl-6">
+            <div className="relative border-l-2 border-dashed border-[var(--sc-border)] pl-6">
               {safeEvents.map((event) => (
                 <article
                   key={event.id}
-                  className="relative mb-6 rounded-3xl border border-[#c6f6d5] bg-white p-5 shadow-sm last:mb-0"
+                  className="relative mb-6 rounded-3xl border border-[var(--sc-border)] bg-white p-5 text-[var(--sc-ink)] shadow-sm last:mb-0"
                 >
-                  <span className="absolute -left-8 top-5 inline-flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-[#1c8f5a]" aria-hidden="true" />
+                  <span className="absolute -left-8 top-5 inline-flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-[var(--sc-accent)]" aria-hidden="true" />
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[#1b7b4b]">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-accent)]">
                         {event.type}
                       </p>
-                      <h3 className="text-xl font-semibold text-[#052b1d]">{event.name}</h3>
+                      <h3 className="text-xl font-semibold text-[var(--sc-ink)]">{event.name}</h3>
                     </div>
-                    <p className="text-sm text-[#1d5a3b]">
+                    <p className="text-sm text-[var(--sc-ink-muted)]">
                       {formatDateRange(event.start_date, event.end_date)}
                     </p>
                   </div>
                   {event.location && (
-                    <p className="mt-1 text-sm text-[#1d5a3b]">Location: {event.location}</p>
+                    <p className="mt-1 text-sm text-[var(--sc-ink-muted)]">Location: {event.location}</p>
                   )}
                 </article>
               ))}
@@ -282,30 +281,24 @@ export default function HomePage() {
           )}
         </section>
 
-        <section
-          id="divisions"
-          className="space-y-6 rounded-[32px] border border-[#9ae6b4] bg-white/90 p-8 text-[#052b1d] shadow-xl"
-        >
+        <section id="divisions" className="sc-card space-y-5">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-2xl font-semibold text-[#052b1d]">Active divisions</h2>
-              <p className="text-base text-[#1d5a3b]">
-                Records from the `divisions` table capture how squads are grouped for play.
-              </p>
+              <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Active divisions</h2>
             </div>
             <Link
               to="/admin"
-              className="inline-flex items-center justify-center rounded-full border border-[#9ae6b4] px-5 py-2 text-sm font-semibold text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
+              className="inline-flex items-center justify-center rounded-full border border-[var(--sc-border)] px-5 py-2 text-sm font-semibold text-[var(--sc-accent)] transition hover:border-[var(--sc-accent)] hover:bg-[var(--sc-surface)]"
             >
               Manage in dashboard
             </Link>
           </div>
           {loading && safeDivisions.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-[#c6f6d5] bg-[#f0fff4] px-6 py-10 text-center text-sm text-[#1d5a3b]">
+            <div className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-5 py-8 text-center text-sm text-[var(--sc-ink-muted)]">
               Loading divisions...
             </div>
           ) : safeDivisions.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-[#c6f6d5] bg-[#f0fff4] px-6 py-10 text-center text-sm text-[#1d5a3b]">
+            <div className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-5 py-8 text-center text-sm text-[var(--sc-ink-muted)]">
               No divisions configured. Create them in Supabase to see them here.
             </div>
           ) : (
@@ -313,14 +306,11 @@ export default function HomePage() {
               {safeDivisions.map((division) => (
                 <article
                   key={division.id}
-                  className="rounded-3xl border border-[#c6f6d5] bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                  className="rounded-3xl border border-[var(--sc-border)] bg-white p-4 text-[var(--sc-ink)] shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
                 >
-                  <h3 className="text-lg font-semibold text-[#052b1d]">{division.name}</h3>
-                  <p className="text-sm text-[#1d5a3b]">
+                  <h3 className="text-lg font-semibold text-[var(--sc-ink)]">{division.name}</h3>
+                  <p className="text-sm text-[var(--sc-ink-muted)]">
                     Level: {division.level ? division.level : "Not specified"}
-                  </p>
-                  <p className="mt-3 text-xs text-[#1b7b4b]">
-                    Created {new Date(division.created_at).toLocaleDateString()}
                   </p>
                 </article>
               ))}
@@ -328,22 +318,16 @@ export default function HomePage() {
           )}
         </section>
 
-        <section
-          id="matches"
-          className="space-y-6 rounded-[32px] border border-[#9ae6b4] bg-white/90 p-8 text-[#052b1d] shadow-xl"
-        >
+        <section id="matches" className="sc-card space-y-5">
           <div className="flex flex-col gap-2">
-            <h2 className="text-2xl font-semibold text-[#052b1d]">Matches</h2>
-            <p className="text-base text-[#1d5a3b]">
-              Recent fixtures with scores and kickoff times pulled from the `matches` table.
-            </p>
+            <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Matches</h2>
           </div>
           {loading && safeMatches.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-[#c6f6d5] bg-[#f0fff4] px-6 py-10 text-center text-sm text-[#1d5a3b]">
+            <div className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-5 py-8 text-center text-sm text-[var(--sc-ink-muted)]">
               Loading matches...
             </div>
           ) : safeMatches.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-[#c6f6d5] bg-[#f0fff4] px-6 py-10 text-center text-sm text-[#1d5a3b]">
+            <div className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-5 py-8 text-center text-sm text-[var(--sc-ink-muted)]">
               No matches recorded yet.
             </div>
           ) : (
@@ -351,25 +335,25 @@ export default function HomePage() {
               {safeMatches.map((match) => (
                 <article
                   key={match.id}
-                  className="rounded-3xl border border-[#c6f6d5] bg-[#f0fff4] p-5 shadow-sm"
+                  className="rounded-3xl border border-[var(--sc-border)] bg-[var(--sc-surface)] p-5 text-[var(--sc-ink)] shadow-sm"
                 >
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[#1b7b4b]">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-accent)]">
                         {match.event?.name || "Match"}
                       </p>
-                      <h3 className="text-xl font-semibold text-[#052b1d]">
+                      <h3 className="text-xl font-semibold text-[var(--sc-ink)]">
                         {formatMatchup(match)}
                       </h3>
-                      <p className="text-xs text-[#1d5a3b]">
+                      <p className="text-xs text-[var(--sc-ink-muted)]">
                         {formatMatchTime(match.start_time)}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-3xl font-semibold text-[#0f5132]">
-                        {match.score_a} <span className="text-[#8fb8ab]">-</span> {match.score_b}
+                      <p className="text-3xl font-semibold text-[var(--sc-accent)]">
+                        {match.score_a} <span className="text-[var(--sc-border)]">-</span> {match.score_b}
                       </p>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[#1b7b4b]">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-accent)]">
                         {match.status || "scheduled"}
                       </p>
                     </div>
@@ -380,47 +364,44 @@ export default function HomePage() {
           )}
         </section>
 
-        <section
-          id="teams"
-          className="space-y-6 rounded-[32px] border border-[#9ae6b4] bg-white/90 p-8 text-[#052b1d] shadow-xl"
-        >
+        <section id="teams" className="sc-card space-y-5">
           <div className="flex flex-col gap-2">
-            <h2 className="text-2xl font-semibold text-[#052b1d]">Teams spotlight</h2>
-            <p className="text-base text-[#1d5a3b]">
+            <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Teams spotlight</h2>
+            <p className="text-sm text-[var(--sc-ink-muted)] sm:text-base">
               Pulled directly from the `teams` table. Add a record in Supabase and it appears here immediately.
             </p>
           </div>
           {loading && featuredTeams.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-[#c6f6d5] bg-[#f0fff4] px-6 py-10 text-center text-sm text-[#1d5a3b]">
+            <div className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-5 py-8 text-center text-sm text-[var(--sc-ink-muted)]">
               Loading teams...
             </div>
           ) : featuredTeams.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-[#c6f6d5] bg-[#f0fff4] px-6 py-10 text-center text-sm text-[#1d5a3b]">
+            <div className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-5 py-8 text-center text-sm text-[var(--sc-ink-muted)]">
               No teams found. Add entries to the Supabase `teams` table to populate this view.
             </div>
           ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {featuredTeams.map((team) => (
                 <Link
                   key={team.id}
                   to={`/teams/${team.id}`}
-                  className="group rounded-3xl border border-[#c6f6d5] bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-[#0f5132]/70 hover:shadow-lg"
+                  className="group rounded-3xl border border-[var(--sc-border)] bg-white p-4 text-[var(--sc-ink)] shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--sc-accent)] hover:shadow-lg"
                 >
-                  <h3 className="text-xl font-semibold text-[#052b1d] group-hover:text-[#0f5132]">
+                  <h3 className="text-xl font-semibold text-[var(--sc-ink)] group-hover:text-[var(--sc-accent)]">
                     {team.name}
                   </h3>
                   {team.short_name && (
-                    <p className="mt-2 text-sm text-[#1d5a3b]">Short name: {team.short_name}</p>
+                    <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">Short name: {team.short_name}</p>
                   )}
                 </Link>
               ))}
             </div>
           )}
         </section>
-      </div>
+      </main>
 
-      <footer className="border-t border-white/10 bg-[#04140c]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-6 text-sm text-rose-100 md:flex-row md:items-center md:justify-between">
+      <footer className="border-t border-emerald-900/10 bg-[#072013]">
+        <div className="sc-shell flex flex-col gap-3 py-6 text-sm text-rose-100 md:flex-row md:items-center md:justify-between">
           <p>&copy; {new Date().getFullYear()} StallCount. Live Supabase data.</p>
           <div className="flex flex-wrap items-center gap-3 md:gap-5">
             <a href="#stats" className="transition hover:text-white">
@@ -445,9 +426,7 @@ export default function HomePage() {
           </div>
         </div>
         {signOutError && (
-          <p className="mx-auto max-w-7xl px-6 pb-4 text-xs text-rose-300">
-            {signOutError}
-          </p>
+          <p className="sc-shell pb-4 text-xs text-rose-300">{signOutError}</p>
         )}
       </footer>
     </div>

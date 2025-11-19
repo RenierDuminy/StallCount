@@ -418,40 +418,41 @@ function TeamOverviewCard({ title, stats }) {
   const assists = stats?.assists || [];
   const connections = stats?.connections || [];
 
-  const renderList = (label, rows, valueLabel) => (
-    <div className="rounded-xl bg-white/70 p-3 shadow-inner">
-      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">{label}</p>
-      {rows.length ? (
-        <table className="mt-1 w-full text-left text-sm text-[#0b3825] sm:mt-1.5">
-          <thead>
-            <tr className="text-xs uppercase tracking-wide text-slate-500">
-              <th className="py-0.5 pr-2">Player</th>
-              <th className="py-0.5 text-right">{valueLabel}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.slice(0, 8).map((row) => (
-              <tr key={`${label}-${row.player}`} className="border-t border-slate-100 text-sm">
-                <td className="py-0.5 pr-2">{row.player}</td>
-                <td className="py-0.5 text-right font-semibold">{row.count}</td>
+  const renderList = (label, rows, valueLabel) => {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white/95 p-3 shadow-inner">
+        {rows.length ? (
+          <table className="w-full text-left text-sm text-[#0b3825]">
+            <thead>
+              <tr className="text-xs uppercase tracking-wide text-slate-500">
+                <th className="py-0.5 pr-2">Player</th>
+                <th className="py-0.5 text-right">{valueLabel}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <p className="mt-0.5 text-xs text-slate-500 sm:mt-1.5">No {label.toLowerCase()} recorded.</p>
-      )}
-    </div>
-  );
+            </thead>
+            <tbody>
+              {rows.slice(0, 8).map((row) => (
+                <tr key={`${label}-${row.player}`} className="border-t border-slate-200 text-sm">
+                  <td className="py-1 pr-2">{row.player}</td>
+                  <td className="py-1 text-right font-semibold">{row.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="mt-0.5 text-xs text-slate-500 sm:mt-1.5">No {label.toLowerCase()} recorded.</p>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div className="rounded-2xl border border-emerald-100/80 bg-slate-50/70 px-2.5 py-2 shadow-inner sm:px-4 sm:py-3.5">
+    <div className="rounded-2xl border-2 border-emerald-200 bg-white px-3 py-2.5 shadow-inner sm:px-5 sm:py-4">
       <h3 className="mb-1.5 text-lg font-semibold text-[#052b1d] sm:mb-2.5">{title}</h3>
       <div className="grid gap-1.5 sm:grid-cols-2 sm:gap-3">
-        {renderList("Goals", goals, "G")}
-        {renderList("Assists", assists, "A")}
+        {renderList("Goals", goals, "Goal")}
+        {renderList("Assists", assists, "Assist")}
       </div>
-      <div className="mt-1.5 rounded-xl bg-white/70 p-3 shadow-inner sm:mt-3">
+      <div className="mt-1.5 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-inner sm:mt-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">Top connections</p>
         {connections.length ? (
           <table className="mt-1 w-full text-left text-sm text-[#0b3825] sm:mt-1.5">
@@ -465,11 +466,11 @@ function TeamOverviewCard({ title, stats }) {
             </thead>
             <tbody>
               {connections.slice(0, 6).map((row) => (
-                <tr key={`${row.assist}-${row.scorer}`} className="border-t border-slate-100 text-sm">
-                  <td className="py-0.5 pr-2">{row.assist}</td>
-                  <td className="py-0.5 text-center text-sm font-bold text-slate-500">→</td>
-                  <td className="py-0.5 pr-2">{row.scorer}</td>
-                  <td className="py-0.5 text-right font-semibold">{row.count}</td>
+                <tr key={`${row.assist}-${row.scorer}`} className="border-t border-slate-200 text-sm">
+                  <td className="py-1 pr-2">{row.assist}</td>
+                  <td className="py-1 text-center text-sm font-bold text-slate-500">→</td>
+                  <td className="py-1 pr-2">{row.scorer}</td>
+                  <td className="py-1 text-right font-semibold">{row.count}</td>
                 </tr>
               ))}
             </tbody>
