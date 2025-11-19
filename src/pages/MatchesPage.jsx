@@ -94,14 +94,14 @@ export default function MatchesPage() {
 
   return (
     <div className="min-h-screen bg-[#f3f7f4] pb-16">
-      <header className="border-b border-emerald-900/10 bg-[#072013] py-10 text-emerald-50">
-        <div className="sc-shell">
+      <header className="border-b border-emerald-900/10 bg-[#072013] py-6 text-emerald-50">
+        <div className="sc-shell matches-compact-shell">
           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Matches</p>
-          <h1 className="text-4xl font-semibold">Match timeline</h1>
-          <p className="mt-2 max-w-3xl text-sm text-emerald-100">
+          <h1 className="text-3xl font-semibold">Match timeline</h1>
+          <p className="mt-1.5 max-w-3xl text-sm text-emerald-100">
             Explore completed matches, view the scoring progression, and dig into a detailed point-by-point log.
           </p>
-          <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
             <label className="text-sm font-semibold">
               Select match
               <div className="relative mt-2 w-full md:w-96">
@@ -147,7 +147,7 @@ export default function MatchesPage() {
         </div>
       </header>
 
-      <main className="sc-shell space-y-8 py-10">
+      <main className="sc-shell matches-compact-shell space-y-8 py-6">
         {logsError && (
           <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{logsError}</p>
         )}
@@ -186,7 +186,28 @@ export default function MatchesPage() {
               </div>
             </section>
 
-            <section className="rounded-3xl border border-emerald-200 bg-white p-6 shadow-sm">
+            {derived.summaries && (
+              <section className="rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-6">
+                <div className="mb-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                    Team production
+                  </p>
+                  <h2 className="text-2xl font-semibold text-[#052b1d]">Match overview</h2>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <TeamOverviewCard
+                    title={`${selectedMatch?.team_a?.name || "Team A"} overview`}
+                    stats={derived.summaries.teamA}
+                  />
+                  <TeamOverviewCard
+                    title={`${selectedMatch?.team_b?.name || "Team B"} overview`}
+                    stats={derived.summaries.teamB}
+                  />
+                </div>
+              </section>
+            )}
+
+            <section className="rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-6">
               <div className="mb-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
                   Point-by-point log
@@ -277,7 +298,7 @@ function TimelineChart({ match, timeline }) {
         const y = getY(index);
         return (
           <g key={index}>
-            <line x1={padding.left} x2={padding.left + chartWidth} y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="4 6" strokeWidth="0.5" />
+            <line x1={padding.left} x2={padding.left + chartWidth} y1={y} y2={y} stroke="#cbd5f5" strokeDasharray="4 6" strokeWidth="0.5" />
             <text x={padding.left - 10} y={y + 4} fontSize="11" textAnchor="end" fill="#475569">
               {index}
             </text>
@@ -285,33 +306,25 @@ function TimelineChart({ match, timeline }) {
         );
       })}
 
-  {timeline.timeTicks.map((tick) => {
-    const x = getX(tick.value);
-    const y = height - 12;
-    return (
-      <g key={tick.value}>
-        <text
-          fontSize="11"
-          fill="#475569"
-          transform={`rotate(-35 ${x} ${y})`}
-          textAnchor="end"
-          dominantBaseline="middle"
-          x={x}
-          y={y}
-        >
-          {tick.label}
-        </text>
-        <line
-          x1={x}
-          x2={x}
-          y1={padding.top + chartHeight}
-          y2={padding.top + chartHeight + 8}
-          stroke="#94a3b8"
-          strokeWidth="1"
-        />
-      </g>
-    );
-  })}
+      {timeline.timeTicks.map((tick) => {
+        const x = getX(tick.value);
+        const y = padding.top + chartHeight + 12;
+        return (
+          <g key={tick.value}>
+            <text fontSize="11" fill="#475569" textAnchor="middle" dominantBaseline="middle" x={x} y={y}>
+              {tick.label}
+            </text>
+            <line
+              x1={x}
+              x2={x}
+              y1={padding.top + chartHeight}
+              y2={padding.top + chartHeight + 6}
+              stroke="#94a3b8"
+              strokeWidth="1"
+            />
+          </g>
+        );
+      })}
 
   {renderLinePath(timeline.series.teamA, SERIES_COLORS.teamA)}
   {renderLinePath(timeline.series.teamB, SERIES_COLORS.teamB)}
@@ -331,8 +344,8 @@ function TimelineChart({ match, timeline }) {
       <text x={width / 2} y={20} textAnchor="middle" fontSize="16" fontWeight="600" fill="#0f172a">
         Score vs Time
       </text>
-      <text x={width / 2} y={height - 5} textAnchor="middle" fontSize="12" fill="#475569">
-        Time
+      <text x={width / 2} y={height - 8} textAnchor="middle" fontSize="12" fill="#475569">
+        Minutes
       </text>
       <text
         x="14"
@@ -348,6 +361,75 @@ function TimelineChart({ match, timeline }) {
   );
 }
 
+function TeamOverviewCard({ title, stats }) {
+  const goals = stats?.goals || [];
+  const assists = stats?.assists || [];
+  const connections = stats?.connections || [];
+
+  const renderList = (label, rows, valueLabel) => (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">{label}</p>
+      {rows.length ? (
+        <table className="mt-2 w-full text-left text-sm text-[#0b3825]">
+          <thead>
+            <tr className="text-xs uppercase tracking-wide text-slate-500">
+              <th className="py-1 pr-2">Player</th>
+              <th className="py-1 text-right">{valueLabel}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, 8).map((row) => (
+              <tr key={`${label}-${row.player}`} className="border-t border-slate-100 text-sm">
+                <td className="py-1 pr-2">{row.player}</td>
+                <td className="py-1 text-right font-semibold">{row.count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="mt-2 text-xs text-slate-500">No {label.toLowerCase()} recorded.</p>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="rounded-2xl border border-emerald-100/80 bg-slate-50/70 p-4 shadow-inner">
+      <h3 className="mb-3 text-lg font-semibold text-[#052b1d]">{title}</h3>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {renderList("Goals", goals, "G")}
+        {renderList("Assists", assists, "A")}
+      </div>
+      <div className="mt-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">Top connections</p>
+        {connections.length ? (
+          <table className="mt-2 w-full text-left text-sm text-[#0b3825]">
+            <thead>
+              <tr className="text-xs uppercase tracking-wide text-slate-500">
+                <th className="py-1 pr-2">Assist</th>
+                <th className="py-1" />
+                <th className="py-1 pr-2">Scorer</th>
+                <th className="py-1 text-right">Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {connections.slice(0, 6).map((row) => (
+                <tr key={`${row.assist}-${row.scorer}`} className="border-t border-slate-100 text-sm">
+                  <td className="py-1 pr-2">{row.assist}</td>
+                  <td className="py-1 text-center text-sm font-bold text-slate-500">→</td>
+                  <td className="py-1 pr-2">{row.scorer}</td>
+                  <td className="py-1 text-right font-semibold">{row.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="mt-2 text-xs text-slate-500">No assisted goals recorded.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PointLogTable({ rows, teamAName, teamBName }) {
   if (!rows.length) {
     return (
@@ -357,32 +439,54 @@ function PointLogTable({ rows, teamAName, teamBName }) {
     );
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-left text-sm text-[#0b3825]">
+    <div className="w-full overflow-x-auto -mx-4 pl-2 pr-0 sm:mx-0 sm:px-0">
+      <table className="w-full table-auto text-left text-xs sm:text-sm text-[#0b3825]">
         <thead>
           <tr className="uppercase tracking-wide text-[11px] text-slate-500">
-            <th className="px-3 py-2">#</th>
-            <th className="px-3 py-2">Time</th>
-            <th className="px-3 py-2">Team</th>
-            <th className="px-3 py-2">Scorer</th>
-            <th className="px-3 py-2">Assist</th>
-            <th className="px-3 py-2">Details</th>
-            <th className="px-3 py-2 text-right">Gap</th>
+            <th className="px-1 py-1.5 sm:px-2 sm:py-2">#</th>
+            <th className="px-1 py-1.5 sm:px-2 sm:py-2">Time</th>
+            <th className="px-1 py-1.5 sm:px-2 sm:py-2">Team</th>
+            <th className="px-1 py-1.5 sm:px-2 sm:py-2">Assist -&gt; Score</th>
+            <th className="px-1 py-1.5 text-right sm:px-2 sm:py-2">Gap</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr
               key={`${row.index}-${row.timestamp}`}
-              className={`border-b border-slate-100 last:border-none ${row.variant === "timeout" ? "bg-sky-50/70" : row.variant === "halftime" ? "bg-emerald-50/70" : ""}`}
+              className={`border-b border-slate-100 last:border-none ${
+                row.variant === "timeout"
+                  ? "bg-[#c7e5fb]"
+                  : row.variant === "halftime"
+                  ? "bg-[#c1f0d5]"
+                  : row.variant === "callahan"
+                  ? "bg-[#fef9c3]"
+                  : row.variant === "goalA"
+                  ? "bg-[#edf2ff]"
+                  : row.variant === "goalB"
+                  ? "bg-[#fff3e7]"
+                  : ""
+              }`}
             >
-              <td className="px-3 py-2 font-semibold text-slate-500">{row.label}</td>
-              <td className="px-3 py-2">{row.formattedTime}</td>
-              <td className="px-3 py-2 font-semibold">{row.teamLabel}</td>
-              <td className="px-3 py-2">{row.scorer || "—"}</td>
-              <td className="px-3 py-2">{row.assist || "—"}</td>
-              <td className="px-3 py-2 text-slate-500">{row.description}</td>
-              <td className="px-3 py-2 text-right font-mono text-xs text-slate-500">{row.gap}</td>
+              <td className="px-1 py-1.5 font-semibold text-slate-500 sm:px-2 sm:py-2">{row.label}</td>
+              <td className="px-1 py-1.5 whitespace-nowrap sm:px-2 sm:py-2">{row.formattedTime}</td>
+              <td className="px-1 py-1.5 font-semibold sm:px-2 sm:py-2">{row.teamLabel}</td>
+              <td className="px-1 py-1.5 sm:px-2 sm:py-2">
+                {row.description === "Timeout" || row.description === "Halftime" || row.description === "Match start" ? (
+                  <div className="text-center text-xs font-semibold text-slate-600 sm:text-sm">
+                    {row.description}
+                  </div>
+                ) : (
+                  <div className="grid auto-rows-min items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+                    <span className="text-slate-500 text-[11px] sm:text-sm sm:text-right">{row.assist || "-"}</span>
+                    <span className="text-[10px] font-semibold text-slate-400 text-center sm:text-xs">-&gt;</span>
+                    <span className="font-semibold text-[#052b1d]">{row.scorer || "-"}</span>
+                  </div>
+                )}
+              </td>
+              <td className="px-1 py-1.5 text-right font-mono text-[11px] text-slate-500 sm:px-2 sm:py-2 sm:text-xs">
+                {row.gap}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -397,6 +501,27 @@ function deriveMatchInsights(match, logs) {
   const teamBId = match.team_b?.id || null;
   const teamAName = match.team_a?.name || "Team A";
   const teamBName = match.team_b?.name || "Team B";
+  const createStats = () => ({
+    goalCounts: new Map(),
+    assistCounts: new Map(),
+    connectionCounts: new Map(),
+  });
+  const teamStats = {
+    teamA: createStats(),
+    teamB: createStats(),
+  };
+  const incrementCount = (map, name) => {
+    const normalized = typeof name === "string" ? name.trim() : "";
+    if (!normalized) return;
+    map.set(normalized, (map.get(normalized) || 0) + 1);
+  };
+  const recordConnection = (stats, assist, scorer) => {
+    const cleanedAssist = typeof assist === "string" ? assist.trim() : "";
+    const cleanedScorer = typeof scorer === "string" ? scorer.trim() : "";
+    if (!cleanedAssist || !cleanedScorer) return;
+    const key = `${cleanedAssist}:::${cleanedScorer}`;
+    stats.connectionCounts.set(key, (stats.connectionCounts.get(key) || 0) + 1);
+  };
 
   let scoreA = 0;
   let scoreB = 0;
@@ -410,6 +535,7 @@ function deriveMatchInsights(match, logs) {
   };
   const bands = [];
   const logRows = [];
+  let matchStartLogged = false;
   let previousTime = null;
   let pointIndex = 1;
 
@@ -460,6 +586,21 @@ function deriveMatchInsights(match, logs) {
       timelineStart = matchStartEventTime;
       snapshots.unshift({ time: matchStartEventTime, scoreA: 0, scoreB: 0 });
       timestamps.push(matchStartEventTime);
+      if (!matchStartLogged) {
+        logRows.unshift({
+          label: "Start",
+          index: 0,
+          timestamp,
+          formattedTime,
+          teamLabel: "-",
+          scorer: "-",
+          assist: "-",
+          description: "Match start",
+          gap: "-",
+          variant: "halftime",
+        });
+        matchStartLogged = true;
+      }
       previousTime = matchStartEventTime;
       continue;
     }
@@ -475,12 +616,19 @@ function deriveMatchInsights(match, logs) {
 
     if (code === MATCH_LOG_EVENT_CODES.SCORE || code === MATCH_LOG_EVENT_CODES.CALAHAN) {
       const teamLabel = log.team_id === teamAId ? teamAName : teamBName;
+      const teamKey =
+        log.team_id === teamAId ? "teamA" : log.team_id === teamBId ? "teamB" : null;
       if (log.team_id === teamAId) {
         scoreA += 1;
         scoringPoints.push({ team: "teamA", time: timestamp, score: scoreA });
       } else if (log.team_id === teamBId) {
         scoreB += 1;
         scoringPoints.push({ team: "teamB", time: timestamp, score: scoreB });
+      }
+      const scorerName = log.scorer?.name ?? log.scorer_name ?? "N/A";
+      let assistName = log.assist?.name ?? log.assist_name ?? "";
+      if (code === MATCH_LOG_EVENT_CODES.CALAHAN && !assistName) {
+        assistName = "Callahan";
       }
       pushSnapshot(timestamp);
       logRows.push({
@@ -489,11 +637,25 @@ function deriveMatchInsights(match, logs) {
         timestamp,
         formattedTime,
         teamLabel,
-        scorer: log.scorer?.name ?? log.scorer_name ?? "N/A",
-        assist: log.assist?.name ?? log.assist_name ?? (code === MATCH_LOG_EVENT_CODES.CALAHAN ? "Callahan" : ""),
+        scorer: scorerName,
+        assist: assistName,
         description: code === MATCH_LOG_EVENT_CODES.CALAHAN ? "Callahan goal" : "Scored",
         gap,
+        variant:
+          code === MATCH_LOG_EVENT_CODES.CALAHAN
+            ? "callahan"
+            : log.team_id === teamAId
+              ? "goalA"
+              : "goalB",
       });
+      if (teamKey) {
+        const stats = teamStats[teamKey];
+        incrementCount(stats.goalCounts, scorerName);
+        if (assistName && assistName !== "Callahan") {
+          incrementCount(stats.assistCounts, assistName);
+          recordConnection(stats, assistName, scorerName);
+        }
+      }
       previousTime = timestamp;
       pointIndex += 1;
       continue;
@@ -655,24 +817,56 @@ function deriveMatchInsights(match, logs) {
     timeTicks: buildTimeTicks(axisStart, axisEnd),
   };
 
-  return { timeline, logRows };
+  const mapToSortedList = (map) =>
+    Array.from(map.entries())
+      .map(([player, count]) => ({ player, count }))
+      .sort((a, b) => b.count - a.count || a.player.localeCompare(b.player));
+
+  const mapToConnections = (map) =>
+    Array.from(map.entries())
+      .map(([key, count]) => {
+        const [assist, scorer] = key.split(":::");
+        return { assist, scorer, count };
+      })
+      .sort((a, b) => b.count - a.count || a.assist.localeCompare(b.assist));
+
+  const summaries = {
+    teamA: {
+      goals: mapToSortedList(teamStats.teamA.goalCounts),
+      assists: mapToSortedList(teamStats.teamA.assistCounts),
+      connections: mapToConnections(teamStats.teamA.connectionCounts),
+    },
+    teamB: {
+      goals: mapToSortedList(teamStats.teamB.goalCounts),
+      assists: mapToSortedList(teamStats.teamB.assistCounts),
+      connections: mapToConnections(teamStats.teamB.connectionCounts),
+    },
+  };
+
+  return { timeline, logRows, summaries };
 }
 
 function buildTimeTicks(start, end) {
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     return [];
   }
-  const durationMinutes = (end - start) / 60000;
-  const intervalMinutes =
-    durationMinutes > 90 ? 20 : durationMinutes > 60 ? 15 : durationMinutes > 30 ? 10 : 5;
-  const intervalMs = intervalMinutes * 60000;
+  const intervalMs = 5 * 60000;
+  const durationMs = end - start;
   const ticks = [];
-  let cursor = start - (start % intervalMs) + intervalMs;
-  while (cursor < end) {
-    ticks.push({ value: cursor, label: formatTimeLabel(cursor) });
-    cursor += intervalMs;
+  let offset = 0;
+
+  while (offset <= durationMs) {
+    const minutes = Math.round(offset / 60000);
+    ticks.push({ value: start + offset, label: `${minutes}'` });
+    offset += intervalMs;
   }
-  ticks.push({ value: end, label: formatTimeLabel(end) });
+
+  const lastTick = ticks[ticks.length - 1];
+  if (!lastTick || lastTick.value !== end) {
+    const minutes = Math.round(durationMs / 60000);
+    ticks.push({ value: end, label: `${minutes}'` });
+  }
+
   return ticks;
 }
 
