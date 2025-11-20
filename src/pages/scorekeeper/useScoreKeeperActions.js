@@ -53,6 +53,11 @@ export function useScoreKeeperActions(controller) {
       controller.setConsoleError("You must be signed in to initialise a match.");
       return;
     }
+    const normalizedStatus = (controller.selectedMatch.status || "").toLowerCase();
+    if (normalizedStatus === "finished" || normalizedStatus === "completed") {
+      controller.setConsoleError("This match is finished and cannot be initialised.");
+      return;
+    }
 
     controller.setInitialising(true);
     controller.setConsoleError(null);
@@ -260,6 +265,7 @@ export function useScoreKeeperActions(controller) {
     };
 
     controller.recordPendingEntry(entry);
+    await syncActiveMatchScore(nextTotals);
     const receivingTeam = team === "A" ? "B" : "A";
     if (receivingTeam) {
       void controller.updatePossession(receivingTeam, { logTurnover: false });

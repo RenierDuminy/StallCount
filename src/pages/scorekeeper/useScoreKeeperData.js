@@ -235,7 +235,9 @@ const [stoppageActive, setStoppageActive] = useState(false);
       setMatchesLoading(true);
       setMatchesError(null);
       try {
-        const data = await getMatchesByEvent(targetEventId, 24);
+        const data = await getMatchesByEvent(targetEventId, 24, {
+          includeFinished: false,
+        });
         setMatches(data);
 
         if (data.length === 0) {
@@ -434,13 +436,15 @@ useEffect(() => {
     setSecondaryFlashPulse(false);
     return;
   }
-  if (secondarySeconds <= 30) {
+  const normalizedSecondaryLabel = (secondaryLabel || "").toLowerCase();
+  const flashThreshold = normalizedSecondaryLabel === "discussion" ? 15 : 30;
+  if (secondarySeconds <= flashThreshold) {
     setSecondaryFlashActive(true);
   } else {
     setSecondaryFlashActive(false);
     setSecondaryFlashPulse(false);
   }
-}, [secondaryRunning, secondarySeconds]);
+}, [secondaryRunning, secondarySeconds, secondaryLabel]);
 
 useEffect(() => {
   if (!secondaryFlashActive) return undefined;
@@ -847,18 +851,45 @@ const recordPendingEntry = useCallback(
   },
   [setPendingEntries, setConsoleError, normalizeAbbaLine]
 );
+const normalizedSecondaryLabel = (secondaryLabel || "").toLowerCase();
+const isDiscussionTimer = normalizedSecondaryLabel === "discussion";
 
 const primaryTimerBg =
   timerSeconds === 0 ? "bg-[#f8cad6]" : timerRunning ? "bg-[#c9ead6]" : "bg-[#f8f1ff]";
-const secondaryTimerBg = secondaryRunning
-  ? secondaryFlashActive
-    ? secondaryFlashPulse
-      ? "bg-[#ffc955]"
-      : "bg-[#ffe2a1]"
-    : "bg-[#c9ead6]"
-  : secondarySeconds === 0
-    ? "bg-[#f8cad6]"
-    : "bg-[#f8f1ff]";
+const secondaryTimerBg = (() => {
+  if (secondaryRunning) {
+    if (isDiscussionTimer) {
+      if (secondarySeconds <= 15) {
+        return secondaryFlashActive
+          ? secondaryFlashPulse
+            ? "bg-[#ffc955]"
+            : "bg-[#ffe2a1]"
+          : "bg-[#ffe2a1]";
+      }
+      if (secondarySeconds <= 45) {
+        return "bg-[#ffe2a1]";
+      }
+      return "bg-[#c9ead6]";
+    }
+    if (secondaryFlashActive) {
+      return secondaryFlashPulse ? "bg-[#ffc955]" : "bg-[#ffe2a1]";
+    }
+    return "bg-[#c9ead6]";
+  }
+
+  if (secondarySeconds === 0) {
+    return "bg-[#f8cad6]";
+  }
+  if (isDiscussionTimer) {
+    if (secondarySeconds > 45) {
+      return "bg-[#c9ead6]";
+    }
+    if (secondarySeconds > 15) {
+      return "bg-[#ffe2a1]";
+    }
+  }
+  return "bg-[#f8f1ff]";
+})();
 
   const startSecondaryTimer = useCallback(
     (duration, label) => {

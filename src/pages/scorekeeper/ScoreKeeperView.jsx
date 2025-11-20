@@ -295,6 +295,14 @@ export default function ScoreKeeperView() {
     closeSimpleEventModal();
   };
 
+  const handleStartDiscussionTimer = () => {
+    commitSecondaryTimerState(60, true);
+    setSecondaryTotalSeconds(60);
+    setSecondaryLabel("Discussion");
+    setSecondaryFlashActive(false);
+    setSecondaryFlashPulse(false);
+  };
+
   return (
     <div className="sc-shell max-w-5xl text-[#0f5132]">
       <header className="border-b border-slate-200 bg-white">
@@ -422,6 +430,13 @@ export default function ScoreKeeperView() {
                           className="w-24 rounded-full bg-[#0f5132] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
                         >
                           {secondaryRunning ? "Pause" : "Play"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleStartDiscussionTimer}
+                          className="w-32 rounded-full border border-[#0f5132] px-3 py-1.5 text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
+                        >
+                          Discussion 1:00
                         </button>
                       </div>
                       <p className="text-[10px] uppercase tracking-wide text-[#0f5132]/70">

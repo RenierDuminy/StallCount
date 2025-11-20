@@ -44,13 +44,21 @@ export async function getOpenMatches(limit = 12) {
   return data ?? [];
 }
 
-export async function getMatchesByEvent(eventId, limit = 24) {
-  const { data, error } = await supabase
+export async function getMatchesByEvent(eventId, limit = 24, options = {}) {
+  const { includeFinished = true } = options;
+
+  let query = supabase
     .from("matches")
     .select(MATCH_FIELDS)
     .eq("event_id", eventId)
     .order("start_time", { ascending: true })
     .limit(limit);
+
+  if (!includeFinished) {
+    query = query.neq("status", "finished").neq("status", "completed");
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(error.message || "Failed to load matches for event");

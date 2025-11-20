@@ -22,6 +22,12 @@ const ADMIN_MODULES = [
     to: "/sys-admin",
     accent: "bg-amber-100 text-amber-700",
   },
+  {
+    label: "Spirit scores",
+    description: "Capture and review spirit scores for completed matches.",
+    to: "/spirit-scores",
+    accent: "bg-emerald-100 text-emerald-700",
+  },
 ];
 
 export default function AdminPage() {
