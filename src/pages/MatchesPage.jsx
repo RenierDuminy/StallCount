@@ -176,7 +176,7 @@ export default function MatchesPage() {
               </section>
             )}
 
-            <section className="space-y-2 rounded-3xl border border-emerald-200 bg-white p-3 shadow-sm sm:space-y-3 sm:p-5">
+            <section className="space-y-1 rounded-3xl border border-emerald-200 bg-white p-2 shadow-sm sm:space-y-2 sm:p-3">
               <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-2">
                 <div>
                   <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">Score progression</p>
@@ -200,18 +200,14 @@ export default function MatchesPage() {
               </div>
             </section>
 
-            <section className="space-y-2 rounded-3xl border border-emerald-200 bg-white p-3 shadow-sm sm:space-y-3 sm:p-5">
+            <section className="space-y-1 rounded-3xl border border-emerald-200 bg-white p-2 shadow-sm sm:space-y-2 sm:p-3">
               <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-2">
                 <div>
                   <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">Possession timeline</p>
-                  <p className="text-xs text-slate-500 sm:text-sm">
-                    Built from logged turnovers and starting pull data.
-                  </p>
                 </div>
                 <div className="flex items-center gap-1 text-xs text-slate-600 sm:gap-2 sm:text-sm">
                   <LegendSwatch color={SERIES_COLORS.teamA} label={`${selectedMatch?.team_a?.name || "Team A"} possession`} />
                   <LegendSwatch color={SERIES_COLORS.teamB} label={`${selectedMatch?.team_b?.name || "Team B"} possession`} />
-                  <LegendSwatch color="#e2e8f0" label="Unknown window" />
                 </div>
               </div>
               <PossessionTimeline
@@ -314,9 +310,9 @@ function TimelineChart({ match, timeline }) {
   }
 
   const width = 900;
-  const baseHeight = 320;
-  const height = isMobile ? baseHeight * 1.5 : baseHeight;
-  const padding = { top: 24, right: 48, bottom: 60, left: 54 };
+  const baseHeight = 280;
+  const height = isMobile ? baseHeight * 1.35 : baseHeight;
+  const padding = { top: 16, right: 44, bottom: 52, left: 50 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
   const yMax = Math.max(10, timeline.maxScore);
@@ -459,14 +455,15 @@ function PossessionTimeline({ timeline, teamAName, teamBName }) {
   const turnovers = timeline.turnovers || [];
   const timeTicks = timeline.timeTicks || [];
   const width = 900;
-  const baseHeight = 130;
-  const height = isMobile ? baseHeight * 1.1 : baseHeight;
-  const padding = { top: 18, right: 40, bottom: 42, left: 40 };
+  const baseHeight = 118;
+  const height = isMobile ? baseHeight * 1.05 : baseHeight;
+  const padding = { top: 12, right: 36, bottom: 32, left: 36 };
   const chartWidth = width - padding.left - padding.right;
   const bandHeight = isMobile ? 28 : 24;
   const bandY = padding.top;
   const tickY = bandY + bandHeight + 18;
   const unknownColor = "#e2e8f0";
+  const bandColor = "#475569";
 
   const getX = (time) => {
     const ratio = (time - timeline.minTime) / (timeline.maxTime - timeline.minTime || 1);
@@ -486,7 +483,9 @@ function PossessionTimeline({ timeline, teamAName, teamBName }) {
             ? SERIES_COLORS.teamA
             : segment.team === "teamB"
               ? SERIES_COLORS.teamB
-              : unknownColor;
+              : segment.team === "band"
+                ? bandColor
+                : unknownColor;
         return (
           <g key={`${segment.team || "unknown"}-${segment.start}-${index}`}>
             <rect
@@ -827,7 +826,7 @@ function deriveMatchInsights(match, logs) {
 
     if (code === MATCH_LOG_EVENT_CODES.TURNOVER) {
       const possessionTeam =
-        log.team_id === teamAId ? "teamA" : log.team_id === teamBId ? "teamB" : null;
+        log.team_id === teamAId ? "teamB" : log.team_id === teamBId ? "teamA" : null;
       turnovers.push({ time: timestamp, team: possessionTeam });
       continue;
     }
@@ -1073,32 +1072,6 @@ function buildPossessionTimeline({
   let cursor = axisStart;
   const segments = [];
 
-  const carveOutExclusions = (sourceSegments, exclusions) => {
-    if (!exclusions.length) return sourceSegments;
-    const result = [];
-    for (const segment of sourceSegments) {
-      let pending = [segment];
-      for (const exclusion of exclusions) {
-        const next = [];
-        for (const piece of pending) {
-          if (exclusion.end <= piece.start || exclusion.start >= piece.end) {
-            next.push(piece);
-            continue;
-          }
-          if (exclusion.start > piece.start) {
-            next.push({ ...piece, end: exclusion.start });
-          }
-          if (exclusion.end < piece.end) {
-            next.push({ ...piece, start: exclusion.end });
-          }
-        }
-        pending = next;
-      }
-      result.push(...pending.filter((p) => p.end > p.start));
-    }
-    return result;
-  };
-
   const pushSegment = (endTime, team) => {
     if (!Number.isFinite(endTime) || endTime <= cursor) return;
     segments.push({ start: cursor, end: endTime, team: team || null });
@@ -1112,11 +1085,42 @@ function buildPossessionTimeline({
 
   pushSegment(axisEnd, currentTeam);
 
-  const excludedBands = (bands || []).filter((band) =>
-    band.type === "timeout" || band.type === "stoppage" || band.type === "halftime",
+  const interruptionBands = (bands || []).filter(
+    (band) => band.type === "timeout" || band.type === "stoppage" || band.type === "halftime",
   );
 
-  const cleanedSegments = carveOutExclusions(segments, excludedBands);
+  const applyBands = (baseSegments) => {
+    if (!interruptionBands.length) return baseSegments;
+    const output = [];
+    for (const segment of baseSegments) {
+      let pending = [segment];
+      for (const band of interruptionBands) {
+        const next = [];
+        for (const piece of pending) {
+          if (band.end <= piece.start || band.start >= piece.end) {
+            next.push(piece);
+            continue;
+          }
+          if (band.start > piece.start) {
+            next.push({ ...piece, end: band.start });
+          }
+          const bandStart = Math.max(piece.start, band.start);
+          const bandEnd = Math.min(piece.end, band.end);
+          if (bandEnd > bandStart) {
+            next.push({ start: bandStart, end: bandEnd, team: "band" });
+          }
+          if (band.end < piece.end) {
+            next.push({ ...piece, start: band.end });
+          }
+        }
+        pending = next;
+      }
+      output.push(...pending.filter((p) => p.end > p.start));
+    }
+    return output;
+  };
+
+  const cleanedSegments = applyBands(segments);
 
   return {
     minTime: axisStart,

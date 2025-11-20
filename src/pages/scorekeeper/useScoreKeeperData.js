@@ -855,26 +855,26 @@ const normalizedSecondaryLabel = (secondaryLabel || "").toLowerCase();
 const isDiscussionTimer = normalizedSecondaryLabel === "discussion";
 
 const primaryTimerBg =
-  timerSeconds === 0 ? "bg-[#f8cad6]" : timerRunning ? "bg-[#c9ead6]" : "bg-[#f8f1ff]";
+  timerSeconds === 0 ? "bg-[#fee2e2]" : timerRunning ? "bg-[#dcfce7]" : "bg-[#e2e8f0]";
 const secondaryTimerBg = (() => {
   if (secondaryRunning) {
     if (isDiscussionTimer) {
       if (secondarySeconds <= 15) {
         return secondaryFlashActive
           ? secondaryFlashPulse
-            ? "bg-[#ffc955]"
-            : "bg-[#ffe2a1]"
-          : "bg-[#ffe2a1]";
+            ? "bg-[#fcd34d]"
+            : "bg-[#fef08a]"
+          : "bg-[#fef08a]";
       }
       if (secondarySeconds <= 45) {
-        return "bg-[#ffe2a1]";
+        return "bg-[#fef08a]";
       }
-      return "bg-[#c9ead6]";
+      return "bg-[#dcfce7]";
     }
     if (secondaryFlashActive) {
-      return secondaryFlashPulse ? "bg-[#ffc955]" : "bg-[#ffe2a1]";
+      return secondaryFlashPulse ? "bg-[#fcd34d]" : "bg-[#fef3c7]";
     }
-    return "bg-[#c9ead6]";
+    return "bg-[#dcfce7]";
   }
 
   if (secondarySeconds === 0) {

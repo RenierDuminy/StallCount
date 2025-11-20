@@ -304,15 +304,15 @@ export default function ScoreKeeperView() {
   };
 
   return (
-    <div className="sc-shell max-w-5xl text-[#0f5132]">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-3 py-2">
+    <div className="sc-shell max-w-5xl text-slate-800">
+      <header className="border-b border-emerald-900/20 bg-gradient-to-r from-[#0f172a] via-[#0b3123] to-[#0f172a] text-white shadow-sm">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-3 py-3">
           <div className="flex flex-col leading-tight">
-            <h1 className="text-xl font-semibold text-slate-900">Score keeper console</h1>
+            <h1 className="text-xl font-semibold text-white">Score keeper console</h1>
           </div>
           <Link
             to="/admin"
-            className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-brand hover:text-brand-dark"
+            className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/60 hover:bg-white/20"
           >
             Back to admin hub
           </Link>
@@ -322,7 +322,7 @@ export default function ScoreKeeperView() {
       <main className="py-3">
         {consoleReady ? (
           <section className="space-y-2">
-            <div className="rounded-3xl border border-slate-200 bg-white p-1.5 shadow-card/40">
+            <div className="rounded-3xl border border-emerald-900/15 bg-white/90 p-1.5 shadow-card/60">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-slate-900">
@@ -330,31 +330,31 @@ export default function ScoreKeeperView() {
                     <span className="text-base text-slate-400">vs</span>
                     <span>{safeTeamBName}</span>
                   </h2>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-slate-600">
                     {kickoffLabel} - {venueName || "Venue TBD"} - {statusLabel}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSetupModalOpen(true)}
-                  className="rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-brand hover:text-brand-dark"
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-emerald-400 hover:text-emerald-800"
                 >
                   Adjust setup
                 </button>
               </div>
             </div>
 
-            <div className="space-y-2 rounded-3xl border-2 border-[#0f5132] bg-white p-1 shadow-inner">
-              <div className="divide-y divide-[#0f5132]/50 rounded-2xl border border-[#0f5132]/50">
+            <div className="space-y-2 rounded-3xl border border-emerald-900/15 bg-gradient-to-b from-white to-slate-50 p-2 shadow-lg">
+              <div className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white/90 shadow-inner">
                 <div className="grid gap-1.5 p-1.5 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="rounded-2xl p-1 text-center text-[#0f5132]">
+                  <div className="rounded-2xl p-1 text-center text-slate-800">
                     <div
-                      className={`flex w-full flex-col items-center rounded-2xl border border-slate-200 px-2 py-3 text-[#0f5132] transition-colors ${primaryTimerBg}`}
+                      className={`flex w-full flex-col items-center rounded-2xl border border-slate-200 px-2.5 py-4 text-slate-900 transition-colors ${primaryTimerBg}`}
                     >
                       <p className="text-[70px] font-semibold leading-none sm:text-[90px]">
                         {formattedPrimaryClock}
                       </p>
-                      <p className="text-xs uppercase tracking-wide text-[#0f5132]/70">
+                      <p className="text-xs uppercase tracking-wide text-slate-700/80">
                         {timerLabel}
                       </p>
                     </div>
@@ -370,7 +370,7 @@ export default function ScoreKeeperView() {
                               handleRuleChange("matchDuration", Number(event.target.value) || 0)
                             }
                             disabled={matchSettingsLocked}
-                            className="w-20 rounded border border-[#0f5132] px-2 py-1 text-center text-[#0f5132] disabled:cursor-not-allowed disabled:opacity-50"
+                            className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-center text-slate-800 outline-none transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
                           />
                         </label>
                         <button
@@ -381,26 +381,26 @@ export default function ScoreKeeperView() {
                           onMouseLeave={cancelPrimaryHoldReset}
                           onTouchStart={startPrimaryHoldReset}
                           onTouchEnd={cancelPrimaryHoldReset}
-                          className="w-24 rounded-full bg-[#0f5132] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                          className="w-24 rounded-full bg-[#1e3a8a] px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#162e6a]"
                         >
                           {timerRunning ? "Pause" : "Play"}
                         </button>
                       </div>
-                      <p className="text-[10px] uppercase tracking-wide text-[#0f5132]/70">
+                      <p className="text-[10px] uppercase tracking-wide text-slate-500">
                         Hold to reset
                       </p>
                     </div>
                   </div>
                 </div>
                 <div className="grid gap-1.5 p-1.5 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="rounded-2xl p-1 text-center text-[#0f5132]">
+                  <div className="rounded-2xl p-1 text-center text-slate-800">
                     <div
-                      className={`flex w-full flex-col items-center rounded-2xl border border-slate-200 px-2 py-3 text-[#0f5132] transition-colors ${secondaryTimerBg}`}
+                      className={`flex w-full flex-col items-center rounded-2xl border border-slate-200 px-2.5 py-4 text-slate-900 transition-colors ${secondaryTimerBg}`}
                     >
                       <p className="text-[60px] font-semibold leading-none sm:text-[80px]">
                         {formattedSecondaryClock}
                       </p>
-                      <p className="text-xs uppercase tracking-wide text-[#0f5132]/70">
+                      <p className="text-xs uppercase tracking-wide text-slate-700/80">
                         {secondaryLabel}
                       </p>
                     </div>
@@ -416,7 +416,7 @@ export default function ScoreKeeperView() {
                               handleRuleChange("timeoutSeconds", Number(event.target.value) || 0)
                             }
                             disabled={matchSettingsLocked}
-                            className="w-24 rounded border border-[#0f5132] px-2 py-1 text-center text-[#0f5132] disabled:cursor-not-allowed disabled:opacity-50"
+                            className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-center text-slate-800 outline-none transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
                           />
                         </label>
                         <button
@@ -427,19 +427,19 @@ export default function ScoreKeeperView() {
                           onMouseLeave={cancelSecondaryHoldReset}
                           onTouchStart={startSecondaryHoldReset}
                           onTouchEnd={cancelSecondaryHoldReset}
-                          className="w-24 rounded-full bg-[#0f5132] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                          className="w-24 rounded-full bg-[#1e3a8a] px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#162e6a]"
                         >
                           {secondaryRunning ? "Pause" : "Play"}
                         </button>
                         <button
                           type="button"
                           onClick={handleStartDiscussionTimer}
-                          className="w-32 rounded-full border border-[#0f5132] px-3 py-1.5 text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
+                          className="w-32 rounded-full bg-[#1e3a8a] px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#162e6a]"
                         >
                           Discussion 1:00
                         </button>
                       </div>
-                      <p className="text-[10px] uppercase tracking-wide text-[#0f5132]/70">
+                      <p className="text-[10px] uppercase tracking-wide text-slate-500">
                         Hold to reset
                       </p>
                     </div>
@@ -451,8 +451,10 @@ export default function ScoreKeeperView() {
                   type="button"
                   onClick={() => setTimeModalOpen(true)}
                   disabled={!matchStarted}
-                  className={`w-full rounded-full px-3 py-2 text-sm font-semibold text-white shadow-card transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                    matchStarted ? "bg-[#0f5132] hover:bg-[#0a3b24]" : "bg-[#b7e4c7] hover:bg-[#8fb8ab]"
+                  className={`w-full rounded-full px-3 py-2 text-sm font-semibold shadow-card transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                    matchStarted
+                      ? "bg-[#1e3a8a] text-white hover:bg-[#162e6a]"
+                      : "bg-slate-200 text-slate-600"
                   }`}
                 >
                   Additional time options
@@ -461,8 +463,8 @@ export default function ScoreKeeperView() {
             </div>
 
               {matchStarted && (
-                <div className="rounded-3xl border border-[#0f5132]/30 bg-white p-1.5 shadow-card/20">
-                <div className="flex flex-col gap-1 text-[#0f5132] sm:flex-row sm:items-center sm:justify-between">
+                <div className="rounded-3xl border border-slate-200 bg-white p-2 shadow-card/30">
+                <div className="flex flex-col gap-1 text-slate-800 sm:flex-row sm:items-center sm:justify-between">
                   <h3 className="text-xl font-semibold">Possession</h3>
                   <p className="text-sm font-semibold">
                     {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
@@ -473,7 +475,7 @@ export default function ScoreKeeperView() {
                     ref={possessionPadRef}
                     role="group"
                     aria-label="Select possession team"
-                    className="relative flex w-full items-stretch gap-1 rounded-2xl bg-[#ecfdf3] p-1 text-sm font-semibold text-[#0f5132]"
+                    className="relative flex w-full items-stretch gap-1 rounded-2xl bg-[#b1b1b1] p-1 text-sm font-semibold text-slate-900"
                     style={{ touchAction: "pan-y" }}
                     onPointerDown={handlePossessionPadPointerDown}
                     onPointerMove={handlePossessionPadPointerMove}
@@ -483,8 +485,10 @@ export default function ScoreKeeperView() {
                   >
                     <button
                       type="button"
-                      className={`flex-1 rounded-2xl px-3 py-3 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1c8f5a] ${
-                        possessionTeam === "A" ? "bg-white text-[#0f5132] shadow" : "text-[#0f5132]/70"
+                      className={`flex-1 rounded-2xl px-3 py-3 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${
+                        possessionTeam === "A"
+                          ? "bg-[#0f5132] text-white shadow"
+                          : "bg-[#b1b1b1] text-slate-700"
                       }`}
                       aria-pressed={possessionTeam === "A"}
                       tabIndex={-1}
@@ -493,8 +497,10 @@ export default function ScoreKeeperView() {
                     </button>
                     <button
                       type="button"
-                      className={`flex-1 rounded-2xl px-3 py-3 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1c8f5a] ${
-                        possessionTeam === "B" ? "bg-white text-[#0f5132] shadow" : "text-[#0f5132]/70"
+                      className={`flex-1 rounded-2xl px-3 py-3 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${
+                        possessionTeam === "B"
+                          ? "bg-[#0f5132] text-white shadow"
+                          : "bg-[#b1b1b1] text-slate-700"
                       }`}
                       aria-pressed={possessionTeam === "B"}
                       tabIndex={-1}
@@ -502,7 +508,7 @@ export default function ScoreKeeperView() {
                       {displayTeamBShort}
                     </button>
                   </div>
-                  <p className="text-center text-[11px] uppercase tracking-wide text-[#0f5132]/70">
+                  <p className="text-center text-[11px] uppercase tracking-wide text-slate-500">
                     Drag across to update possession
                   </p>
                 </div>
@@ -966,48 +972,50 @@ export default function ScoreKeeperView() {
           Half Time
         </button>
 
-            <div>
-              <p className="text-base font-semibold">{displayTeamA}</p>
-              <button
-                type="button"
-                onClick={() => {
-                  handleTimeoutTrigger("A");
-                }}
-                disabled={remainingTimeouts.A === 0}
-                className="mt-1.5 w-full rounded-full bg-[#0f5132] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Timeout A
-              </button>
-              <p className="mt-1 text-xs">
-                Remaining (total): {remainingTimeouts.A}
-                <br />
-                Remaining (half): {halfRemainingLabel("A")}
-              </p>
-            </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <p className="text-base font-semibold">{displayTeamA}</p>
+            <button
+              type="button"
+              onClick={() => {
+                handleTimeoutTrigger("A");
+              }}
+              disabled={remainingTimeouts.A === 0}
+              className="mt-1.5 w-full rounded-full bg-[#162e6a] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1e4fd7] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Timeout {displayTeamAShort || "A"}
+            </button>
+            <p className="mt-1 text-xs">
+              Remaining (total): {remainingTimeouts.A}
+              <br />
+              Remaining (half): {halfRemainingLabel("A")}
+            </p>
+          </div>
 
-            <div>
-              <p className="text-base font-semibold">{displayTeamB}</p>
-              <button
-                type="button"
-                onClick={() => {
-                  handleTimeoutTrigger("B");
-                }}
-                disabled={remainingTimeouts.B === 0}
-                className="mt-1.5 w-full rounded-full bg-[#0f5132] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Timeout B
-              </button>
-              <p className="mt-1 text-xs">
-                Remaining (total): {remainingTimeouts.B}
-                <br />
-                Remaining (half): {halfRemainingLabel("B")}
-              </p>
-            </div>
+          <div>
+            <p className="text-base font-semibold">{displayTeamB}</p>
+            <button
+              type="button"
+              onClick={() => {
+                handleTimeoutTrigger("B");
+              }}
+              disabled={remainingTimeouts.B === 0}
+              className="mt-1.5 w-full rounded-full bg-[#162e6a] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1e4fd7] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Timeout {displayTeamBShort || "B"}
+            </button>
+            <p className="mt-1 text-xs">
+              Remaining (total): {remainingTimeouts.B}
+              <br />
+              Remaining (half): {halfRemainingLabel("B")}
+            </p>
+          </div>
+        </div>
 
         <button
           type="button"
           onClick={handleGameStoppage}
-          className="w-full rounded-full bg-[#a7f3d0] px-3 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-[#6ee7b7]"
+          className="w-full rounded-full bg-[#b91c1c] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#991b1b]"
         >
           Game stoppage
         </button>
