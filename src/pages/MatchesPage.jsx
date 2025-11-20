@@ -9,7 +9,7 @@ const SERIES_COLORS = {
 
 const BAND_COLORS = {
   timeout: "rgba(59, 130, 246, 0.1)",
-  stoppage: "rgba(59, 130, 246, 0.18)",
+  stoppage: "rgba(128, 0, 0, 0.18)",
   halftime: "rgba(16, 185, 129, 0.18)",
 };
 
@@ -198,6 +198,27 @@ export default function MatchesPage() {
                 <LegendSwatch color={BAND_COLORS.stoppage} label="Stoppage window" />
                 <LegendSwatch color={BAND_COLORS.halftime} label="Halftime break" />
               </div>
+            </section>
+
+            <section className="space-y-2 rounded-3xl border border-emerald-200 bg-white p-3 shadow-sm sm:space-y-3 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-2">
+                <div>
+                  <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">Possession timeline</p>
+                  <p className="text-xs text-slate-500 sm:text-sm">
+                    Built from logged turnovers and starting pull data.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 text-xs text-slate-600 sm:gap-2 sm:text-sm">
+                  <LegendSwatch color={SERIES_COLORS.teamA} label={`${selectedMatch?.team_a?.name || "Team A"} possession`} />
+                  <LegendSwatch color={SERIES_COLORS.teamB} label={`${selectedMatch?.team_b?.name || "Team B"} possession`} />
+                  <LegendSwatch color="#e2e8f0" label="Unknown window" />
+                </div>
+              </div>
+              <PossessionTimeline
+                timeline={derived.possessionTimeline}
+                teamAName={selectedMatch?.team_a?.name}
+                teamBName={selectedMatch?.team_b?.name}
+              />
             </section>
 
             {derived.summaries && (
@@ -413,6 +434,93 @@ function TimelineChart({ match, timeline }) {
   );
 }
 
+function PossessionTimeline({ timeline, teamAName, teamBName }) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === "undefined") return;
+      setIsMobile(window.innerWidth <= 640);
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  if (!timeline) {
+    return (
+      <div className="rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-3 py-3.5 text-center text-sm text-slate-500 sm:px-5 sm:py-7">
+        Possession data unavailable. Log turnovers to populate this view.
+      </div>
+    );
+  }
+
+  const segments = timeline.segments || [];
+  const turnovers = timeline.turnovers || [];
+  const timeTicks = timeline.timeTicks || [];
+  const width = 900;
+  const baseHeight = 130;
+  const height = isMobile ? baseHeight * 1.1 : baseHeight;
+  const padding = { top: 18, right: 40, bottom: 42, left: 40 };
+  const chartWidth = width - padding.left - padding.right;
+  const bandHeight = isMobile ? 28 : 24;
+  const bandY = padding.top;
+  const tickY = bandY + bandHeight + 18;
+  const unknownColor = "#e2e8f0";
+
+  const getX = (time) => {
+    const ratio = (time - timeline.minTime) / (timeline.maxTime - timeline.minTime || 1);
+    return padding.left + ratio * chartWidth;
+  };
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
+      <rect x="0" y="0" width={width} height={height} fill="white" rx="18" />
+
+      {segments.map((segment, index) => {
+        const xStart = getX(segment.start);
+        const xEnd = getX(segment.end);
+        const segWidth = Math.max(2, xEnd - xStart);
+        const fill =
+          segment.team === "teamA"
+            ? SERIES_COLORS.teamA
+            : segment.team === "teamB"
+              ? SERIES_COLORS.teamB
+              : unknownColor;
+        return (
+          <g key={`${segment.team || "unknown"}-${segment.start}-${index}`}>
+            <rect
+              x={xStart}
+              y={bandY}
+              width={segWidth}
+              height={bandHeight}
+              fill={fill}
+              opacity="0.75"
+              rx="0"
+            />
+          </g>
+        );
+      })}
+
+      {timeTicks.map((tick) => {
+        const x = getX(tick.value);
+        return (
+          <g key={tick.value}>
+            <text fontSize="11" fill="#475569" textAnchor="middle" dominantBaseline="middle" x={x} y={tickY + 10}>
+              {tick.label}
+            </text>
+            <line x1={x} x2={x} y1={tickY} y2={tickY + 6} stroke="#94a3b8" strokeWidth="1" />
+          </g>
+        );
+      })}
+
+      <text x={width / 2} y={height - 10} textAnchor="middle" fontSize="12" fill="#475569">
+        Minutes
+      </text>
+    </svg>
+  );
+}
+
 function TeamOverviewCard({ title, stats }) {
   const goals = stats?.goals || [];
   const assists = stats?.assists || [];
@@ -510,11 +618,13 @@ function PointLogTable({ rows, teamAName, teamBName }) {
               className={`border-b border-slate-100 last:border-none ${
                 row.variant === "timeout"
                   ? "bg-[#c7e5fb]"
-                  : row.variant === "halftime"
+                : row.variant === "stoppage"
+                  ? "bg-[#f4d9dd]"
+                : row.variant === "halftime"
                   ? "bg-[#c1f0d5]"
-                  : row.variant === "callahan"
+                : row.variant === "callahan"
                   ? "bg-[#fef9c3]"
-                  : row.variant === "goalA"
+                : row.variant === "goalA"
                   ? "bg-[#edf2ff]"
                   : row.variant === "goalB"
                   ? "bg-[#fff3e7]"
@@ -580,6 +690,7 @@ function deriveMatchInsights(match, logs) {
   let scoreB = 0;
   const snapshots = [];
   const scoringPoints = [];
+  const turnovers = [];
   const timestamps = [];
   const pendingBands = {
     timeout: null,
@@ -714,6 +825,13 @@ function deriveMatchInsights(match, logs) {
       continue;
     }
 
+    if (code === MATCH_LOG_EVENT_CODES.TURNOVER) {
+      const possessionTeam =
+        log.team_id === teamAId ? "teamA" : log.team_id === teamBId ? "teamB" : null;
+      turnovers.push({ time: timestamp, team: possessionTeam });
+      continue;
+    }
+
     if (code === MATCH_LOG_EVENT_CODES.TIMEOUT_START) {
       pendingBands.timeout = timestamp;
       pushSnapshot(timestamp);
@@ -723,8 +841,8 @@ function deriveMatchInsights(match, logs) {
         timestamp,
         formattedTime,
         teamLabel: log.team_id === teamAId ? teamAName : teamBName,
-        scorer: "—",
-        assist: "—",
+        scorer: "-",
+        assist: "-",
         description: "Timeout",
         gap,
         variant: "timeout",
@@ -747,12 +865,12 @@ function deriveMatchInsights(match, logs) {
         index: pointIndex,
         timestamp,
         formattedTime,
-        teamLabel: "—",
-        scorer: "—",
-        assist: "—",
+        teamLabel: "-",
+        scorer: "-",
+        assist: "-",
         description: "Stoppage",
         gap,
-        variant: "timeout",
+        variant: "stoppage",
       });
       previousTime = timestamp;
       continue;
@@ -772,9 +890,9 @@ function deriveMatchInsights(match, logs) {
         index: pointIndex,
         timestamp,
         formattedTime,
-        teamLabel: "—",
-        scorer: "—",
-        assist: "—",
+        teamLabel: "-",
+        scorer: "-",
+        assist: "-",
         description: "Halftime",
         gap,
         variant: "halftime",
@@ -892,6 +1010,17 @@ function deriveMatchInsights(match, logs) {
     teamBName,
   });
 
+  const possessionTimeline = buildPossessionTimeline({
+    turnovers,
+    axisStart,
+    axisEnd,
+    timeTicks: timeline.timeTicks,
+    bands: boundedBands,
+    startingTeamId: match.starting_team_id,
+    teamAId,
+    teamBId,
+  });
+
   const summaries = {
     teamA: {
       goals: mapToSortedList(teamStats.teamA.goalCounts),
@@ -905,7 +1034,97 @@ function deriveMatchInsights(match, logs) {
     },
   };
 
-  return { timeline, logRows, summaries, insights: matchInsights };
+  return { timeline, possessionTimeline, logRows, summaries, insights: matchInsights };
+}
+
+function buildPossessionTimeline({
+  turnovers,
+  axisStart,
+  axisEnd,
+  timeTicks,
+  bands,
+  startingTeamId,
+  teamAId,
+  teamBId,
+}) {
+  if (!Number.isFinite(axisStart) || !Number.isFinite(axisEnd) || axisEnd <= axisStart) {
+    return null;
+  }
+
+  const sortedTurnovers = (turnovers || [])
+    .filter((entry) => Number.isFinite(entry.time))
+    .map((entry) => ({
+      ...entry,
+      time: Math.min(Math.max(entry.time, axisStart), axisEnd),
+    }))
+    .sort((a, b) => a.time - b.time)
+    .filter((entry) => entry.time >= axisStart && entry.time <= axisEnd);
+
+  const inferInitialTeam = () => {
+    if (startingTeamId && startingTeamId === teamAId) return "teamB";
+    if (startingTeamId && startingTeamId === teamBId) return "teamA";
+    const firstTeam = sortedTurnovers[0]?.team;
+    if (firstTeam === "teamA") return "teamB";
+    if (firstTeam === "teamB") return "teamA";
+    return null;
+  };
+
+  let currentTeam = inferInitialTeam();
+  let cursor = axisStart;
+  const segments = [];
+
+  const carveOutExclusions = (sourceSegments, exclusions) => {
+    if (!exclusions.length) return sourceSegments;
+    const result = [];
+    for (const segment of sourceSegments) {
+      let pending = [segment];
+      for (const exclusion of exclusions) {
+        const next = [];
+        for (const piece of pending) {
+          if (exclusion.end <= piece.start || exclusion.start >= piece.end) {
+            next.push(piece);
+            continue;
+          }
+          if (exclusion.start > piece.start) {
+            next.push({ ...piece, end: exclusion.start });
+          }
+          if (exclusion.end < piece.end) {
+            next.push({ ...piece, start: exclusion.end });
+          }
+        }
+        pending = next;
+      }
+      result.push(...pending.filter((p) => p.end > p.start));
+    }
+    return result;
+  };
+
+  const pushSegment = (endTime, team) => {
+    if (!Number.isFinite(endTime) || endTime <= cursor) return;
+    segments.push({ start: cursor, end: endTime, team: team || null });
+  };
+
+  for (const turnover of sortedTurnovers) {
+    pushSegment(turnover.time, currentTeam);
+    currentTeam = turnover.team || null;
+    cursor = turnover.time;
+  }
+
+  pushSegment(axisEnd, currentTeam);
+
+  const excludedBands = (bands || []).filter((band) =>
+    band.type === "timeout" || band.type === "stoppage" || band.type === "halftime",
+  );
+
+  const cleanedSegments = carveOutExclusions(segments, excludedBands);
+
+  return {
+    minTime: axisStart,
+    maxTime: axisEnd,
+    segments: cleanedSegments,
+    turnovers: sortedTurnovers,
+    timeTicks: timeTicks || buildTimeTicks(axisStart, axisEnd),
+  };
 }
 
 function buildTimeTicks(start, end) {
