@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES, getMatchLogs } from "../services/matchLogService";
 import { getMatchById, getRecentMatches } from "../services/matchService";
 
@@ -19,6 +20,7 @@ const MATCH_EVENT_ID_HINTS = {
 };
 
 export default function MatchesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [matches, setMatches] = useState([]);
   const [selectedMatchId, setSelectedMatchId] = useState("");
   const [selectedMatch, setSelectedMatch] = useState(null);
@@ -52,6 +54,13 @@ export default function MatchesPage() {
       ignore = true;
     };
   }, [selectedMatchId]);
+
+  useEffect(() => {
+    const fromQuery = searchParams.get("matchId");
+    if (fromQuery && fromQuery !== selectedMatchId) {
+      setSelectedMatchId(fromQuery);
+    }
+  }, [searchParams, selectedMatchId]);
 
   useEffect(() => {
     if (!selectedMatchId) {
@@ -114,7 +123,15 @@ export default function MatchesPage() {
                 <select
                   value={selectedMatchId}
                   disabled={matchLoading}
-                  onChange={(event) => setSelectedMatchId(event.target.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSelectedMatchId(value);
+                    if (value) {
+                      setSearchParams({ matchId: value }, { replace: true });
+                    } else {
+                      setSearchParams({}, { replace: true });
+                    }
+                  }}
                   className="relative z-10 w-full appearance-none rounded-2xl border border-emerald-100/80 bg-white px-11 py-2.5 text-sm font-semibold text-[#052b1d] shadow-[0_10px_35px_rgba(5,32,19,0.12)] transition hover:border-emerald-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200/70 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="">Pick a recent match...</option>
@@ -194,28 +211,30 @@ export default function MatchesPage() {
               </div>
               <TimelineChart match={selectedMatch} timeline={derived.timeline} />
               <div className="flex flex-wrap items-center gap-1 text-xs text-slate-500 sm:gap-2">
-                <LegendSwatch color={BAND_COLORS.timeout} label="Timeout window" />
-                <LegendSwatch color={BAND_COLORS.stoppage} label="Stoppage window" />
-                <LegendSwatch color={BAND_COLORS.halftime} label="Halftime break" />
+                <LegendSwatch color={BAND_COLORS.timeout} label="Timeout" />
+                <LegendSwatch color={BAND_COLORS.stoppage} label="Stoppage" />
+                <LegendSwatch color={BAND_COLORS.halftime} label="Halftime" />
               </div>
             </section>
 
-            <section className="space-y-1 rounded-3xl border border-emerald-200 bg-white p-2 shadow-sm sm:space-y-2 sm:p-3">
-              <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-2">
-                <div>
-                  <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">Possession timeline</p>
+            {derived.hasTurnovers && (
+              <section className="space-y-1 rounded-3xl border border-emerald-200 bg-white p-2 shadow-sm sm:space-y-2 sm:p-3">
+                <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-2">
+                  <div>
+                    <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">Possession timeline</p>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-slate-600 sm:gap-2 sm:text-sm">
+                    <LegendSwatch color={SERIES_COLORS.teamA} label={`${selectedMatch?.team_a?.name || "Team A"} possession`} />
+                    <LegendSwatch color={SERIES_COLORS.teamB} label={`${selectedMatch?.team_b?.name || "Team B"} possession`} />
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 text-xs text-slate-600 sm:gap-2 sm:text-sm">
-                  <LegendSwatch color={SERIES_COLORS.teamA} label={`${selectedMatch?.team_a?.name || "Team A"} possession`} />
-                  <LegendSwatch color={SERIES_COLORS.teamB} label={`${selectedMatch?.team_b?.name || "Team B"} possession`} />
-                </div>
-              </div>
-              <PossessionTimeline
-                timeline={derived.possessionTimeline}
-                teamAName={selectedMatch?.team_a?.name}
-                teamBName={selectedMatch?.team_b?.name}
-              />
-            </section>
+                <PossessionTimeline
+                  timeline={derived.possessionTimeline}
+                  teamAName={selectedMatch?.team_a?.name}
+                  teamBName={selectedMatch?.team_b?.name}
+                />
+              </section>
+            )}
 
             {derived.summaries && (
               <section className="rounded-3xl border border-emerald-200 bg-white p-2.5 shadow-sm sm:p-5">
@@ -575,7 +594,7 @@ function TeamOverviewCard({ title, stats }) {
               {connections.slice(0, 6).map((row) => (
                 <tr key={`${row.assist}-${row.scorer}`} className="border-t border-slate-200 text-sm">
                   <td className="py-1 pr-2">{row.assist}</td>
-                  <td className="py-1 text-center text-sm font-bold text-slate-500">→</td>
+                  <td className="py-1 text-center text-sm font-bold text-slate-500">-&gt;</td>
                   <td className="py-1 pr-2">{row.scorer}</td>
                   <td className="py-1 text-right font-semibold">{row.count}</td>
                 </tr>
@@ -634,7 +653,7 @@ function PointLogTable({ rows, teamAName, teamBName }) {
               <td className="px-1 py-0.5 whitespace-nowrap sm:px-2 sm:py-1.5">{row.formattedTime}</td>
               <td className="px-1 py-0.5 font-semibold sm:px-2 sm:py-1.5">{row.teamLabel}</td>
               <td className="px-1 py-0.5 sm:px-2 sm:py-1.5">
-                {row.description === "Timeout" || row.description === "Halftime" || row.description === "Match start" ? (
+                {row.description === "Timeout" || row.description === "Halftime" || row.description === "Match start" || row.description === "Stoppage" ? (
                   <div className="text-center text-xs font-semibold text-slate-600 sm:text-sm">
                     {row.description}
                   </div>
@@ -1000,17 +1019,9 @@ function deriveMatchInsights(match, logs) {
       })
       .sort((a, b) => b.count - a.count || a.assist.localeCompare(b.assist));
 
-  const matchInsights = buildMatchInsights({
-    match,
-    axisStart,
-    axisEnd,
-    scoringPoints,
-    teamAName,
-    teamBName,
-  });
-
   const possessionTimeline = buildPossessionTimeline({
     turnovers,
+    scoringPoints,
     axisStart,
     axisEnd,
     timeTicks: timeline.timeTicks,
@@ -1018,6 +1029,18 @@ function deriveMatchInsights(match, logs) {
     startingTeamId: match.starting_team_id,
     teamAId,
     teamBId,
+  });
+
+  const matchInsights = buildMatchInsights({
+    match,
+    axisStart,
+    axisEnd,
+    scoringPoints,
+    teamAName,
+    teamBName,
+    possessionTimeline,
+    turnoverCount: turnovers.length,
+    matchStartEventTime,
   });
 
   const summaries = {
@@ -1033,11 +1056,14 @@ function deriveMatchInsights(match, logs) {
     },
   };
 
-  return { timeline, possessionTimeline, logRows, summaries, insights: matchInsights };
+  const hasTurnovers = (possessionTimeline?.turnovers?.length || 0) > 0;
+
+  return { timeline, possessionTimeline, logRows, summaries, insights: matchInsights, hasTurnovers };
 }
 
 function buildPossessionTimeline({
   turnovers,
+  scoringPoints,
   axisStart,
   axisEnd,
   timeTicks,
@@ -1050,14 +1076,27 @@ function buildPossessionTimeline({
     return null;
   }
 
-  const sortedTurnovers = (turnovers || [])
+  const scoreFlipTurnovers = (scoringPoints || [])
+    .filter((point) => Number.isFinite(point.time))
+    .map((point) => ({
+      time: Math.min(Math.max(point.time, axisStart), axisEnd),
+      team: point.team === "teamA" ? "teamB" : point.team === "teamB" ? "teamA" : null,
+      source: "score",
+    }))
+    .filter((entry) => entry.team && entry.time >= axisStart && entry.time <= axisEnd);
+
+  const normalizedTurnovers = (turnovers || [])
     .filter((entry) => Number.isFinite(entry.time))
     .map((entry) => ({
       ...entry,
       time: Math.min(Math.max(entry.time, axisStart), axisEnd),
+      source: entry.source || "turnover",
     }))
-    .sort((a, b) => a.time - b.time)
     .filter((entry) => entry.time >= axisStart && entry.time <= axisEnd);
+
+  const sortedTurnovers = [...normalizedTurnovers, ...scoreFlipTurnovers].sort(
+    (a, b) => a.time - b.time,
+  );
 
   const inferInitialTeam = () => {
     if (startingTeamId && startingTeamId === teamAId) return "teamB";
@@ -1220,22 +1259,38 @@ function formatMatchDate(timestamp) {
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   const dd = String(date.getDate()).padStart(2, "0");
   return `${yyyy}/${mm}/${dd}`;
-}
+} 
 
-function buildMatchInsights({ match, axisStart, axisEnd, scoringPoints, teamAName, teamBName }) {
+function buildMatchInsights({
+  match,
+  axisStart,
+  axisEnd,
+  scoringPoints,
+  teamAName,
+  teamBName,
+  possessionTimeline,
+  turnoverCount,
+  matchStartEventTime,
+}) {
   if (!match) return null;
   const sortedPoints = [...scoringPoints].sort((a, b) => a.time - b.time);
   const firstPoint = sortedPoints[0]?.time ?? null;
   const lastPoint = sortedPoints[sortedPoints.length - 1]?.time ?? null;
   const duration = Number.isFinite(axisEnd) && Number.isFinite(axisStart) ? axisEnd - axisStart : null;
+  const matchStartLabel = Number.isFinite(matchStartEventTime)
+    ? formatTimeLabel(matchStartEventTime, true)
+    : match.start_time
+      ? new Date(match.start_time).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })
+      : "--";
 
   const matchRows = [
     { label: "Match date", value: formatMatchDate(match.start_time) },
     { label: "Match duration", value: formatDurationLong(duration) },
-    {
-      label: "Match start",
-      value: match.start_time ? new Date(match.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "--",
-    },
+    { label: "Match start", value: matchStartLabel },
     { label: "First point", value: formatTimeLabel(firstPoint, true) },
     { label: "Last point", value: formatTimeLabel(lastPoint, true) },
   ];
@@ -1258,11 +1313,60 @@ function buildMatchInsights({ match, axisStart, axisEnd, scoringPoints, teamANam
   const teamAGap = teamAverageGap("teamA");
   const teamBGap = teamAverageGap("teamB");
 
+  const formatMsShort = (ms) => (Number.isFinite(ms) && ms > 0 ? formatGap(ms) : "--");
+  const formatRatio = (value, decimals = 2) =>
+    Number.isFinite(value) && value >= 0 ? value.toFixed(decimals) : "--";
+
+  const possessionAverages = (() => {
+    if (!turnoverCount || turnoverCount <= 0) return null;
+    const segments = possessionTimeline?.segments || [];
+    if (!segments.length) return null;
+    const totals = { teamA: { duration: 0, count: 0 }, teamB: { duration: 0, count: 0 } };
+    segments.forEach((segment) => {
+      if (segment.team === "teamA" || segment.team === "teamB") {
+        const span = segment.end - segment.start;
+        if (span > 0) {
+          totals[segment.team].duration += span;
+          totals[segment.team].count += 1;
+        }
+      }
+    });
+    return {
+      teamA:
+        totals.teamA.count > 0 ? totals.teamA.duration / totals.teamA.count : null,
+      teamB:
+        totals.teamB.count > 0 ? totals.teamB.duration / totals.teamB.count : null,
+    };
+  })();
+
+  const avgTurnsPerPoint = (() => {
+    const points = sortedPoints.length;
+    if (!points || !Number.isFinite(turnoverCount) || turnoverCount <= 0) return null;
+    return turnoverCount / points;
+  })();
+
   const tempoRows = [
     { label: "Avg time per point", value: averageTempo ? formatGap(averageTempo) : "--" },
     { label: `${teamAName} scoring gap`, value: teamAGap ? formatGap(teamAGap) : "--" },
     { label: `${teamBName} scoring gap`, value: teamBGap ? formatGap(teamBGap) : "--" },
   ];
+
+  if (possessionAverages && turnoverCount > 0) {
+    tempoRows.push(
+      {
+        label: `${teamAName} avg possession`,
+        value: formatMsShort(possessionAverages.teamA),
+      },
+      {
+        label: `${teamBName} avg possession`,
+        value: formatMsShort(possessionAverages.teamB),
+      },
+    );
+  }
+
+  if (turnoverCount > 0 && Number.isFinite(avgTurnsPerPoint)) {
+    tempoRows.push({ label: "Avg turns per point", value: formatRatio(avgTurnsPerPoint) });
+  }
 
   return { match: matchRows, tempo: tempoRows };
 }

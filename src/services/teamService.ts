@@ -179,6 +179,26 @@ export type PlayerStatRow = {
   games: number;
 };
 
+export type PlayerMatchStatRow = {
+  match_id: string;
+  player_id: string;
+  team_id: string | null;
+  goals: number | null;
+  assists: number | null;
+  blocks: number | null;
+  turnovers: number | null;
+  match: {
+    id: string;
+    start_time: string | null;
+    status: string | null;
+    event: { id: string; name: string | null } | null;
+    team_a: { id: string; name: string | null; short_name: string | null } | null;
+    team_b: { id: string; name: string | null; short_name: string | null } | null;
+  } | null;
+  player: { id: string; name: string | null; jersey_number: number | null } | null;
+  team: { id: string; name: string | null; short_name: string | null } | null;
+};
+
 type PlayerStatQueryRow = {
   match_id: string;
   player_id: string;
@@ -271,6 +291,75 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
     if (b.goals !== a.goals) return b.goals - a.goals;
     return a.playerName.localeCompare(b.playerName);
   });
+}
+
+export async function getAllPlayerMatchStats(): Promise<PlayerMatchStatRow[]> {
+  const { data, error } = await supabase
+    .from("player_match_stats")
+    .select(
+      `
+        match_id,
+        player_id,
+        team_id,
+        goals,
+        assists,
+        blocks,
+        turnovers,
+        match:matches(
+          id,
+          start_time,
+          status,
+          event:events(id, name),
+          team_a:teams!matches_team_a_fkey(id, name, short_name),
+          team_b:teams!matches_team_b_fkey(id, name, short_name)
+        ),
+        player:players(id, name, jersey_number),
+        team:teams(id, name, short_name)
+      `
+    )
+    .order("match_id", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message || "Failed to load player match stats");
+  }
+
+  return (data ?? []) as PlayerMatchStatRow[];
+}
+
+export async function getPlayerMatchStats(playerId: string): Promise<PlayerMatchStatRow[]> {
+  if (!playerId) return [];
+
+  const { data, error } = await supabase
+    .from("player_match_stats")
+    .select(
+      `
+        match_id,
+        player_id,
+        team_id,
+        goals,
+        assists,
+        blocks,
+        turnovers,
+        match:matches(
+          id,
+          start_time,
+          status,
+          event:events(id, name),
+          team_a:teams!matches_team_a_fkey(id, name, short_name),
+          team_b:teams!matches_team_b_fkey(id, name, short_name)
+        ),
+        player:players(id, name, jersey_number),
+        team:teams(id, name, short_name)
+      `
+    )
+    .eq("player_id", playerId)
+    .order("match_id", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message || "Failed to load player match stats");
+  }
+
+  return (data ?? []) as PlayerMatchStatRow[];
 }
 
 export type SpiritScoreRow = {

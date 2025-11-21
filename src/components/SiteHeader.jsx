@@ -4,11 +4,10 @@ import useInstallPrompt from "../hooks/useInstallPrompt";
 
 const NAV_LINKS = [
   { label: "Overview", to: "/#stats" },
-  { label: "Events", to: "/#events" },
-  { label: "Divisions", to: "/#divisions" },
+  { label: "Divisions", to: "/divisions" },
   { label: "Matches", to: "/matches" },
-  { label: "Teams", to: "/#teams" },
-  { label: "League DB", to: "/teams" },
+  { label: "Teams", to: "/teams" },
+  { label: "Players", to: "/players" },
 ];
 
 const ROLE_LINKS = [

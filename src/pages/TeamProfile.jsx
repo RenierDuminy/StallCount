@@ -430,8 +430,15 @@ function PlayersTable({ stats, rosterCount }) {
               const total = stat.goals + stat.assists;
               return (
                 <tr key={stat.playerId}>
-                  <td className="px-4 py-2 text-slate-600">{stat.jerseyNumber ?? "—"}</td>
-                  <td className="px-4 py-2 font-semibold text-slate-900">{stat.playerName}</td>
+                  <td className="px-4 py-2 text-slate-600">{stat.jerseyNumber ?? "-"}</td>
+                  <td className="px-4 py-2 font-semibold text-slate-900">
+                    <Link
+                      to={`/players/${stat.playerId}`}
+                      className="text-slate-900 underline decoration-dotted decoration-slate-300 underline-offset-4 transition hover:text-slate-600"
+                    >
+                      {stat.playerName}
+                    </Link>
+                  </td>
                   <td className="px-4 py-2 text-right font-semibold text-slate-900">{total}</td>
                   <td className="px-4 py-2 text-right">{stat.assists}</td>
                   <td className="px-4 py-2 text-right">{stat.goals}</td>
