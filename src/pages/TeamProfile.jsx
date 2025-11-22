@@ -7,6 +7,7 @@ import {
   getTeamMatches,
   getTeamPlayerStats,
 } from "../services/teamService";
+import { hydrateVenueLookup } from "../services/venueService";
 
 const TABS = [
   { id: "games", label: "Games" },
@@ -34,6 +35,7 @@ export default function TeamProfilePage() {
     playerStats: [],
     spiritScores: [],
   });
+  const [venueLookup, setVenueLookup] = useState({});
 
   useEffect(() => {
     let ignore = false;
@@ -106,6 +108,28 @@ export default function TeamProfilePage() {
       ignore = true;
     };
   }, [teamId]);
+
+  useEffect(() => {
+    const venueIds = state.matches
+      .map((match) => match.venue_id)
+      .filter((id) => id && venueLookup[id] === undefined);
+    if (venueIds.length === 0) return;
+
+    let ignore = false;
+    hydrateVenueLookup(venueIds)
+      .then((lookup) => {
+        if (!ignore) {
+          setVenueLookup((prev) => ({ ...prev, ...lookup }));
+        }
+      })
+      .catch((err) => {
+        console.error("Unable to load venues", err);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [state.matches, venueLookup]);
 
   const metrics = useMemo(() => {
     if (!state.team) {
@@ -285,14 +309,18 @@ export default function TeamProfilePage() {
               </div>
 
               <div className="mt-6">
-                {state.loading ? (
+                    {state.loading ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
                     Loading live team data...
                   </div>
                 ) : (
                   <>
                     {activeTab === "games" && (
-                      <GamesTable matches={state.matches} teamId={state.team?.id} />
+                      <GamesTable
+                        matches={state.matches}
+                        teamId={state.team?.id}
+                        venueLookup={venueLookup}
+                      />
                     )}
                     {activeTab === "players" && (
                       <PlayersTable stats={state.playerStats} rosterCount={state.roster.length} />
@@ -315,10 +343,13 @@ export default function TeamProfilePage() {
   );
 }
 
-function GamesTable({ matches, teamId }) {
+function GamesTable({ matches, teamId, venueLookup }) {
   if (!matches?.length) {
     return <EmptyState message="No games available for this team yet." />;
   }
+
+  const resolveVenueName = (match) =>
+    match.venue?.name || (match.venue_id && venueLookup?.[match.venue_id]) || "Venue TBD";
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200">
@@ -384,7 +415,7 @@ function GamesTable({ matches, teamId }) {
                   {match.pool?.name || match.division?.name || "—"}
                 </td>
                 <td className="px-4 py-3 text-slate-600">
-                  {match.venue?.name || "Venue TBD"}
+                  {resolveVenueName(match)}
                 </td>
               </tr>
             );

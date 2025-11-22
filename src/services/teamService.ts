@@ -116,6 +116,7 @@ export type TeamMatchRow = {
   status: string;
   score_a: number;
   score_b: number;
+  venue_id: string | null;
   event: {
     id: string;
     name: string;
@@ -150,6 +151,7 @@ export async function getTeamMatches(teamId: string): Promise<TeamMatchRow[]> {
         status,
         score_a,
         score_b,
+        venue_id,
         event:events(id, name),
         division:divisions(id, name),
         pool:pools(id, name),

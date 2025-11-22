@@ -23,6 +23,13 @@ const ADMIN_MODULES = [
     accent: "bg-amber-100 text-amber-700",
   },
   {
+    label: "Tournament director",
+    description:
+      "Desktop command center to view, create, and alter tournament data across every table.",
+    to: "/tournament-director",
+    accent: "bg-slate-200 text-slate-800",
+  },
+  {
     label: "Spirit scores",
     description: "Capture and review spirit scores for completed matches.",
     to: "/spirit-scores",

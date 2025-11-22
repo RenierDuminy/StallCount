@@ -17,7 +17,7 @@ import TeamProfilePage from "./pages/TeamProfile";
 import SpiritScoresPage from "./pages/SpiritScoresPage";
 import UserPage from "./pages/UserPage";
 import AppLayout from "./components/AppLayout";
-
+import TournamentDirectorPage from "./pages/TournamentDirectorPage";
 
 export default function AppRoutes() {
   return (
@@ -41,22 +41,30 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
-        <Route
-          path="/score-keeper"
-          element={
-            <ProtectedRoute>
-              <ScoreKeeperPage />
+          <Route
+            path="/score-keeper"
+            element={
+              <ProtectedRoute>
+                <ScoreKeeperPage />
               </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/spirit-scores"
-          element={
-            <ProtectedRoute>
-              <SpiritScoresPage />
-            </ProtectedRoute>
-          }
-        />
+            }
+          />
+          <Route
+            path="/spirit-scores"
+            element={
+              <ProtectedRoute>
+                <SpiritScoresPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tournament-director"
+            element={
+              <ProtectedRoute>
+                <TournamentDirectorPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/captain"
             element={

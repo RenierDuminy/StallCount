@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getEventsList } from "../services/leagueService";
 import { getMatchesByEvent } from "../services/matchService";
+import { hydrateVenueLookup } from "../services/venueService";
 
 export default function DivisionsPage() {
   const [events, setEvents] = useState([]);
@@ -12,6 +13,7 @@ export default function DivisionsPage() {
   const [matchesLoading, setMatchesLoading] = useState(false);
   const [matchesError, setMatchesError] = useState(null);
   const [matchTab, setMatchTab] = useState("upcoming");
+  const [venueLookup, setVenueLookup] = useState({});
 
   useEffect(() => {
     let ignore = false;
@@ -76,6 +78,29 @@ export default function DivisionsPage() {
     };
   }, [selectedEventId]);
 
+  useEffect(() => {
+    const venueIds = matches
+      .map((match) => match.venue_id)
+      .filter((id) => id && venueLookup[id] === undefined);
+
+    if (venueIds.length === 0) return;
+
+    let ignore = false;
+    hydrateVenueLookup(venueIds)
+      .then((lookup) => {
+        if (!ignore) {
+          setVenueLookup((prev) => ({ ...prev, ...lookup }));
+        }
+      })
+      .catch((err) => {
+        console.error("Unable to load venues", err);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [matches, venueLookup]);
+
   const formatDate = (value) => {
     if (!value) return "TBD";
     const date = new Date(value);
@@ -114,6 +139,9 @@ export default function DivisionsPage() {
   }, [matches]);
 
   const activeMatches = matchBuckets[matchTab] || [];
+
+  const resolveVenueName = (match) =>
+    match.venue?.name || (match.venue_id && venueLookup[match.venue_id]) || "Venue TBD";
 
   return (
     <div className="min-h-screen bg-[#f3f7f4] pb-16">
@@ -309,7 +337,7 @@ export default function DivisionsPage() {
                       </span>
                     </div>
                     <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      {match.venue?.name || "Field TBD"}
+                      {resolveVenueName(match)}
                     </p>
                     <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm font-semibold text-[#04140c]">
                       <div className="min-w-0">

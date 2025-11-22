@@ -10,6 +10,7 @@ import {
   createMatchLogEntry,
 } from "../../services/matchLogService";
 import { supabase } from "../../services/supabaseClient";
+import { hydrateVenueLookup } from "../../services/venueService";
 import {
   loadScorekeeperSession,
   saveScorekeeperSession,
@@ -35,10 +36,6 @@ import {
 } from "./scorekeeperConstants";
 
 const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
-
-function clonePendingEntries(entries = []) {
-  return entries.map((entry) => ({ ...entry }));
-}
 
 function deriveTimerStateFromSnapshot(
   snapshot,
@@ -97,6 +94,7 @@ export function useScoreKeeperData() {
   const [matchesLoading, setMatchesLoading] = useState(true);
   const [matchesError, setMatchesError] = useState(null);
   const [selectedMatchId, setSelectedMatchId] = useState(null);
+  const [venueLookup, setVenueLookup] = useState({});
 
   const [activeMatch, setActiveMatch] = useState(null);
   const [initialising, setInitialising] = useState(false);
@@ -286,6 +284,28 @@ const selectedMatch = useMemo(
   () => matches.find((m) => m.id === selectedMatchId) || null,
   [matches, selectedMatchId]
 );
+
+useEffect(() => {
+  const candidateIds = [activeMatch?.venue_id, selectedMatch?.venue_id].filter(
+    (id) => id && venueLookup[id] === undefined,
+  );
+  if (candidateIds.length === 0) return;
+
+  let ignore = false;
+  hydrateVenueLookup(candidateIds)
+    .then((lookup) => {
+      if (!ignore) {
+        setVenueLookup((prev) => ({ ...prev, ...lookup }));
+      }
+    })
+    .catch((err) => {
+      console.error("[ScoreKeeper] Failed to load venues", err);
+    });
+
+  return () => {
+    ignore = true;
+  };
+}, [activeMatch?.venue_id, selectedMatch?.venue_id, venueLookup]);
 
 const getPrimaryRemainingSeconds = useCallback(
   () => computeRemainingSeconds(primaryTimerAnchorRef.current, timerRunning),
@@ -589,7 +609,12 @@ useEffect(() => {
   const kickoffLabel = formatMatchTime(activeMatch?.start_time || selectedMatch?.start_time);
   const teamAId = activeMatch?.team_a?.id || selectedMatch?.team_a?.id || null;
   const teamBId = activeMatch?.team_b?.id || selectedMatch?.team_b?.id || null;
-  const venueName = activeMatch?.venue?.name || selectedMatch?.venue?.name || null;
+  const venueName =
+    activeMatch?.venue?.name ||
+    selectedMatch?.venue?.name ||
+    (activeMatch?.venue_id && venueLookup[activeMatch.venue_id]) ||
+    (selectedMatch?.venue_id && venueLookup[selectedMatch.venue_id]) ||
+    null;
   const statusLabel = (activeMatch?.status || selectedMatch?.status || "pending").toUpperCase();
   const getAbbaDescriptor = useCallback(
     (orderIndex) => {
@@ -730,7 +755,6 @@ const getAbbaLineCode = useCallback(
         totalSeconds: secondaryTotalSeconds,
       },
       timeoutUsage: { ...timeoutUsage },
-      pendingEntries: clonePendingEntries(pendingEntries),
       possessionTeam,
       halftimeTriggered,
       stoppageActive,
@@ -750,7 +774,6 @@ const getAbbaLineCode = useCallback(
     secondaryRunning,
     secondaryLabel,
     timeoutUsage,
-    pendingEntries,
     possessionTeam,
     halftimeTriggered,
     stoppageActive,
@@ -841,6 +864,7 @@ const recordPendingEntry = useCallback(
     void (async () => {
       try {
         await createMatchLogEntry(dbPayload);
+        setPendingEntries((prev) => prev.filter((entry) => entry !== supabasePayload));
       } catch (err) {
         console.error("[ScoreKeeper] Failed to persist match log entry:", err);
         setConsoleError((prev) =>
@@ -1341,7 +1365,6 @@ const rosterNameLookup = useMemo(() => {
     }));
     setScore(snapshot.score ?? { a: 0, b: 0 });
     setTimeoutUsage(snapshot.timeoutUsage ?? { ...DEFAULT_TIMEOUT_USAGE });
-    setPendingEntries(clonePendingEntries(snapshot.pendingEntries || []));
     setPossessionTeam(snapshot.possessionTeam ?? null);
     setHalftimeTriggered(Boolean(snapshot.halftimeTriggered));
     setStoppageActive(Boolean(snapshot.stoppageActive));
