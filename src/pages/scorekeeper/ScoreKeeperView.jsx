@@ -1087,7 +1087,7 @@ export default function ScoreKeeperView() {
                     {formatPlayerSelectLabel(player)}
                   </option>
                 ))}
-                <option value={CALAHAN_ASSIST_VALUE}>CALAHAN!!</option>
+                <option value={CALAHAN_ASSIST_VALUE}>CALLAHAN!!</option>
               </select>
             </label>
             <div className="space-y-1.5">
@@ -1326,7 +1326,7 @@ function MatchLogCard({
               {log.team === "A" ? displayTeamA : displayTeamB}
             </p>
             {isCalahanLog ? (
-              <p className="font-semibold uppercase text-[#0a3b24]">CALAHAN!!</p>
+              <p className="font-semibold uppercase text-[#0a3b24]">CALLAHAN!!</p>
             ) : (
               <p>
                 Scorer: {log.scorerName || "Unassigned"}

@@ -14,8 +14,8 @@ export async function getCurrentUser() {
   if (!user) return null;
 
   const { data, error } = await supabase
-    .from("users")
-    .select("id, full_name, role")
+    .from("user")
+    .select("id, email, full_name, role:roles(name)")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -24,7 +24,11 @@ export async function getCurrentUser() {
   }
 
   if (data) {
-    return { ...data, email: user.email };
+    return {
+      ...data,
+      role: data.role?.name || null,
+      email: data.email || user.email,
+    };
   }
 
   return {

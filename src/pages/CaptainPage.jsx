@@ -256,7 +256,7 @@ export default function CaptainPage() {
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Player directory</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Add new players or update jersey numbers, names, and bios in the `public.players`
+                  Add new players or update jersey numbers, names, and bios in the `public.player`
                   table.
                 </p>
               </div>

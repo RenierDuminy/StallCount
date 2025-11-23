@@ -31,7 +31,7 @@ export default function HomePage() {
           toSettled(getDivisions(4)),
           toSettled(getRecentEvents(4)),
           toSettled(getRecentMatches(6)),
-          toSettled(getTableCount("players")),
+          toSettled(getTableCount("player")),
           toSettled(getTableCount("teams")),
           toSettled(getTableCount("events")),
         ]);

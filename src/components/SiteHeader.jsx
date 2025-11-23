@@ -12,6 +12,7 @@ const NAV_LINKS = [
 
 const ROLE_LINKS = [
   { label: "User", to: "/user" },
+  { label: "Notifications", to: "/notifications" },
   { label: "Admin tools", to: "/admin" },
 ];
 

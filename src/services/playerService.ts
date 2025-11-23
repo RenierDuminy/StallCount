@@ -55,12 +55,12 @@ export async function getAllPlayers(): Promise<PlayerRow[]> {
         id,
         event_id,
         team_id,
-        players:players(id, name, gender_code, jersey_number),
+        players:player(id, name, gender_code, jersey_number),
         teams:teams(id, name, short_name)
       `
     )
     .order("team_id", { ascending: true })
-    .order("jersey_number", { ascending: true, foreignTable: "players" });
+    .order("jersey_number", { ascending: true, foreignTable: "player" });
 
   if (error) {
     throw new Error(error.message || "Failed to load players");
@@ -87,11 +87,11 @@ export async function getPlayersByTeam(teamId: string) {
     .select(
       `
         id,
-        players:players(id, name, gender_code, jersey_number)
+        players:player(id, name, gender_code, jersey_number)
       `
     )
     .eq("team_id", teamId)
-    .order("jersey_number", { ascending: true, foreignTable: "players" });
+    .order("jersey_number", { ascending: true, foreignTable: "player" });
 
   if (error) {
     throw new Error(error.message || "Failed to load team roster");
@@ -116,7 +116,7 @@ export async function getPlayersByTeam(teamId: string) {
 
 export async function getPlayerDirectory(): Promise<PlayerDirectoryRow[]> {
   const { data, error } = await supabase
-    .from("players")
+    .from("player")
     .select(PLAYER_SELECT)
     .order("name", { ascending: true });
 
@@ -153,7 +153,7 @@ export async function upsertPlayer(payload: UpsertPlayerPayload) {
   }
 
   if (payload.id) {
-    const { error } = await supabase.from("players").update(base).eq("id", payload.id);
+    const { error } = await supabase.from("player").update(base).eq("id", payload.id);
     if (error) {
       throw new Error(error.message || "Unable to update player");
     }
@@ -161,7 +161,7 @@ export async function upsertPlayer(payload: UpsertPlayerPayload) {
   }
 
   const { data, error } = await supabase
-    .from("players")
+    .from("player")
     .insert(base)
     .select("id")
     .single();
@@ -183,7 +183,7 @@ export async function getRosterEntries(teamId: string, eventId?: string | null) 
         id,
         is_captain,
         is_spirit_captain,
-        player:players(id, name, jersey_number),
+        player:player(id, name, jersey_number),
         team:teams(id, name),
         event:events(id, name)
       `

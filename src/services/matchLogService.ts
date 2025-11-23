@@ -11,16 +11,30 @@ export const MATCH_LOG_EVENT_CODES = {
   HALFTIME_END: "halftime_end",
   STOPPAGE_START: "stoppage_start",
   STOPPAGE_END: "stoppage_end",
-  CALAHAN: "calahan",
+  CALAHAN: "callahan",
 } as const;
+
+export const DEFAULT_MATCH_EVENT_DEFINITIONS = [
+  { code: MATCH_LOG_EVENT_CODES.SCORE, description: "Score" },
+  { code: MATCH_LOG_EVENT_CODES.MATCH_START, description: "Match start" },
+  { code: MATCH_LOG_EVENT_CODES.MATCH_END, description: "Match end" },
+  { code: MATCH_LOG_EVENT_CODES.TURNOVER, description: "Turnover" },
+  { code: MATCH_LOG_EVENT_CODES.TIMEOUT_START, description: "Timeout start" },
+  { code: MATCH_LOG_EVENT_CODES.TIMEOUT_END, description: "Timeout end" },
+  { code: MATCH_LOG_EVENT_CODES.HALFTIME_START, description: "Halftime start" },
+  { code: MATCH_LOG_EVENT_CODES.HALFTIME_END, description: "Halftime end" },
+  { code: MATCH_LOG_EVENT_CODES.STOPPAGE_START, description: "Stoppage start" },
+  { code: MATCH_LOG_EVENT_CODES.STOPPAGE_END, description: "Stoppage end" },
+  { code: MATCH_LOG_EVENT_CODES.CALAHAN, description: "Callahan goal" },
+] as const;
 
 export type MatchLogInput = {
   matchId: string;
   eventTypeCode?: keyof typeof MATCH_LOG_EVENT_CODES | string;
   eventTypeId?: number | null;
   teamId?: string | null;
-  scorerId?: string | null;
-  assistId?: string | null;
+  actorId?: string | null;
+  secondaryActorId?: string | null;
   abbaLine?: string | null;
   createdAt?: string | null;
 };
@@ -30,24 +44,23 @@ export type MatchLogRow = {
   match_id: string;
   event_type_id: number;
   team_id: string | null;
-  scorer_id: string | null;
-  assist_id: string | null;
+  actor_id: string | null;
+  secondary_actor_id: string | null;
   abba_line: string | null;
   created_at: string;
   event?: {
     id: number;
     code: string | null;
     description: string | null;
-    category: string | null;
   } | null;
-  scorer?: { id: string; name: string | null } | null;
-  assist?: { id: string; name: string | null } | null;
+  actor?: { id: string; name: string | null } | null;
+  secondary_actor?: { id: string; name: string | null } | null;
 };
 
 export type MatchLogUpdate = {
   teamId?: string | null;
-  scorerId?: string | null;
-  assistId?: string | null;
+  actorId?: string | null;
+  secondaryActorId?: string | null;
   eventTypeCode?: keyof typeof MATCH_LOG_EVENT_CODES | string;
   abbaLine?: string | null;
 };
@@ -55,27 +68,41 @@ export type MatchLogUpdate = {
 const eventTypeCache = new Map<string, number>();
 
 const MATCH_LOG_SELECT =
-  "id, match_id, event_type_id, team_id, scorer_id, assist_id, abba_line, created_at, event:match_events!match_logs_event_type_id_fkey(id, code, description, category), scorer:players!match_logs_scorer_id_fkey(id, name), assist:players!match_logs_assist_id_fkey(id, name)";
+  "id, match_id, event_type_id, team_id, actor_id, secondary_actor_id, abba_line, created_at, event:match_events!match_logs_event_type_id_fkey(id, code, description), actor:player!match_logs_actor_id_fkey(id, name), secondary_actor:player!match_logs_secondary_actor_id_fkey(id, name)";
+
+async function ensureDefaultMatchEvents() {
+  // Writes are blocked by RLS; keep this noop to avoid accidental inserts.
+}
 
 async function resolveEventTypeId(eventTypeCode: string): Promise<number> {
   if (eventTypeCache.has(eventTypeCode)) {
     return eventTypeCache.get(eventTypeCode)!;
   }
 
-  const { data, error } = await supabase
-    .from("match_events")
-    .select("id")
-    .eq("code", eventTypeCode)
-    .maybeSingle();
+  const fetchId = async () => {
+    const { data, error } = await supabase
+      .from("match_events")
+      .select("id")
+      .eq("code", eventTypeCode)
+      .maybeSingle();
 
-  if (error || !data) {
+    if (error) {
+      throw new Error(error.message || `Unable to resolve event type: ${eventTypeCode}`);
+    }
+
+    return data?.id ?? null;
+  };
+
+  let id = await fetchId();
+
+  if (!id) {
     throw new Error(
-      error?.message || `Unable to resolve event type: ${eventTypeCode}`
+      `Missing match_events entry for code "${eventTypeCode}". Ask an admin to seed match_events.`
     );
   }
 
-  eventTypeCache.set(eventTypeCode, data.id);
-  return data.id;
+  eventTypeCache.set(eventTypeCode, id);
+  return id;
 }
 
 export async function getMatchLogs(matchId: string) {
@@ -110,8 +137,8 @@ export async function createMatchLogEntry(input: MatchLogInput) {
       match_id: input.matchId,
       event_type_id: resolvedEventTypeId,
       team_id: input.teamId ?? null,
-      scorer_id: input.scorerId ?? null,
-      assist_id: input.assistId ?? null,
+      actor_id: input.actorId ?? null,
+      secondary_actor_id: input.secondaryActorId ?? null,
       abba_line: input.abbaLine ?? null,
       created_at: input.createdAt || undefined,
     })
@@ -131,11 +158,11 @@ export async function updateMatchLogEntry(logId: string, updates: MatchLogUpdate
   if (Object.prototype.hasOwnProperty.call(updates, "teamId")) {
     updatePayload.team_id = updates.teamId ?? null;
   }
-  if (Object.prototype.hasOwnProperty.call(updates, "scorerId")) {
-    updatePayload.scorer_id = updates.scorerId ?? null;
+  if (Object.prototype.hasOwnProperty.call(updates, "actorId")) {
+    updatePayload.actor_id = updates.actorId ?? null;
   }
-  if (Object.prototype.hasOwnProperty.call(updates, "assistId")) {
-    updatePayload.assist_id = updates.assistId ?? null;
+  if (Object.prototype.hasOwnProperty.call(updates, "secondaryActorId")) {
+    updatePayload.secondary_actor_id = updates.secondaryActorId ?? null;
   }
 
   if (Object.prototype.hasOwnProperty.call(updates, "eventTypeCode") && updates.eventTypeCode) {
@@ -181,14 +208,18 @@ export async function deleteMatchLogEntry(logId: string) {
 }
 
 export async function getMatchEventDefinitions() {
-  const { data, error } = await supabase
-    .from("match_events")
-    .select("id, code, description, category")
-    .order("code", { ascending: true });
+  const load = async () => {
+    const { data, error } = await supabase
+      .from("match_events")
+      .select("id, code, description")
+      .order("code", { ascending: true });
 
-  if (error) {
-    throw new Error(error.message || "Failed to load match event definitions");
-  }
+    if (error) {
+      throw new Error(error.message || "Failed to load match event definitions");
+    }
 
-  return data ?? [];
+    return data ?? [];
+  };
+
+  return load();
 }

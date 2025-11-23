@@ -33,7 +33,7 @@ export async function getRecentAuditLogs(limit = 20): Promise<AuditLogEntry[]> {
         action,
         change_data,
         created_at,
-        actor:profiles!audit_log_actor_id_fkey(id, full_name, email)
+        actor:user!audit_log_actor_id_fkey(id, full_name, email)
       `
     )
     .order("created_at", { ascending: false })

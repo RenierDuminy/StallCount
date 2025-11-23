@@ -2,9 +2,8 @@
 -- Table order and constraints may not be valid for execution.
 
 CREATE TABLE public.abba_line (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   line text NOT NULL UNIQUE,
-  CONSTRAINT abba_line_pkey PRIMARY KEY (id, line)
+  CONSTRAINT abba_line_pkey PRIMARY KEY (line)
 );
 CREATE TABLE public.audit_log (
   id bigint NOT NULL DEFAULT nextval('audit_log_id_seq'::regclass),
@@ -15,7 +14,7 @@ CREATE TABLE public.audit_log (
   change_data jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT audit_log_pkey PRIMARY KEY (id),
-  CONSTRAINT audit_log_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.profiles(id)
+  CONSTRAINT audit_log_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.user(id)
 );
 CREATE TABLE public.bracket_nodes (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -91,7 +90,6 @@ CREATE TABLE public.match_events (
   id smallint NOT NULL DEFAULT nextval('event_types_id_seq'::regclass),
   code text NOT NULL UNIQUE,
   description text,
-  category text,
   CONSTRAINT match_events_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.match_logs (
@@ -99,30 +97,21 @@ CREATE TABLE public.match_logs (
   match_id uuid NOT NULL,
   event_type_id smallint NOT NULL,
   team_id uuid,
-  scorer_id uuid,
-  assist_id uuid,
+  actor_id uuid,
+  secondary_actor_id uuid,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   abba_line text,
   CONSTRAINT match_logs_pkey PRIMARY KEY (id),
   CONSTRAINT match_logs_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
   CONSTRAINT match_logs_event_type_id_fkey FOREIGN KEY (event_type_id) REFERENCES public.match_events(id),
   CONSTRAINT match_logs_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
-  CONSTRAINT match_logs_scorer_id_fkey FOREIGN KEY (scorer_id) REFERENCES public.players(id),
-  CONSTRAINT match_logs_assist_id_fkey FOREIGN KEY (assist_id) REFERENCES public.players(id),
-  CONSTRAINT match_logs_abba_line_fkey FOREIGN KEY (abba_line) REFERENCES public.abba_line(line)
+  CONSTRAINT match_logs_abba_line_fkey FOREIGN KEY (abba_line) REFERENCES public.abba_line(line),
+  CONSTRAINT match_logs_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.player(id),
+  CONSTRAINT match_logs_secondary_actor_id_fkey FOREIGN KEY (secondary_actor_id) REFERENCES public.player(id)
 );
 CREATE TABLE public.match_status (
   code text NOT NULL,
   CONSTRAINT match_status_pkey PRIMARY KEY (code)
-);
-CREATE TABLE public.match_subscriptions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  match_id uuid NOT NULL,
-  profile_id uuid NOT NULL,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT match_subscriptions_pkey PRIMARY KEY (id),
-  CONSTRAINT match_subscriptions_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
-  CONSTRAINT match_subscriptions_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.profiles(id)
 );
 CREATE TABLE public.matches (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -153,20 +142,7 @@ CREATE TABLE public.matches (
   CONSTRAINT matches_status_fkey FOREIGN KEY (status) REFERENCES public.match_status(code),
   CONSTRAINT matches_scorekeeper_fkey FOREIGN KEY (scorekeeper) REFERENCES auth.users(id)
 );
-CREATE TABLE public.player_match_stats (
-  match_id uuid NOT NULL,
-  player_id uuid NOT NULL,
-  team_id uuid NOT NULL,
-  goals integer NOT NULL DEFAULT 0,
-  assists integer NOT NULL DEFAULT 0,
-  blocks integer NOT NULL DEFAULT 0,
-  turnovers integer NOT NULL DEFAULT 0,
-  CONSTRAINT player_match_stats_pkey PRIMARY KEY (match_id, player_id),
-  CONSTRAINT player_match_stats_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
-  CONSTRAINT player_match_stats_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.players(id),
-  CONSTRAINT player_match_stats_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id)
-);
-CREATE TABLE public.players (
+CREATE TABLE public.player (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
   gender_code text,
@@ -176,8 +152,32 @@ CREATE TABLE public.players (
   birthday date,
   description text,
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT players_pkey PRIMARY KEY (id),
+  CONSTRAINT player_pkey PRIMARY KEY (id),
   CONSTRAINT players_gender_code_fkey FOREIGN KEY (gender_code) REFERENCES public.genders(code)
+);
+CREATE TABLE public.player_match_stats (
+  match_id uuid NOT NULL,
+  player_id uuid NOT NULL,
+  team_id uuid NOT NULL,
+  goals smallint NOT NULL DEFAULT 0 CHECK (goals >= 0),
+  assists smallint NOT NULL DEFAULT 0 CHECK (assists >= 0),
+  blocks smallint NOT NULL DEFAULT 0 CHECK (blocks >= 0),
+  turnovers smallint NOT NULL DEFAULT 0 CHECK (turnovers >= 0),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT player_match_stats_pkey PRIMARY KEY (match_id, player_id),
+  CONSTRAINT player_match_stats_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
+  CONSTRAINT player_match_stats_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.player(id),
+  CONSTRAINT player_match_stats_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id)
+);
+CREATE TABLE public.player_statistics (
+  matches smallint NOT NULL DEFAULT '0'::smallint,
+  goals smallint NOT NULL DEFAULT '0'::smallint,
+  assists smallint NOT NULL DEFAULT '0'::smallint,
+  blocks smallint NOT NULL DEFAULT '0'::smallint,
+  turnovers smallint NOT NULL DEFAULT '0'::smallint,
+  player_id uuid NOT NULL UNIQUE,
+  CONSTRAINT player_statistics_pkey PRIMARY KEY (player_id),
+  CONSTRAINT players_statistics_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.player(id)
 );
 CREATE TABLE public.pool_teams (
   pool_id uuid NOT NULL,
@@ -195,16 +195,6 @@ CREATE TABLE public.pools (
   CONSTRAINT pools_pkey PRIMARY KEY (id),
   CONSTRAINT pools_division_id_fkey FOREIGN KEY (division_id) REFERENCES public.divisions(id)
 );
-CREATE TABLE public.profiles (
-  id uuid NOT NULL,
-  email text UNIQUE,
-  full_name text,
-  role_id smallint,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT profiles_pkey PRIMARY KEY (id),
-  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
-  CONSTRAINT profiles_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id)
-);
 CREATE TABLE public.push_subscriptions (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   profile_id uuid NOT NULL,
@@ -213,7 +203,7 @@ CREATE TABLE public.push_subscriptions (
   auth_key text NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT push_subscriptions_pkey PRIMARY KEY (id),
-  CONSTRAINT push_subscriptions_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.profiles(id)
+  CONSTRAINT push_subscriptions_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.user(id)
 );
 CREATE TABLE public.roles (
   id smallint NOT NULL DEFAULT nextval('roles_id_seq'::regclass),
@@ -240,6 +230,16 @@ CREATE TABLE public.spirit_scores (
   CONSTRAINT spirit_scores_rated_team_id_fkey FOREIGN KEY (rated_team_id) REFERENCES public.teams(id),
   CONSTRAINT spirit_scores_submitted_by_fkey1 FOREIGN KEY (submitted_by) REFERENCES auth.users(id)
 );
+CREATE TABLE public.subscriptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  profile_id uuid NOT NULL,
+  target_type USER-DEFINED NOT NULL,
+  target_id uuid NOT NULL,
+  topics ARRAY NOT NULL DEFAULT '{}'::text[],
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT subscriptions_pkey PRIMARY KEY (id),
+  CONSTRAINT subscriptions_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.user(id)
+);
 CREATE TABLE public.team_roster (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   event_id uuid NOT NULL,
@@ -252,7 +252,7 @@ CREATE TABLE public.team_roster (
   CONSTRAINT team_roster_pkey PRIMARY KEY (id),
   CONSTRAINT team_roster_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
   CONSTRAINT team_roster_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
-  CONSTRAINT team_roster_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.players(id)
+  CONSTRAINT team_roster_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.player(id)
 );
 CREATE TABLE public.teams (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -260,6 +260,16 @@ CREATE TABLE public.teams (
   short_name text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT teams_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.user (
+  id uuid NOT NULL,
+  email text UNIQUE,
+  full_name text,
+  role_id smallint,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_pkey PRIMARY KEY (id),
+  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
+  CONSTRAINT profiles_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id)
 );
 CREATE TABLE public.venues (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

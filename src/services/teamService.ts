@@ -230,7 +230,7 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
         assists,
         blocks,
         turnovers,
-        player:players(id, name, jersey_number)
+        player:player(id, name, jersey_number)
       `
     )
     .eq("team_id", teamId);
@@ -315,7 +315,7 @@ export async function getAllPlayerMatchStats(): Promise<PlayerMatchStatRow[]> {
           team_a:teams!matches_team_a_fkey(id, name, short_name),
           team_b:teams!matches_team_b_fkey(id, name, short_name)
         ),
-        player:players(id, name, jersey_number),
+        player:player(id, name, jersey_number),
         team:teams(id, name, short_name)
       `
     )
@@ -350,7 +350,7 @@ export async function getPlayerMatchStats(playerId: string): Promise<PlayerMatch
           team_a:teams!matches_team_a_fkey(id, name, short_name),
           team_b:teams!matches_team_b_fkey(id, name, short_name)
         ),
-        player:players(id, name, jersey_number),
+        player:player(id, name, jersey_number),
         team:teams(id, name, short_name)
       `
     )

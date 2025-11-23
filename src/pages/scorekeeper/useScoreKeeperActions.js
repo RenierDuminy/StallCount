@@ -384,13 +384,13 @@ export function useScoreKeeperActions(controller) {
         payload.teamId = teamId ?? null;
       }
       if (Object.prototype.hasOwnProperty.call(updates, "scorerId")) {
-        payload.scorerId =
+        payload.actorId =
           Object.prototype.hasOwnProperty.call(updates, "scorerId") && updates.scorerId !== undefined
             ? updates.scorerId
             : targetLog.scorerId ?? null;
       }
       if (Object.prototype.hasOwnProperty.call(updates, "assistId")) {
-        payload.assistId =
+        payload.secondaryActorId =
           Object.prototype.hasOwnProperty.call(updates, "assistId") && updates.assistId !== undefined
             ? updates.assistId
             : targetLog.assistId ?? null;

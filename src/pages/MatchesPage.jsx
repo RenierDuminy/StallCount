@@ -807,8 +807,8 @@ function deriveMatchInsights(match, logs) {
         scoreB += 1;
         scoringPoints.push({ team: "teamB", time: timestamp, score: scoreB });
       }
-      const scorerName = log.scorer?.name ?? log.scorer_name ?? "N/A";
-      let assistName = log.assist?.name ?? log.assist_name ?? "";
+      const scorerName = log.actor?.name ?? log.scorer_name ?? "N/A";
+      let assistName = log.secondary_actor?.name ?? log.assist_name ?? "";
       if (code === MATCH_LOG_EVENT_CODES.CALAHAN && !assistName) {
         assistName = "Callahan";
       }

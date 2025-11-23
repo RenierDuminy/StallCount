@@ -16,6 +16,7 @@ import DivisionsPage from "./pages/DivisionsPage";
 import TeamProfilePage from "./pages/TeamProfile";
 import SpiritScoresPage from "./pages/SpiritScoresPage";
 import UserPage from "./pages/UserPage";
+import NotificationsPage from "./pages/NotificationsPage";
 import AppLayout from "./components/AppLayout";
 import TournamentDirectorPage from "./pages/TournamentDirectorPage";
 
@@ -32,6 +33,14 @@ export default function AppRoutes() {
           <Route path="/teams/:teamId" element={<TeamProfilePage />} />
           <Route path="/matches" element={<MatchesPage />} />
           <Route path="/divisions" element={<DivisionsPage />} />
+          <Route
+            path="/notifications"
+            element={
+              <ProtectedRoute>
+                <NotificationsPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/user" element={<UserPage />} />
           <Route
             path="/admin"

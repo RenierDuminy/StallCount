@@ -833,8 +833,8 @@ const recordPendingEntry = useCallback(
     const dbPayload = {
       matchId: normalizedEntry.matchId,
       teamId: normalizedEntry.teamId ?? null,
-      scorerId: normalizedEntry.scorerId ?? null,
-      assistId: normalizedEntry.assistId ?? null,
+      actorId: normalizedEntry.scorerId ?? null,
+      secondaryActorId: normalizedEntry.assistId ?? null,
       abbaLine: normalizedEntry.abbaLine ?? null,
       createdAt: normalizedEntry.createdAt ?? null,
     };
@@ -847,8 +847,8 @@ const recordPendingEntry = useCallback(
       match_id: dbPayload.matchId,
       event_type_id: dbPayload.eventTypeId ?? null,
       team_id: dbPayload.teamId,
-      scorer_id: dbPayload.scorerId,
-      assist_id: dbPayload.assistId,
+      actor_id: dbPayload.actorId,
+      secondary_actor_id: dbPayload.secondaryActorId,
       abba_line: dbPayload.abbaLine,
       created_at: dbPayload.createdAt,
     };
@@ -1000,8 +1000,8 @@ const rosterNameLookup = useMemo(() => {
               (scorerId ? "Unknown player" : "Unassigned"),
             scorerId: scorerId || null,
             assistName:
-              normalizedCode === MATCH_LOG_EVENT_CODES.CALAHAN
-                ? "CALAHAN!!"
+          normalizedCode === MATCH_LOG_EVENT_CODES.CALAHAN
+                ? "CALLAHAN!!"
                 : rosterNameLookup.get(assistId || "") ||
                   (assistId ? "Unknown player" : null),
             assistId: assistId || null,
@@ -1273,12 +1273,12 @@ const rosterNameLookup = useMemo(() => {
         }
 
         const scorerName =
-          row.scorer?.name ||
-          (row.scorer_id ? rosterNameLookup.get(row.scorer_id) : null) ||
+          row.actor?.name ||
+          (row.actor_id ? rosterNameLookup.get(row.actor_id) : null) ||
           "Unassigned";
         const assistName =
-          row.assist?.name ||
-          (row.assist_id ? rosterNameLookup.get(row.assist_id) : null) ||
+          row.secondary_actor?.name ||
+          (row.secondary_actor_id ? rosterNameLookup.get(row.secondary_actor_id) : null) ||
           null;
 
         return {
@@ -1286,14 +1286,14 @@ const rosterNameLookup = useMemo(() => {
           team: teamKey,
           timestamp: row.created_at,
           scorerName,
-          scorerId: row.scorer_id ?? null,
+          scorerId: row.actor_id ?? null,
           assistName,
-          assistId: row.assist_id ?? null,
+          assistId: row.secondary_actor_id ?? null,
           totalA: runningA,
           totalB: runningB,
           eventCode: row.event?.code || null,
           eventDescription: row.event?.description || row.event?.code || "Event",
-          eventCategory: row.event?.category || null,
+          eventCategory: null,
           scoreOrderIndex,
           abbaLine: normalizeAbbaLine(row.abba_line || getAbbaLineCode(scoreOrderIndex)),
         };
