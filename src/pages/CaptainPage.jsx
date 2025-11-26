@@ -228,29 +228,26 @@ export default function CaptainPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-6 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Backend workspace
-            </p>
-            <h1 className="text-3xl font-semibold text-slate-900">Captain workspace</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              Maintain your player list and control the roster assignments for current events.
-            </p>
+    <div className="pb-16 text-[var(--sc-ink)]">
+      <header className="sc-shell py-4 sm:py-6">
+        <div className="sc-card-base space-y-3 p-6 sm:p-7">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="sc-chip">Backend workspace</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              Captain workspace
+            </span>
           </div>
-          <Link
-            to="/admin"
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-          >
+          <p className="text-sm text-[var(--sc-ink-muted)]">
+            Maintain your player list and control the roster assignments for current events.
+          </p>
+          <Link to="/admin" className="sc-button is-ghost">
             Back to admin hub
           </Link>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-10 space-y-10">
-        <section className="grid gap-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.1fr,0.9fr]">
+      <main className="sc-shell max-w-6xl space-y-10 py-6">
+        <section className="grid gap-8 sc-card-base p-6 shadow-sm lg:grid-cols-[1.1fr,0.9fr]">
           <div>
             <div className="flex items-center justify-between gap-4">
               <div>

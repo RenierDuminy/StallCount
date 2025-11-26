@@ -115,29 +115,27 @@ export default function SpiritScoresPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-6 py-6 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Spirit entry
-            </p>
-            <h1 className="text-3xl font-semibold text-slate-900">Spirit scores</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              Capture spirit scores for both teams after the final whistle and submit them directly to the event database.
-            </p>
+    <div className="pb-16 text-[var(--sc-ink)]">
+      <header className="sc-shell py-4 sm:py-6">
+        <div className="sc-card-base space-y-3 p-6 sm:p-7">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="sc-chip">Spirit entry</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              Submit post-match scores
+            </span>
           </div>
-          <Link
-            to="/score-keeper"
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
-          >
+          <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">Spirit scores</h1>
+          <p className="text-sm text-[var(--sc-ink-muted)]">
+            Capture spirit scores for both teams after the final whistle and submit them directly to the event database.
+          </p>
+          <Link to="/score-keeper" className="sc-button is-ghost">
             Back to score keeper
           </Link>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-10">
-        <section className="space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <main className="sc-shell">
+        <section className="space-y-6 sc-card-base p-6 shadow-sm">
           <form
             className="space-y-8"
             onSubmit={async (event) => {

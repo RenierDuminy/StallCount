@@ -73,10 +73,7 @@ export default function MatchesPage() {
       setLogsLoading(true);
       setLogsError(null);
       try {
-        const [match, logs] = await Promise.all([
-          getMatchById(selectedMatchId),
-          getMatchLogs(selectedMatchId),
-        ]);
+        const [match, logs] = await Promise.all([getMatchById(selectedMatchId), getMatchLogs(selectedMatchId)]);
         if (!ignore) {
           setSelectedMatch(match);
           setMatchLogs(logs ?? []);
@@ -102,20 +99,24 @@ export default function MatchesPage() {
   const derived = useMemo(() => deriveMatchInsights(selectedMatch, matchLogs), [selectedMatch, matchLogs]);
 
   return (
-    <div className="min-h-screen bg-[#f3f7f4] pb-16">
-      <header className="border-b border-emerald-900/10 bg-[#072013] py-2 text-emerald-50 sm:py-4">
-        <div className="sc-shell matches-compact-shell">
-          <p className="text-l font-semibold uppercase tracking-wide text-emerald-300">Matches</p>
-          <p className="mt-0.5 max-w-3xl text-sm text-emerald-100 sm:mt-1">
+    <div className="pb-16 text-[var(--sc-ink)]">
+      <header className="sc-shell py-4 sm:py-6">
+        <div className="sc-card-base space-y-3 p-5 sm:p-7">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="sc-chip">Matches</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              Timeline and logs
+            </span>
+          </div>
+          <p className="text-base text-[var(--sc-ink-muted)]">
             Explore completed matches, view the scoring progression, and dig into a detailed point-by-point log.
           </p>
-          <div className="mt-1.5 flex flex-col gap-1.5 md:flex-row md:items-center sm:mt-3 sm:gap-2.5">
-            <label className="text-sm font-semibold">
+          <div className="grid gap-3 md:grid-cols-[1.1fr_0.9fr] md:items-center">
+            <label className="space-y-1 text-sm font-semibold text-[var(--sc-ink)]">
               Select match
-              <div className="relative mt-1 w-full md:w-96 sm:mt-1.5">
-                <div className="pointer-events-none absolute inset-0 rounded-2xl border border-white/30 bg-white/10 blur-[1px]" aria-hidden="true" />
-                <div className="pointer-events-none absolute inset-y-0 left-4 z-10 flex items-center text-[#0f5132]/70">
-                  <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <div className="sc-card-muted relative flex items-center gap-3 p-3">
+                <div className="text-[var(--sc-ink-muted)]" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h8m-10 4h12m-9 4h6" />
                     <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="3" />
                   </svg>
@@ -132,7 +133,7 @@ export default function MatchesPage() {
                       setSearchParams({}, { replace: true });
                     }
                   }}
-                  className="relative z-10 w-full appearance-none rounded-2xl border border-emerald-100/80 bg-white px-11 py-2.5 text-sm font-semibold text-[#052b1d] shadow-[0_10px_35px_rgba(5,32,19,0.12)] transition hover:border-emerald-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200/70 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full bg-transparent text-sm font-semibold text-[var(--sc-ink)] outline-none disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="">Pick a recent match...</option>
                   {matches.map((match) => (
@@ -141,21 +142,21 @@ export default function MatchesPage() {
                     </option>
                   ))}
                 </select>
-                <div className="pointer-events-none absolute inset-y-0 right-4 z-10 flex items-center text-[#0f5132]/70">
-                  <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <div className="text-[var(--sc-ink-muted)]" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.117l3.71-3.886a.75.75 0 0 1 1.08 1.04l-4.24 4.44a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" />
                   </svg>
                 </div>
               </div>
             </label>
             {selectedMatch && (
-              <div className="rounded-2xl border border-emerald-300/20 bg-emerald-900/30 px-2.5 py-1.5 text-sm sm:px-3.5 sm:py-2.5">
-                <p className="text-xs uppercase tracking-wide text-emerald-200">Current selection</p>
-                <p className="font-semibold text-white">
+              <div className="sc-card-muted p-4">
+                <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Current selection</p>
+                <p className="font-semibold text-[var(--sc-ink)]">
                   {selectedMatch.team_a?.name} vs {selectedMatch.team_b?.name}
                 </p>
-                <p className="text-xs text-emerald-200">
-                  Kickoff {formatKickoff(selectedMatch.start_time)} · Status {selectedMatch.status}
+                <p className="text-xs text-[var(--sc-ink-muted)]">
+                  Kickoff {formatKickoff(selectedMatch.start_time)} | Status {selectedMatch.status}
                 </p>
               </div>
             )}
@@ -165,26 +166,24 @@ export default function MatchesPage() {
 
       <main className="sc-shell matches-compact-shell space-y-3 py-2 sm:space-y-6 sm:py-4">
         {logsError && (
-          <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{logsError}</p>
+          <p className="sc-card-muted border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+            {logsError}
+          </p>
         )}
         {!selectedMatchId ? (
-          <div className="rounded-3xl border border-dashed border-emerald-400/30 bg-white/70 px-3 py-4 text-center text-sm text-emerald-800 sm:px-5 sm:py-8">
+          <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
             Choose a match to see the scoring timeline and full log.
           </div>
         ) : logsLoading || !derived ? (
-          <div className="rounded-3xl border border-emerald-200 bg-white/90 px-3 py-4 text-center text-sm text-emerald-700 sm:px-5 sm:py-8">
-            Loading match data…
+          <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+            Loading match data...
           </div>
         ) : (
           <>
             {derived.insights && (
-              <section className="rounded-3xl border border-emerald-200 bg-white p-3 shadow-sm sm:p-5">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">
-                      Match analytics
-                    </p>
-                  </div>
+              <section className="sc-card-base space-y-3 p-4 sm:p-6">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="sc-chip">Match analytics</span>
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
                   <InsightTable title="Match insight" rows={derived.insights.match} />
@@ -193,24 +192,16 @@ export default function MatchesPage() {
               </section>
             )}
 
-            <section className="space-y-1 rounded-3xl border border-emerald-200 bg-white p-2 shadow-sm sm:space-y-2 sm:p-3">
-              <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-2">
-                <div>
-                  <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">Score progression</p>
-                </div>
-                <div className="flex items-center gap-1.5 text-sm font-semibold sm:gap-3">
-                  <span className="flex items-center gap-1 text-[#1d4ed8] sm:gap-1.5">
-                    <span className="inline-block h-2 w-7 rounded-full bg-[#1d4ed8]" />
-                    {selectedMatch?.team_a?.name || "Team A"}
-                  </span>
-                  <span className="flex items-center gap-1 text-[#b91c1c] sm:gap-1.5">
-                    <span className="inline-block h-2 w-7 rounded-full bg-[#b91c1c]" />
-                    {selectedMatch?.team_b?.name || "Team B"}
-                  </span>
+            <section className="sc-card-base space-y-2 p-4 sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="sc-chip">Score progression</span>
+                <div className="flex items-center gap-3 text-sm font-semibold">
+                  <LegendSwatch color={SERIES_COLORS.teamA} label={selectedMatch?.team_a?.name || "Team A"} />
+                  <LegendSwatch color={SERIES_COLORS.teamB} label={selectedMatch?.team_b?.name || "Team B"} />
                 </div>
               </div>
               <TimelineChart match={selectedMatch} timeline={derived.timeline} />
-              <div className="flex flex-wrap items-center gap-1 text-xs text-slate-500 sm:gap-2">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--sc-ink-muted)]">
                 <LegendSwatch color={BAND_COLORS.timeout} label="Timeout" />
                 <LegendSwatch color={BAND_COLORS.stoppage} label="Stoppage" />
                 <LegendSwatch color={BAND_COLORS.halftime} label="Halftime" />
@@ -218,12 +209,10 @@ export default function MatchesPage() {
             </section>
 
             {derived.hasTurnovers && (
-              <section className="space-y-1 rounded-3xl border border-emerald-200 bg-white p-2 shadow-sm sm:space-y-2 sm:p-3">
-                <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-2">
-                  <div>
-                    <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">Possession timeline</p>
-                  </div>
-                  <div className="flex items-center gap-1 text-xs text-slate-600 sm:gap-2 sm:text-sm">
+              <section className="sc-card-base space-y-2 p-4 sm:p-6">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="sc-chip">Possession timeline</span>
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-[var(--sc-ink-muted)]">
                     <LegendSwatch color={SERIES_COLORS.teamA} label={`${selectedMatch?.team_a?.name || "Team A"} possession`} />
                     <LegendSwatch color={SERIES_COLORS.teamB} label={`${selectedMatch?.team_b?.name || "Team B"} possession`} />
                   </div>
@@ -237,13 +226,11 @@ export default function MatchesPage() {
             )}
 
             {derived.summaries && (
-              <section className="rounded-3xl border border-emerald-200 bg-white p-2.5 shadow-sm sm:p-5">
-                <div className="mb-1.5 sm:mb-3">
-                  <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">
-                    Team production
-                  </p>
+              <section className="sc-card-base space-y-3 p-4 sm:p-6">
+                <div className="flex items-center gap-2">
+                  <span className="sc-chip">Team production</span>
                 </div>
-                <div className="grid gap-1.5 lg:grid-cols-2 sm:gap-3">
+                <div className="grid gap-3 lg:grid-cols-2">
                   <TeamOverviewCard
                     title={`${selectedMatch?.team_a?.name || "Team A"} overview`}
                     stats={derived.summaries.teamA}
@@ -256,11 +243,9 @@ export default function MatchesPage() {
               </section>
             )}
 
-            <section className="rounded-3xl border border-emerald-200 bg-white p-2.5 shadow-sm sm:p-5">
-              <div className="mb-1.5 sm:mb-3">
-                <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">
-                  Point-by-point log
-                </p>
+            <section className="sc-card-base space-y-3 p-4 sm:p-6">
+              <div className="flex items-center gap-2">
+                <span className="sc-chip">Point-by-point log</span>
               </div>
               <PointLogTable rows={derived.logRows} teamAName={selectedMatch?.team_a?.name} teamBName={selectedMatch?.team_b?.name} />
             </section>
@@ -283,22 +268,20 @@ function LegendSwatch({ color, label }) {
 function InsightTable({ title, rows }) {
   if (!rows?.length) {
     return (
-      <div className="rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-        No {title.toLowerCase()} available.
-      </div>
+      <div className="sc-card-muted p-4 text-sm text-[var(--sc-ink-muted)]">No {title.toLowerCase()} available.</div>
     );
   }
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 px-4 py-3">
-        <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
+    <div className="sc-card-base">
+      <div className="border-b border-[var(--sc-border)] px-4 py-3">
+        <h3 className="text-sm font-semibold text-[var(--sc-ink)]">{title}</h3>
       </div>
-      <table className="w-full text-sm text-slate-700">
+      <table className="w-full text-sm text-[var(--sc-ink)]">
         <tbody>
           {rows.map((row) => (
-            <tr key={row.label} className="border-t border-slate-100 text-sm">
-              <td className="px-4 py-2 font-medium text-slate-500">{row.label}</td>
-              <td className="px-4 py-2 text-right font-semibold text-slate-800">{row.value}</td>
+            <tr key={row.label} className="border-t border-[var(--sc-border)] text-sm">
+              <td className="px-4 py-2 font-medium text-[var(--sc-ink-muted)]">{row.label}</td>
+              <td className="px-4 py-2 text-right font-semibold text-[var(--sc-ink)]">{row.value}</td>
             </tr>
           ))}
         </tbody>
@@ -322,9 +305,7 @@ function TimelineChart({ match, timeline }) {
 
   if (!match || !timeline) {
     return (
-      <div className="rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-3 py-3.5 text-center text-sm text-slate-500 sm:px-5 sm:py-7">
-        Timeline data unavailable.
-      </div>
+      <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Timeline data unavailable.</div>
     );
   }
 
@@ -464,7 +445,7 @@ function PossessionTimeline({ timeline, teamAName, teamBName }) {
 
   if (!timeline) {
     return (
-      <div className="rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-3 py-3.5 text-center text-sm text-slate-500 sm:px-5 sm:py-7">
+      <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
         Possession data unavailable. Log turnovers to populate this view.
       </div>
     );
@@ -546,18 +527,18 @@ function TeamOverviewCard({ title, stats }) {
 
   const renderList = (label, rows, valueLabel) => {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white/95 p-3 shadow-inner">
+      <div className="sc-card-muted p-3">
         {rows.length ? (
-          <table className="w-full text-left text-sm text-[#0b3825]">
+          <table className="w-full text-left text-sm text-[var(--sc-ink)]">
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-slate-500">
+              <tr className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">
                 <th className="py-0.5 pr-2">Player</th>
                 <th className="py-0.5 text-right">{valueLabel}</th>
               </tr>
             </thead>
             <tbody>
               {rows.slice(0, 8).map((row) => (
-                <tr key={`${label}-${row.player}`} className="border-t border-slate-200 text-sm">
+                <tr key={`${label}-${row.player}`} className="border-t border-[var(--sc-border)] text-sm">
                   <td className="py-1 pr-2">{row.player}</td>
                   <td className="py-1 text-right font-semibold">{row.count}</td>
                 </tr>
@@ -565,25 +546,25 @@ function TeamOverviewCard({ title, stats }) {
             </tbody>
           </table>
         ) : (
-          <p className="mt-0.5 text-xs text-slate-500 sm:mt-1.5">No {label.toLowerCase()} recorded.</p>
+          <p className="mt-0.5 text-xs text-[var(--sc-ink-muted)] sm:mt-1.5">No {label.toLowerCase()} recorded.</p>
         )}
       </div>
     );
   };
 
   return (
-    <div className="rounded-2xl border-2 border-emerald-200 bg-white px-3 py-2.5 shadow-inner sm:px-5 sm:py-4">
-      <h3 className="mb-1.5 text-lg font-semibold text-[#052b1d] sm:mb-2.5">{title}</h3>
+    <div className="sc-card-base p-3 sm:p-5">
+      <h3 className="mb-1.5 text-lg font-semibold text-[var(--sc-ink)] sm:mb-2.5">{title}</h3>
       <div className="grid gap-1.5 sm:grid-cols-2 sm:gap-3">
         {renderList("Goals", goals, "Goal")}
         {renderList("Assists", assists, "Assist")}
       </div>
-      <div className="mt-1.5 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-inner sm:mt-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">Top connections</p>
+      <div className="mt-1.5 sc-card-muted p-3 sm:mt-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Top connections</p>
         {connections.length ? (
-          <table className="mt-1 w-full text-left text-sm text-[#0b3825] sm:mt-1.5">
+          <table className="mt-1 w-full text-left text-sm text-[var(--sc-ink)] sm:mt-1.5">
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-slate-500">
+              <tr className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">
                 <th className="py-0.5 pr-2">Assist</th>
                 <th className="py-0.5" />
                 <th className="py-0.5 pr-2">Scorer</th>
@@ -592,9 +573,9 @@ function TeamOverviewCard({ title, stats }) {
             </thead>
             <tbody>
               {connections.slice(0, 6).map((row) => (
-                <tr key={`${row.assist}-${row.scorer}`} className="border-t border-slate-200 text-sm">
+                <tr key={`${row.assist}-${row.scorer}`} className="border-t border-[var(--sc-border)] text-sm">
                   <td className="py-1 pr-2">{row.assist}</td>
-                  <td className="py-1 text-center text-sm font-bold text-slate-500">-&gt;</td>
+                  <td className="py-1 text-center text-sm font-bold text-[var(--sc-ink-muted)]">-&gt;</td>
                   <td className="py-1 pr-2">{row.scorer}</td>
                   <td className="py-1 text-right font-semibold">{row.count}</td>
                 </tr>
@@ -602,7 +583,7 @@ function TeamOverviewCard({ title, stats }) {
             </tbody>
           </table>
         ) : (
-          <p className="mt-1 text-xs text-slate-500 sm:mt-1.5">No assisted goals recorded.</p>
+          <p className="mt-1 text-xs text-[var(--sc-ink-muted)] sm:mt-1.5">No assisted goals recorded.</p>
         )}
       </div>
     </div>
@@ -612,16 +593,14 @@ function TeamOverviewCard({ title, stats }) {
 function PointLogTable({ rows, teamAName, teamBName }) {
   if (!rows.length) {
     return (
-      <div className="rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-3 py-3.5 text-center text-sm text-slate-500 sm:px-5 sm:py-7">
-        No match events recorded yet.
-      </div>
+      <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">No match events recorded yet.</div>
     );
   }
   return (
     <div className="w-full overflow-x-auto px-0 sm:mx-0 sm:px-0">
-      <table className="w-full table-auto text-left text-xs sm:text-sm text-[#0b3825]">
+      <table className="w-full table-auto text-left text-xs sm:text-sm text-[var(--sc-ink)]">
         <thead>
-          <tr className="uppercase tracking-wide text-[11px] text-slate-500">
+          <tr className="uppercase tracking-wide text-[11px] text-[var(--sc-ink-muted)]">
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">#</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Time</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Team</th>
@@ -633,7 +612,7 @@ function PointLogTable({ rows, teamAName, teamBName }) {
           {rows.map((row) => (
             <tr
               key={`${row.index}-${row.timestamp}`}
-              className={`border-b border-slate-100 last:border-none ${
+              className={`border-b border-[var(--sc-border)] last:border-none ${
                 row.variant === "timeout"
                   ? "bg-[#c7e5fb]"
                 : row.variant === "stoppage"
@@ -649,23 +628,23 @@ function PointLogTable({ rows, teamAName, teamBName }) {
                   : ""
               }`}
             >
-              <td className="px-1 py-0.5 font-semibold text-slate-500 sm:px-2 sm:py-1.5">{row.label}</td>
-              <td className="px-1 py-0.5 whitespace-nowrap sm:px-2 sm:py-1.5">{row.formattedTime}</td>
-              <td className="px-1 py-0.5 font-semibold sm:px-2 sm:py-1.5">{row.teamLabel}</td>
+              <td className="px-1 py-0.5 font-semibold text-[var(--sc-ink-muted)] sm:px-2 sm:py-1.5">{row.label}</td>
+              <td className="px-1 py-0.5 whitespace-nowrap text-[var(--sc-ink)] sm:px-2 sm:py-1.5">{row.formattedTime}</td>
+              <td className="px-1 py-0.5 font-semibold text-[var(--sc-ink)] sm:px-2 sm:py-1.5">{row.teamLabel}</td>
               <td className="px-1 py-0.5 sm:px-2 sm:py-1.5">
                 {row.description === "Timeout" || row.description === "Halftime" || row.description === "Match start" || row.description === "Stoppage" ? (
-                  <div className="text-center text-xs font-semibold text-slate-600 sm:text-sm">
+                  <div className="text-center text-xs font-semibold text-[var(--sc-ink-muted)] sm:text-sm">
                     {row.description}
                   </div>
                 ) : (
                   <div className="grid auto-rows-min items-center gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-1.5">
-                    <span className="text-slate-500 text-[11px] sm:text-sm sm:text-right">{row.assist || "-"}</span>
-                    <span className="text-[10px] font-semibold text-slate-400 text-center sm:text-xs">-&gt;</span>
-                    <span className="font-semibold text-[#052b1d]">{row.scorer || "-"}</span>
+                    <span className="text-[var(--sc-ink-muted)] text-[11px] sm:text-sm sm:text-right">{row.assist || "-"}</span>
+                    <span className="text-[10px] font-semibold text-[var(--sc-ink-muted)] text-center sm:text-xs">-&gt;</span>
+                    <span className="font-semibold text-[var(--sc-ink)]">{row.scorer || "-"}</span>
                   </div>
                 )}
               </td>
-              <td className="px-1 py-0.5 text-right font-mono text-[11px] text-slate-500 sm:px-2 sm:py-1.5 sm:text-xs">
+              <td className="px-1 py-0.5 text-right font-mono text-[11px] text-[var(--sc-ink-muted)] sm:px-2 sm:py-1.5 sm:text-xs">
                 {row.gap}
               </td>
             </tr>

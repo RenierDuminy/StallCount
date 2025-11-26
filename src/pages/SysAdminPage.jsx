@@ -70,28 +70,24 @@ export default function SysAdminPage() {
   };
 
   return (
-    <div className="sc-shell space-y-8">
-      <header className="sc-card">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              Backend workspace
-            </p>
-            <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">Systems admin tools</h1>
-            <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">
-              Configure leagues, manage access policies, and audit StallCount data.
-            </p>
+    <div className="pb-16 text-[var(--sc-ink)]">
+      <div className="sc-shell space-y-8">
+        <header className="sc-card-base p-6 sm:p-7">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="sc-chip">Backend workspace</p>
+              <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">Systems admin tools</h1>
+              <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">
+                Configure leagues, manage access policies, and audit StallCount data.
+              </p>
+            </div>
+            <Link to="/admin" className="sc-button is-ghost">
+              Back to admin hub
+            </Link>
           </div>
-          <Link
-            to="/admin"
-            className="inline-flex items-center justify-center rounded-full border border-[var(--sc-border)] px-4 py-2 text-sm font-semibold text-[var(--sc-accent)] transition hover:border-[var(--sc-accent)] hover:bg-[#e6fffa]"
-          >
-            Back to admin hub
-          </Link>
-        </div>
-      </header>
+        </header>
 
-      <section className="sc-card">
+        <section className="sc-card-base p-6 sm:p-7">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Database tables</h2>
@@ -259,6 +255,7 @@ export default function SysAdminPage() {
           )}
         </div>
       </section>
+    </div>
     </div>
   );
 }

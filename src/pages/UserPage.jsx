@@ -69,36 +69,31 @@ export default function UserPage() {
   }, [user, accessInfo]);
 
   return (
-    <div className="sc-shell space-y-8">
-      <header className="sc-card">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              Account overview
-            </p>
-            <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">
-              {user?.user_metadata?.full_name || "User profile"}
-            </h1>
-            <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">
-              Quick access to the information we have on record for your StallCount login.
-            </p>
+    <div className="pb-16 text-[var(--sc-ink)]">
+      <div className="sc-shell space-y-6">
+        <header className="sc-card-base p-6 sm:p-7">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="sc-chip">Account overview</p>
+              <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">
+                {user?.user_metadata?.full_name || "User profile"}
+              </h1>
+              <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">
+                Quick access to the information we have on record for your StallCount login.
+              </p>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <section className="sc-card space-y-4">
-        {!user ? (
-          <p className="text-sm text-[var(--sc-ink-muted)]">
-            You are not signed in. Log in to view your profile information.
-          </p>
-        ) : (
-          <>
+        <section className="sc-card-base space-y-4 p-6">
+          {!user ? (
+            <p className="text-sm text-[var(--sc-ink-muted)]">
+              You are not signed in. Log in to view your profile information.
+            </p>
+          ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               {profileEntries.map((entry) => (
-                <article
-                  key={entry.label}
-                  className="rounded-2xl border border-[var(--sc-border)] bg-white/90 p-4 text-sm shadow-sm"
-                >
+                <article key={entry.label} className="sc-card-muted p-4 text-sm">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
                     {entry.label}
                   </p>
@@ -106,9 +101,9 @@ export default function UserPage() {
                 </article>
               ))}
             </div>
-          </>
-        )}
-      </section>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

@@ -144,41 +144,48 @@ export default function DivisionsPage() {
     match.venue?.name || (match.venue_id && venueLookup[match.venue_id]) || "Venue TBD";
 
   return (
-    <div className="min-h-screen bg-[#f3f7f4] pb-16">
-      <header className="border-b border-emerald-900/10 bg-[#072013] py-3 text-emerald-50 sm:py-5">
-        <div className="sc-shell matches-compact-shell">
-          <p className="text-l font-semibold uppercase tracking-wide text-emerald-300">Divisions</p>
-          <p className="mt-1 max-w-3xl text-sm text-emerald-100 sm:mt-1.5">
-            Browse every registered event and pick one to explore its details.
+    <div className="pb-16 text-[var(--sc-ink)]">
+      <header className="sc-shell py-6">
+        <div className="sc-card-base p-6 sm:p-8 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="sc-chip">Divisions</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              Events and fixtures
+            </span>
+          </div>
+          <h1 className="text-3xl font-semibold">Pick an event to explore its details.</h1>
+          <p className="text-sm text-[var(--sc-ink-muted)] max-w-3xl">
+            Browse tournaments, check schedules, and jump into match details.
           </p>
         </div>
       </header>
 
-      <main className="sc-shell matches-compact-shell py-4 sm:py-6">
+      <main className="sc-shell space-y-4 sm:space-y-6">
         {error && (
-          <p className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <p className="sc-card-muted border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
             {error}
           </p>
         )}
 
-        <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
-          <section className="rounded-3xl border border-emerald-200 bg-white p-3 shadow-sm sm:p-4">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">Events</p>
-              <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+        <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+          <section className="sc-card-base p-6 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="sc-chip">Events</span>
+                <p className="text-sm font-semibold text-[var(--sc-ink)]">Select an event</p>
+              </div>
+              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
                 {loading ? "Loading..." : `${events.length} total`}
               </span>
             </div>
             {loading && events.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-3 py-4 text-center text-sm text-slate-600">
-                Loading events...
-              </div>
+              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading events...</div>
             ) : events.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-3 py-4 text-center text-sm text-slate-600">
+              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
                 No events registered yet.
               </div>
             ) : (
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {events.map((event) => {
                   const isActive = event.id === selectedEventId;
                   return (
@@ -186,21 +193,20 @@ export default function DivisionsPage() {
                       key={event.id}
                       type="button"
                       onClick={() => setSelectedEventId(event.id)}
-                      className={`rounded-2xl border px-3 py-3 text-left text-sm transition hover:border-emerald-400 hover:shadow ${
-                        isActive
-                          ? "border-emerald-500 bg-emerald-50 shadow-sm"
-                          : "border-slate-200 bg-white"
+                      className={`sc-card-base w-full text-left transition hover:-translate-y-0.5 ${
+                        isActive ? "border-[var(--sc-accent)] shadow-[0_16px_40px_rgba(5,43,29,0.18)]" : ""
                       }`}
+                      style={{ padding: "16px" }}
                     >
-                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
                         {event.type || "Event"}
                       </p>
-                      <p className="text-base font-semibold text-[#04140c]">{event.name}</p>
-                      <p className="text-xs text-slate-500">
-                        {formatDate(event.start_date)} — {formatDate(event.end_date)}
+                      <p className="text-base font-semibold text-[var(--sc-ink)]">{event.name}</p>
+                      <p className="text-xs text-[var(--sc-ink-muted)]">
+                        {formatDate(event.start_date)} - {formatDate(event.end_date)}
                       </p>
                       {event.location && (
-                        <p className="mt-1 text-xs text-slate-600">Location: {event.location}</p>
+                        <p className="mt-1 text-xs text-[var(--sc-ink-muted)]">Location: {event.location}</p>
                       )}
                     </button>
                   );
@@ -209,39 +215,39 @@ export default function DivisionsPage() {
             )}
           </section>
 
-          <section className="rounded-3xl border border-emerald-200 bg-white p-3 shadow-sm sm:p-4">
-            <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">Event details</p>
+          <section className="sc-card-base p-6 space-y-3">
+            <p className="sc-chip">Event details</p>
             {!selectedEvent ? (
-              <div className="mt-3 rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-3 py-4 text-center text-sm text-slate-600">
+              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
                 Select an event to view its details.
               </div>
             ) : (
-              <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-emerald-50/60 p-3 text-sm text-emerald-900">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-emerald-700">Name</p>
-                  <p className="text-base font-semibold text-[#052b1d]">{selectedEvent.name}</p>
+              <div className="grid gap-3">
+                <div className="sc-card-muted p-3">
+                  <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Name</p>
+                  <p className="text-base font-semibold text-[var(--sc-ink)]">{selectedEvent.name}</p>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-emerald-700">Start date</p>
-                    <p className="font-semibold text-[#052b1d]">{formatDate(selectedEvent.start_date)}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="sc-card-muted p-3">
+                    <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Start date</p>
+                    <p className="font-semibold text-[var(--sc-ink)]">{formatDate(selectedEvent.start_date)}</p>
                   </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-emerald-700">End date</p>
-                    <p className="font-semibold text-[#052b1d]">{formatDate(selectedEvent.end_date)}</p>
+                  <div className="sc-card-muted p-3">
+                    <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">End date</p>
+                    <p className="font-semibold text-[var(--sc-ink)]">{formatDate(selectedEvent.end_date)}</p>
                   </div>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-emerald-700">Event type</p>
-                  <p className="font-semibold text-[#052b1d]">{selectedEvent.type || "Not specified"}</p>
+                <div className="sc-card-muted p-3">
+                  <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Event type</p>
+                  <p className="font-semibold text-[var(--sc-ink)]">{selectedEvent.type || "Not specified"}</p>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-emerald-700">Location</p>
-                  <p className="font-semibold text-[#052b1d]">{selectedEvent.location || "TBD"}</p>
+                <div className="sc-card-muted p-3">
+                  <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Location</p>
+                  <p className="font-semibold text-[var(--sc-ink)]">{selectedEvent.location || "TBD"}</p>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-emerald-700">Created</p>
-                  <p className="font-semibold text-[#052b1d]">
+                <div className="sc-card-muted p-3">
+                  <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Created</p>
+                  <p className="font-semibold text-[var(--sc-ink)]">
                     {formatDate(selectedEvent.created_at)} at{" "}
                     {selectedEvent.created_at
                       ? new Date(selectedEvent.created_at).toLocaleTimeString([], {
@@ -251,25 +257,21 @@ export default function DivisionsPage() {
                       : "--"}
                   </p>
                 </div>
-                <p className="text-xs text-emerald-800/80">
-                  Pick an event here, then navigate to Matches to explore fixtures and logs for the selected tournament.
+                <p className="text-xs text-[var(--sc-ink-muted)]">
+                  Choose an event, then head to Matches for full fixtures.
                 </p>
               </div>
             )}
           </section>
         </div>
 
-        <section className="mt-3 rounded-3xl border border-emerald-200 bg-white p-3 shadow-sm sm:p-4">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <section className="sc-card-base p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-l font-semibold uppercase tracking-wide text-emerald-800">
-                Scoreboard
-              </p>
-              <p className="text-xs text-slate-600">
-                View matches for the selected event by status.
-              </p>
+              <p className="sc-chip">Scoreboard</p>
+              <p className="text-sm text-[var(--sc-ink-muted)]">View matches for the selected event by status.</p>
             </div>
-            <div className="inline-flex rounded-full border border-emerald-200 bg-emerald-50/40 p-1 text-xs font-semibold text-emerald-800">
+            <div className="inline-flex flex-wrap items-center gap-2">
               {[
                 { key: "current", label: "Current Games" },
                 { key: "upcoming", label: "Upcoming Games" },
@@ -279,11 +281,7 @@ export default function DivisionsPage() {
                   key={tab.key}
                   type="button"
                   onClick={() => setMatchTab(tab.key)}
-                  className={`rounded-full px-3 py-1 transition ${
-                    matchTab === tab.key
-                      ? "bg-white text-emerald-900 shadow-sm"
-                      : "text-emerald-700 hover:bg-white/80"
-                  }`}
+                  className={matchTab === tab.key ? "sc-button" : "sc-button is-ghost"}
                 >
                   {tab.label}
                 </button>
@@ -292,21 +290,19 @@ export default function DivisionsPage() {
           </div>
 
           {matchesError && (
-            <p className="mb-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            <p className="sc-card-muted border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
               {matchesError}
             </p>
           )}
 
           {matchesLoading && activeMatches.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-3 py-4 text-center text-sm text-slate-600">
-              Loading matches...
-            </div>
+            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading matches...</div>
           ) : activeMatches.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-emerald-200 bg-slate-50 px-3 py-4 text-center text-sm text-slate-600">
+            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
               No matches in this category yet.
             </div>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {activeMatches.map((match) => {
                 const isNavigable =
                   match.status === "live" ||
@@ -316,12 +312,14 @@ export default function DivisionsPage() {
                 const cardContent = (
                   <article
                     key={match.id}
-                    className={`flex h-full flex-col rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-800 shadow-sm transition ${
-                      isNavigable ? "hover:border-emerald-400 hover:shadow-md" : ""
+                    className={`sc-card-base h-full p-4 text-sm transition ${
+                      isNavigable ? "hover:-translate-y-0.5" : ""
                     }`}
                   >
-                    <div className="flex items-center justify-between text-xs text-slate-600">
-                      <span>{formatDate(match.start_time)} · {formatTime(match.start_time)}</span>
+                    <div className="flex items-center justify-between text-xs text-[var(--sc-ink-muted)]">
+                      <span>
+                        {formatDate(match.start_time)} at {formatTime(match.start_time)}
+                      </span>
                       <span
                         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
                           match.status === "live"
@@ -336,10 +334,10 @@ export default function DivisionsPage() {
                         {match.status || "Status"}
                       </span>
                     </div>
-                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
                       {resolveVenueName(match)}
                     </p>
-                    <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm font-semibold text-[#04140c]">
+                    <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm font-semibold text-[var(--sc-ink)]">
                       <div className="min-w-0">
                         <p className="truncate">{match.team_a?.name || "Team A"}</p>
                       </div>

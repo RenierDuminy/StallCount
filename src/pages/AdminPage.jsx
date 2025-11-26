@@ -39,44 +39,37 @@ const ADMIN_MODULES = [
 
 export default function AdminPage() {
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-6 py-6 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              StallCount Control
-            </p>
-            <h1 className="text-3xl font-semibold text-slate-900">
-              Admin tools
-            </h1>
-            <p className="mt-2 text-sm text-slate-600">
-              Choose your workspace to access the specialised controls you need.
-            </p>
+    <div className="pb-16 text-[var(--sc-ink)]">
+      <header className="sc-shell py-6">
+        <div className="sc-card-base space-y-3 p-6 sm:p-8">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="sc-chip">Admin</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              StallCount control
+            </span>
           </div>
-          <Link
-            to="/dashboard"
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-          >
+          <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">Admin tools</h1>
+          <p className="text-sm text-[var(--sc-ink-muted)]">
+            Choose your workspace to access the specialised controls you need.
+          </p>
+          <Link to="/dashboard" className="sc-button is-ghost">
             View dashboard overview
           </Link>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-10">
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Backend workspaces
-          </h2>
-          <p className="text-sm text-slate-600">
-            Each module routes to its dedicated screens. Use the cards below to
-            jump straight into your tools.
+      <main className="sc-shell space-y-6 py-6">
+        <section className="sc-card-base p-5 sm:p-6 space-y-2">
+          <h2 className="text-lg font-semibold text-[var(--sc-ink)]">Backend workspaces</h2>
+          <p className="text-sm text-[var(--sc-ink-muted)]">
+            Each module routes to its dedicated screens. Use the cards below to jump straight into your tools.
           </p>
         </section>
         <div className="grid gap-6 md:grid-cols-3">
           {ADMIN_MODULES.map((module) => (
             <article
               key={module.label}
-              className="flex h-full flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg"
+              className="sc-card-base flex h-full flex-col justify-between p-6 transition hover:-translate-y-0.5"
             >
               <header className="space-y-2">
                 <span
@@ -84,12 +77,9 @@ export default function AdminPage() {
                 >
                   {module.label}
                 </span>
-                <p className="text-sm text-slate-600">{module.description}</p>
+                <p className="text-sm text-[var(--sc-ink-muted)]">{module.description}</p>
               </header>
-              <Link
-                to={module.to}
-                className="mt-6 inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-              >
+              <Link to={module.to} className="mt-6 sc-button">
                 Open {module.label}
               </Link>
             </article>

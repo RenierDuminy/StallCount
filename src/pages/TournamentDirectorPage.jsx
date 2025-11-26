@@ -149,28 +149,24 @@ export default function TournamentDirectorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 pb-12">
-      <header className="border-b border-slate-200 bg-white shadow-sm">
-        <div className="flex w-full flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Admin tools</p>
-            <h1 className="text-3xl font-semibold text-slate-900">Tournament director</h1>
-            <p className="text-sm text-slate-600">
-              Desktop-first control room to read, create, and modify any tournament data in Supabase.
-            </p>
+    <div className="pb-12 text-[var(--td-ink)]">
+      <header className="sc-shell py-4 sm:py-6">
+        <div className="td-card-base space-y-3 p-5 sm:p-7">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="td-chip">Admin tools</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">
+              Tournament director
+            </span>
           </div>
+          <h1 className="text-3xl font-semibold text-[var(--td-ink)]">Tournament director</h1>
+          <p className="text-sm text-[var(--td-ink-muted)]">
+            Desktop-first control room to read, create, and modify any tournament data in Supabase.
+          </p>
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              to="/admin"
-              className="inline-flex items-center justify-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
-            >
+            <Link to="/admin" className="td-button is-ghost">
               Back to admin hub
             </Link>
-            <button
-              type="button"
-              onClick={loadRows}
-              className="inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
+            <button type="button" onClick={loadRows} className="td-button">
               Refresh data
             </button>
           </div>
@@ -178,36 +174,36 @@ export default function TournamentDirectorPage() {
       </header>
 
       <main className="grid w-full grid-cols-1 gap-3 px-3 pt-3 xl:grid-cols-[320px_minmax(0,1fr)] xl:px-4">
-        <aside className="h-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-4">
+        <aside className="h-full rounded-2xl border border-[var(--td-border)] bg-white p-4 shadow-sm xl:sticky xl:top-4">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tables</p>
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">Tables</p>
+            <span className="rounded-full bg-[var(--td-surface-muted)] px-2 py-1 text-[11px] font-semibold text-[var(--td-ink-muted)]">
               {tables.length} total
             </span>
           </div>
-          <label className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 focus-within:border-slate-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-200">
+          <label className="mt-3 flex items-center gap-2 rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2 text-xs text-[var(--td-ink-muted)] focus-within:border-[var(--td-border-strong)] focus-within:bg-white focus-within:ring-2 focus-within:ring-[var(--td-border-strong)]/60">
             <span className="font-semibold uppercase tracking-wide">Search</span>
             <input
               type="search"
               value={tableSearch}
               onChange={(event) => setTableSearch(event.target.value)}
               placeholder="Filter tables"
-              className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+              className="w-full bg-transparent text-sm text-[var(--td-ink)] placeholder:text-[var(--td-ink-muted)] focus:outline-none"
             />
           </label>
 
           <div className="mt-3 flex gap-2">
-            <div className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Active</p>
-              <p className="text-sm font-semibold text-slate-900 truncate">{selectedTable || "None"}</p>
+            <div className="flex-1 rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">Active</p>
+              <p className="text-sm font-semibold text-[var(--td-ink)] truncate">{selectedTable || "None"}</p>
             </div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-center">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Columns</p>
-              <p className="text-lg font-bold text-slate-900">{columns.length}</p>
+            <div className="rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2 text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">Columns</p>
+              <p className="text-lg font-bold text-[var(--td-ink)]">{columns.length}</p>
             </div>
           </div>
 
-          <div className="mt-3 max-h-[70vh] space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2 shadow-inner">
+          <div className="mt-3 max-h-[70vh] space-y-1 overflow-y-auto rounded-xl border border-[var(--td-border)] bg-[var(--td-surface-muted)] p-2 shadow-inner">
             {filteredTables.map((table) => {
               const isActive = table === selectedTable;
               const cols = listTableColumns(table);
@@ -218,14 +214,14 @@ export default function TournamentDirectorPage() {
                   onClick={() => setSelectedTable(table)}
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
                     isActive
-                      ? "bg-slate-900 text-white shadow-sm"
+                      ? "bg-[var(--td-ink)] text-white shadow-sm"
                       : "text-slate-800 hover:bg-white"
                   }`}
                 >
                   <span className="truncate">{table}</span>
                   <span
                     className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide ${
-                      isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                      isActive ? "bg-[var(--td-surface-muted)] text-[var(--td-ink)]" : "bg-[var(--td-surface-muted)] text-[var(--td-ink-muted)]"
                     }`}
                   >
                     {cols.length} cols
@@ -235,8 +231,8 @@ export default function TournamentDirectorPage() {
             })}
           </div>
 
-          <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-            <p className="font-semibold text-slate-900">PC layout tip</p>
+          <div className="mt-3 rounded-xl border border-dashed border-[var(--td-border)] bg-[var(--td-surface-muted)] p-3 text-xs text-[var(--td-ink-muted)]">
+            <p className="font-semibold text-[var(--td-ink)]">PC layout tip</p>
             <p className="mt-1">
               Focus a table, pick a row in the grid, then edit JSON on the right. Changes write straight to Supabase.
             </p>
@@ -244,25 +240,25 @@ export default function TournamentDirectorPage() {
         </aside>
 
         <section className="space-y-3">
-          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1.2fr_1fr]">
+          <div className="grid gap-3 rounded-2xl border border-[var(--td-border)] bg-white p-4 shadow-sm lg:grid-cols-[1.2fr_1fr]">
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Table</p>
-                  <p className="text-xl font-semibold text-slate-900">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">Table</p>
+                  <p className="text-xl font-semibold text-[var(--td-ink)]">
                     {selectedTable || "Select a table"}
                   </p>
-                  <p className="text-xs text-slate-600">
+                  <p className="text-xs text-[var(--td-ink-muted)]">
                     Base name: {getBaseTableName(selectedTable) || "none"} | Default order: {orderBy || "none"}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  <label className="flex items-center gap-2 rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">
                     Limit
                     <select
                       value={limit}
                       onChange={(event) => setLimit(Number(event.target.value) || 50)}
-                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-800 focus:border-slate-400 focus:outline-none"
+                      className="rounded border border-[var(--td-border)] bg-white px-2 py-1 text-xs font-semibold text-slate-800 focus:border-slate-400 focus:outline-none"
                     >
                       {LIMIT_OPTIONS.map((size) => (
                         <option key={size} value={size}>
@@ -271,12 +267,12 @@ export default function TournamentDirectorPage() {
                       ))}
                     </select>
                   </label>
-                  <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  <label className="flex items-center gap-2 rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">
                     Sort
                     <select
                       value={orderBy || ""}
                       onChange={(event) => setOrderBy(event.target.value || null)}
-                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-800 focus:border-slate-400 focus:outline-none"
+                      className="rounded border border-[var(--td-border)] bg-white px-2 py-1 text-xs font-semibold text-slate-800 focus:border-slate-400 focus:outline-none"
                     >
                       <option value="">No order</option>
                       {columns.map((col) => (
@@ -289,35 +285,35 @@ export default function TournamentDirectorPage() {
                   <button
                     type="button"
                     onClick={loadRows}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-800 transition hover:border-slate-400"
+                    className="rounded-lg border border-[var(--td-border-strong)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-800 transition hover:border-[var(--td-border-strong)]"
                   >
                     Reload
                   </button>
                 </div>
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Rows</p>
-                  <p className="text-lg font-bold text-slate-900">{rows.length}</p>
-                  <p className="text-[11px] text-slate-600">Loaded records</p>
+                <div className="rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">Rows</p>
+                  <p className="text-lg font-bold text-[var(--td-ink)]">{rows.length}</p>
+                  <p className="text-[11px] text-[var(--td-ink-muted)]">Loaded records</p>
                 </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Primary key</p>
+                <div className="rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">Primary key</p>
                   <input
                     type="text"
                     value={primaryKey}
                     onChange={(event) => setPrimaryKey(event.target.value)}
-                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm font-semibold text-slate-900 focus:border-slate-500 focus:outline-none"
+                    className="mt-1 w-full rounded border border-[var(--td-border-strong)] px-2 py-1 text-sm font-semibold text-[var(--td-ink)] focus:border-[var(--td-border-strong)] focus:outline-none"
                   />
-                  <p className="text-[11px] text-slate-600">Used for updates</p>
+                  <p className="text-[11px] text-[var(--td-ink-muted)]">Used for updates</p>
                 </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Filter</p>
+                <div className="rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">Filter</p>
                   <div className="flex items-center gap-2">
                     <select
                       value={filterColumn}
                       onChange={(event) => setFilterColumn(event.target.value)}
-                      className="w-1/2 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 focus:border-slate-400 focus:outline-none"
+                      className="w-1/2 rounded border border-[var(--td-border-strong)] bg-white px-2 py-1 text-xs font-semibold text-slate-800 focus:border-slate-400 focus:outline-none"
                     >
                       <option value="">Any</option>
                       {columns.map((col) => (
@@ -331,21 +327,21 @@ export default function TournamentDirectorPage() {
                       value={filterValue}
                       onChange={(event) => setFilterValue(event.target.value)}
                       placeholder="Value"
-                      className="w-full rounded border border-slate-300 px-2 py-1 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                      className="w-full rounded border border-[var(--td-border-strong)] px-2 py-1 text-sm text-[var(--td-ink)] placeholder:text-slate-400 focus:border-[var(--td-border-strong)] focus:outline-none"
                     />
                   </div>
-                  <p className="text-[11px] text-slate-600">ilike filter</p>
+                  <p className="text-[11px] text-[var(--td-ink-muted)]">ilike filter</p>
                 </div>
               </div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Schema columns</p>
+            <div className="rounded-xl border border-[var(--td-border)] bg-[var(--td-surface-muted)] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">Schema columns</p>
               {columns.length === 0 ? (
-                <p className="mt-2 text-xs text-slate-600">No columns detected in schema file.</p>
+                <p className="mt-2 text-xs text-[var(--td-ink-muted)]">No columns detected in schema file.</p>
               ) : (
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-800 lg:grid-cols-3">
                   {columns.map((col) => (
-                    <div key={col} className="rounded border border-slate-200 bg-white px-2 py-1 font-semibold">
+                    <div key={col} className="rounded border border-[var(--td-border)] bg-white px-2 py-1 font-semibold">
                       {col}
                     </div>
                   ))}
@@ -354,15 +350,15 @@ export default function TournamentDirectorPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+          <div className="rounded-2xl border border-[var(--td-border)] bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--td-border)] px-4 py-3">
               <div>
-                <p className="text-sm font-semibold text-slate-900">Data grid</p>
-                <p className="text-xs text-slate-600">
+                <p className="text-sm font-semibold text-[var(--td-ink)]">Data grid</p>
+                <p className="text-xs text-[var(--td-ink-muted)]">
                   Click a row to load it into the editor. Recent rows shown with horizontal scroll for dense viewing.
                 </p>
               </div>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+              <span className="rounded-full bg-[var(--td-surface-muted)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">
                 {rowsLoading ? "Loading..." : "Live data"}
               </span>
             </div>
@@ -373,15 +369,15 @@ export default function TournamentDirectorPage() {
             )}
             <div className="max-h-[55vh] overflow-auto">
               {rowsLoading && rows.length === 0 ? (
-                <div className="p-4 text-sm text-slate-600">Loading rows...</div>
+                <div className="p-4 text-sm text-[var(--td-ink-muted)]">Loading rows...</div>
               ) : rows.length === 0 ? (
-                <div className="p-4 text-sm text-slate-600">No rows found.</div>
+                <div className="p-4 text-sm text-[var(--td-ink-muted)]">No rows found.</div>
               ) : (
                 <table className="min-w-full divide-y divide-slate-200 text-xs">
-                  <thead className="bg-slate-50 sticky top-0 z-10">
+                  <thead className="bg-[var(--td-surface-muted)] sticky top-0 z-10">
                     <tr>
                       {columns.map((col) => (
-                        <th key={col} className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-slate-600">
+                        <th key={col} className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">
                           {col}
                         </th>
                       ))}
@@ -393,7 +389,7 @@ export default function TournamentDirectorPage() {
                       return (
                         <tr
                           key={row.id ?? idx}
-                          className={`cursor-pointer align-top hover:bg-slate-50 ${
+                          className={`cursor-pointer align-top hover:bg-[var(--td-surface-muted)] ${
                             isActive ? "bg-amber-50" : ""
                           }`}
                           onClick={() => {
@@ -404,7 +400,7 @@ export default function TournamentDirectorPage() {
                           }}
                         >
                           {columns.map((col) => (
-                            <td key={col} className="px-3 py-2 text-slate-900">
+                            <td key={col} className="px-3 py-2 text-[var(--td-ink)]">
                               <div className="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap align-top">
                                 {formatCell(row[col])}
                               </div>
@@ -420,16 +416,16 @@ export default function TournamentDirectorPage() {
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-[var(--td-border)] bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">Create record</p>
-                  <p className="text-xs text-slate-600">Paste JSON payload to insert into {getBaseTableName(selectedTable)}.</p>
+                  <p className="text-sm font-semibold text-[var(--td-ink)]">Create record</p>
+                  <p className="text-xs text-[var(--td-ink-muted)]">Paste JSON payload to insert into {getBaseTableName(selectedTable)}.</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setDraftPayload(buildTemplate(selectedTable))}
-                  className="rounded border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 hover:border-slate-400"
+                  className="rounded border border-[var(--td-border-strong)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--td-ink-muted)] hover:border-[var(--td-border-strong)]"
                 >
                   Reset template
                 </button>
@@ -438,23 +434,23 @@ export default function TournamentDirectorPage() {
                 value={draftPayload}
                 onChange={(event) => setDraftPayload(event.target.value)}
                 rows={12}
-                className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-900 shadow-inner focus:border-slate-500 focus:outline-none"
+                className="mt-3 w-full rounded-xl border border-[var(--td-border)] bg-[var(--td-surface-muted)] p-3 font-mono text-xs text-[var(--td-ink)] shadow-inner focus:border-[var(--td-border-strong)] focus:outline-none"
                 spellCheck={false}
               />
               <button
                 type="button"
                 onClick={handleInsert}
-                className="mt-3 inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                className="mt-3 inline-flex items-center justify-center rounded-lg bg-[var(--td-ink)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--td-ink-muted)]"
               >
                 Insert row
               </button>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-[var(--td-border)] bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">Edit selected row</p>
-                  <p className="text-xs text-slate-600">Row loads when you click it in the grid. Save writes to Supabase.</p>
+                  <p className="text-sm font-semibold text-[var(--td-ink)]">Edit selected row</p>
+                  <p className="text-xs text-[var(--td-ink-muted)]">Row loads when you click it in the grid. Save writes to Supabase.</p>
                 </div>
                 <button
                   type="button"
@@ -462,7 +458,7 @@ export default function TournamentDirectorPage() {
                     setSelectedRow(null);
                     setEditPayload("");
                   }}
-                  className="rounded border border-slate-300 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700 hover:border-slate-400"
+                  className="rounded border border-[var(--td-border-strong)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--td-ink-muted)] hover:border-[var(--td-border-strong)]"
                 >
                   Clear selection
                 </button>
@@ -471,14 +467,14 @@ export default function TournamentDirectorPage() {
                 value={editPayload}
                 onChange={(event) => setEditPayload(event.target.value)}
                 rows={12}
-                className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-900 shadow-inner focus:border-slate-500 focus:outline-none"
+                className="mt-3 w-full rounded-xl border border-[var(--td-border)] bg-[var(--td-surface-muted)] p-3 font-mono text-xs text-[var(--td-ink)] shadow-inner focus:border-[var(--td-border-strong)] focus:outline-none"
                 placeholder="Select a row to edit"
                 spellCheck={false}
               />
               <button
                 type="button"
                 onClick={handleUpdate}
-                className="mt-3 inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400"
+                className="mt-3 inline-flex items-center justify-center rounded-lg border border-[var(--td-border-strong)] px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-[var(--td-border-strong)]"
               >
                 Save changes
               </button>
@@ -486,7 +482,7 @@ export default function TournamentDirectorPage() {
           </div>
 
           {(draftError || actionMessage) && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-[var(--td-border)] bg-white p-4 shadow-sm">
               {draftError && (
                 <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                   {draftError}

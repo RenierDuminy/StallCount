@@ -238,32 +238,36 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f3f7f4] pb-16 text-[var(--sc-ink)]">
-      <header className="border-b border-emerald-900/10 bg-[#072013] py-6 text-emerald-50">
-        <div className="sc-shell space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">Notifications</p>
-          <h1 className="text-3xl font-semibold">Follow updates across StallCount</h1>
-          <p className="max-w-3xl text-sm text-emerald-100">
-            Manage which matches, teams, players, events, or divisions you follow. Subscriptions use the universal
-            follow table in Supabase and topics filter which event types trigger alerts.
+    <div className="pb-16 text-[var(--sc-ink)]">
+      <header className="sc-shell py-4 sm:py-6">
+        <div className="sc-card-base space-y-3 p-6 sm:p-7">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="sc-chip">Notifications</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              Follow updates across StallCount
+            </span>
+          </div>
+          <p className="max-w-3xl text-sm text-[var(--sc-ink-muted)]">
+            Manage which matches, teams, players, events, or divisions you follow. Topics filter which event types
+            trigger alerts.
           </p>
         </div>
       </header>
 
       <main className="sc-shell space-y-6 py-6">
         {isLoggedOut && (
-          <div className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+          <div className="sc-card-muted border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
             Sign in to create or manage your notification subscriptions.
           </div>
         )}
 
         {error && (
-          <div className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+          <div className="sc-card-muted border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
             {error}
           </div>
         )}
         {success && (
-          <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+          <div className="sc-card-muted border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-[var(--sc-ink)]">
             {success}
           </div>
         )}

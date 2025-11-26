@@ -304,22 +304,20 @@ export default function ScoreKeeperView() {
   };
 
   return (
-    <div className="sc-shell max-w-5xl text-slate-800">
-      <header className="border-b border-emerald-900/20 bg-gradient-to-r from-[#0f172a] via-[#0b3123] to-[#0f172a] text-white shadow-sm">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-3 py-3">
+    <div className="sc-shell max-w-5xl scorekeeper-compact text-[var(--sc-ink)]">
+      <header className="compact-card">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-col leading-tight">
-            <h1 className="text-xl font-semibold text-white">Score keeper console</h1>
+            <span className="sk-chip">Score keeper</span>
+            <h1 className="text-xl font-semibold text-[var(--sc-ink)]">Score keeper console</h1>
           </div>
-          <Link
-            to="/admin"
-            className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/60 hover:bg-white/20"
-          >
+          <Link to="/admin" className="compact-button is-ghost text-xs">
             Back to admin hub
           </Link>
         </div>
       </header>
 
-      <main className="py-3">
+      <main className="py-2">
         {consoleReady ? (
           <section className="space-y-2">
             <div className="rounded-3xl border border-emerald-900/15 bg-white/90 p-1.5 shadow-card/60">
@@ -332,6 +330,9 @@ export default function ScoreKeeperView() {
                   </h2>
                   <p className="text-sm text-slate-600">
                     {kickoffLabel} - {venueName || "Venue TBD"} - {statusLabel}
+                  </p>
+                  <p className="mt-1 text-lg font-semibold text-[#0f5132]">
+                    Score: {score.a} - {score.b}
                   </p>
                 </div>
                 <button
@@ -1299,7 +1300,7 @@ function MatchLogCard({
         <div>
           <p className={`text-xs font-semibold uppercase tracking-wide ${eventStyles.label}`}>
             {isMatchStartLog ? "Match start" : log.eventDescription || "Match event"}
-            {!isScoringDisplay && !isMatchStartLog && shortTeamLabel ? ` · ${shortTeamLabel}` : ""}
+            {!isScoringDisplay && !isMatchStartLog && shortTeamLabel ? ` Â· ${shortTeamLabel}` : ""}
           </p>
           {abbaDescriptor && !isMatchStartLog && (
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
@@ -1330,7 +1331,7 @@ function MatchLogCard({
             ) : (
               <p>
                 Scorer: {log.scorerName || "Unassigned"}
-                {log.assistName ? ` · Assist: ${log.assistName}` : ""}
+                {log.assistName ? ` Â· Assist: ${log.assistName}` : ""}
               </p>
             )}
           </div>

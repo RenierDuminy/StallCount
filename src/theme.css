@@ -1,0 +1,341 @@
+:root {
+  color-scheme: light;
+  --sc-font-body: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sc-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+
+  --sc-bg: #01150c;
+  --sc-bg-accent: #033b21;
+  --sc-surface: rgba(236, 253, 243, 0.96);
+  --sc-surface-muted: rgba(226, 252, 236, 0.85);
+  --sc-surface-plain: #ffffff;
+  --sc-border: #9ae6b4;
+  --sc-border-strong: #c6f6d5;
+  --sc-ink: #052b1d;
+  --sc-ink-muted: #1d5a3b;
+  --sc-accent: #0f5132;
+  --sc-accent-strong: #0a3b24;
+
+  --sc-radius-sm: 10px;
+  --sc-radius-md: 16px;
+  --sc-radius-lg: 32px;
+
+  --sc-shadow-card: 0 18px 40px rgba(5, 43, 29, 0.12);
+  --sc-shadow-strong: 0 35px 80px rgba(5, 32, 19, 0.2);
+
+  --sc-transition-fast: 120ms ease;
+  --sc-transition-base: 180ms ease;
+
+  --sc-page-gradient: radial-gradient(circle at top, rgba(226, 252, 236, 0.45), transparent 55%),
+    radial-gradient(circle at 20% 20%, rgba(4, 59, 36, 0.35), transparent 60%),
+    linear-gradient(135deg, var(--sc-bg), var(--sc-bg-accent));
+}
+
+body {
+  margin: 0;
+  font-family: var(--sc-font-body);
+  background: var(--sc-page-gradient);
+  background-color: #f3f7f4;
+  background-attachment: fixed;
+  color: var(--sc-ink);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.sc-app {
+  min-height: 100vh;
+  color: var(--sc-ink);
+  background: linear-gradient(180deg, rgba(236, 253, 243, 0.94), rgba(243, 247, 244, 0.92));
+  backdrop-filter: blur(6px);
+}
+
+a {
+  color: var(--sc-accent);
+  text-decoration: none;
+  transition: color var(--sc-transition-fast);
+}
+
+a:hover {
+  color: var(--sc-accent-strong);
+}
+
+a:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.sc-card-base {
+  background: var(--sc-surface-plain);
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-radius-lg);
+  box-shadow: var(--sc-shadow-card);
+  color: var(--sc-ink);
+}
+
+.sc-card-muted {
+  background: var(--sc-surface-muted);
+  border: 1px solid var(--sc-border-strong);
+  border-radius: var(--sc-radius-lg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  color: var(--sc-ink);
+}
+
+.sc-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.15rem;
+  border-radius: 999px;
+  border: 1px solid var(--sc-accent);
+  background: var(--sc-accent);
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition:
+    transform var(--sc-transition-fast),
+    box-shadow var(--sc-transition-fast),
+    background var(--sc-transition-fast);
+  box-shadow: 0 10px 25px rgba(15, 81, 50, 0.25);
+}
+
+.sc-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(15, 81, 50, 0.28);
+}
+
+.sc-button:active {
+  transform: translateY(0);
+  box-shadow: 0 8px 18px rgba(15, 81, 50, 0.22);
+}
+
+.sc-button:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 3px;
+}
+
+.sc-button.is-ghost {
+  background: transparent;
+  color: var(--sc-accent);
+  border-color: var(--sc-border);
+  box-shadow: none;
+}
+
+.sc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--sc-border);
+  background: rgba(233, 248, 240, 0.9);
+  color: var(--sc-ink-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Tournament Director grayscale variant */
+:root {
+  --td-ink: #0f172a;
+  --td-ink-muted: #475569;
+  --td-surface: #f8fafc;
+  --td-surface-muted: #eef2f7;
+  --td-border: #e2e8f0;
+  --td-border-strong: #cbd5e1;
+  --td-accent: #1f2937;
+}
+
+.td-card-base {
+  background: var(--td-surface);
+  border: 1px solid var(--td-border);
+  border-radius: var(--sc-radius-lg);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  color: var(--td-ink);
+}
+
+.td-card-muted {
+  background: var(--td-surface-muted);
+  border: 1px solid var(--td-border-strong);
+  border-radius: var(--sc-radius-lg);
+  color: var(--td-ink);
+}
+
+.td-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--td-border);
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--td-ink-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.td-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.15rem;
+  border-radius: 999px;
+  border: 1px solid var(--td-accent);
+  background: var(--td-accent);
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: transform var(--sc-transition-fast), box-shadow var(--sc-transition-fast);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+}
+
+.td-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.22);
+}
+
+.td-button.is-ghost {
+  background: transparent;
+  color: var(--td-ink);
+  border-color: var(--td-border-strong);
+  box-shadow: none;
+}
+
+/* Scorekeeper compact variant */
+.scorekeeper-compact {
+  --sk-ink: var(--sc-ink);
+  --sk-ink-muted: var(--sc-ink-muted);
+  --sk-border: var(--sc-border);
+  --sk-border-strong: var(--sc-border-strong);
+  --sk-surface: var(--sc-surface);
+  --sk-surface-muted: rgba(255, 255, 255, 0.9);
+  --sk-pad: 12px;
+}
+
+.sk-card {
+  background: var(--sk-surface-muted);
+  border: 1px solid var(--sk-border);
+  border-radius: 18px;
+  padding: var(--sk-pad);
+  box-shadow: 0 12px 28px rgba(5, 43, 29, 0.12);
+  color: var(--sk-ink);
+}
+
+.sk-card-muted {
+  background: var(--sk-surface);
+  border: 1px solid var(--sk-border-strong);
+  border-radius: 16px;
+  padding: calc(var(--sk-pad) - 2px);
+  color: var(--sk-ink);
+}
+
+.sk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--sk-border);
+  background: rgba(15, 81, 50, 0.08);
+  color: var(--sk-ink-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sk-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid var(--sc-accent);
+  background: var(--sc-accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: transform var(--sc-transition-fast), box-shadow var(--sc-transition-fast);
+  box-shadow: 0 10px 20px rgba(15, 81, 50, 0.18);
+}
+
+.sk-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(15, 81, 50, 0.22);
+}
+
+.sk-button.is-ghost {
+  background: transparent;
+  color: var(--sc-accent);
+  border-color: var(--sk-border);
+  box-shadow: none;
+}
+
+/* Compact helpers (used by scorekeeper) */
+.compact-card {
+  background: var(--sc-surface-plain);
+  border: 1px solid var(--sc-border);
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: 0 10px 24px rgba(5, 43, 29, 0.14);
+  color: var(--sc-ink);
+}
+
+.compact-card-muted {
+  background: var(--sc-surface);
+  border: 1px solid var(--sc-border-strong);
+  border-radius: 14px;
+  padding: 10px;
+  color: var(--sc-ink);
+}
+
+.compact-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--sc-accent);
+  background: var(--sc-accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: transform var(--sc-transition-fast), box-shadow var(--sc-transition-fast);
+  box-shadow: 0 8px 18px rgba(15, 81, 50, 0.16);
+}
+
+.compact-button.is-ghost {
+  background: transparent;
+  color: var(--sc-accent);
+  border-color: var(--sc-border);
+  box-shadow: none;
+}
+
+.scorekeeper-compact .rounded-3xl,
+.scorekeeper-compact .rounded-2xl {
+  border-radius: 16px;
+  padding: 10px;
+}
+
+.scorekeeper-compact .px-4,
+.scorekeeper-compact .px-5 {
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+}
+
+.scorekeeper-compact .py-4,
+.scorekeeper-compact .py-5,
+.scorekeeper-compact .py-6 {
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+}
