@@ -1,5 +1,8 @@
 export const DEFAULT_DURATION = 90;
 export const HALFTIME_SCORE_THRESHOLD = 8;
+export const DEFAULT_TIMEOUT_SECONDS = 75;
+export const DEFAULT_INTERPOINT_SECONDS = 75;
+export const DEFAULT_DISCUSSION_SECONDS = 60;
 export const ABBA_SEQUENCE = ["1st", "2nd", "2nd", "1st"];
 export const ABBA_LINE_SEQUENCE = ["2", "1", "2", "1"];
 export const DEFAULT_SETUP_FORM = { startTime: "", startingTeamId: "" };

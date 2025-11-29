@@ -11,7 +11,7 @@ const MATCH_FIELDS = `
   abba_pattern,
   venue_id,
   venue:venues!matches_venue_id_fkey (id, name),
-  event:events!matches_event_id_fkey (id, name),
+  event:events!matches_event_id_fkey (id, name, rules),
   team_a:teams!matches_team_a_fkey (id, name, short_name),
   team_b:teams!matches_team_b_fkey (id, name, short_name)
 `;

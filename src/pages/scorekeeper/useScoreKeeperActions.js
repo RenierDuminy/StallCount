@@ -6,6 +6,8 @@ import {
   DEFAULT_DURATION,
   DEFAULT_SECONDARY_LABEL,
   DEFAULT_TIMER_LABEL,
+  DEFAULT_TIMEOUT_SECONDS,
+  DEFAULT_INTERPOINT_SECONDS,
   HALFTIME_SCORE_THRESHOLD,
   CALAHAN_ASSIST_VALUE,
 } from "./scorekeeperConstants";
@@ -40,6 +42,7 @@ export function useScoreKeeperActions(controller) {
     cancelSecondaryHoldReset();
     controller.secondaryResetRef.current = setTimeout(() => {
       handleSecondaryReset();
+      controller.secondaryResetTriggeredRef.current = true;
     }, 800);
   }
 
@@ -136,12 +139,20 @@ export function useScoreKeeperActions(controller) {
   }
 
   function handleSecondaryToggle(label) {
+    if (controller.secondaryResetTriggeredRef.current) {
+      controller.secondaryResetTriggeredRef.current = false;
+      cancelSecondaryHoldReset();
+      return;
+    }
     cancelSecondaryHoldReset();
     if (!controller.consoleReady) return;
     const overrideLabel = normalizeSecondaryLabel(label);
     const resolvedLabel = overrideLabel || controller.secondaryLabel || DEFAULT_SECONDARY_LABEL;
     if (!controller.secondaryRunning && controller.secondarySeconds === 0) {
-      controller.startSecondaryTimer(controller.rules.timeoutSeconds || 75, resolvedLabel);
+      controller.startSecondaryTimer(
+        controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
+        resolvedLabel
+      );
       return;
     }
     if (overrideLabel) {
@@ -153,14 +164,16 @@ export function useScoreKeeperActions(controller) {
       return;
     }
     const base =
-      controller.secondarySeconds > 0 ? controller.secondarySeconds : controller.rules.timeoutSeconds || 75;
+      controller.secondarySeconds > 0
+        ? controller.secondarySeconds
+        : controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
     controller.commitSecondaryTimerState(base, true);
   }
 
   function handleSecondaryReset() {
     const fallback = Number.isFinite(controller.secondaryTotalSeconds)
       ? controller.secondaryTotalSeconds
-      : controller.rules.timeoutSeconds || 75;
+      : controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
     controller.commitSecondaryTimerState(fallback, false);
     controller.setSecondaryTotalSeconds(fallback);
     controller.setSecondaryFlashActive(false);
@@ -242,6 +255,7 @@ export function useScoreKeeperActions(controller) {
     controller.setScore(nextTotals);
 
     const timestamp = new Date().toISOString();
+    const optimisticId = `${Math.random().toString(16).slice(2)}`;
     const appended = controller.appendLocalLog({
       team,
       timestamp,
@@ -250,6 +264,7 @@ export function useScoreKeeperActions(controller) {
       totals: nextTotals,
       eventDescription: controller.describeEvent(eventTypeId),
       eventCode,
+      optimisticId,
     });
     const entry = {
       matchId: controller.activeMatch.id,
@@ -261,6 +276,7 @@ export function useScoreKeeperActions(controller) {
       assistId,
       createdAt: timestamp,
       abbaLine: appended.abbaLine,
+      optimisticId,
     };
 
     controller.recordPendingEntry(entry);
@@ -271,11 +287,18 @@ export function useScoreKeeperActions(controller) {
     }
     if (
       !controller.halftimeTriggered &&
-      Math.max(nextTotals.a, nextTotals.b) >= HALFTIME_SCORE_THRESHOLD
+      Math.max(nextTotals.a, nextTotals.b) >=
+        (controller.rules.halftimeScoreThreshold || HALFTIME_SCORE_THRESHOLD)
     ) {
       await controller.triggerHalftime();
     }
-    controller.startSecondaryTimer(75, "Inter point");
+    controller.startSecondaryTimer(
+      controller.rules.interPointSeconds ||
+        controller.rules.interPointTimeoutAddsSeconds ||
+        controller.rules.timeoutSeconds ||
+        DEFAULT_INTERPOINT_SECONDS,
+      "Inter point"
+    );
   }
 
   async function syncActiveMatchScore(nextScore) {
@@ -307,7 +330,7 @@ export function useScoreKeeperActions(controller) {
       controller.commitPrimaryTimerState((value || DEFAULT_DURATION) * 60, false);
     }
     if (field === "timeoutSeconds") {
-      const nextTimeout = value || 75;
+      const nextTimeout = value || DEFAULT_TIMEOUT_SECONDS;
       controller.commitSecondaryTimerState(nextTimeout, false);
       controller.setSecondaryTotalSeconds(nextTimeout);
     }
@@ -447,7 +470,7 @@ export function useScoreKeeperActions(controller) {
     if (remaining === 0) return;
     controller.setTimeoutUsage((prev) => ({ ...prev, [team]: prev[team] + 1 }));
     await controller.startTrackedSecondaryTimer(
-      controller.rules.timeoutSeconds || 75,
+      controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
       `${team === "A" ? controller.displayTeamA : controller.displayTeamB} timeout`,
       {
         teamKey: team,

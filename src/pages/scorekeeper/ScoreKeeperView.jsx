@@ -4,7 +4,7 @@ import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import { formatClock, formatMatchLabel } from "./scorekeeperUtils";
 import { useScoreKeeperData } from "./useScoreKeeperData";
 import { useScoreKeeperActions } from "./useScoreKeeperActions";
-import { CALAHAN_ASSIST_VALUE } from "./scorekeeperConstants";
+import { CALAHAN_ASSIST_VALUE, DEFAULT_DISCUSSION_SECONDS } from "./scorekeeperConstants";
 
 export default function ScoreKeeperView() {
   const data = useScoreKeeperData();
@@ -79,6 +79,11 @@ export default function ScoreKeeperView() {
     nextAbbaDescriptor,
     primaryTimerBg,
     secondaryTimerBg,
+    commitSecondaryTimerState,
+    setSecondaryTotalSeconds,
+    setSecondaryLabel,
+    setSecondaryFlashActive,
+    setSecondaryFlashPulse,
     updatePossession,
     loadMatches,
     handleResumeSession,
@@ -229,8 +234,9 @@ export default function ScoreKeeperView() {
   };
 
   const handleStartDiscussionTimer = () => {
-    commitSecondaryTimerState(60, true);
-    setSecondaryTotalSeconds(60);
+    const duration = rules.discussionSeconds || DEFAULT_DISCUSSION_SECONDS;
+    commitSecondaryTimerState(duration, true);
+    setSecondaryTotalSeconds(duration);
     setSecondaryLabel("Discussion");
     setSecondaryFlashActive(false);
     setSecondaryFlashPulse(false);
@@ -1152,7 +1158,12 @@ function MatchLogCard({
     hour: "2-digit",
     minute: "2-digit",
   });
-  const alignClass = log.team === "A" ? "text-left" : log.team === "B" ? "text-right" : "text-center";
+  const alignClass = (() => {
+    if (isPossessionLog) {
+      return log.team === "A" ? "text-right" : log.team === "B" ? "text-left" : "text-center";
+    }
+    return log.team === "A" ? "text-left" : log.team === "B" ? "text-right" : "text-center";
+  })();
   let bannerBgClass = "bg-white";
   let bannerBorderClass = "border-slate-300";
   let bannerTextClass = "text-black";
@@ -1170,12 +1181,12 @@ function MatchLogCard({
     bannerBorderClass = "border-[#f59e0b]/60";
     bannerTextClass = "text-black";
   } else if (isScoreLog && log.team === "A") {
-    bannerBgClass = "bg-[#ffe8d3]";
-    bannerBorderClass = "border-[#f97316]/60";
+    bannerBgClass = "bg-[#d1fae5]";
+    bannerBorderClass = "border-[#10b981]/70";
     bannerTextClass = "text-black";
   } else if (isScoreLog && log.team === "B") {
-    bannerBgClass = "bg-[#dbeafe]";
-    bannerBorderClass = "border-[#2563eb]/60";
+    bannerBgClass = "bg-[#bbf7d0]";
+    bannerBorderClass = "border-[#059669]/70";
     bannerTextClass = "text-black";
   } else if (isStoppageStart) {
     bannerBgClass = "bg-[#fecdd3]";
@@ -1190,7 +1201,7 @@ function MatchLogCard({
       return { bg: "bg-[#f0fff4]", border: "border-[#c6f6d5]", label: "text-black" };
     }
     if (isScoreLog) {
-      return { bg: "bg-[#f0fff4]", border: "border-[#22c55e]/60", label: "text-black" };
+      return { bg: "bg-[#e5ffe8]", border: "border-[#16a34a]/70", label: "text-black" };
     }
     if (isTimeoutLog || isStoppageStart) {
       return { bg: "bg-[#fef3c7]", border: "border-[#f59e0b]/60", label: "text-black" };
@@ -1208,10 +1219,8 @@ function MatchLogCard({
     ? `Pulling team: ${fullTeamLabel || "Unassigned"}`
     : isTimeoutLog
       ? `${shortTeamLabel || "Team"} timeout`
-      : isPossessionLog
-        ? `${shortTeamLabel || "Team"} possession`
-        : isHalftimeLog
-          ? "Halftime reached"
+      : isHalftimeLog
+        ? "Halftime reached"
         : isStoppageStart
           ? "Match stoppage"
           : null;

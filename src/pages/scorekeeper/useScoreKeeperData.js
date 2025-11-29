@@ -30,6 +30,9 @@ import {
   DEFAULT_TIMEOUT_USAGE,
   DEFAULT_TIMER_LABEL,
   DEFAULT_SECONDARY_LABEL,
+  DEFAULT_TIMEOUT_SECONDS,
+  DEFAULT_INTERPOINT_SECONDS,
+  DEFAULT_DISCUSSION_SECONDS,
   SESSION_SAVE_DEBOUNCE_MS,
   TIMER_TICK_INTERVAL_MS,
   ABBA_LINE_SEQUENCE,
@@ -37,6 +40,295 @@ import {
 
 const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
+const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
+const OPTIMISTIC_PREFIX = "local-";
+
+const DEFAULT_EVENT_RULES = {
+  division: "mixed",
+  format: "wfdfChampionship",
+  game: {
+    pointTarget: 15,
+    softCapMinutes: null,
+    softCapMode: "addOneToHighest",
+    hardCapMinutes: 100,
+    hardCapEndMode: "afterPoint",
+  },
+  half: {
+    pointTarget: 8,
+    timeCapMinutes: 55,
+    breakMinutes: 7,
+  },
+  clock: {
+    isRunningClockEnabled: true,
+  },
+  interPoint: {
+    offenceOnLineSeconds: 45,
+    offenceReadySeconds: 60,
+    pullDeadlineSeconds: 75,
+    timeoutAddsSeconds: 75,
+    areTimeoutsStacked: true,
+  },
+  timeouts: {
+    perTeamPerGame: 2,
+    durationSeconds: 75,
+  },
+  inPointTimeout: {
+    offenceSetSeconds: 75,
+    defenceCheckMaxSeconds: 90,
+  },
+  discussions: {
+    captainInterventionSeconds: 15,
+    autoContestSeconds: 45,
+    restartPlayMaxSeconds: 60,
+  },
+  discInPlay: {
+    pivotCentralZoneMaxSeconds: 10,
+    pivotEndZoneMaxSeconds: 20,
+    newDiscRetrievalMaxSeconds: 20,
+  },
+  mixedRatio: {
+    isEnabled: true,
+    ratioRule: "A",
+    initialRatioChoosingTeam: "home",
+  },
+};
+
+function coerceRuleNumber(value, fallback) {
+  const numeric = Number(value);
+  const safeFallback = Number.isFinite(fallback) ? fallback : 0;
+  if (!Number.isFinite(numeric)) {
+    return Math.max(0, Math.round(safeFallback));
+  }
+  return Math.max(0, Math.round(numeric));
+}
+
+function coerceOptionalNumber(value) {
+  if (value === null || value === undefined) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.max(0, Math.round(numeric));
+}
+
+function normalizeAbbaPattern(input) {
+  if (typeof input !== "string") return null;
+  const candidate = input.trim().toLowerCase();
+  if (candidate === "male" || candidate === "m") return "male";
+  if (candidate === "female" || candidate === "f") return "female";
+  if (candidate === "none") return "none";
+  return null;
+}
+
+function normalizeSoftCapMode(input) {
+  if (typeof input !== "string") return "none";
+  const candidate = input.trim().toLowerCase();
+  if (candidate === "addonetohighest" || candidate === "add_one_to_highest") {
+    return "addOneToHighest";
+  }
+  if (candidate === "addtwotohighest" || candidate === "add_two_to_highest") {
+    return "addTwoToHighest";
+  }
+  return "none";
+}
+
+function normalizeHardCapEndMode(input) {
+  if (typeof input !== "string") return "afterPoint";
+  const candidate = input.trim().toLowerCase();
+  if (candidate === "immediate") return "immediate";
+  return "afterPoint";
+}
+
+function normalizeEventRules(rawRules) {
+  const baseRaw = DEFAULT_EVENT_RULES;
+  if (!rawRules) {
+    return {
+      matchDuration: coerceRuleNumber(baseRaw.game.hardCapMinutes, DEFAULT_DURATION),
+      halftimeMinutes: coerceRuleNumber(baseRaw.half.timeCapMinutes, 0),
+      halftimeBreakMinutes: coerceRuleNumber(baseRaw.half.breakMinutes, 0),
+      halftimeScoreThreshold: coerceRuleNumber(baseRaw.half.pointTarget, HALFTIME_SCORE_THRESHOLD),
+      timeoutSeconds: coerceRuleNumber(baseRaw.timeouts.durationSeconds, DEFAULT_TIMEOUT_SECONDS),
+      timeoutsTotal: coerceRuleNumber(baseRaw.timeouts.perTeamPerGame, 0),
+      timeoutsPerHalf: 0,
+      interPointSeconds: coerceRuleNumber(
+        baseRaw.interPoint.pullDeadlineSeconds ?? baseRaw.interPoint.timeoutAddsSeconds,
+        DEFAULT_INTERPOINT_SECONDS
+      ),
+      discussionSeconds: coerceRuleNumber(
+        baseRaw.discussions.restartPlayMaxSeconds,
+        DEFAULT_DISCUSSION_SECONDS
+      ),
+      abbaPattern: baseRaw.mixedRatio?.isEnabled ? DEFAULT_ABBA_PATTERN_WHEN_ENABLED : "none",
+      runningClockEnabled: Boolean(baseRaw.clock?.isRunningClockEnabled),
+      gamePointTarget: coerceOptionalNumber(baseRaw.game.pointTarget),
+      gameSoftCapMinutes: coerceOptionalNumber(baseRaw.game.softCapMinutes),
+      gameSoftCapMode: normalizeSoftCapMode(baseRaw.game.softCapMode),
+      gameHardCapMinutes: coerceOptionalNumber(baseRaw.game.hardCapMinutes),
+      gameHardCapEndMode: normalizeHardCapEndMode(baseRaw.game.hardCapEndMode),
+      interPointPullDeadlineSeconds: coerceRuleNumber(
+        baseRaw.interPoint.pullDeadlineSeconds,
+        DEFAULT_INTERPOINT_SECONDS
+      ),
+      interPointTimeoutAddsSeconds: coerceRuleNumber(
+        baseRaw.interPoint.timeoutAddsSeconds,
+        DEFAULT_TIMEOUT_SECONDS
+      ),
+      interPointAreTimeoutsStacked: Boolean(baseRaw.interPoint.areTimeoutsStacked),
+      inPointOffenceSetSeconds: coerceRuleNumber(baseRaw.inPointTimeout.offenceSetSeconds, 0),
+      inPointDefenceCheckMaxSeconds: coerceRuleNumber(
+        baseRaw.inPointTimeout.defenceCheckMaxSeconds,
+        0
+      ),
+      discussionAutoContestSeconds: coerceRuleNumber(
+        baseRaw.discussions.autoContestSeconds,
+        baseRaw.discussions.restartPlayMaxSeconds
+      ),
+      discInPlayPivotCentralSeconds: coerceRuleNumber(
+        baseRaw.discInPlay.pivotCentralZoneMaxSeconds,
+        0
+      ),
+      discInPlayPivotEndzoneSeconds: coerceRuleNumber(
+        baseRaw.discInPlay.pivotEndZoneMaxSeconds,
+        0
+      ),
+      discInPlayNewDiscSeconds: coerceRuleNumber(baseRaw.discInPlay.newDiscRetrievalMaxSeconds, 0),
+      mixedRatioEnabled: Boolean(baseRaw.mixedRatio?.isEnabled),
+      mixedRatioRule: baseRaw.mixedRatio?.ratioRule || null,
+      mixedRatioChooser: baseRaw.mixedRatio?.initialRatioChoosingTeam || null,
+      raw: baseRaw,
+    };
+  }
+
+  let parsed = rawRules;
+  if (typeof rawRules === "string") {
+    try {
+      parsed = JSON.parse(rawRules);
+    } catch {
+      parsed = rawRules;
+    }
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return normalizeEventRules(null);
+  }
+
+  const mergedRaw = {
+    ...baseRaw,
+    ...(parsed || {}),
+    game: { ...baseRaw.game, ...(parsed.game || {}) },
+    half: { ...baseRaw.half, ...(parsed.half || {}) },
+    clock: { ...baseRaw.clock, ...(parsed.clock || {}) },
+    interPoint: { ...baseRaw.interPoint, ...(parsed.interPoint || {}) },
+    timeouts: { ...baseRaw.timeouts, ...(parsed.timeouts || {}) },
+    inPointTimeout: { ...baseRaw.inPointTimeout, ...(parsed.inPointTimeout || {}) },
+    discussions: { ...baseRaw.discussions, ...(parsed.discussions || {}) },
+    discInPlay: { ...baseRaw.discInPlay, ...(parsed.discInPlay || {}) },
+    mixedRatio: { ...baseRaw.mixedRatio, ...(parsed.mixedRatio || {}) },
+  };
+
+  const abbaPattern = normalizeAbbaPattern(parsed.abbaPattern);
+  const derivedAbbaPattern =
+    abbaPattern ||
+    (Object.prototype.hasOwnProperty.call(parsed, "abbaEnabled")
+      ? parsed.abbaEnabled
+        ? DEFAULT_ABBA_PATTERN_WHEN_ENABLED
+        : "none"
+      : mergedRaw.mixedRatio?.isEnabled
+        ? DEFAULT_ABBA_PATTERN_WHEN_ENABLED
+        : "none");
+
+  const gamePointTarget = coerceOptionalNumber(mergedRaw.game?.pointTarget);
+  const gameSoftCapMinutes = coerceOptionalNumber(mergedRaw.game?.softCapMinutes);
+  const gameSoftCapMode = normalizeSoftCapMode(mergedRaw.game?.softCapMode);
+  const gameHardCapMinutes =
+    coerceOptionalNumber(mergedRaw.game?.hardCapMinutes) ??
+    coerceRuleNumber(baseRaw.game.hardCapMinutes, DEFAULT_DURATION);
+
+  return {
+    matchDuration: coerceRuleNumber(
+      mergedRaw.game?.hardCapMinutes,
+      coerceRuleNumber(baseRaw.game.hardCapMinutes, DEFAULT_DURATION)
+    ),
+    halftimeMinutes: coerceRuleNumber(
+      mergedRaw.half?.timeCapMinutes,
+      coerceRuleNumber(baseRaw.half.timeCapMinutes, 0)
+    ),
+    halftimeBreakMinutes: coerceRuleNumber(
+      mergedRaw.half?.breakMinutes,
+      coerceRuleNumber(baseRaw.half.breakMinutes, 0)
+    ),
+    halftimeScoreThreshold: coerceRuleNumber(
+      mergedRaw.half?.pointTarget,
+      coerceRuleNumber(baseRaw.half.pointTarget, HALFTIME_SCORE_THRESHOLD)
+    ),
+    timeoutSeconds: coerceRuleNumber(
+      mergedRaw.timeouts?.durationSeconds,
+      coerceRuleNumber(baseRaw.timeouts.durationSeconds, DEFAULT_TIMEOUT_SECONDS)
+    ),
+    timeoutsTotal: coerceRuleNumber(
+      mergedRaw.timeouts?.perTeamPerGame,
+      coerceRuleNumber(baseRaw.timeouts.perTeamPerGame, 0)
+    ),
+    timeoutsPerHalf: coerceRuleNumber(mergedRaw.timeouts?.perHalf, 0),
+    interPointSeconds: coerceRuleNumber(
+      mergedRaw.interPoint?.pullDeadlineSeconds ?? mergedRaw.interPoint?.timeoutAddsSeconds,
+      coerceRuleNumber(
+        baseRaw.interPoint.pullDeadlineSeconds ?? baseRaw.interPoint.timeoutAddsSeconds,
+        DEFAULT_INTERPOINT_SECONDS
+      )
+    ),
+    discussionSeconds: coerceRuleNumber(
+      mergedRaw.discussions?.restartPlayMaxSeconds,
+      coerceRuleNumber(baseRaw.discussions.restartPlayMaxSeconds, DEFAULT_DISCUSSION_SECONDS)
+    ),
+    abbaPattern: derivedAbbaPattern,
+    runningClockEnabled: Boolean(mergedRaw.clock?.isRunningClockEnabled),
+    gamePointTarget,
+    gameSoftCapMinutes,
+    gameSoftCapMode,
+    gameHardCapMinutes: gameHardCapMinutes ?? DEFAULT_DURATION,
+    gameHardCapEndMode: normalizeHardCapEndMode(mergedRaw.game?.hardCapEndMode),
+    interPointPullDeadlineSeconds: coerceRuleNumber(
+      mergedRaw.interPoint?.pullDeadlineSeconds,
+      coerceRuleNumber(baseRaw.interPoint.pullDeadlineSeconds, DEFAULT_INTERPOINT_SECONDS)
+    ),
+    interPointTimeoutAddsSeconds: coerceRuleNumber(
+      mergedRaw.interPoint?.timeoutAddsSeconds,
+      coerceRuleNumber(baseRaw.interPoint.timeoutAddsSeconds, DEFAULT_TIMEOUT_SECONDS)
+    ),
+    interPointAreTimeoutsStacked: Boolean(mergedRaw.interPoint?.areTimeoutsStacked),
+    inPointOffenceSetSeconds: coerceRuleNumber(
+      mergedRaw.inPointTimeout?.offenceSetSeconds,
+      coerceRuleNumber(baseRaw.inPointTimeout.offenceSetSeconds, 0)
+    ),
+    inPointDefenceCheckMaxSeconds: coerceRuleNumber(
+      mergedRaw.inPointTimeout?.defenceCheckMaxSeconds,
+      coerceRuleNumber(baseRaw.inPointTimeout.defenceCheckMaxSeconds, 0)
+    ),
+    discussionAutoContestSeconds: coerceRuleNumber(
+      mergedRaw.discussions?.autoContestSeconds,
+      coerceRuleNumber(
+        baseRaw.discussions.autoContestSeconds ?? baseRaw.discussions.restartPlayMaxSeconds,
+        baseRaw.discussions.restartPlayMaxSeconds
+      )
+    ),
+    discInPlayPivotCentralSeconds: coerceRuleNumber(
+      mergedRaw.discInPlay?.pivotCentralZoneMaxSeconds,
+      coerceRuleNumber(baseRaw.discInPlay.pivotCentralZoneMaxSeconds, 0)
+    ),
+    discInPlayPivotEndzoneSeconds: coerceRuleNumber(
+      mergedRaw.discInPlay?.pivotEndZoneMaxSeconds,
+      coerceRuleNumber(baseRaw.discInPlay.pivotEndZoneMaxSeconds, 0)
+    ),
+    discInPlayNewDiscSeconds: coerceRuleNumber(
+      mergedRaw.discInPlay?.newDiscRetrievalMaxSeconds,
+      coerceRuleNumber(baseRaw.discInPlay.newDiscRetrievalMaxSeconds, 0)
+    ),
+    mixedRatioEnabled: Boolean(mergedRaw.mixedRatio?.isEnabled),
+    mixedRatioRule: mergedRaw.mixedRatio?.ratioRule || null,
+    mixedRatioChooser: mergedRaw.mixedRatio?.initialRatioChoosingTeam || null,
+    raw: mergedRaw,
+  };
+}
+
+const DEFAULT_RULES = normalizeEventRules(DEFAULT_EVENT_RULES);
 
 function deriveTimerStateFromSnapshot(
   snapshot,
@@ -103,15 +395,7 @@ export function useScoreKeeperData() {
 
   const [setupForm, setSetupForm] = useState(() => ({ ...DEFAULT_SETUP_FORM }));
 
-  const [rules, setRules] = useState({
-    matchDuration: 100,
-    halftimeMinutes: 55,
-    halftimeBreakMinutes: 7,
-    timeoutSeconds: 75,
-    timeoutsTotal: 2,
-    timeoutsPerHalf: 0,
-    abbaPattern: "none",
-  });
+  const [rules, setRules] = useState(() => ({ ...DEFAULT_RULES }));
 
   const [score, setScore] = useState({ a: 0, b: 0 });
   const [logs, setLogs] = useState([]);
@@ -121,7 +405,7 @@ export function useScoreKeeperData() {
   const [pendingEntries, setPendingEntries] = useState([]);
   const [timerSeconds, setTimerSeconds] = useState(DEFAULT_DURATION * 60);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [secondarySeconds, setSecondarySeconds] = useState(75);
+  const [secondarySeconds, setSecondarySeconds] = useState(DEFAULT_RULES.timeoutSeconds);
   const [secondaryRunning, setSecondaryRunning] = useState(false);
   const [secondaryLabel, setSecondaryLabel] = useState(DEFAULT_SECONDARY_LABEL);
   const [consoleError, setConsoleError] = useState(null);
@@ -136,10 +420,15 @@ const [scoreModalState, setScoreModalState] = useState({
   mode: "add",
   logIndex: null,
 });
-const [scoreForm, setScoreForm] = useState({ scorerId: "", assistId: "" });
+  const [scoreForm, setScoreForm] = useState({ scorerId: "", assistId: "" });
   const [timeoutUsage, setTimeoutUsage] = useState({ ...DEFAULT_TIMEOUT_USAGE });
   const [timerLabel, setTimerLabel] = useState(DEFAULT_TIMER_LABEL);
-const [secondaryTotalSeconds, setSecondaryTotalSeconds] = useState(rules.timeoutSeconds);
+const [secondaryTotalSeconds, setSecondaryTotalSeconds] = useState(
+  DEFAULT_RULES.timeoutSeconds
+);
+  const [scoreTarget, setScoreTarget] = useState(DEFAULT_RULES.gamePointTarget || null);
+  const [softCapApplied, setSoftCapApplied] = useState(false);
+  const [hardCapReached, setHardCapReached] = useState(false);
 const [secondaryFlashActive, setSecondaryFlashActive] = useState(false);
 const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
 const [possessionTeam, setPossessionTeam] = useState(null);
@@ -264,19 +553,21 @@ const matchIdRef = useRef(null);
 const refreshMatchLogsRef = useRef(null);
 const primaryResetRef = useRef(null);
 const secondaryResetRef = useRef(null);
+const secondaryResetTriggeredRef = useRef(false);
 const resumeHydrationRef = useRef(false);
 const primaryTimerAnchorRef = useRef({
   baseSeconds: DEFAULT_DURATION * 60,
   anchorTimestamp: null,
 });
 const secondaryTimerAnchorRef = useRef({
-  baseSeconds: (rules.timeoutSeconds || 75) ?? 75,
+  baseSeconds: DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
   anchorTimestamp: null,
 });
 const activeSecondaryEventRef = useRef(null);
 const previousSecondaryRunningRef = useRef(false);
 const previousPrimaryRunningRef = useRef(false);
 const stoppageActiveRef = useRef(false);
+const appliedEventRulesRef = useRef(null);
   const [matchStarted, setMatchStarted] = useState(false);
   const consoleReady = Boolean(activeMatch);
   const matchSettingsLocked = matchStarted;
@@ -346,6 +637,22 @@ const commitSecondaryTimerState = useCallback(
   []
 );
 
+  const applyEventRules = useCallback(
+    (nextRules) => {
+      if (!nextRules) return;
+      setRules(nextRules);
+      const primarySeconds = (nextRules.matchDuration || DEFAULT_DURATION) * 60;
+      commitPrimaryTimerState(primarySeconds, false);
+      const timeoutSeconds = nextRules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
+      commitSecondaryTimerState(timeoutSeconds, false);
+      setSecondaryTotalSeconds(timeoutSeconds);
+      setScoreTarget(nextRules.gamePointTarget || null);
+      setSoftCapApplied(false);
+      setHardCapReached(false);
+    },
+    [commitPrimaryTimerState, commitSecondaryTimerState]
+  );
+
 useEffect(() => {
   void loadEvents();
 }, [loadEvents]);
@@ -385,6 +692,32 @@ useEffect(() => {
   }
   void loadMatches(selectedEventId);
 }, [selectedEventId, loadMatches]);
+
+  useEffect(() => {
+    if (!selectedEventId) {
+      appliedEventRulesRef.current = null;
+      return;
+    }
+    if (resumeHydrationRef.current || matchStarted) return;
+    const eventWithRules = events.find((evt) => evt.id === selectedEventId);
+    if (!eventWithRules) return;
+    const appliedKey = `event-${selectedEventId}`;
+    if (appliedEventRulesRef.current === appliedKey) return;
+    const normalizedRules = normalizeEventRules(eventWithRules.rules);
+    applyEventRules(normalizedRules);
+    appliedEventRulesRef.current = appliedKey;
+  }, [selectedEventId, events, applyEventRules, matchStarted]);
+
+  useEffect(() => {
+    if (resumeHydrationRef.current || matchStarted) return;
+    const matchSource = activeMatch || selectedMatch;
+    const rulesSource = matchSource?.rules || matchSource?.event?.rules || null;
+    if (!matchSource?.id || !rulesSource) return;
+    const appliedKey = `match-${matchSource.id}`;
+    if (appliedEventRulesRef.current === appliedKey) return;
+    applyEventRules(normalizeEventRules(rulesSource));
+    appliedEventRulesRef.current = appliedKey;
+  }, [activeMatch, selectedMatch, applyEventRules, matchStarted]);
 
   useEffect(() => {
     const matchSource = activeMatch || selectedMatch;
@@ -478,7 +811,7 @@ useEffect(() => {
 useEffect(() => {
   if (resumeHydrationRef.current) return;
   if (!secondaryRunning) {
-    setSecondaryTotalSeconds(rules.timeoutSeconds);
+    setSecondaryTotalSeconds(rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS);
   }
 }, [rules.timeoutSeconds, secondaryRunning]);
 
@@ -522,6 +855,61 @@ useEffect(() => {
   const interval = setInterval(tick, TIMER_TICK_INTERVAL_MS);
   return () => clearInterval(interval);
 }, [secondaryRunning, getSecondaryRemainingSeconds, commitSecondaryTimerState]);
+
+  useEffect(() => {
+    if (!matchStarted) {
+      setSoftCapApplied(false);
+      setHardCapReached(false);
+      setScoreTarget(rules.gamePointTarget || null);
+      return;
+    }
+  }, [matchStarted, rules.gamePointTarget]);
+
+  useEffect(() => {
+    if (!matchStarted || softCapApplied) return;
+    const softCapMinutes = Number.isFinite(rules.gameSoftCapMinutes)
+      ? rules.gameSoftCapMinutes
+      : null;
+    const hardCapMinutes = rules.matchDuration || DEFAULT_DURATION;
+    if (!softCapMinutes || softCapMinutes <= 0) return;
+    const totalSeconds = hardCapMinutes * 60;
+    const thresholdSeconds = Math.max(0, totalSeconds - softCapMinutes * 60);
+    if (timerSeconds > thresholdSeconds) return;
+
+    const mode = rules.gameSoftCapMode || "none";
+    if (mode === "none") {
+      setSoftCapApplied(true);
+      return;
+    }
+
+    const highest = Math.max(score.a, score.b);
+    const increment = mode === "addTwoToHighest" ? 2 : 1;
+    const nextTarget = Math.max(
+      highest + increment,
+      rules.gamePointTarget || highest + increment
+    );
+    setScoreTarget(nextTarget);
+    setSoftCapApplied(true);
+  }, [
+    matchStarted,
+    softCapApplied,
+    rules.gameSoftCapMinutes,
+    rules.matchDuration,
+    rules.gameSoftCapMode,
+    rules.gamePointTarget,
+    timerSeconds,
+    score.a,
+    score.b,
+  ]);
+
+  useEffect(() => {
+    if (!matchStarted || hardCapReached) return;
+    if (timerSeconds > 0) return;
+    setHardCapReached(true);
+    if (rules.gameHardCapEndMode === "immediate") {
+      setTimerLabel("Hard cap reached");
+    }
+  }, [matchStarted, hardCapReached, timerSeconds, rules.gameHardCapEndMode]);
 
 useEffect(() => {
   const matchSource = activeMatch || selectedMatch || null;
@@ -586,7 +974,7 @@ useEffect(() => {
       if (!hydrating) {
         setTimeoutUsage({ A: 0, B: 0 });
         commitPrimaryTimerState((rules.matchDuration || DEFAULT_DURATION) * 60, false);
-        commitSecondaryTimerState(rules.timeoutSeconds || 75, false);
+        commitSecondaryTimerState(rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS, false);
       }
     }
 
@@ -666,11 +1054,12 @@ const getAbbaLineCode = useCallback(
 );
   const startingTeamId = activeMatch?.starting_team_id || setupForm.startingTeamId;
   const matchStartingTeamKey = startingTeamId === teamBId ? "B" : "A";
-  const matchDuration = rules.matchDuration;
+  const matchDuration = rules.matchDuration || DEFAULT_DURATION;
   const remainingTimeouts = {
     A: Math.max(rules.timeoutsTotal - timeoutUsage.A, 0),
     B: Math.max(rules.timeoutsTotal - timeoutUsage.B, 0),
   };
+  const reachedPointTarget = scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget);
   const canEndMatch = matchStarted;
   const possessionValue = possessionTeam === "A" ? 0 : possessionTeam === "B" ? 100 : 50;
   const possessionLeader =
@@ -759,6 +1148,9 @@ const getAbbaLineCode = useCallback(
       possessionTeam,
       halftimeTriggered,
       stoppageActive,
+      scoreTarget,
+      softCapApplied,
+      hardCapReached,
     };
 
     return snapshot;
@@ -779,6 +1171,9 @@ const getAbbaLineCode = useCallback(
     halftimeTriggered,
     stoppageActive,
     secondaryTotalSeconds,
+    scoreTarget,
+    softCapApplied,
+    hardCapReached,
     userId,
     getPrimaryRemainingSeconds,
     getSecondaryRemainingSeconds,
@@ -828,6 +1223,7 @@ const recordPendingEntry = useCallback(
     const matchId = entry?.matchId;
     const eventTypeId = Number.isFinite(entry?.eventTypeId) ? entry.eventTypeId : null;
     const eventTypeCode = entry?.eventCode || entry?.eventTypeCode || null;
+    const optimisticId = entry?.optimisticId || null;
     if (!matchId) {
       setConsoleError((prev) => prev || "Cannot log event: missing match reference.");
       return;
@@ -846,6 +1242,7 @@ const recordPendingEntry = useCallback(
       createdAt,
       abbaLine:
         typeof entry?.abbaLine === "string" ? normalizeAbbaLine(entry.abbaLine) : entry?.abbaLine ?? null,
+      optimisticId,
     };
 
     const dbPayload = {
@@ -870,6 +1267,7 @@ const recordPendingEntry = useCallback(
       secondary_actor_id: dbPayload.secondaryActorId,
       abba_line: dbPayload.abbaLine,
       created_at: dbPayload.createdAt,
+      optimistic_id: optimisticId || null,
     };
     if (!supabasePayload.event_type_id && dbPayload.eventTypeCode) {
       supabasePayload.event_type_code = dbPayload.eventTypeCode;
@@ -887,6 +1285,7 @@ const recordPendingEntry = useCallback(
       try {
         await createMatchLogEntry(dbPayload);
         setPendingEntries((prev) => prev.filter((item) => item !== supabasePayload));
+        void refreshMatchLogs(matchId, currentMatchScoreRef.current);
       } catch (err) {
         console.error("[ScoreKeeper] Failed to persist match log entry:", err);
         setConsoleError((prev) =>
@@ -991,7 +1390,7 @@ const rosterNameLookup = useMemo(() => {
   );
 
   const appendLocalLog = useCallback(
-    ({ team, timestamp, scorerId, assistId, totals, eventDescription, eventCode }) => {
+    ({ team, timestamp, scorerId, assistId, totals, eventDescription, eventCode, optimisticId }) => {
       let derivedInfo = { scoreOrderIndex: null, abbaLine: getAbbaLineCode(null) };
       setLogs((prev) => {
         const normalizedCode = eventCode || null;
@@ -1014,7 +1413,7 @@ const rosterNameLookup = useMemo(() => {
         return [
           ...prev,
           {
-            id: `local-${prev.length + 1}`,
+            id: optimisticId || `${OPTIMISTIC_PREFIX}${prev.length + 1}`,
             team,
             timestamp,
             scorerName:
@@ -1033,6 +1432,7 @@ const rosterNameLookup = useMemo(() => {
             eventCode: normalizedCode,
             scoreOrderIndex: nextScoreOrder,
             abbaLine,
+            isOptimistic: Boolean(optimisticId),
           },
         ];
       });
@@ -1053,6 +1453,7 @@ const rosterNameLookup = useMemo(() => {
           return;
         }
         const timestamp = new Date().toISOString();
+        const optimisticId = `${OPTIMISTIC_PREFIX}${Date.now()}`;
         const appended = appendLocalLog({
           team: teamKey,
           timestamp,
@@ -1061,6 +1462,7 @@ const rosterNameLookup = useMemo(() => {
           totals: currentMatchScoreRef.current || score,
           eventDescription: describeEvent(eventTypeId),
           eventCode,
+          optimisticId,
         });
         const entry = {
           matchId: activeMatch.id,
@@ -1069,6 +1471,7 @@ const rosterNameLookup = useMemo(() => {
           teamId: teamKey === "A" ? teamAId : teamKey === "B" ? teamBId : null,
           createdAt: timestamp,
           abbaLine: appended.scoreOrderIndex !== null ? appended.abbaLine : null,
+          optimisticId,
         };
         recordPendingEntry(entry);
       } catch (err) {
@@ -1318,6 +1721,8 @@ const rosterNameLookup = useMemo(() => {
           eventCategory: null,
           scoreOrderIndex,
           abbaLine: normalizeAbbaLine(row.abba_line || getAbbaLineCode(scoreOrderIndex)),
+          isOptimistic: false,
+          optimisticId: null,
         };
       });
 
@@ -1341,7 +1746,23 @@ const rosterNameLookup = useMemo(() => {
         const rows = await getMatchLogs(targetMatchId);
         const derived = deriveLogsFromRows(rows, matchScore);
         initialScoreRef.current = derived.baseScore;
-        setLogs(derived.logs);
+        setLogs((prev) => {
+          const optimistic = prev.filter((entry) => entry.isOptimistic);
+          const merged = [...derived.logs];
+          optimistic.forEach((entry) => {
+            const exists = merged.some(
+              (log) =>
+                log.id === entry.id ||
+                (log.eventCode === entry.eventCode &&
+                  log.team === entry.team &&
+                  log.timestamp === entry.timestamp)
+            );
+            if (!exists) {
+              merged.push(entry);
+            }
+          });
+          return merged;
+        });
         setScore(derived.totals);
 
         if (!resumeHydrationRef.current) {
@@ -1409,6 +1830,14 @@ const rosterNameLookup = useMemo(() => {
     setHalftimeTriggered(Boolean(snapshot.halftimeTriggered));
     setStoppageActive(Boolean(snapshot.stoppageActive));
     setMatchStarted(resumeWasStarted);
+    setScoreTarget(
+      snapshot.scoreTarget ??
+        snapshot.rules?.gamePointTarget ??
+        rules.gamePointTarget ??
+        null
+    );
+    setSoftCapApplied(Boolean(snapshot.softCapApplied));
+    setHardCapReached(Boolean(snapshot.hardCapReached));
 
     const restoredPrimary = deriveTimerStateFromSnapshot(
       snapshot.timer,
@@ -1422,7 +1851,7 @@ const rosterNameLookup = useMemo(() => {
       snapshot.secondaryTimer?.totalSeconds ??
       rules.timeoutSeconds ??
       secondaryTotalSeconds ??
-      75;
+      DEFAULT_TIMEOUT_SECONDS;
     const restoredSecondary = deriveTimerStateFromSnapshot(
       snapshot.secondaryTimer,
       secondaryFallback,
@@ -1489,6 +1918,13 @@ const rosterNameLookup = useMemo(() => {
         }),
       ]);
 
+      if (snapshot.matchId) {
+        appliedEventRulesRef.current = `match-${snapshot.matchId}`;
+      } else if (snapshot.eventId) {
+        appliedEventRulesRef.current = `event-${snapshot.eventId}`;
+      } else if (selectedEventId) {
+        appliedEventRulesRef.current = `event-${selectedEventId}`;
+      }
       setResumeCandidate(null);
       setResumeHandled(true);
     } catch (err) {
@@ -1667,9 +2103,14 @@ const rosterNameLookup = useMemo(() => {
     refreshMatchLogsRef,
     primaryResetRef,
     secondaryResetRef,
+    secondaryResetTriggeredRef,
     resumeHydrationRef,
     primaryTimerAnchorRef,
     secondaryTimerAnchorRef,
     toDateTimeLocal,
+    scoreTarget,
+    softCapApplied,
+    hardCapReached,
+    reachedPointTarget,
   };
 }

@@ -15,6 +15,7 @@ export type EventRow = {
   end_date: string | null;
   location: string | null;
   created_at: string;
+  rules?: Record<string, unknown> | null;
 };
 
 export async function getDivisions(limit = 6): Promise<DivisionRow[]> {
@@ -34,7 +35,7 @@ export async function getDivisions(limit = 6): Promise<DivisionRow[]> {
 export async function getRecentEvents(limit = 4): Promise<EventRow[]> {
   const { data, error } = await supabase
     .from("events")
-    .select("id, name, type, start_date, end_date, location, created_at")
+    .select("id, name, type, start_date, end_date, location, created_at, rules")
     .order("start_date", { ascending: false })
     .limit(limit);
 
@@ -48,7 +49,7 @@ export async function getRecentEvents(limit = 4): Promise<EventRow[]> {
 export async function getEventsList(limit = 12): Promise<EventRow[]> {
   const { data, error } = await supabase
     .from("events")
-    .select("id, name, type, start_date, end_date, location, created_at")
+    .select("id, name, type, start_date, end_date, location, created_at, rules")
     .order("start_date", { ascending: true })
     .limit(limit);
 
