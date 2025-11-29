@@ -1,168 +1,134 @@
-Trigger names and function code (updated to align with the current schema)
-
-This lists non-internal triggers and the functions they execute, adjusted for:
-- public.user as the profile table for actor lookup
-- match_logs using actor_id / secondary_actor_id
-- stats writing to player_match_stats
-- removal of match_logs.updated_at touch (column does not exist)
-
-trg_audit_bracket_nodes
-
-SQL
-CREATE OR REPLACE FUNCTION public.audit_row()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$;
-
-trg_audit_brackets
-trg_audit_division_teams
-trg_audit_divisions
-trg_audit_events
-trg_audit_live_events
-trg_audit_match_events
-trg_audit_match_logs
-trg_audit_match_status
-trg_audit_matches
-trg_audit_players
-trg_audit_pool_teams
-trg_audit_pools
-trg_audit_spirit_scores
-trg_audit_team_roster
-trg_audit_teams
-trg_audit_webhook_deliveries
-trg_audit_webhook_endpoints
--- all above use public.audit_row()
-
-trg_players_touch
-trg_roster_touch
-
-SQL (shared)
-CREATE OR REPLACE FUNCTION public.touch_updated_at()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $function$
-BEGIN NEW.updated_at := now(); RETURN NEW; END
-$function$;
-
-trg_players_tsv
-
-SQL
-CREATE OR REPLACE FUNCTION public.players_tsv_trigger()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $function$
-BEGIN
-  NEW.search :=
-    to_tsvector('simple',
-      coalesce(NEW.name,'') || ' ' || coalesce(NEW.gender_code,'')
-    );
-  RETURN NEW;
-END
-$function$;
-
-trg_team_roster_gender
-
-SQL
-CREATE OR REPLACE FUNCTION public.trg_roster_gender_sync()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $function$
-BEGIN
-  PERFORM public.recompute_player_gender(
-    COALESCE(NEW.player_id, OLD.player_id)
-  );
-  RETURN COALESCE(NEW, OLD);
-END
-$function$;
-
-trg_match_logs_player_stats
-
-SQL
-CREATE OR REPLACE FUNCTION public.handle_match_log_player_stats()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $function$
-DECLARE
-  v_match_id uuid := COALESCE(NEW.match_id, OLD.match_id);
-BEGIN
-  IF v_match_id IS NULL THEN
-    RETURN COALESCE(NEW, OLD);
-  END IF;
-  PERFORM public.rebuild_player_match_stats(v_match_id);
-  RETURN COALESCE(NEW, OLD);
-END
-$function$;
-
-trg_rebuild_stats_on_logs
-
-SQL
-CREATE OR REPLACE FUNCTION public._rebuild_stats_after_log()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $function$
-BEGIN
-  PERFORM public.rebuild_player_match_stats(COALESCE(NEW.match_id, OLD.match_id));
-  RETURN COALESCE(NEW, OLD);
-END
-$function$;
-
--- Note: trigger to touch updated_at on match_logs was removed (match_logs has no updated_at column).
-
-realtime and storage triggers (unchanged from upstream)
-- tr_check_filters (realtime.subscription_check_filters)
-- enforce_bucket_name_length_trigger (storage.enforce_bucket_name_length)
-- objects_delete_delete_prefix (storage.delete_prefix_hierarchy_trigger)
-- objects_insert_create_prefix (storage.objects_insert_prefix_trigger)
-- objects_update_create_prefix (storage.objects_update_prefix_trigger)
-- update_objects_updated_at (storage.update_updated_at_column)
-- prefixes_create_hierarchy (storage.prefixes_insert_trigger)
-- prefixes_delete_hierarchy (storage.delete_prefix_hierarchy_trigger)
+[
+  {
+    "trigger_name": "enforce_bucket_name_length_trigger",
+    "trigger_definition": "CREATE TRIGGER enforce_bucket_name_length_trigger BEFORE INSERT OR UPDATE OF name ON storage.buckets FOR EACH ROW EXECUTE FUNCTION storage.enforce_bucket_name_length()"
+  },
+  {
+    "trigger_name": "objects_delete_delete_prefix",
+    "trigger_definition": "CREATE TRIGGER objects_delete_delete_prefix AFTER DELETE ON storage.objects FOR EACH ROW EXECUTE FUNCTION storage.delete_prefix_hierarchy_trigger()"
+  },
+  {
+    "trigger_name": "objects_insert_create_prefix",
+    "trigger_definition": "CREATE TRIGGER objects_insert_create_prefix BEFORE INSERT ON storage.objects FOR EACH ROW EXECUTE FUNCTION storage.objects_insert_prefix_trigger()"
+  },
+  {
+    "trigger_name": "objects_update_create_prefix",
+    "trigger_definition": "CREATE TRIGGER objects_update_create_prefix BEFORE UPDATE ON storage.objects FOR EACH ROW WHEN (new.name <> old.name OR new.bucket_id <> old.bucket_id) EXECUTE FUNCTION storage.objects_update_prefix_trigger()"
+  },
+  {
+    "trigger_name": "on_auth_user_created",
+    "trigger_definition": "CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION handle_new_user()"
+  },
+  {
+    "trigger_name": "prefixes_create_hierarchy",
+    "trigger_definition": "CREATE TRIGGER prefixes_create_hierarchy BEFORE INSERT ON storage.prefixes FOR EACH ROW WHEN (pg_trigger_depth() < 1) EXECUTE FUNCTION storage.prefixes_insert_trigger()"
+  },
+  {
+    "trigger_name": "prefixes_delete_hierarchy",
+    "trigger_definition": "CREATE TRIGGER prefixes_delete_hierarchy AFTER DELETE ON storage.prefixes FOR EACH ROW EXECUTE FUNCTION storage.delete_prefix_hierarchy_trigger()"
+  },
+  {
+    "trigger_name": "tr_check_filters",
+    "trigger_definition": "CREATE TRIGGER tr_check_filters BEFORE INSERT OR UPDATE ON realtime.subscription FOR EACH ROW EXECUTE FUNCTION realtime.subscription_check_filters()"
+  },
+  {
+    "trigger_name": "trg_audit_bracket_nodes",
+    "trigger_definition": "CREATE TRIGGER trg_audit_bracket_nodes AFTER INSERT OR DELETE OR UPDATE ON bracket_nodes FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_brackets",
+    "trigger_definition": "CREATE TRIGGER trg_audit_brackets AFTER INSERT OR DELETE OR UPDATE ON brackets FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_division_teams",
+    "trigger_definition": "CREATE TRIGGER trg_audit_division_teams AFTER INSERT OR DELETE OR UPDATE ON division_teams FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_divisions",
+    "trigger_definition": "CREATE TRIGGER trg_audit_divisions AFTER INSERT OR DELETE OR UPDATE ON divisions FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_events",
+    "trigger_definition": "CREATE TRIGGER trg_audit_events AFTER INSERT OR DELETE OR UPDATE ON events FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_live_events",
+    "trigger_definition": "CREATE TRIGGER trg_audit_live_events AFTER INSERT OR DELETE OR UPDATE ON live_events FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_match_events",
+    "trigger_definition": "CREATE TRIGGER trg_audit_match_events AFTER INSERT OR DELETE OR UPDATE ON match_events FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_match_logs",
+    "trigger_definition": "CREATE TRIGGER trg_audit_match_logs AFTER INSERT OR DELETE OR UPDATE ON match_logs FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_match_status",
+    "trigger_definition": "CREATE TRIGGER trg_audit_match_status AFTER INSERT OR DELETE OR UPDATE ON match_status FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_matches",
+    "trigger_definition": "CREATE TRIGGER trg_audit_matches AFTER INSERT OR DELETE OR UPDATE ON matches FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_players",
+    "trigger_definition": "CREATE TRIGGER trg_audit_players AFTER INSERT OR DELETE OR UPDATE ON player FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_pool_teams",
+    "trigger_definition": "CREATE TRIGGER trg_audit_pool_teams AFTER INSERT OR DELETE OR UPDATE ON pool_teams FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_pools",
+    "trigger_definition": "CREATE TRIGGER trg_audit_pools AFTER INSERT OR DELETE OR UPDATE ON pools FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_spirit_scores",
+    "trigger_definition": "CREATE TRIGGER trg_audit_spirit_scores AFTER INSERT OR DELETE OR UPDATE ON spirit_scores FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_team_roster",
+    "trigger_definition": "CREATE TRIGGER trg_audit_team_roster AFTER INSERT OR DELETE OR UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_teams",
+    "trigger_definition": "CREATE TRIGGER trg_audit_teams AFTER INSERT OR DELETE OR UPDATE ON teams FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_webhook_deliveries",
+    "trigger_definition": "CREATE TRIGGER trg_audit_webhook_deliveries AFTER INSERT OR DELETE OR UPDATE ON webhook_deliveries FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_audit_webhook_endpoints",
+    "trigger_definition": "CREATE TRIGGER trg_audit_webhook_endpoints AFTER INSERT OR DELETE OR UPDATE ON webhook_endpoints FOR EACH ROW EXECUTE FUNCTION audit_row()"
+  },
+  {
+    "trigger_name": "trg_match_logs_player_stats",
+    "trigger_definition": "CREATE TRIGGER trg_match_logs_player_stats AFTER INSERT OR DELETE OR UPDATE ON match_logs FOR EACH ROW EXECUTE FUNCTION handle_match_log_player_stats()"
+  },
+  {
+    "trigger_name": "trg_players_touch",
+    "trigger_definition": "CREATE TRIGGER trg_players_touch BEFORE UPDATE ON player FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+  },
+  {
+    "trigger_name": "trg_players_tsv",
+    "trigger_definition": "CREATE TRIGGER trg_players_tsv BEFORE INSERT OR UPDATE OF name, gender_code ON player FOR EACH ROW EXECUTE FUNCTION players_tsv_trigger()"
+  },
+  {
+    "trigger_name": "trg_rebuild_stats_on_logs",
+    "trigger_definition": "CREATE TRIGGER trg_rebuild_stats_on_logs AFTER INSERT OR DELETE OR UPDATE ON match_logs FOR EACH ROW EXECUTE FUNCTION _rebuild_stats_after_log()"
+  },
+  {
+    "trigger_name": "trg_roster_touch",
+    "trigger_definition": "CREATE TRIGGER trg_roster_touch BEFORE UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION touch_updated_at()"
+  },
+  {
+    "trigger_name": "trg_team_roster_gender",
+    "trigger_definition": "CREATE TRIGGER trg_team_roster_gender AFTER INSERT OR DELETE OR UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION trg_roster_gender_sync()"
+  },
+  {
+    "trigger_name": "update_objects_updated_at",
+    "trigger_definition": "CREATE TRIGGER update_objects_updated_at BEFORE UPDATE ON storage.objects FOR EACH ROW EXECUTE FUNCTION storage.update_updated_at_column()"
+  }
+]

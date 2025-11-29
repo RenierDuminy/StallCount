@@ -6,6 +6,8 @@ import {
   queryTableRows,
   updateTableRow,
 } from "../services/adminService";
+import { getAllTeams } from "../services/teamService";
+import { getEventsList } from "../services/leagueService";
 import { listSchemaTables, listTableColumns, pickRecencyColumn } from "../services/schemaService";
 
 const LIMIT_OPTIONS = [20, 50, 100, 200];
@@ -57,6 +59,20 @@ export default function TournamentDirectorPage() {
   const [selectedRow, setSelectedRow] = useState(null);
   const [editPayload, setEditPayload] = useState("");
   const [primaryKey, setPrimaryKey] = useState("id");
+  const [teams, setTeams] = useState([]);
+  const [eventsList, setEventsList] = useState([]);
+  const [venues, setVenues] = useState([]);
+  const [matchForm, setMatchForm] = useState({
+    eventId: "",
+    teamAId: "",
+    teamBId: "",
+    venueId: "",
+    startTime: "",
+    status: "scheduled",
+  });
+  const [matchMessage, setMatchMessage] = useState("");
+  const [matchError, setMatchError] = useState("");
+  const [matchSaving, setMatchSaving] = useState(false);
 
   const columns = useMemo(() => listTableColumns(selectedTable), [selectedTable]);
 
@@ -78,6 +94,24 @@ export default function TournamentDirectorPage() {
     setActionMessage("");
     setDraftError("");
   }, [selectedTable]);
+
+  useEffect(() => {
+    const loadReferenceData = async () => {
+      try {
+        const [teamRows, eventRows, venueRows] = await Promise.all([
+          getAllTeams(200),
+          getEventsList(200),
+          queryTableRows("venues", { limit: 200, orderBy: "name" }),
+        ]);
+        setTeams(teamRows ?? []);
+        setEventsList(eventRows ?? []);
+        setVenues(Array.isArray(venueRows) ? venueRows : []);
+      } catch (err) {
+        console.error("[TD] Failed to load reference data", err);
+      }
+    };
+    loadReferenceData();
+  }, []);
 
   const loadRows = useCallback(async () => {
     if (!selectedTable) return;
@@ -145,6 +179,41 @@ export default function TournamentDirectorPage() {
       loadRows();
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : "Update failed.");
+    }
+  };
+
+  const handleCreateMatch = async () => {
+    setMatchError("");
+    setMatchMessage("");
+    const payload = {
+      event_id: matchForm.eventId || null,
+      team_a: matchForm.teamAId || null,
+      team_b: matchForm.teamBId || null,
+      venue_id: matchForm.venueId || null,
+      status: matchForm.status || "scheduled",
+      start_time: matchForm.startTime ? new Date(matchForm.startTime).toISOString() : null,
+      score_a: 0,
+      score_b: 0,
+    };
+
+    if (!payload.team_a || !payload.team_b) {
+      setMatchError("Select Team A and Team B to create a match.");
+      return;
+    }
+    setMatchSaving(true);
+    try {
+      const saved = await insertTableRow("matches", payload);
+      setMatchMessage("Match created successfully.");
+      if (saved?.id) {
+        setSelectedTable("matches");
+        setSelectedRow(saved);
+        setEditPayload(JSON.stringify(saved, null, 2));
+      }
+      loadRows();
+    } catch (err) {
+      setMatchError(err instanceof Error ? err.message : "Failed to create match.");
+    } finally {
+      setMatchSaving(false);
     }
   };
 
@@ -240,6 +309,151 @@ export default function TournamentDirectorPage() {
         </aside>
 
         <section className="space-y-3">
+          <div className="rounded-2xl border border-[var(--td-border)] bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--td-ink-muted)]">
+                  Quick create
+                </p>
+                <h2 className="text-xl font-semibold text-[var(--td-ink)]">Create a match</h2>
+                <p className="text-xs text-[var(--td-ink-muted)]">
+                  Choose event, teams, venue, and start time. Names are displayed for clarity.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setMatchForm({
+                    eventId: "",
+                    teamAId: "",
+                    teamBId: "",
+                    venueId: "",
+                    startTime: "",
+                    status: "scheduled",
+                  })
+                }
+                className="rounded border border-[var(--td-border-strong)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--td-ink-muted)] hover:border-[var(--td-border-strong)]"
+              >
+                Reset form
+              </button>
+            </div>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--td-ink)]">
+                Event
+                <select
+                  value={matchForm.eventId}
+                  onChange={(event) => setMatchForm((prev) => ({ ...prev, eventId: event.target.value }))}
+                  className="rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2 text-sm text-[var(--td-ink)] focus:border-[var(--td-border-strong)] focus:outline-none"
+                >
+                  <option value="">Select event (optional)</option>
+                  {eventsList.map((event) => (
+                    <option key={event.id} value={event.id}>
+                      {event.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--td-ink)]">
+                Team A
+                <select
+                  value={matchForm.teamAId}
+                  onChange={(event) => setMatchForm((prev) => ({ ...prev, teamAId: event.target.value }))}
+                  className="rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2 text-sm text-[var(--td-ink)] focus:border-[var(--td-border-strong)] focus:outline-none"
+                >
+                  <option value="">Select Team A</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--td-ink)]">
+                Team B
+                <select
+                  value={matchForm.teamBId}
+                  onChange={(event) => setMatchForm((prev) => ({ ...prev, teamBId: event.target.value }))}
+                  className="rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2 text-sm text-[var(--td-ink)] focus:border-[var(--td-border-strong)] focus:outline-none"
+                >
+                  <option value="">Select Team B</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--td-ink)]">
+                Venue
+                <select
+                  value={matchForm.venueId}
+                  onChange={(event) => setMatchForm((prev) => ({ ...prev, venueId: event.target.value }))}
+                  className="rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2 text-sm text-[var(--td-ink)] focus:border-[var(--td-border-strong)] focus:outline-none"
+                >
+                  <option value="">Select venue (optional)</option>
+                  {venues.map((venue) => (
+                    <option key={venue.id} value={venue.id}>
+                      {venue.name || "Unnamed venue"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--td-ink)]">
+                Start time
+                <input
+                  type="datetime-local"
+                  value={matchForm.startTime}
+                  onChange={(event) => setMatchForm((prev) => ({ ...prev, startTime: event.target.value }))}
+                  className="rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2 text-sm text-[var(--td-ink)] focus:border-[var(--td-border-strong)] focus:outline-none"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--td-ink)]">
+                Status
+                <select
+                  value={matchForm.status}
+                  onChange={(event) => setMatchForm((prev) => ({ ...prev, status: event.target.value || "scheduled" }))}
+                  className="rounded-lg border border-[var(--td-border)] bg-[var(--td-surface-muted)] px-3 py-2 text-sm text-[var(--td-ink)] focus:border-[var(--td-border-strong)] focus:outline-none"
+                >
+                  {["scheduled", "ready", "pending", "live", "finished", "completed", "canceled"].map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {(matchError || matchMessage) && (
+              <div className="mt-3 space-y-2">
+                {matchError && (
+                  <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {matchError}
+                  </p>
+                )}
+                {matchMessage && (
+                  <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+                    {matchMessage}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="mt-3 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleCreateMatch}
+                disabled={matchSaving}
+                className="inline-flex items-center justify-center rounded-lg bg-[var(--td-ink)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--td-ink-muted)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {matchSaving ? "Creating..." : "Create match"}
+              </button>
+              <Link to="/score-keeper" className="inline-flex items-center justify-center rounded-lg border border-[var(--td-border)] px-4 py-2 text-sm font-semibold text-[var(--td-ink)] transition hover:border-[var(--td-border-strong)]">
+                Go to score keeper
+              </Link>
+            </div>
+          </div>
+
           <div className="grid gap-3 rounded-2xl border border-[var(--td-border)] bg-white p-4 shadow-sm lg:grid-cols-[1.2fr_1fr]">
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">

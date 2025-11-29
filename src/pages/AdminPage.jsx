@@ -9,6 +9,12 @@ const ADMIN_MODULES = [
     accent: "bg-brand/10 text-brand-dark",
   },
   {
+    label: "Score keeper v2",
+    description: "New build space for the next-generation score keeper console.",
+    to: "/score-keeper-v2",
+    accent: "bg-indigo-100 text-indigo-700",
+  },
+  {
     label: "Captain",
     description:
       "Manage rosters, submit spirit scores, and coordinate pre-game logistics.",

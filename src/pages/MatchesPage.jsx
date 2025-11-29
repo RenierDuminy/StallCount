@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES, getMatchLogs } from "../services/matchLogService";
-import { getMatchById, getRecentMatches } from "../services/matchService";
+import { getMatchById, getMatchesByEvent } from "../services/matchService";
+import { getEventsList } from "../services/leagueService";
 
 const SERIES_COLORS = {
   teamA: "#1d4ed8",
@@ -21,6 +22,10 @@ const MATCH_EVENT_ID_HINTS = {
 
 export default function MatchesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [events, setEvents] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [eventsError, setEventsError] = useState(null);
+  const [selectedEventId, setSelectedEventId] = useState("");
   const [matches, setMatches] = useState([]);
   const [selectedMatchId, setSelectedMatchId] = useState("");
   const [selectedMatch, setSelectedMatch] = useState(null);
@@ -31,29 +36,60 @@ export default function MatchesPage() {
 
   useEffect(() => {
     let ignore = false;
-    async function loadRecentMatches() {
-      setMatchLoading(true);
+    const loadEvents = async () => {
+      setEventsLoading(true);
+      setEventsError(null);
       try {
-        const recent = await getRecentMatches(24);
+        const data = await getEventsList(50);
         if (!ignore) {
-          setMatches(recent ?? []);
-          if (!selectedMatchId && recent?.[0]?.id) {
-            setSelectedMatchId(recent[0].id);
+          setEvents(data ?? []);
+          if (!selectedEventId && data?.[0]?.id) {
+            setSelectedEventId(data[0].id);
           }
         }
       } catch (err) {
-        console.error("[MatchesPage] Failed to load matches", err);
+        if (!ignore) {
+          setEventsError(err instanceof Error ? err.message : "Unable to load events.");
+        }
       } finally {
         if (!ignore) {
-          setMatchLoading(false);
+          setEventsLoading(false);
         }
       }
-    }
-    loadRecentMatches();
+    };
+    loadEvents();
     return () => {
       ignore = true;
     };
-  }, [selectedMatchId]);
+  }, [selectedEventId]);
+
+  const loadMatchesForEvent = useCallback(
+    async (eventId, preferredMatchId = null) => {
+      if (!eventId) {
+        setMatches([]);
+        setSelectedMatchId("");
+        return;
+      }
+      setMatchLoading(true);
+      try {
+        const data = await getMatchesByEvent(eventId, 50, { includeFinished: true });
+        setMatches(data ?? []);
+        if (data?.length) {
+          const exists = preferredMatchId && data.some((m) => m.id === preferredMatchId);
+          setSelectedMatchId(exists ? preferredMatchId : data[0].id);
+        } else {
+          setSelectedMatchId("");
+        }
+      } catch (err) {
+        setMatches([]);
+        setSelectedMatchId("");
+        console.error("[MatchesPage] Failed to load matches", err);
+      } finally {
+        setMatchLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     const fromQuery = searchParams.get("matchId");
@@ -61,6 +97,29 @@ export default function MatchesPage() {
       setSelectedMatchId(fromQuery);
     }
   }, [searchParams, selectedMatchId]);
+
+  useEffect(() => {
+    const fromQuery = searchParams.get("matchId");
+    if (!fromQuery || !events.length || selectedEventId) return;
+    // Try to resolve event from the match so we can load its matches.
+    (async () => {
+      try {
+        const match = await getMatchById(fromQuery);
+        if (match?.event_id) {
+          setSelectedEventId(match.event_id);
+          await loadMatchesForEvent(match.event_id, fromQuery);
+        }
+      } catch (err) {
+        console.error("[MatchesPage] Failed to resolve match from query", err);
+      }
+    })();
+  }, [events.length, loadMatchesForEvent, searchParams, selectedEventId]);
+
+  useEffect(() => {
+    if (selectedEventId) {
+      void loadMatchesForEvent(selectedEventId, selectedMatchId);
+    }
+  }, [selectedEventId, loadMatchesForEvent]); 
 
   useEffect(() => {
     if (!selectedMatchId) {
@@ -113,6 +172,46 @@ export default function MatchesPage() {
           </p>
           <div className="grid gap-3 md:grid-cols-[1.1fr_0.9fr] md:items-center">
             <label className="space-y-1 text-sm font-semibold text-[var(--sc-ink)]">
+              Event
+              <div className="sc-card-muted relative flex items-center gap-3 p-3">
+                <div className="text-[var(--sc-ink-muted)]" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />
+                  </svg>
+                </div>
+                {eventsLoading ? (
+                  <p className="text-sm text-[var(--sc-ink-muted)]">Loading events...</p>
+                ) : eventsError ? (
+                  <p className="text-sm text-rose-600">{eventsError}</p>
+                ) : (
+                  <select
+                    value={selectedEventId}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSelectedEventId(value);
+                      setSelectedMatchId("");
+                      if (value) {
+                        setSearchParams({}, { replace: true });
+                      }
+                    }}
+                    className="w-full bg-transparent text-sm font-semibold text-[var(--sc-ink)] outline-none"
+                  >
+                    <option value="">Pick an event...</option>
+                    {events.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {event.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <div className="text-[var(--sc-ink-muted)]" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.117l3.71-3.886a.75.75 0 0 1 1.08 1.04l-4.24 4.44a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" />
+                  </svg>
+                </div>
+              </div>
+            </label>
+            <label className="space-y-1 text-sm font-semibold text-[var(--sc-ink)]">
               Select match
               <div className="sc-card-muted relative flex items-center gap-3 p-3">
                 <div className="text-[var(--sc-ink-muted)]" aria-hidden="true">
@@ -123,7 +222,7 @@ export default function MatchesPage() {
                 </div>
                 <select
                   value={selectedMatchId}
-                  disabled={matchLoading}
+                  disabled={matchLoading || !selectedEventId}
                   onChange={(event) => {
                     const value = event.target.value;
                     setSelectedMatchId(value);
@@ -135,7 +234,15 @@ export default function MatchesPage() {
                   }}
                   className="w-full bg-transparent text-sm font-semibold text-[var(--sc-ink)] outline-none disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <option value="">Pick a recent match...</option>
+                  <option value="">
+                    {!selectedEventId
+                      ? "Select an event first..."
+                      : matchLoading
+                        ? "Loading matches..."
+                        : matches.length
+                          ? "Select a match..."
+                          : "No matches for this event"}
+                  </option>
                   {matches.map((match) => (
                     <option key={match.id} value={match.id}>
                       {formatMatchLabel(match)}
@@ -170,7 +277,11 @@ export default function MatchesPage() {
             {logsError}
           </p>
         )}
-        {!selectedMatchId ? (
+        {!selectedEventId ? (
+          <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+            Select an event to view its matches.
+          </div>
+        ) : !selectedMatchId ? (
           <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
             Choose a match to see the scoring timeline and full log.
           </div>
@@ -598,9 +709,9 @@ function PointLogTable({ rows, teamAName, teamBName }) {
   }
   return (
     <div className="w-full overflow-x-auto px-0 sm:mx-0 sm:px-0">
-      <table className="w-full table-auto text-left text-xs sm:text-sm text-[var(--sc-ink)]">
+      <table className="w-full table-auto text-left text-xs sm:text-sm text-black">
         <thead>
-          <tr className="uppercase tracking-wide text-[11px] text-[var(--sc-ink-muted)]">
+          <tr className="uppercase tracking-wide text-[11px] text-black">
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">#</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Time</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Team</th>
@@ -628,23 +739,23 @@ function PointLogTable({ rows, teamAName, teamBName }) {
                   : ""
               }`}
             >
-              <td className="px-1 py-0.5 font-semibold text-[var(--sc-ink-muted)] sm:px-2 sm:py-1.5">{row.label}</td>
-              <td className="px-1 py-0.5 whitespace-nowrap text-[var(--sc-ink)] sm:px-2 sm:py-1.5">{row.formattedTime}</td>
-              <td className="px-1 py-0.5 font-semibold text-[var(--sc-ink)] sm:px-2 sm:py-1.5">{row.teamLabel}</td>
+              <td className="px-1 py-0.5 font-semibold text-black sm:px-2 sm:py-1.5">{row.label}</td>
+              <td className="px-1 py-0.5 whitespace-nowrap text-black sm:px-2 sm:py-1.5">{row.formattedTime}</td>
+              <td className="px-1 py-0.5 font-semibold text-black sm:px-2 sm:py-1.5">{row.teamLabel}</td>
               <td className="px-1 py-0.5 sm:px-2 sm:py-1.5">
                 {row.description === "Timeout" || row.description === "Halftime" || row.description === "Match start" || row.description === "Stoppage" ? (
-                  <div className="text-center text-xs font-semibold text-[var(--sc-ink-muted)] sm:text-sm">
+                  <div className="text-center text-xs font-semibold text-black sm:text-sm">
                     {row.description}
                   </div>
                 ) : (
                   <div className="grid auto-rows-min items-center gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-1.5">
-                    <span className="text-[var(--sc-ink-muted)] text-[11px] sm:text-sm sm:text-right">{row.assist || "-"}</span>
-                    <span className="text-[10px] font-semibold text-[var(--sc-ink-muted)] text-center sm:text-xs">-&gt;</span>
-                    <span className="font-semibold text-[var(--sc-ink)]">{row.scorer || "-"}</span>
+                    <span className="text-black text-[11px] sm:text-sm sm:text-right">{row.assist || "-"}</span>
+                    <span className="text-[10px] font-semibold text-black text-center sm:text-xs">-&gt;</span>
+                    <span className="font-semibold text-black">{row.scorer || "-"}</span>
                   </div>
                 )}
               </td>
-              <td className="px-1 py-0.5 text-right font-mono text-[11px] text-[var(--sc-ink-muted)] sm:px-2 sm:py-1.5 sm:text-xs">
+              <td className="px-1 py-0.5 text-right font-mono text-[11px] text-black sm:px-2 sm:py-1.5 sm:text-xs">
                 {row.gap}
               </td>
             </tr>

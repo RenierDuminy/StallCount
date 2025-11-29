@@ -11,90 +11,50 @@ export default function ScoreKeeperView() {
   const actions = useScoreKeeperActions(data);
 
   const {
-    userId,
     events,
-    setEvents,
     eventsLoading,
     eventsError,
     selectedEventId,
     setSelectedEventId,
     matches,
-    setMatches,
     matchesLoading,
     matchesError,
     selectedMatchId,
     setSelectedMatchId,
     selectedMatch,
-    activeMatch,
-    setActiveMatch,
     initialising,
-    setInitialising,
     setupForm,
     setSetupForm,
     rules,
     setRules,
     score,
-    setScore,
     logs,
-    setLogs,
     logsLoading,
-    matchEventOptions,
-    setMatchEventOptions,
     matchEventsError,
-    setMatchEventsError,
     pendingEntries,
-    setPendingEntries,
-    timerSeconds,
-    setTimerSeconds,
     timerRunning,
-    setTimerRunning,
-    secondarySeconds,
-    setSecondarySeconds,
     secondaryRunning,
-    setSecondaryRunning,
     secondaryLabel,
-    setSecondaryLabel,
-    secondaryTotalSeconds,
-    setSecondaryTotalSeconds,
-    secondaryFlashActive,
-    setSecondaryFlashActive,
-    secondaryFlashPulse,
-    setSecondaryFlashPulse,
     timerLabel,
-    setTimerLabel,
     consoleError,
-    setConsoleError,
     rosters,
-    setRosters,
     rostersLoading,
-    setRostersLoading,
     rostersError,
-    setRostersError,
     timeModalOpen,
     setTimeModalOpen,
     setupModalOpen,
     setSetupModalOpen,
     scoreModalState,
-    setScoreModalState,
     scoreForm,
     setScoreForm,
     timeoutUsage,
-    setTimeoutUsage,
     possessionTeam,
-    setPossessionTeam,
-    halftimeTriggered,
-    setHalftimeTriggered,
     resumeCandidate,
-    setResumeCandidate,
     resumeHandled,
-    setResumeHandled,
     resumeBusy,
-    setResumeBusy,
     resumeError,
-    setResumeError,
     stoppageActive,
     matchStarted,
-    setMatchStarted,
     consoleReady,
     matchSettingsLocked,
     displayTeamA,
@@ -107,9 +67,6 @@ export default function ScoreKeeperView() {
     venueName,
     statusLabel,
     getAbbaDescriptor,
-    startingTeamId,
-    matchStartingTeamKey,
-    matchDuration,
     remainingTimeouts,
     canEndMatch,
     possessionLeader,
@@ -122,39 +79,10 @@ export default function ScoreKeeperView() {
     nextAbbaDescriptor,
     primaryTimerBg,
     secondaryTimerBg,
-    fetchRostersForTeams,
-    loadMatchEventDefinitions,
-    resolveEventTypeIdLocal,
-    getPrimaryRemainingSeconds,
-    getSecondaryRemainingSeconds,
-    commitPrimaryTimerState,
-    commitSecondaryTimerState,
-    buildSessionSnapshot,
-    recordPendingEntry,
-    startSecondaryTimer,
-    describeEvent,
-    appendLocalLog,
-    logSimpleEvent,
-    triggerHalftime,
     updatePossession,
-    matchLogMatchId,
-    currentMatchScore,
-    deriveLogsFromRows,
-    refreshMatchLogs,
-    loadEvents,
     loadMatches,
     handleResumeSession,
-    handleDiscardResume,
-    initialScoreRef,
-    currentMatchScoreRef,
-    matchIdRef,
-    refreshMatchLogsRef,
-    primaryResetRef,
-    secondaryResetRef,
-    resumeHydrationRef,
-    primaryTimerAnchorRef,
-    secondaryTimerAnchorRef,
-    toDateTimeLocal
+    handleDiscardResume
   } = data;
 
   const safeTeamAName = displayTeamA || "Team A";
@@ -260,7 +188,12 @@ export default function ScoreKeeperView() {
     releasePossessionPointer(event.pointerId);
   };
 
-  const isScoreFormValid = Boolean(scoreForm.scorerId && scoreForm.assistId);
+  const scorerAssistClash =
+    scoreForm.assistId &&
+    scoreForm.assistId !== CALAHAN_ASSIST_VALUE &&
+    scoreForm.scorerId &&
+    scoreForm.assistId === scoreForm.scorerId;
+  const isScoreFormValid = Boolean(scoreForm.scorerId && scoreForm.assistId && !scorerAssistClash);
 
   const openSimpleEventModal = (log, index) => {
     setSimpleEventEditState({
@@ -304,12 +237,11 @@ export default function ScoreKeeperView() {
   };
 
   return (
-    <div className="sc-shell max-w-5xl scorekeeper-compact text-[var(--sc-ink)]">
-      <header className="compact-card">
+    <div className="sc-shell w-full scorekeeper-compact text-black">
+      <header className="compact-card w-full">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-col leading-tight">
-            <span className="sk-chip">Score keeper</span>
-            <h1 className="text-xl font-semibold text-[var(--sc-ink)]">Score keeper console</h1>
+            <h1 className="text-xl font-semibold text-black">Score keeper console</h1>
           </div>
           <Link to="/admin" className="compact-button is-ghost text-xs">
             Back to admin hub
@@ -320,7 +252,7 @@ export default function ScoreKeeperView() {
       <main className="py-2">
         {consoleReady ? (
           <section className="space-y-2">
-            <div className="rounded-3xl border border-emerald-900/15 bg-white/90 p-1.5 shadow-card/60">
+            <div className="rounded-3xl border border-emerald-900/15 bg-white/90 p-1.5 shadow-card/60 w-full">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-slate-900">
@@ -330,9 +262,6 @@ export default function ScoreKeeperView() {
                   </h2>
                   <p className="text-sm text-slate-600">
                     {kickoffLabel} - {venueName || "Venue TBD"} - {statusLabel}
-                  </p>
-                  <p className="mt-1 text-lg font-semibold text-[#0f5132]">
-                    Score: {score.a} - {score.b}
                   </p>
                 </div>
                 <button
@@ -345,14 +274,14 @@ export default function ScoreKeeperView() {
               </div>
             </div>
 
-            <div className="space-y-2 rounded-3xl border border-emerald-900/15 bg-gradient-to-b from-white to-slate-50 p-2 shadow-lg">
+            <div className="space-y-2 rounded-3xl border border-emerald-900/15 bg-gradient-to-b from-white to-slate-50 p-2 shadow-lg w-full">
               <div className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white/90 shadow-inner">
                 <div className="grid gap-1.5 p-1.5 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="rounded-2xl p-1 text-center text-slate-800">
+                  <div className="rounded-2xl p-1 text-center text-slate-800 min-w-0">
                     <div
                       className={`flex w-full flex-col items-center rounded-2xl border border-slate-200 px-2.5 py-4 text-slate-900 transition-colors ${primaryTimerBg}`}
                     >
-                      <p className="text-[70px] font-semibold leading-none sm:text-[90px]">
+                      <p className="w-full min-w-0 text-[clamp(3rem,12vw,5.5rem)] font-semibold leading-none">
                         {formattedPrimaryClock}
                       </p>
                       <p className="text-xs uppercase tracking-wide text-slate-700/80">
@@ -394,11 +323,11 @@ export default function ScoreKeeperView() {
                   </div>
                 </div>
                 <div className="grid gap-1.5 p-1.5 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="rounded-2xl p-1 text-center text-slate-800">
+                  <div className="rounded-2xl p-1 text-center text-slate-800 min-w-0">
                     <div
                       className={`flex w-full flex-col items-center rounded-2xl border border-slate-200 px-2.5 py-4 text-slate-900 transition-colors ${secondaryTimerBg}`}
                     >
-                      <p className="text-[60px] font-semibold leading-none sm:text-[80px]">
+                      <p className="w-full min-w-0 text-[clamp(2.6rem,11vw,5rem)] font-semibold leading-none">
                         {formattedSecondaryClock}
                       </p>
                       <p className="text-xs uppercase tracking-wide text-slate-700/80">
@@ -464,7 +393,7 @@ export default function ScoreKeeperView() {
             </div>
 
               {matchStarted && (
-                <div className="rounded-3xl border border-slate-200 bg-white p-2 shadow-card/30">
+                <div className="rounded-3xl border border-slate-200 bg-white p-2 shadow-card/30 w-full">
                 <div className="flex flex-col gap-1 text-slate-800 sm:flex-row sm:items-center sm:justify-between">
                   <h3 className="text-xl font-semibold">Possession</h3>
                   <p className="text-sm font-semibold">
@@ -623,7 +552,6 @@ export default function ScoreKeeperView() {
                   ) : (
                     sortedRosters.teamA.map((player) => (
                       <p key={player.id} className="border-b border-white/40 pb-1 last:border-b-0">
-                        <span className="font-semibold">{player.jersey_number ?? "-"}</span>{" "}
                         {formatPlayerSelectLabel(player)}
                       </p>
                     ))
@@ -642,7 +570,6 @@ export default function ScoreKeeperView() {
                   ) : (
                     sortedRosters.teamB.map((player) => (
                       <p key={player.id} className="border-b border-white/40 pb-1 last:border-b-0">
-                        <span className="font-semibold">{player.jersey_number ?? "-"}</span>{" "}
                         {formatPlayerSelectLabel(player)}
                       </p>
                     ))
@@ -1094,7 +1021,9 @@ export default function ScoreKeeperView() {
             <div className="space-y-1.5">
               {!isScoreFormValid && (
                 <p className="text-xs font-semibold text-rose-600">
-                  Choose both a scorer and an assist to log this score.
+                  {scorerAssistClash
+                    ? "Scorer and assist must be different players."
+                    : "Choose both a scorer and an assist to log this score."}
                 </p>
               )}
               <button
@@ -1223,60 +1152,56 @@ function MatchLogCard({
     hour: "2-digit",
     minute: "2-digit",
   });
-  const isTeamALayout = log.team === "B";
-  const shouldMirror = Boolean(
-    log.team &&
-      (isScoreLog || isCalahanLog || isTimeoutLog || isPossessionLog || isHalftimeLog || isStoppageStart)
-  );
-  let bannerBgClass = "bg-[#ecfdf3]";
-  let bannerBorderClass = "border-[#0f5132]/20";
-  let bannerTextClass = "text-[#0f5132]";
+  const alignClass = log.team === "A" ? "text-left" : log.team === "B" ? "text-right" : "text-center";
+  let bannerBgClass = "bg-white";
+  let bannerBorderClass = "border-slate-300";
+  let bannerTextClass = "text-black";
 
   if (isMatchStartLog || isTimeoutLog) {
-    bannerBgClass = "bg-[#e6f9ed]";
-    bannerBorderClass = "border-[#34d399]/40";
-    bannerTextClass = "text-[#14532d]";
+    bannerBgClass = "bg-[#d4f5e1]";
+    bannerBorderClass = "border-[#16a34a]/60";
+    bannerTextClass = "text-black";
   } else if (isHalftimeLog) {
-    bannerBgClass = "bg-[#c7edd7]";
-    bannerBorderClass = "border-[#2f7c50]/30";
-    bannerTextClass = "text-[#1c4731]";
+    bannerBgClass = "bg-[#e0e7ff]";
+    bannerBorderClass = "border-[#4338ca]/50";
+    bannerTextClass = "text-black";
   } else if (isCalahanLog) {
-    bannerBgClass = "bg-[#fff7cc]";
-    bannerBorderClass = "border-[#f2c94c]/50";
-    bannerTextClass = "text-[#14532d]";
-  } else if (isScoreLog && log.team === "A") {
     bannerBgClass = "bg-[#fff1e0]";
-    bannerBorderClass = "border-[#f6a45a]/40";
-    bannerTextClass = "text-[#14532d]";
+    bannerBorderClass = "border-[#f59e0b]/60";
+    bannerTextClass = "text-black";
+  } else if (isScoreLog && log.team === "A") {
+    bannerBgClass = "bg-[#ffe8d3]";
+    bannerBorderClass = "border-[#f97316]/60";
+    bannerTextClass = "text-black";
   } else if (isScoreLog && log.team === "B") {
-    bannerBgClass = "bg-[#e3f1ff]";
-    bannerBorderClass = "border-[#58a6ff]/40";
-    bannerTextClass = "text-[#0f416c]";
+    bannerBgClass = "bg-[#dbeafe]";
+    bannerBorderClass = "border-[#2563eb]/60";
+    bannerTextClass = "text-black";
   } else if (isStoppageStart) {
-    bannerBgClass = "bg-[#ffe4e6]";
-    bannerBorderClass = "border-[#fb7185]";
-    bannerTextClass = "text-[#14532d]";
+    bannerBgClass = "bg-[#fecdd3]";
+    bannerBorderClass = "border-[#ef4444]/60";
+    bannerTextClass = "text-black";
   }
 
   const isScoringDisplay = isScoreLog || isCalahanLog;
 
   const eventStyles = (() => {
     if (isCalahanLog) {
-      return { bg: "bg-[#f0fff4]", border: "border-[#c6f6d5]", label: "text-[#0a3b24]" };
+      return { bg: "bg-[#f0fff4]", border: "border-[#c6f6d5]", label: "text-black" };
     }
     if (isScoreLog) {
-      return { bg: "bg-[#f0fff4]", border: "border-[#9ae6b4]", label: "text-[#0f5132]" };
+      return { bg: "bg-[#f0fff4]", border: "border-[#22c55e]/60", label: "text-black" };
     }
     if (isTimeoutLog || isStoppageStart) {
-      return { bg: "bg-[#fffbea]", border: "border-[#fde68a]", label: "text-[#854d0e]" };
+      return { bg: "bg-[#fef3c7]", border: "border-[#f59e0b]/60", label: "text-black" };
     }
     if (isHalftimeLog) {
-      return { bg: "bg-[#edf2ff]", border: "border-[#c7d2fe]", label: "text-[#1e3a8a]" };
+      return { bg: "bg-[#e0e7ff]", border: "border-[#4338ca]/50", label: "text-black" };
     }
     if (isPossessionLog) {
-      return { bg: "bg-[#ecfeff]", border: "border-[#bae6fd]", label: "text-[#0f172a]" };
+      return { bg: "bg-[#cffafe]", border: "border-[#06b6d4]/60", label: "text-black" };
     }
-    return { bg: "bg-white/90", border: "border-[var(--sc-border)]", label: "text-[var(--sc-ink)]" };
+    return { bg: "bg-white", border: "border-slate-300", label: "text-black" };
   })();
 
   const description = isMatchStartLog
@@ -1294,59 +1219,69 @@ function MatchLogCard({
 
   return (
     <article
-      className={`rounded-2xl border px-4 py-3 text-sm shadow-sm transition hover:shadow-md ${eventStyles.bg} ${eventStyles.border}`}
+      className={`rounded-2xl border px-4 py-3 text-sm shadow-sm transition hover:shadow-md ${eventStyles.bg} ${eventStyles.border} ${alignClass}`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className={`text-xs font-semibold uppercase tracking-wide ${eventStyles.label}`}>
-            {isMatchStartLog ? "Match start" : log.eventDescription || "Match event"}
-            {!isScoringDisplay && !isMatchStartLog && shortTeamLabel ? ` Â· ${shortTeamLabel}` : ""}
+      <div className={`w-full ${alignClass}`}>
+        <p className="text-xs font-semibold uppercase tracking-wide text-black">
+          {isMatchStartLog ? "Match start" : log.eventDescription || "Match event"}
+          {!isScoringDisplay && !isMatchStartLog && shortTeamLabel ? ` - ${shortTeamLabel}` : ""}
+        </p>
+        {abbaDescriptor && (
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-black">{abbaDescriptor}</p>
+        )}
+        {description && <p className="text-xs text-black">{description}</p>}
+        {abbaLineLabel && (
+          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-black">
+            Line {abbaLineLabel}
           </p>
-          {abbaDescriptor && !isMatchStartLog && (
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              {abbaDescriptor}
-            </p>
-          )}
-          {description && <p className="text-xs text-[var(--sc-ink-muted)]">{description}</p>}
-          {abbaLineLabel && (
-            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]">
-              Line {abbaLineLabel}
-            </p>
-          )}
-        </div>
-        <div className="text-right text-xs text-[var(--sc-ink-muted)]">{eventTime}</div>
+        )}
+        <p className="text-xs text-black">{eventTime}</p>
       </div>
 
       {isScoringDisplay ? (
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <p className="text-lg font-semibold text-[#0f5132]">
+        <div className="mt-3 grid items-center gap-3 md:grid-cols-[1fr_auto_1fr]">
+          {log.team === "A" ? (
+            <div className="text-left text-xs text-black">
+              <p className="font-semibold text-black">{displayTeamA}</p>
+              <p className="font-semibold text-black">
+                {log.assistName ? `${log.assistName} -> ` : ""}
+                {log.scorerName || "Unassigned"}
+              </p>
+            </div>
+          ) : (
+            <div />
+          )}
+
+          <p className="text-center text-lg font-semibold text-black">
             {log.totalA} - {log.totalB}
           </p>
-          <div className="min-w-[180px] text-xs text-[var(--sc-ink-muted)]">
-            <p className="font-semibold text-[var(--sc-ink)]">
-              {log.team === "A" ? displayTeamA : displayTeamB}
-            </p>
-            {isCalahanLog ? (
-              <p className="font-semibold uppercase text-[#0a3b24]">CALLAHAN!!</p>
-            ) : (
-              <p>
-                Scorer: {log.scorerName || "Unassigned"}
-                {log.assistName ? ` Â· Assist: ${log.assistName}` : ""}
+
+          {log.team === "B" ? (
+            <div className="text-right text-xs text-black">
+              <p className="font-semibold text-black">{displayTeamB}</p>
+              <p className="font-semibold text-black">
+                {log.assistName ? `${log.assistName} -> ` : ""}
+                {log.scorerName || "Unassigned"}
               </p>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div />
+          )}
+
           {log.team && (
-            <button
-              type="button"
-              onClick={() => openScoreModal(log.team, "edit", editIndex)}
-              className="ml-auto rounded-full border border-[var(--sc-border)] px-4 py-1 text-xs font-semibold text-[var(--sc-accent)] transition hover:border-[var(--sc-accent)] hover:bg-[#e6fffa]"
-            >
-              Edit event
-            </button>
+            <div className="md:col-span-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => openScoreModal(log.team, "edit", editIndex)}
+                className="rounded-full border border-[var(--sc-border)] px-4 py-1 text-xs font-semibold text-[var(--sc-accent)] transition hover:border-[var(--sc-accent)] hover:bg-[#e6fffa]"
+              >
+                Edit event
+              </button>
+            </div>
           )}
         </div>
       ) : description ? (
-        <div className="mt-3 flex items-center justify-between text-xs text-[var(--sc-ink-muted)]">
+        <div className="mt-3 flex items-center justify-between text-xs text-black">
           <p>
             {isPossessionLog
               ? `${shortTeamLabel || "Team"} now has the disc`
@@ -1372,6 +1307,8 @@ function MatchLogCard({
     </article>
   );
 }
+
+
 
 
 

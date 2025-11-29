@@ -1,11 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { initialiseMatch, updateMatchStatus } from "../../services/matchService";
 import { updateScore } from "../../services/realtimeService";
-import {
-  MATCH_LOG_EVENT_CODES,
-  deleteMatchLogEntry,
-  updateMatchLogEntry,
-} from "../../services/matchLogService";
+import { MATCH_LOG_EVENT_CODES, deleteMatchLogEntry, updateMatchLogEntry } from "../../services/matchLogService";
 import {
   DEFAULT_DURATION,
   DEFAULT_SECONDARY_LABEL,
@@ -16,6 +12,7 @@ import {
 
 export function useScoreKeeperActions(controller) {
   const navigate = useNavigate();
+  const DB_WRITES_DISABLED = false;
 
   function cancelPrimaryHoldReset() {
     if (controller.primaryResetRef.current) {
@@ -73,7 +70,9 @@ export function useScoreKeeperActions(controller) {
         abba_pattern: controller.rules.abbaPattern,
         scorekeeper: controller.userId,
       };
+
       const updated = await initialiseMatch(controller.selectedMatch.id, payload);
+
       controller.setActiveMatch(updated);
       controller.setSelectedMatchId(updated.id);
       controller.setMatches((prev) => prev.map((match) => (match.id === updated.id ? updated : match)));
@@ -344,6 +343,13 @@ export function useScoreKeeperActions(controller) {
     event.preventDefault();
     if (!controller.scoreModalState.team) return;
     if (!controller.scoreForm.scorerId || !controller.scoreForm.assistId) {
+      return;
+    }
+    if (
+      controller.scoreForm.assistId !== CALAHAN_ASSIST_VALUE &&
+      controller.scoreForm.assistId === controller.scoreForm.scorerId
+    ) {
+      controller.setConsoleError("Scorer and assist must be different players.");
       return;
     }
     const isCalahan = controller.scoreForm.assistId === CALAHAN_ASSIST_VALUE;

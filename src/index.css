@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -8,23 +8,23 @@
   :root {
     color-scheme: light;
     font-size: 16px;
-    --sc-bg: #01150c;
-    --sc-bg-accent: #033b21;
-    --sc-surface: rgba(236, 253, 243, 0.96);
-    --sc-surface-muted: rgba(226, 252, 236, 0.85);
-    --sc-border: #9ae6b4;
-    --sc-border-strong: #c6f6d5;
-    --sc-ink: #052b1d;
-    --sc-ink-muted: #1d5a3b;
-    --sc-accent: #0f5132;
-    --sc-accent-strong: #0a3b24;
+    --sc-bg: #041311;
+    --sc-bg-accent: #0b1f1a;
+    --sc-surface: #0f251f;
+    --sc-surface-muted: #112c24;
+    --sc-border: #12352c;
+    --sc-border-strong: #1f4d40;
+    --sc-ink: #e8f4ed;
+    --sc-ink-muted: #9db9aa;
+    --sc-accent: #c6ff62;
+    --sc-accent-strong: #a8ff33;
   }
 
   body {
     @apply font-sans antialiased;
-    background-image: radial-gradient(circle at top, rgba(226, 252, 236, 0.45), transparent 55%),
-      radial-gradient(circle at 20% 20%, rgba(4, 59, 36, 0.35), transparent 60%),
-      linear-gradient(135deg, var(--sc-bg), var(--sc-bg-accent));
+    background-image: radial-gradient(circle at 18% 18%, rgba(99, 255, 160, 0.12), transparent 50%),
+      radial-gradient(circle at 82% 12%, rgba(198, 255, 98, 0.1), transparent 45%),
+      linear-gradient(155deg, var(--sc-bg), var(--sc-bg-accent));
     background-attachment: fixed;
     color: var(--sc-ink);
     font-size: 1rem;
@@ -53,7 +53,7 @@
   }
 
   .sc-shell {
-    @apply relative mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-8 lg:px-8;
+    @apply relative mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-10 lg:px-10;
   }
 
   .matches-compact-shell {
@@ -61,19 +61,21 @@
   }
 
   .sc-card {
-    @apply rounded-[32px] border bg-white/90 p-6 shadow-xl sm:p-8;
-    border-color: var(--sc-border);
+    @apply rounded-[30px] border p-6 shadow-xl sm:p-8;
+    border-color: rgba(99, 255, 160, 0.18);
     color: var(--sc-ink);
+    background: linear-gradient(150deg, rgba(20, 42, 34, 0.9), rgba(10, 25, 21, 0.95));
   }
 
   .sc-card-muted {
-    @apply rounded-[32px] border bg-[var(--sc-surface-muted)] p-6 shadow-inner sm:p-8;
-    border-color: var(--sc-border-strong);
+    @apply rounded-[30px] border p-6 shadow-inner sm:p-8;
+    border-color: rgba(99, 255, 160, 0.2);
+    background: linear-gradient(150deg, rgba(21, 52, 43, 0.9), rgba(12, 29, 24, 0.96));
   }
 
   .sc-pill {
     @apply inline-flex items-center gap-2 rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide;
-    border-color: var(--sc-border);
+    border-color: rgba(99, 255, 160, 0.25);
     color: var(--sc-accent);
   }
 }

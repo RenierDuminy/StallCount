@@ -128,21 +128,37 @@ export default function HomePage() {
   }
 
   return (
-    <div className="pb-16 text-[var(--sc-ink)]">
-      <header className="sc-shell space-y-6 py-6">
-        <div className="sc-card-base p-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="sc-chip">Home</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              Live league view
-            </span>
+    <div className="pb-20 text-[var(--sc-ink)]">
+      <header className="sc-shell space-y-8 py-8">
+        <div className="sc-card-base sc-hero p-6 sm:p-8 lg:p-10">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="sc-chip">Home</span>
+              <span className="sc-pill-ghost text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                Live league view
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              <span className="sc-tag">Realtime</span>
+              <span className="sc-chip">Sync on</span>
+            </div>
           </div>
-          <div className="mt-5 grid gap-6 lg:grid-cols-[1.1fr,0.9fr] lg:items-start">
-            <div className="space-y-5">
-              <h1 className="text-3xl font-semibold">League command center</h1>
-              <p className="max-w-2xl text-base text-[var(--sc-ink-muted)]">
-                Follow matches, manage rosters, and keep fans in the loop.
-              </p>
+
+          <div className="mt-7 grid gap-8 lg:grid-cols-[1.05fr,0.95fr] lg:items-center">
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <p className="text-sm font-semibold uppercase tracking-[0.25em] text-[var(--sc-ink-muted)]">
+                  StallCount Insight Hub
+                </p>
+                <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
+                  Building competitive growth with{" "}
+                  <span className="text-[var(--sc-accent)]">clarity</span> & intent
+                </h1>
+                <p className="max-w-2xl text-base text-[var(--sc-ink-muted)]">
+                  Track matches, elevate player data, and keep every division aligned. Purpose-built for directors,
+                  captains, and fans.
+                </p>
+              </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Link to="/teams" className="sc-button">
                   Browse teams
@@ -151,30 +167,27 @@ export default function HomePage() {
                   Player list
                 </Link>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="flex flex-wrap gap-3">
                 {[
                   { label: "Registered teams", value: stats.teams },
                   { label: "Rostered players", value: stats.players },
                   { label: "Tracked events", value: stats.events },
                 ].map((item) => (
-                  <article key={item.label} className="sc-card-muted p-4 text-center">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                      {item.label}
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-[var(--sc-ink)]">
-                      {loading ? "..." : item.value}
-                    </p>
-                  </article>
+                  <div key={item.label} className="sc-metric">
+                    <strong>{loading ? "..." : item.value}</strong>
+                    <span className="text-sm text-[var(--sc-ink-muted)]">{item.label}</span>
+                  </div>
                 ))}
               </div>
               {error && (
-                <p className="sc-card-muted border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+                <p className="rounded-xl border border-rose-400/40 bg-rose-950/50 p-4 text-sm font-semibold text-rose-100">
                   {error}
                 </p>
               )}
             </div>
-            <div className="space-y-3">
-              <div className="sc-card-muted p-4">
+
+            <div className="grid gap-4">
+              <div className="sc-card-muted sc-frosted p-5">
                 <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
                   <span>Next match</span>
                   <span className="sc-chip">Live data</span>
@@ -186,10 +199,8 @@ export default function HomePage() {
                   {nextMatch ? formatMatchTime(nextMatch.start_time) : "Add matches to see them highlighted here."}
                 </p>
               </div>
-              <div className="sc-card-muted p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                  Spotlight event
-                </p>
+              <div className="sc-card-muted sc-frosted p-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Spotlight event</p>
                 <p className="mt-2 text-lg font-semibold text-[var(--sc-ink)]">
                   {highlightedEvent ? highlightedEvent.name : "Nothing scheduled yet"}
                 </p>
@@ -204,33 +215,32 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main className="sc-shell space-y-6">
-        <section id="events" className="sc-card-base space-y-4 p-6">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="sc-chip">Events</p>
-              <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Timeline</h2>
-              <p className="text-sm text-[var(--sc-ink-muted)]">Latest events with dates and locations.</p>
+      <main className="space-y-12">
+        <section className="sc-shell grid gap-6 lg:grid-cols-[1.05fr,0.95fr]">
+          <div id="events" className="sc-card-base space-y-4 p-5 sm:p-6 lg:p-7">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="sc-chip">Events</p>
+                <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Timeline</h2>
+                <p className="text-sm text-[var(--sc-ink-muted)]">Latest events with dates and locations.</p>
+              </div>
             </div>
-          </div>
-          {loading && safeEvents.length === 0 ? (
-            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading events...</div>
-          ) : safeEvents.length === 0 ? (
-            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
-              No events recorded yet.
-            </div>
-          ) : (
-            <div className="relative pl-6">
-              <div className="absolute left-2 top-1 bottom-1 w-px bg-[var(--sc-border)]" aria-hidden="true" />
-              <div className="space-y-4">
+            {loading && safeEvents.length === 0 ? (
+              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading events...</div>
+            ) : safeEvents.length === 0 ? (
+              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+                No events recorded yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
                 {safeEvents.map((event) => (
-                  <article key={event.id} className="sc-card-base p-4">
+                  <article key={event.id} className="sc-card-muted p-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
                           {event.type}
                         </p>
-                        <h3 className="text-xl font-semibold text-[var(--sc-ink)]">{event.name}</h3>
+                        <h3 className="text-lg font-semibold text-[var(--sc-ink)]">{event.name}</h3>
                       </div>
                       <p className="text-sm text-[var(--sc-ink-muted)]">
                         {formatDateRange(event.start_date, event.end_date)}
@@ -242,113 +252,123 @@ export default function HomePage() {
                   </article>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <section id="matches" className="sc-card-base space-y-4 p-5 sm:p-6">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="sc-chip">Matches</p>
+                  <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Latest scores</h2>
+                </div>
+              </div>
+              {loading && safeMatches.length === 0 ? (
+                <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading matches...</div>
+              ) : safeMatches.length === 0 ? (
+                <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+                  No matches recorded yet.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {safeMatches.slice(0, 4).map((match) => (
+                    <article key={match.id} className="sc-card-muted p-4">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                            {match.event?.name || "Match"}
+                          </p>
+                          <h3 className="text-xl font-semibold text-[var(--sc-ink)]">{formatMatchup(match)}</h3>
+                          <p className="text-xs text-[var(--sc-ink-muted)]">{formatMatchTime(match.start_time)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-3xl font-semibold text-[var(--sc-accent)]">
+                            {match.score_a} <span className="text-[var(--sc-border)]">-</span> {match.score_b}
+                          </p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                            {match.status || "scheduled"}
+                          </p>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
         </section>
 
-        <section id="divisions" className="sc-card-base space-y-4 p-6">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="sc-chip">Divisions</p>
-              <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Active divisions</h2>
+        <section className="sc-shell grid gap-6 lg:grid-cols-[1.05fr,0.95fr]">
+          <div id="divisions" className="sc-card-base space-y-4 p-5 sm:p-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="sc-chip">Divisions</p>
+                <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Active divisions</h2>
+              </div>
+              <Link to="/admin" className="sc-button is-ghost">
+                Manage in dashboard
+              </Link>
             </div>
-            <Link to="/admin" className="sc-button is-ghost">
-              Manage in dashboard
-            </Link>
+            {loading && safeDivisions.length === 0 ? (
+              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading divisions...</div>
+            ) : safeDivisions.length === 0 ? (
+              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+                No divisions yet. Add one in the dashboard to see it here.
+              </div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {safeDivisions.map((division) => (
+                  <article key={division.id} className="sc-card-muted p-4 transition hover:-translate-y-0.5">
+                    <h3 className="text-lg font-semibold text-[var(--sc-ink)]">{division.name}</h3>
+                    <p className="text-sm text-[var(--sc-ink-muted)]">
+                      Level: {division.level ? division.level : "Not specified"}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
-          {loading && safeDivisions.length === 0 ? (
-            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading divisions...</div>
-          ) : safeDivisions.length === 0 ? (
-            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
-              No divisions yet. Add one in the dashboard to see it here.
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {safeDivisions.map((division) => (
-                <article key={division.id} className="sc-card-base p-4 transition hover:-translate-y-0.5">
-                  <h3 className="text-lg font-semibold text-[var(--sc-ink)]">{division.name}</h3>
-                  <p className="text-sm text-[var(--sc-ink-muted)]">
-                    Level: {division.level ? division.level : "Not specified"}
-                  </p>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
 
-        <section id="matches" className="sc-card-base space-y-4 p-6">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="sc-chip">Matches</p>
-              <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Latest scores</h2>
+          <div id="teams" className="sc-surface-light space-y-4 p-5 sm:p-6 lg:p-7">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="sc-chip">Teams</p>
+                <h2 className="text-2xl font-semibold text-[#0b1f19]">Teams spotlight</h2>
+                <p className="text-sm text-[#0b1f19]/70 sm:text-base">Featured teams from around the league.</p>
+              </div>
+              <Link to="/teams" className="sc-button">
+                View all
+              </Link>
             </div>
+            {loading && featuredTeams.length === 0 ? (
+              <div className="rounded-2xl border border-[#dfeee3] bg-white p-5 text-center text-sm text-[#0b1f19]/70">
+                Loading teams...
+              </div>
+            ) : featuredTeams.length === 0 ? (
+              <div className="rounded-2xl border border-[#dfeee3] bg-white p-5 text-center text-sm text-[#0b1f19]/70">
+                No teams found. Add a team to start the list.
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {featuredTeams.slice(0, 4).map((team) => (
+                  <Link
+                    key={team.id}
+                    to={`/teams/${team.id}`}
+                    className="rounded-2xl border border-[#e5f3e9] bg-white p-4 shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
+                  >
+                    <h3 className="text-xl font-semibold text-[#0b1f19]">{team.name}</h3>
+                    {team.short_name && (
+                      <p className="mt-2 text-sm text-[#0b1f19]/70">Short name: {team.short_name}</p>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
-          {loading && safeMatches.length === 0 ? (
-            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading matches...</div>
-          ) : safeMatches.length === 0 ? (
-            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
-              No matches recorded yet.
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {safeMatches.map((match) => (
-                <article key={match.id} className="sc-card-base p-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                        {match.event?.name || "Match"}
-                      </p>
-                      <h3 className="text-xl font-semibold text-[var(--sc-ink)]">{formatMatchup(match)}</h3>
-                      <p className="text-xs text-[var(--sc-ink-muted)]">{formatMatchTime(match.start_time)}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-3xl font-semibold text-[var(--sc-accent)]">
-                        {match.score_a} <span className="text-[var(--sc-border)]">-</span> {match.score_b}
-                      </p>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                        {match.status || "scheduled"}
-                      </p>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section id="teams" className="sc-card-base space-y-4 p-6">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="sc-chip">Teams</p>
-              <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Teams spotlight</h2>
-              <p className="text-sm text-[var(--sc-ink-muted)] sm:text-base">Featured teams from around the league.</p>
-            </div>
-            <Link to="/teams" className="sc-button is-ghost">
-              View all
-            </Link>
-          </div>
-          {loading && featuredTeams.length === 0 ? (
-            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading teams...</div>
-          ) : featuredTeams.length === 0 ? (
-            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
-              No teams found. Add a team to start the list.
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {featuredTeams.map((team) => (
-                <Link key={team.id} to={`/teams/${team.id}`} className="sc-card-base p-4 transition hover:-translate-y-0.5">
-                  <h3 className="text-xl font-semibold text-[var(--sc-ink)]">{team.name}</h3>
-                  {team.short_name && (
-                    <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">Short name: {team.short_name}</p>
-                  )}
-                </Link>
-              ))}
-            </div>
-          )}
         </section>
       </main>
 
-      <footer className="sc-shell mt-8">
+      <footer className="sc-shell mt-10">
         <div className="sc-card-muted flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
           <p className="font-semibold text-[var(--sc-ink)]">
             &copy; {new Date().getFullYear()} StallCount. Live league data.
@@ -370,7 +390,7 @@ export default function HomePage() {
             )}
           </div>
         </div>
-        {signOutError && <p className="sc-shell pb-2 text-xs text-rose-500">{signOutError}</p>}
+        {signOutError && <p className="sc-shell pb-2 text-xs text-rose-300">{signOutError}</p>}
       </footer>
     </div>
   );

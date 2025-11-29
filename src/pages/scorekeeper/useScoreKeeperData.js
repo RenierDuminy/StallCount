@@ -36,6 +36,7 @@ import {
 } from "./scorekeeperConstants";
 
 const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
+const DB_WRITES_DISABLED = false;
 
 function deriveTimerStateFromSnapshot(
   snapshot,
@@ -824,12 +825,29 @@ const getAbbaLineCode = useCallback(
   }, [buildSessionSnapshot, resumeHandled, userId]);
 const recordPendingEntry = useCallback(
   (entry) => {
+    const matchId = entry?.matchId;
+    const eventTypeId = Number.isFinite(entry?.eventTypeId) ? entry.eventTypeId : null;
+    const eventTypeCode = entry?.eventCode || entry?.eventTypeCode || null;
+    if (!matchId) {
+      setConsoleError((prev) => prev || "Cannot log event: missing match reference.");
+      return;
+    }
+    if (!eventTypeId && !eventTypeCode) {
+      setConsoleError((prev) => prev || "Cannot log event: missing event type.");
+      return;
+    }
+
+    const createdAt = entry?.createdAt || new Date().toISOString();
     const normalizedEntry = {
       ...entry,
+      matchId,
+      eventTypeId,
+      eventCode: eventTypeCode,
+      createdAt,
       abbaLine:
         typeof entry?.abbaLine === "string" ? normalizeAbbaLine(entry.abbaLine) : entry?.abbaLine ?? null,
-      eventTypeId: entry?.eventTypeId ?? null,
     };
+
     const dbPayload = {
       matchId: normalizedEntry.matchId,
       teamId: normalizedEntry.teamId ?? null,
@@ -843,6 +861,7 @@ const recordPendingEntry = useCallback(
     } else if (normalizedEntry.eventCode) {
       dbPayload.eventTypeCode = normalizedEntry.eventCode;
     }
+
     const supabasePayload = {
       match_id: dbPayload.matchId,
       event_type_id: dbPayload.eventTypeId ?? null,
@@ -856,15 +875,18 @@ const recordPendingEntry = useCallback(
       supabasePayload.event_type_code = dbPayload.eventTypeCode;
     }
 
-    console.log("[ScoreKeeper] Pending DB payload:", supabasePayload);
     setPendingEntries((prev) => [...prev, supabasePayload]);
-    if (!dbPayload.matchId || (!dbPayload.eventTypeCode && !dbPayload.eventTypeId)) {
+
+    if (DB_WRITES_DISABLED) {
+      console.warn("[ScoreKeeper] DB writes are temporarily disabled. Skipping save.", supabasePayload);
+      setConsoleError((prev) => prev || "Scorekeeper is in offline mode; changes aren't being saved.");
       return;
     }
+
     void (async () => {
       try {
         await createMatchLogEntry(dbPayload);
-        setPendingEntries((prev) => prev.filter((entry) => entry !== supabasePayload));
+        setPendingEntries((prev) => prev.filter((item) => item !== supabasePayload));
       } catch (err) {
         console.error("[ScoreKeeper] Failed to persist match log entry:", err);
         setConsoleError((prev) =>
@@ -1321,6 +1343,24 @@ const rosterNameLookup = useMemo(() => {
         initialScoreRef.current = derived.baseScore;
         setLogs(derived.logs);
         setScore(derived.totals);
+
+        if (!resumeHydrationRef.current) {
+          const matchStartLog = derived.logs.find(
+            (entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.MATCH_START && entry.timestamp
+          );
+          if (matchStartLog) {
+            const durationSeconds = (rules.matchDuration || DEFAULT_DURATION) * 60;
+            const elapsedSeconds = Math.max(
+              0,
+              Math.floor((Date.now() - new Date(matchStartLog.timestamp).getTime()) / 1000)
+            );
+            const remainingSeconds = Math.max(0, durationSeconds - elapsedSeconds);
+            commitPrimaryTimerState(remainingSeconds, remainingSeconds > 0);
+            setTimerLabel("Game time");
+            setMatchStarted(true);
+          }
+        }
+
         return derived.totals;
       } catch (err) {
         setConsoleError(
