@@ -6,7 +6,6 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import HomePage from "./pages/HomePage";
 import AdminPage from "./pages/AdminPage";
 import ScoreKeeperPage from "./pages/ScoreKeeperPage";
-import ScoreKeeperPageV2 from "./pages/ScoreKeeperPageV2";
 import CaptainPage from "./pages/CaptainPage";
 import SysAdminPage from "./pages/SysAdminPage";
 import Teams from "./pages/Teams";
@@ -56,14 +55,6 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute>
                 <ScoreKeeperPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/score-keeper-v2"
-            element={
-              <ProtectedRoute>
-                <ScoreKeeperPageV2 />
               </ProtectedRoute>
             }
           />

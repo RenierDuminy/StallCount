@@ -33,9 +33,6 @@ import {
   DEFAULT_TIMEOUT_SECONDS,
   DEFAULT_INTERPOINT_SECONDS,
   DEFAULT_DISCUSSION_SECONDS,
-  DEFAULT_TIMEOUT_SECONDS,
-  DEFAULT_INTERPOINT_SECONDS,
-  DEFAULT_DISCUSSION_SECONDS,
   SESSION_SAVE_DEBOUNCE_MS,
   TIMER_TICK_INTERVAL_MS,
   ABBA_LINE_SEQUENCE,
@@ -45,101 +42,6 @@ const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
 
-const DEFAULT_RULES = {
-  matchDuration: DEFAULT_DURATION,
-  halftimeMinutes: 55,
-  halftimeBreakMinutes: 7,
-  halftimeScoreThreshold: HALFTIME_SCORE_THRESHOLD,
-  timeoutSeconds: DEFAULT_TIMEOUT_SECONDS,
-  timeoutsTotal: 2,
-  timeoutsPerHalf: 0,
-  interPointSeconds: DEFAULT_INTERPOINT_SECONDS,
-  discussionSeconds: DEFAULT_DISCUSSION_SECONDS,
-  abbaPattern: "none",
-};
-
-function coerceRuleNumber(value, fallback) {
-  const numeric = Number(value);
-  const safeFallback = Number.isFinite(fallback) ? fallback : 0;
-  if (!Number.isFinite(numeric)) {
-    return Math.max(0, Math.round(safeFallback));
-  }
-  return Math.max(0, Math.round(numeric));
-}
-
-function normalizeAbbaPattern(input) {
-  if (typeof input !== "string") return null;
-  const candidate = input.trim().toLowerCase();
-  if (candidate === "male" || candidate === "m") return "male";
-  if (candidate === "female" || candidate === "f") return "female";
-  if (candidate === "none") return "none";
-  return null;
-}
-
-function normalizeEventRules(rawRules) {
-  const base = { ...DEFAULT_RULES };
-  if (!rawRules) return base;
-
-  let parsed = rawRules;
-  if (typeof rawRules === "string") {
-    try {
-      parsed = JSON.parse(rawRules);
-    } catch {
-      parsed = rawRules;
-    }
-  }
-  if (!parsed || typeof parsed !== "object") {
-    return base;
-  }
-
-  const next = { ...base };
-  if (Object.prototype.hasOwnProperty.call(parsed, "matchDuration")) {
-    next.matchDuration = coerceRuleNumber(parsed.matchDuration, base.matchDuration);
-  }
-  if (Object.prototype.hasOwnProperty.call(parsed, "halftimeMinutes")) {
-    next.halftimeMinutes = coerceRuleNumber(parsed.halftimeMinutes, base.halftimeMinutes);
-  }
-  if (Object.prototype.hasOwnProperty.call(parsed, "halftimeBreakMinutes")) {
-    next.halftimeBreakMinutes = coerceRuleNumber(
-      parsed.halftimeBreakMinutes,
-      base.halftimeBreakMinutes
-    );
-  }
-  if (Object.prototype.hasOwnProperty.call(parsed, "halftimeScoreThreshold")) {
-    next.halftimeScoreThreshold = coerceRuleNumber(
-      parsed.halftimeScoreThreshold,
-      HALFTIME_SCORE_THRESHOLD
-    );
-  }
-  if (Object.prototype.hasOwnProperty.call(parsed, "timeoutSeconds")) {
-    next.timeoutSeconds = coerceRuleNumber(parsed.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS);
-  }
-  if (Object.prototype.hasOwnProperty.call(parsed, "timeoutsTotal")) {
-    next.timeoutsTotal = coerceRuleNumber(parsed.timeoutsTotal, base.timeoutsTotal);
-  }
-  if (Object.prototype.hasOwnProperty.call(parsed, "timeoutsPerHalf")) {
-    next.timeoutsPerHalf = coerceRuleNumber(parsed.timeoutsPerHalf, base.timeoutsPerHalf);
-  }
-  if (Object.prototype.hasOwnProperty.call(parsed, "interPointSeconds")) {
-    next.interPointSeconds = coerceRuleNumber(
-      parsed.interPointSeconds,
-      base.interPointSeconds || next.timeoutSeconds
-    );
-  }
-  if (Object.prototype.hasOwnProperty.call(parsed, "discussionSeconds")) {
-    next.discussionSeconds = coerceRuleNumber(parsed.discussionSeconds, base.discussionSeconds);
-  }
-
-  const abbaPattern = normalizeAbbaPattern(parsed.abbaPattern);
-  if (abbaPattern) {
-    next.abbaPattern = abbaPattern;
-  } else if (Object.prototype.hasOwnProperty.call(parsed, "abbaEnabled")) {
-    next.abbaPattern = parsed.abbaEnabled ? DEFAULT_ABBA_PATTERN_WHEN_ENABLED : "none";
-  }
-
-  return next;
-}
-const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
 const OPTIMISTIC_PREFIX = "local-";
 
 const DEFAULT_EVENT_RULES = {
@@ -495,7 +397,6 @@ export function useScoreKeeperData() {
   const [setupForm, setSetupForm] = useState(() => ({ ...DEFAULT_SETUP_FORM }));
 
   const [rules, setRules] = useState(() => ({ ...DEFAULT_RULES }));
-  const [rules, setRules] = useState(() => ({ ...DEFAULT_RULES }));
 
   const [score, setScore] = useState({ a: 0, b: 0 });
   const [logs, setLogs] = useState([]);
@@ -505,7 +406,6 @@ export function useScoreKeeperData() {
   const [pendingEntries, setPendingEntries] = useState([]);
   const [timerSeconds, setTimerSeconds] = useState(DEFAULT_DURATION * 60);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [secondarySeconds, setSecondarySeconds] = useState(DEFAULT_RULES.timeoutSeconds);
   const [secondarySeconds, setSecondarySeconds] = useState(DEFAULT_RULES.timeoutSeconds);
   const [secondaryRunning, setSecondaryRunning] = useState(false);
   const [secondaryLabel, setSecondaryLabel] = useState(DEFAULT_SECONDARY_LABEL);
@@ -522,12 +422,8 @@ const [scoreModalState, setScoreModalState] = useState({
   logIndex: null,
 });
   const [scoreForm, setScoreForm] = useState({ scorerId: "", assistId: "" });
-  const [scoreForm, setScoreForm] = useState({ scorerId: "", assistId: "" });
   const [timeoutUsage, setTimeoutUsage] = useState({ ...DEFAULT_TIMEOUT_USAGE });
   const [timerLabel, setTimerLabel] = useState(DEFAULT_TIMER_LABEL);
-const [secondaryTotalSeconds, setSecondaryTotalSeconds] = useState(
-  DEFAULT_RULES.timeoutSeconds
-);
 const [secondaryTotalSeconds, setSecondaryTotalSeconds] = useState(
   DEFAULT_RULES.timeoutSeconds
 );
@@ -666,14 +562,12 @@ const primaryTimerAnchorRef = useRef({
 });
 const secondaryTimerAnchorRef = useRef({
   baseSeconds: DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
-  baseSeconds: DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
   anchorTimestamp: null,
 });
 const activeSecondaryEventRef = useRef(null);
 const previousSecondaryRunningRef = useRef(false);
 const previousPrimaryRunningRef = useRef(false);
 const stoppageActiveRef = useRef(false);
-const appliedEventRulesRef = useRef(null);
 const appliedEventRulesRef = useRef(null);
   const [matchStarted, setMatchStarted] = useState(false);
   const consoleReady = Boolean(activeMatch);
@@ -742,20 +636,6 @@ const commitSecondaryTimerState = useCallback(
     return normalized;
   },
   []
-);
-
-  const applyEventRules = useCallback(
-    (nextRules) => {
-      if (!nextRules) return;
-      setRules(nextRules);
-      const primarySeconds = (nextRules.matchDuration || DEFAULT_DURATION) * 60;
-      commitPrimaryTimerState(primarySeconds, false);
-      const timeoutSeconds = nextRules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
-      commitSecondaryTimerState(timeoutSeconds, false);
-      setSecondaryTotalSeconds(timeoutSeconds);
-    },
-    [commitPrimaryTimerState, commitSecondaryTimerState]
-  );
 );
 
   const applyEventRules = useCallback(
@@ -1191,7 +1071,6 @@ const getAbbaLineCode = useCallback(
 );
   const startingTeamId = activeMatch?.starting_team_id || setupForm.startingTeamId;
   const matchStartingTeamKey = startingTeamId === teamBId ? "B" : "A";
-  const matchDuration = rules.matchDuration || DEFAULT_DURATION;
   const matchDuration = rules.matchDuration || DEFAULT_DURATION;
   const remainingTimeouts = {
     A: Math.max(rules.timeoutsTotal - timeoutUsage.A, 0),
