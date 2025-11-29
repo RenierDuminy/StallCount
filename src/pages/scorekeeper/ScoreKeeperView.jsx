@@ -4,7 +4,7 @@ import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import { formatClock, formatMatchLabel } from "./scorekeeperUtils";
 import { useScoreKeeperData } from "./useScoreKeeperData";
 import { useScoreKeeperActions } from "./useScoreKeeperActions";
-import { CALAHAN_ASSIST_VALUE } from "./scorekeeperConstants";
+import { CALAHAN_ASSIST_VALUE, DEFAULT_DISCUSSION_SECONDS } from "./scorekeeperConstants";
 
 export default function ScoreKeeperView() {
   const data = useScoreKeeperData();
@@ -79,6 +79,11 @@ export default function ScoreKeeperView() {
     nextAbbaDescriptor,
     primaryTimerBg,
     secondaryTimerBg,
+    commitSecondaryTimerState,
+    setSecondaryTotalSeconds,
+    setSecondaryLabel,
+    setSecondaryFlashActive,
+    setSecondaryFlashPulse,
     updatePossession,
     loadMatches,
     handleResumeSession,
@@ -229,8 +234,9 @@ export default function ScoreKeeperView() {
   };
 
   const handleStartDiscussionTimer = () => {
-    commitSecondaryTimerState(60, true);
-    setSecondaryTotalSeconds(60);
+    const duration = rules.discussionSeconds || DEFAULT_DISCUSSION_SECONDS;
+    commitSecondaryTimerState(duration, true);
+    setSecondaryTotalSeconds(duration);
     setSecondaryLabel("Discussion");
     setSecondaryFlashActive(false);
     setSecondaryFlashPulse(false);
