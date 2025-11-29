@@ -153,6 +153,10 @@ export function useScoreKeeperActions(controller) {
         controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
         resolvedLabel
       );
+      controller.startSecondaryTimer(
+        controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
+        resolvedLabel
+      );
       return;
     }
     if (overrideLabel) {
@@ -167,12 +171,16 @@ export function useScoreKeeperActions(controller) {
       controller.secondarySeconds > 0
         ? controller.secondarySeconds
         : controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
+      controller.secondarySeconds > 0
+        ? controller.secondarySeconds
+        : controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
     controller.commitSecondaryTimerState(base, true);
   }
 
   function handleSecondaryReset() {
     const fallback = Number.isFinite(controller.secondaryTotalSeconds)
       ? controller.secondaryTotalSeconds
+      : controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
       : controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
     controller.commitSecondaryTimerState(fallback, false);
     controller.setSecondaryTotalSeconds(fallback);
@@ -289,6 +297,8 @@ export function useScoreKeeperActions(controller) {
       !controller.halftimeTriggered &&
       Math.max(nextTotals.a, nextTotals.b) >=
         (controller.rules.halftimeScoreThreshold || HALFTIME_SCORE_THRESHOLD)
+      Math.max(nextTotals.a, nextTotals.b) >=
+        (controller.rules.halftimeScoreThreshold || HALFTIME_SCORE_THRESHOLD)
     ) {
       await controller.triggerHalftime();
     }
@@ -330,6 +340,7 @@ export function useScoreKeeperActions(controller) {
       controller.commitPrimaryTimerState((value || DEFAULT_DURATION) * 60, false);
     }
     if (field === "timeoutSeconds") {
+      const nextTimeout = value || DEFAULT_TIMEOUT_SECONDS;
       const nextTimeout = value || DEFAULT_TIMEOUT_SECONDS;
       controller.commitSecondaryTimerState(nextTimeout, false);
       controller.setSecondaryTotalSeconds(nextTimeout);
@@ -470,6 +481,7 @@ export function useScoreKeeperActions(controller) {
     if (remaining === 0) return;
     controller.setTimeoutUsage((prev) => ({ ...prev, [team]: prev[team] + 1 }));
     await controller.startTrackedSecondaryTimer(
+      controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
       controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
       `${team === "A" ? controller.displayTeamA : controller.displayTeamB} timeout`,
       {
