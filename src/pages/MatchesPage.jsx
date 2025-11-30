@@ -194,7 +194,7 @@ export default function MatchesPage() {
                         setSearchParams({}, { replace: true });
                       }
                     }}
-                    className="w-full bg-transparent text-sm font-semibold text-[var(--sc-ink)] outline-none"
+                    className="w-full appearance-none bg-transparent text-sm font-semibold text-[var(--sc-ink)] outline-none"
                   >
                     <option value="">Pick an event...</option>
                     {events.map((event) => (
@@ -232,7 +232,7 @@ export default function MatchesPage() {
                       setSearchParams({}, { replace: true });
                     }
                   }}
-                  className="w-full bg-transparent text-sm font-semibold text-[var(--sc-ink)] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full appearance-none bg-transparent text-sm font-semibold text-[var(--sc-ink)] outline-none disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="">
                     {!selectedEventId
@@ -311,7 +311,7 @@ export default function MatchesPage() {
                   <LegendSwatch color={SERIES_COLORS.teamB} label={selectedMatch?.team_b?.name || "Team B"} />
                 </div>
               </div>
-              <TimelineChart match={selectedMatch} timeline={derived.timeline} />
+              <TimelineChart match={selectedMatch} timeline={derived.timeline} possessionTimeline={derived.possessionTimeline} />
               <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--sc-ink-muted)]">
                 <LegendSwatch color={BAND_COLORS.timeout} label="Timeout" />
                 <LegendSwatch color={BAND_COLORS.stoppage} label="Stoppage" />
@@ -401,7 +401,7 @@ function InsightTable({ title, rows }) {
   );
 }
 
-function TimelineChart({ match, timeline }) {
+function TimelineChart({ match, timeline, possessionTimeline }) {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -422,10 +422,14 @@ function TimelineChart({ match, timeline }) {
 
   const width = 900;
   const baseHeight = 280;
-  const height = isMobile ? baseHeight * 1.35 : baseHeight;
+  const possessionSegments = possessionTimeline?.segments || [];
+  const possessionBandHeight = possessionSegments.length ? (isMobile ? 18 : 14) : 0;
+  const possessionBandGap = possessionSegments.length ? 24 : 0;
+  const chartCanvasHeight = isMobile ? baseHeight * 1.35 : baseHeight;
+  const height = chartCanvasHeight + possessionBandHeight + possessionBandGap;
   const padding = { top: 16, right: 44, bottom: 52, left: 50 };
   const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
+  const chartHeight = chartCanvasHeight - padding.top - padding.bottom;
   const yMax = Math.max(10, timeline.maxScore);
 
   const getX = (time) => {
@@ -524,6 +528,50 @@ function TimelineChart({ match, timeline }) {
       <text x={width / 2} y={20} textAnchor="middle" fontSize="16" fontWeight="600" fill="#0f172a">
         Score vs Time
       </text>
+      {possessionSegments.length > 0 && (
+        <g>
+          <rect
+            x={padding.left}
+            y={padding.top + chartHeight + possessionBandGap}
+            width={chartWidth}
+            height={possessionBandHeight}
+            fill="#f8fafc"
+            rx="4"
+          />
+          {possessionSegments.map((segment, index) => {
+            const xStart = getX(segment.start);
+            const xEnd = getX(segment.end);
+            const segWidth = Math.max(2, xEnd - xStart);
+            const fill =
+              segment.team === "teamA"
+                ? SERIES_COLORS.teamA
+                : segment.team === "teamB"
+                  ? SERIES_COLORS.teamB
+                  : segment.team === "band"
+                    ? "rgba(148, 163, 184, 0.9)"
+                    : "rgba(226, 232, 240, 0.9)";
+            return (
+              <rect
+                key={`${segment.team || "unknown"}-${segment.start}-${index}`}
+                x={xStart}
+                y={padding.top + chartHeight + possessionBandGap}
+                width={segWidth}
+                height={possessionBandHeight}
+                fill={fill}
+                opacity="0.9"
+              />
+            );
+          })}
+          <text
+            x={padding.left}
+            y={padding.top + chartHeight + possessionBandGap + possessionBandHeight + 12}
+            fontSize="11"
+            fill="#475569"
+          >
+            Possession (color matches team lines)
+          </text>
+        </g>
+      )}
       <text x={width / 2} y={height - 8} textAnchor="middle" fontSize="12" fill="#475569">
         Minutes
       </text>
@@ -710,8 +758,8 @@ function PointLogTable({ rows, teamAName, teamBName }) {
   return (
     <div className="w-full overflow-x-auto px-0 sm:mx-0 sm:px-0">
       <table className="w-full table-auto text-left text-xs sm:text-sm text-black">
-        <thead>
-          <tr className="uppercase tracking-wide text-[11px] text-black">
+        <thead className="text-white">
+          <tr className="uppercase tracking-wide text-[11px]">
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">#</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Time</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Team</th>
