@@ -194,11 +194,17 @@ export default function MatchesPage() {
                         setSearchParams({}, { replace: true });
                       }
                     }}
-                    className="w-full appearance-none rounded-lg bg-white/95 px-2 py-2 text-sm font-semibold text-[var(--td-ink)] outline-none shadow-inner focus:ring-2 focus:ring-[var(--sc-accent)]"
+                    className="w-full appearance-none rounded-xl border border-[var(--sc-border)] bg-[var(--sc-surface)] px-3 py-2 text-sm font-semibold text-[var(--sc-ink)] shadow-inner outline-none focus:border-[var(--sc-accent)] focus:ring-2 focus:ring-[var(--sc-accent)]/50"
                   >
-                    <option value="">Pick an event...</option>
+                    <option value="" className="bg-[var(--sc-surface)] text-[var(--sc-ink)]">
+                      Pick an event...
+                    </option>
                     {events.map((event) => (
-                      <option key={event.id} value={event.id}>
+                      <option
+                        key={event.id}
+                        value={event.id}
+                        className="bg-[var(--sc-surface)] text-[var(--sc-ink)]"
+                      >
                         {event.name}
                       </option>
                     ))}
@@ -232,9 +238,9 @@ export default function MatchesPage() {
                       setSearchParams({}, { replace: true });
                     }
                   }}
-                  className="w-full appearance-none rounded-lg bg-white/95 px-2 py-2 text-sm font-semibold text-[var(--td-ink)] outline-none shadow-inner focus:ring-2 focus:ring-[var(--sc-accent)] disabled:cursor-not-allowed disabled:bg-white/70 disabled:text-[var(--td-ink)] disabled:opacity-70"
+                  className="w-full appearance-none rounded-xl border border-[var(--sc-border)] bg-[var(--sc-surface)] px-3 py-2 text-sm font-semibold text-[var(--sc-ink)] shadow-inner outline-none focus:border-[var(--sc-accent)] focus:ring-2 focus:ring-[var(--sc-accent)]/50 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  <option value="">
+                  <option value="" className="bg-[var(--sc-surface)] text-[var(--sc-ink)]">
                     {!selectedEventId
                       ? "Select an event first..."
                       : matchLoading
@@ -244,7 +250,11 @@ export default function MatchesPage() {
                           : "No matches for this event"}
                   </option>
                   {matches.map((match) => (
-                    <option key={match.id} value={match.id}>
+                    <option
+                      key={match.id}
+                      value={match.id}
+                      className="bg-[var(--sc-surface)] text-[var(--sc-ink)]"
+                    >
                       {formatMatchLabel(match)}
                     </option>
                   ))}
@@ -775,7 +785,6 @@ function PointLogTable({ rows, teamAName, teamBName }) {
       <table className="w-full table-auto text-left text-xs sm:text-sm text-black">
         <thead className="text-white">
           <tr className="uppercase tracking-wide text-[11px]">
-            <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">#</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Time</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Team</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Assist -&gt; Score</th>
@@ -797,12 +806,11 @@ function PointLogTable({ rows, teamAName, teamBName }) {
                   ? "bg-[#fef9c3]"
                 : row.variant === "goalA"
                   ? "bg-[#edf2ff]"
-                  : row.variant === "goalB"
+                : row.variant === "goalB"
                   ? "bg-[#fff3e7]"
                   : ""
               }`}
             >
-              <td className="px-1 py-0.5 font-semibold text-black sm:px-2 sm:py-1.5">{row.label}</td>
               <td className="px-1 py-0.5 whitespace-nowrap text-black sm:px-2 sm:py-1.5">{row.formattedTime}</td>
               <td className="px-1 py-0.5 font-semibold text-black sm:px-2 sm:py-1.5">{row.teamLabel}</td>
               <td className="px-1 py-0.5 sm:px-2 sm:py-1.5">

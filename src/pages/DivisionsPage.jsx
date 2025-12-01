@@ -143,6 +143,37 @@ export default function DivisionsPage() {
   const resolveVenueName = (match) =>
     match.venue?.name || (match.venue_id && venueLookup[match.venue_id]) || "Venue TBD";
 
+  const rulesSummary = useMemo(() => {
+    const rules = selectedEvent?.rules;
+    if (!rules || typeof rules !== "object") return null;
+    const game = rules.game || {};
+    const half = rules.half || {};
+    const timeouts = rules.timeouts || {};
+    const clock = rules.clock || {};
+
+    const rows = [
+      { label: "Game to", value: game.pointTarget },
+      { label: "Soft cap (min)", value: game.softCapMinutes },
+      { label: "Hard cap (min)", value: game.hardCapMinutes },
+      { label: "Half at", value: half.pointTarget },
+      { label: "Half time cap (min)", value: half.timeCapMinutes },
+      { label: "Half break (min)", value: half.breakMinutes },
+      { label: "Timeouts per team", value: timeouts.perTeamPerGame },
+      { label: "Timeout length (sec)", value: timeouts.durationSeconds },
+      {
+        label: "Running clock",
+        value:
+          typeof clock.isRunningClockEnabled === "boolean"
+            ? clock.isRunningClockEnabled
+              ? "Enabled"
+              : "Disabled"
+            : null,
+      },
+    ].filter((row) => row.value !== null && row.value !== undefined && row.value !== "");
+
+    return rows.length ? rows : null;
+  }, [selectedEvent?.rules]);
+
   return (
     <div className="pb-16 text-[var(--sc-ink)]">
       <header className="sc-shell py-6">
@@ -193,20 +224,27 @@ export default function DivisionsPage() {
                       key={event.id}
                       type="button"
                       onClick={() => setSelectedEventId(event.id)}
-                      className={`sc-card-base w-full text-left transition hover:-translate-y-0.5 ${
-                        isActive ? "border-[var(--sc-accent)] shadow-[0_16px_40px_rgba(5,43,29,0.18)]" : ""
-                      }`}
-                      style={{ padding: "16px" }}
+                      className={`w-full text-left transition ${
+                        isActive ? "sc-button" : "sc-button is-ghost !text-[var(--sc-ink)]"
+                      } !flex !flex-col !items-start !justify-start !gap-1.5 !rounded-2xl !px-4 !py-3`}
                     >
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                      <p
+                        className={`text-xs font-semibold uppercase tracking-wide ${
+                          isActive ? "text-[#0b2c23]" : "text-[var(--sc-ink-muted)]"
+                        }`}
+                      >
                         {event.type || "Event"}
                       </p>
-                      <p className="text-base font-semibold text-[var(--sc-ink)]">{event.name}</p>
-                      <p className="text-xs text-[var(--sc-ink-muted)]">
+                      <p className={`text-base font-semibold ${isActive ? "text-[#03140f]" : "text-[var(--sc-ink)]"}`}>
+                        {event.name}
+                      </p>
+                      <p className={`text-xs ${isActive ? "text-[#0b2c23]" : "text-[var(--sc-ink-muted)]"}`}>
                         {formatDate(event.start_date)} - {formatDate(event.end_date)}
                       </p>
                       {event.location && (
-                        <p className="mt-1 text-xs text-[var(--sc-ink-muted)]">Location: {event.location}</p>
+                        <p className={`mt-1 text-xs ${isActive ? "text-[#0b2c23]" : "text-[var(--sc-ink-muted)]"}`}>
+                          Location: {event.location}
+                        </p>
                       )}
                     </button>
                   );
@@ -257,6 +295,19 @@ export default function DivisionsPage() {
                       : "--"}
                   </p>
                 </div>
+                {rulesSummary && (
+                  <div className="sc-card-muted p-3 space-y-2">
+                    <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Rules snapshot</p>
+                    <div className="grid gap-1.5 sm:grid-cols-2">
+                      {rulesSummary.map((row) => (
+                        <div key={row.label} className="rounded-xl border border-[var(--sc-border)]/60 bg-white/5 px-3 py-2">
+                          <p className="text-[11px] uppercase tracking-wide text-[var(--sc-ink-muted)]">{row.label}</p>
+                          <p className="text-sm font-semibold text-[var(--sc-ink)]">{row.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <p className="text-xs text-[var(--sc-ink-muted)]">
                   Choose an event, then head to Matches for full fixtures.
                 </p>

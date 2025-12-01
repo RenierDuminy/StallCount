@@ -157,8 +157,8 @@ export default function ScoreKeeperView() {
     const rosterSourceTeam = possessionResult === "block" ? blockTeam : nextTeam;
     const options = getRosterOptionsForTeam(rosterSourceTeam);
     let nextActorId = possessionActorId;
-    if (!options.some((player) => player.id === nextActorId)) {
-      nextActorId = options[0]?.id || "";
+    if (nextActorId && !options.some((player) => player.id === nextActorId)) {
+      nextActorId = "";
     }
 
     setPendingPossessionTeam(nextTeam);
@@ -245,8 +245,8 @@ export default function ScoreKeeperView() {
       setPossessionActorId("");
       return;
     }
-    if (!activeActorOptions.some((player) => player.id === possessionActorId)) {
-      setPossessionActorId(activeActorOptions[0]?.id || "");
+    if (possessionActorId && !activeActorOptions.some((player) => player.id === possessionActorId)) {
+      setPossessionActorId("");
     }
   }, [activeActorOptions, possessionActorId]);
 
@@ -266,8 +266,7 @@ export default function ScoreKeeperView() {
     const blockTeam = nextTeam === "A" ? "B" : "A";
     const rosterSourceTeam = possessionResult === "block" ? blockTeam : nextTeam;
     const options = getRosterOptionsForTeam(rosterSourceTeam);
-    const actorId =
-      options.find((player) => player.id === possessionActorId)?.id || options[0]?.id || null;
+    const actorId = options.find((player) => player.id === possessionActorId)?.id || possessionActorId || null;
     setPossessionActorId(actorId || "");
     resetPossessionModalState();
     const eventTypeIdOverride = possessionResult === "block" ? 19 : null;
@@ -972,13 +971,9 @@ export default function ScoreKeeperView() {
                   checked={possessionResult === "throwaway"}
                   onChange={() => {
                     setPossessionResult("throwaway");
-                    const options = getRosterOptionsForTeam(pendingPossessionTeam);
-                    const nextId =
-                      options.find((player) => player.id === possessionActorId)?.id || options[0]?.id || "";
-                    setPossessionActorId(nextId);
                   }}
                 />
-                <span>Throw away</span>
+                <span>Turnover</span>
               </label>
               <label className="inline-flex items-center gap-2">
                 <input
@@ -990,10 +985,6 @@ export default function ScoreKeeperView() {
                     setPossessionResult("block");
                     const blockTeam =
                       pendingPossessionTeam === "A" ? "B" : pendingPossessionTeam === "B" ? "A" : null;
-                    const options = getRosterOptionsForTeam(blockTeam);
-                    const nextId =
-                      options.find((player) => player.id === possessionActorId)?.id || options[0]?.id || "";
-                    setPossessionActorId(nextId);
                   }}
                 />
                 <span>Block</span>
