@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import { formatClock, formatMatchLabel } from "./scorekeeperUtils";
@@ -56,7 +56,6 @@ export default function ScoreKeeperView() {
     stoppageActive,
     matchStarted,
     consoleReady,
-    matchSettingsLocked,
     displayTeamA,
     displayTeamB,
     displayTeamAShort,
@@ -135,6 +134,12 @@ export default function ScoreKeeperView() {
   const possessionPadRef = useRef(null);
   const possessionPointerIdRef = useRef(null);
   const possessionDragStateRef = useRef({ startX: null, moved: false });
+  const [possessionEventReady, setPossessionEventReady] = useState(false);
+  const [possessionResult, setPossessionResult] = useState("throwaway"); // "throwaway" | "block"
+  const [possessionActorId, setPossessionActorId] = useState("");
+  const [possessionModalOpen, setPossessionModalOpen] = useState(false);
+  const [pendingPossessionTeam, setPendingPossessionTeam] = useState(null);
+  const [possessionPreviewTeam, setPossessionPreviewTeam] = useState(null);
 
   const updatePossessionFromCoordinate = (clientX) => {
     const track = possessionPadRef.current;
@@ -146,7 +151,21 @@ export default function ScoreKeeperView() {
     const ratio = (clientX - left) / width;
     const clamped = Math.min(Math.max(ratio, 0), 1);
     const nextTeam = clamped >= 0.5 ? "B" : "A";
-    void updatePossession(nextTeam);
+    if (nextTeam === possessionTeam && !possessionPreviewTeam) return;
+
+    const blockTeam = nextTeam === "A" ? "B" : "A";
+    const rosterSourceTeam = possessionResult === "block" ? blockTeam : nextTeam;
+    const options = getRosterOptionsForTeam(rosterSourceTeam);
+    let nextActorId = possessionActorId;
+    if (!options.some((player) => player.id === nextActorId)) {
+      nextActorId = options[0]?.id || "";
+    }
+
+    setPendingPossessionTeam(nextTeam);
+    setPossessionPreviewTeam(nextTeam);
+    setPossessionActorId(nextActorId);
+    setPossessionEventReady(true);
+    setPossessionModalOpen(true);
   };
 
   const releasePossessionPointer = (pointerId) => {
@@ -162,6 +181,22 @@ export default function ScoreKeeperView() {
     possessionPointerIdRef.current = event.pointerId;
     possessionDragStateRef.current = { startX: event.clientX, moved: false };
     possessionPadRef.current?.setPointerCapture?.(event.pointerId);
+  };
+
+  const getRosterOptionsForTeam = (teamKey) => {
+    if (teamKey === "A") {
+      return (sortedRosters.teamA || []).filter((player) => player?.id).map((player) => ({
+        id: player.id,
+        name: player.name || "Unnamed player",
+      }));
+    }
+    if (teamKey === "B") {
+      return (sortedRosters.teamB || []).filter((player) => player?.id).map((player) => ({
+        id: player.id,
+        name: player.name || "Unnamed player",
+      }));
+    }
+    return [];
   };
 
   const handlePossessionPadPointerMove = (event) => {
@@ -191,6 +226,52 @@ export default function ScoreKeeperView() {
 
   const handlePossessionPadPointerCancel = (event) => {
     releasePossessionPointer(event.pointerId);
+  };
+
+  const currentPossessionTeam = possessionPreviewTeam || possessionTeam;
+  const activeActorTeam =
+    possessionResult === "block"
+      ? currentPossessionTeam === "A"
+        ? "B"
+        : currentPossessionTeam === "B"
+          ? "A"
+          : null
+      : currentPossessionTeam;
+
+  const activeActorOptions = useMemo(() => getRosterOptionsForTeam(activeActorTeam), [activeActorTeam, sortedRosters]);
+
+  useEffect(() => {
+    if (!activeActorOptions.length) {
+      setPossessionActorId("");
+      return;
+    }
+    if (!activeActorOptions.some((player) => player.id === possessionActorId)) {
+      setPossessionActorId(activeActorOptions[0]?.id || "");
+    }
+  }, [activeActorOptions, possessionActorId]);
+
+  const resetPossessionModalState = () => {
+    setPossessionModalOpen(false);
+    setPendingPossessionTeam(null);
+    setPossessionPreviewTeam(null);
+    setPossessionEventReady(false);
+  };
+
+  const confirmPossessionChange = () => {
+    const nextTeam = pendingPossessionTeam;
+    if (!nextTeam) {
+      resetPossessionModalState();
+      return;
+    }
+    const blockTeam = nextTeam === "A" ? "B" : "A";
+    const rosterSourceTeam = possessionResult === "block" ? blockTeam : nextTeam;
+    const options = getRosterOptionsForTeam(rosterSourceTeam);
+    const actorId =
+      options.find((player) => player.id === possessionActorId)?.id || options[0]?.id || null;
+    setPossessionActorId(actorId || "");
+    resetPossessionModalState();
+    const eventTypeIdOverride = possessionResult === "block" ? 19 : null;
+    void updatePossession(nextTeam, { actorId: actorId || null, eventTypeIdOverride });
   };
 
   const scorerAssistClash =
@@ -305,7 +386,7 @@ export default function ScoreKeeperView() {
                             onChange={(event) =>
                               handleRuleChange("matchDuration", Number(event.target.value) || 0)
                             }
-                            disabled={matchSettingsLocked}
+                            disabled={false}
                             className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-center text-slate-800 outline-none transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
                           />
                         </label>
@@ -351,7 +432,7 @@ export default function ScoreKeeperView() {
                             onChange={(event) =>
                               handleRuleChange("timeoutSeconds", Number(event.target.value) || 0)
                             }
-                            disabled={matchSettingsLocked}
+                            disabled={false}
                             className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-center text-slate-800 outline-none transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
                           />
                         </label>
@@ -448,6 +529,7 @@ export default function ScoreKeeperView() {
                     Drag across to update possession
                   </p>
                 </div>
+
               </div>
             )}
 
@@ -657,11 +739,6 @@ export default function ScoreKeeperView() {
       {setupModalOpen && (
         <ActionModal title="Match setup" onClose={() => setSetupModalOpen(false)}>
           <form className="space-y-4" onSubmit={handleInitialiseMatch}>
-            {matchSettingsLocked && (
-              <p className="rounded-2xl bg-[#d1fae5] px-3 py-2 text-xs font-semibold text-[#0f5132]">
-                Match already started. Settings unlock once the match is reset.
-              </p>
-            )}
             <div className="space-y-2">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -683,7 +760,6 @@ export default function ScoreKeeperView() {
                       setSelectedEventId(value);
                       setSelectedMatchId(null);
                     }}
-                    disabled={matchSettingsLocked}
                     className="mt-2 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">Select an event...</option>
@@ -720,7 +796,7 @@ export default function ScoreKeeperView() {
                   <select
                     value={selectedMatchId || ""}
                     onChange={(event) => setSelectedMatchId(event.target.value || null)}
-                    disabled={!selectedEventId || matches.length === 0 || matchSettingsLocked}
+                    disabled={!selectedEventId || matches.length === 0}
                     className="mt-2 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">
@@ -753,7 +829,6 @@ export default function ScoreKeeperView() {
                       matchDuration: Number(event.target.value) || 0,
                     }))
                   }
-                  disabled={matchSettingsLocked}
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
@@ -769,7 +844,6 @@ export default function ScoreKeeperView() {
                       halftimeMinutes: Number(event.target.value) || 0,
                     }))
                   }
-                  disabled={matchSettingsLocked}
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
@@ -785,7 +859,6 @@ export default function ScoreKeeperView() {
                       halftimeBreakMinutes: Number(event.target.value) || 0,
                     }))
                   }
-                  disabled={matchSettingsLocked}
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
@@ -801,7 +874,6 @@ export default function ScoreKeeperView() {
                       timeoutSeconds: Number(event.target.value) || 0,
                     }))
                   }
-                  disabled={matchSettingsLocked}
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
@@ -817,7 +889,6 @@ export default function ScoreKeeperView() {
                       timeoutsTotal: Number(event.target.value) || 0,
                     }))
                   }
-                  disabled={matchSettingsLocked}
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
@@ -833,7 +904,6 @@ export default function ScoreKeeperView() {
                       timeoutsPerHalf: Number(event.target.value) || 0,
                     }))
                   }
-                  disabled={matchSettingsLocked}
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
@@ -847,7 +917,6 @@ export default function ScoreKeeperView() {
                       startingTeamId: event.target.value || "",
                     }))
                   }
-                  disabled={matchSettingsLocked}
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="">Select team...</option>
@@ -865,7 +934,6 @@ export default function ScoreKeeperView() {
                       abbaPattern: event.target.value,
                     }))
                   }
-                  disabled={matchSettingsLocked}
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="none">None</option>
@@ -876,12 +944,97 @@ export default function ScoreKeeperView() {
             </div>
             <button
               type="submit"
-              disabled={initialising || !selectedMatch || matchSettingsLocked}
+              disabled={initialising || !selectedMatch}
               className="w-full rounded-full bg-[#0f5132] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {initialising ? "Initialising..." : "Initialise"}
             </button>
           </form>
+        </ActionModal>
+      )}
+
+      {possessionModalOpen && (
+        <ActionModal title="Possession outcome" onClose={resetPossessionModalState}>
+          <div className="space-y-3 text-[#0f5132]">
+            <p className="text-sm font-semibold">
+              {pendingPossessionTeam === "A"
+                ? `${displayTeamA} in possession`
+                : pendingPossessionTeam === "B"
+                  ? `${displayTeamB} in possession`
+                  : "Select possession"}
+            </p>
+            <div className="flex flex-col gap-2 text-sm font-semibold">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="possession-outcome-modal"
+                  value="throwaway"
+                  checked={possessionResult === "throwaway"}
+                  onChange={() => {
+                    setPossessionResult("throwaway");
+                    const options = getRosterOptionsForTeam(pendingPossessionTeam);
+                    const nextId =
+                      options.find((player) => player.id === possessionActorId)?.id || options[0]?.id || "";
+                    setPossessionActorId(nextId);
+                  }}
+                />
+                <span>Throw away</span>
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="possession-outcome-modal"
+                  value="block"
+                  checked={possessionResult === "block"}
+                  onChange={() => {
+                    setPossessionResult("block");
+                    const blockTeam =
+                      pendingPossessionTeam === "A" ? "B" : pendingPossessionTeam === "B" ? "A" : null;
+                    const options = getRosterOptionsForTeam(blockTeam);
+                    const nextId =
+                      options.find((player) => player.id === possessionActorId)?.id || options[0]?.id || "";
+                    setPossessionActorId(nextId);
+                  }}
+                />
+                <span>Block</span>
+              </label>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
+                Player ({possessionResult === "block" ? "opposition" : "current team"})
+              </p>
+              <select
+                value={possessionActorId}
+                onChange={(event) => setPossessionActorId(event.target.value || "")}
+                className="w-full rounded-xl border border-[#0f5132]/30 bg-white px-3 py-2 text-sm font-semibold text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!activeActorOptions.length}
+              >
+                {!activeActorOptions.length && <option value="">No players available</option>}
+                {activeActorOptions.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={confirmPossessionChange}
+                className="w-full rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                disabled={!pendingPossessionTeam}
+              >
+                Confirm
+              </button>
+              <button
+                type="button"
+                onClick={resetPossessionModalState}
+                className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </ActionModal>
       )}
 
@@ -1107,7 +1260,7 @@ function ActionModal({ title, onClose, children, disableClose = false }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px] px-4 py-3">
       <div className="w-full max-w-sm rounded-[32px] bg-white p-3 shadow-2xl">
         <div className="mb-2 flex items-start justify-between">
           <h3 className="text-2xl font-semibold text-[#0f5132]">{title}</h3>

@@ -321,7 +321,6 @@ export function useScoreKeeperActions(controller) {
   }
 
   function handleRuleChange(field, value) {
-    if (controller.matchSettingsLocked) return;
     controller.setRules((prev) => ({
       ...prev,
       [field]: value,
@@ -503,6 +502,10 @@ export function useScoreKeeperActions(controller) {
 
   async function handleEndMatchNavigation() {
     if (!controller.canEndMatch || !controller.activeMatch?.id) return;
+    const confirmed = window.confirm(
+      "End this match and clear local data? You can still enter spirit scores next."
+    );
+    if (!confirmed) return;
     try {
       await logMatchEndEvent();
       const updated = await updateMatchStatus(controller.activeMatch.id, "finished");
@@ -514,6 +517,13 @@ export function useScoreKeeperActions(controller) {
       }
       const spiritUrl = `/spirit-scores${controller.activeMatch?.id ? `?matchId=${controller.activeMatch.id}` : ""}`;
       navigate(spiritUrl);
+      controller.clearLocalMatchState();
+      if (controller.selectedEventId) {
+        controller.loadMatches(controller.selectedEventId, {
+          preserveSelection: false,
+          allowDefaultSelect: false,
+        });
+      }
     } catch (err) {
       controller.setConsoleError(
         err instanceof Error ? err.message : "Failed to close the match."

@@ -194,7 +194,7 @@ export default function MatchesPage() {
                         setSearchParams({}, { replace: true });
                       }
                     }}
-                    className="w-full appearance-none bg-transparent text-sm font-semibold text-[var(--sc-ink)] outline-none"
+                    className="w-full appearance-none rounded-lg bg-white/95 px-2 py-2 text-sm font-semibold text-[var(--td-ink)] outline-none shadow-inner focus:ring-2 focus:ring-[var(--sc-accent)]"
                   >
                     <option value="">Pick an event...</option>
                     {events.map((event) => (
@@ -232,7 +232,7 @@ export default function MatchesPage() {
                       setSearchParams({}, { replace: true });
                     }
                   }}
-                  className="w-full appearance-none bg-transparent text-sm font-semibold text-[var(--sc-ink)] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full appearance-none rounded-lg bg-white/95 px-2 py-2 text-sm font-semibold text-[var(--td-ink)] outline-none shadow-inner focus:ring-2 focus:ring-[var(--sc-accent)] disabled:cursor-not-allowed disabled:bg-white/70 disabled:text-[var(--td-ink)] disabled:opacity-70"
                 >
                   <option value="">
                     {!selectedEventId
@@ -318,23 +318,6 @@ export default function MatchesPage() {
                 <LegendSwatch color={BAND_COLORS.halftime} label="Halftime" />
               </div>
             </section>
-
-            {derived.hasTurnovers && (
-              <section className="sc-card-base space-y-2 p-4 sm:p-6">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="sc-chip">Possession timeline</span>
-                  <div className="flex items-center gap-2 text-xs sm:text-sm text-[var(--sc-ink-muted)]">
-                    <LegendSwatch color={SERIES_COLORS.teamA} label={`${selectedMatch?.team_a?.name || "Team A"} possession`} />
-                    <LegendSwatch color={SERIES_COLORS.teamB} label={`${selectedMatch?.team_b?.name || "Team B"} possession`} />
-                  </div>
-                </div>
-                <PossessionTimeline
-                  timeline={derived.possessionTimeline}
-                  teamAName={selectedMatch?.team_a?.name}
-                  teamBName={selectedMatch?.team_b?.name}
-                />
-              </section>
-            )}
 
             {derived.summaries && (
               <section className="sc-card-base space-y-3 p-4 sm:p-6">
@@ -423,6 +406,7 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
   const width = 900;
   const baseHeight = 280;
   const possessionSegments = possessionTimeline?.segments || [];
+  const possessionScores = possessionTimeline?.scores || [];
   const possessionBandHeight = possessionSegments.length ? (isMobile ? 18 : 14) : 0;
   const possessionBandGap = possessionSegments.length ? 24 : 0;
   const chartCanvasHeight = isMobile ? baseHeight * 1.35 : baseHeight;
@@ -538,6 +522,21 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
             fill="#f8fafc"
             rx="4"
           />
+          {possessionScores.map((score, index) => {
+            const x = getX(score.time);
+            const y = padding.top + chartHeight + possessionBandGap + possessionBandHeight + 8;
+            return (
+              <path
+                key={`${score.team || "score"}-${score.time}-${index}`}
+                d={`M${x - 3.25},${y + 5} L${x},${y} L${x + 3.25},${y + 5}`}
+                fill="none"
+                stroke="#0f172a"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            );
+          })}
           {possessionSegments.map((segment, index) => {
             const xStart = getX(segment.start);
             const xEnd = getX(segment.end);
@@ -564,7 +563,7 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
           })}
           <text
             x={padding.left}
-            y={padding.top + chartHeight + possessionBandGap + possessionBandHeight + 12}
+            y={padding.top + chartHeight + possessionBandGap + possessionBandHeight + 30}
             fontSize="11"
             fill="#475569"
           >
@@ -572,7 +571,7 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
           </text>
         </g>
       )}
-      <text x={width / 2} y={height - 8} textAnchor="middle" fontSize="12" fill="#475569">
+      <text x={width / 2} y={height - 20} textAnchor="middle" fontSize="12" fill="#475569">
         Minutes
       </text>
       <text
@@ -581,8 +580,7 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
         textAnchor="middle"
         fontSize="12"
         transform={`rotate(-90 14 ${height / 2})`}
-        fill="#475569"
-      >
+        fill="#475569">
         Score
       </text>
     </svg>
@@ -612,6 +610,7 @@ function PossessionTimeline({ timeline, teamAName, teamBName }) {
 
   const segments = timeline.segments || [];
   const turnovers = timeline.turnovers || [];
+  const scoreMarkers = timeline.scores || [];
   const timeTicks = timeline.timeTicks || [];
   const width = 900;
   const baseHeight = 118;
@@ -660,11 +659,27 @@ function PossessionTimeline({ timeline, teamAName, teamBName }) {
         );
       })}
 
+      {scoreMarkers.map((score, index) => {
+        const x = getX(score.time);
+        const y = bandY + bandHeight + 3;
+        return (
+          <path
+            key={`${score.team || "score"}-${score.time}-${index}`}
+            d={`M${x - 3.25},${y + 5} L${x},${y} L${x + 3.25},${y + 5}`}
+            fill="none"
+            stroke="#0f172a"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        );
+      })}
+
       {timeTicks.map((tick) => {
         const x = getX(tick.value);
         return (
           <g key={tick.value}>
-            <text fontSize="11" fill="#475569" textAnchor="middle" dominantBaseline="middle" x={x} y={tickY + 10}>
+            <text fontSize="11" fill="#475569" textAnchor="middle" dominantBaseline="middle" x={x} y={tickY + 4}>
               {tick.label}
             </text>
             <line x1={x} x2={x} y1={tickY} y2={tickY + 6} stroke="#94a3b8" strokeWidth="1" />
@@ -1194,9 +1209,7 @@ function deriveMatchInsights(match, logs) {
     },
   };
 
-  const hasTurnovers = (possessionTimeline?.turnovers?.length || 0) > 0;
-
-  return { timeline, possessionTimeline, logRows, summaries, insights: matchInsights, hasTurnovers };
+  return { timeline, possessionTimeline, logRows, summaries, insights: matchInsights };
 }
 
 function buildPossessionTimeline({
@@ -1298,12 +1311,20 @@ function buildPossessionTimeline({
   };
 
   const cleanedSegments = applyBands(segments);
+  const scoreMarkers = (scoringPoints || [])
+    .filter((point) => Number.isFinite(point.time))
+    .map((point) => ({
+      ...point,
+      time: Math.min(Math.max(point.time, axisStart), axisEnd),
+    }))
+    .filter((point) => point.time >= axisStart && point.time <= axisEnd);
 
   return {
     minTime: axisStart,
     maxTime: axisEnd,
     segments: cleanedSegments,
     turnovers: sortedTurnovers,
+    scores: scoreMarkers,
     timeTicks: timeTicks || buildTimeTicks(axisStart, axisEnd),
   };
 }

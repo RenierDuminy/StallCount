@@ -434,11 +434,11 @@ const [secondaryFlashActive, setSecondaryFlashActive] = useState(false);
 const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
 const [possessionTeam, setPossessionTeam] = useState(null);
 const [halftimeTriggered, setHalftimeTriggered] = useState(false);
-const [resumeCandidate, setResumeCandidate] = useState(null);
-const [resumeHandled, setResumeHandled] = useState(false);
-const [resumeBusy, setResumeBusy] = useState(false);
-const [resumeError, setResumeError] = useState(null);
-const [stoppageActive, setStoppageActive] = useState(false);
+  const [resumeCandidate, setResumeCandidate] = useState(null);
+  const [resumeHandled, setResumeHandled] = useState(false);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeError, setResumeError] = useState(null);
+  const [stoppageActive, setStoppageActive] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -504,22 +504,23 @@ const [stoppageActive, setStoppageActive] = useState(false);
     try {
       const data = await getEventsList(12);
       setEvents(data);
-      if (!selectedEventId && data.length > 0) {
-        setSelectedEventId(data[0].id);
-      }
     } catch (err) {
       setEventsError(err.message || "Unable to load events.");
     } finally {
       setEventsLoading(false);
     }
-  }, [selectedEventId]);
+  }, []);
 
   const loadMatches = useCallback(
     async (eventIdOverride, options = {}) => {
       const targetEventId = eventIdOverride ?? selectedEventId;
       if (!targetEventId) return;
 
-      const { preferredMatchId = null, preserveSelection = true } = options;
+      const {
+        preferredMatchId = null,
+        preserveSelection = true,
+        allowDefaultSelect = false,
+      } = options;
 
       setMatchesLoading(true);
       setMatchesError(null);
@@ -539,15 +540,21 @@ const [stoppageActive, setStoppageActive] = useState(false);
           (preserveSelection ? selectedMatchId : null) ||
           null;
         const matchExists = requestedId && data.some((match) => match.id === requestedId);
-        setSelectedMatchId(matchExists ? requestedId : data[0].id);
+        if (matchExists) {
+          setSelectedMatchId(requestedId);
+          return;
+        }
+        setSelectedMatchId(allowDefaultSelect ? data[0].id : null);
       } catch (err) {
         setMatchesError(err.message || "Unable to load matches.");
+        setSelectedMatchId(null);
       } finally {
         setMatchesLoading(false);
       }
     },
     [selectedEventId, selectedMatchId]
   );
+
 const initialScoreRef = useRef({ a: 0, b: 0 });
 const currentMatchScoreRef = useRef({ a: 0, b: 0 });
 const matchIdRef = useRef(null);
@@ -571,7 +578,6 @@ const stoppageActiveRef = useRef(false);
 const appliedEventRulesRef = useRef(null);
   const [matchStarted, setMatchStarted] = useState(false);
   const consoleReady = Boolean(activeMatch);
-  const matchSettingsLocked = matchStarted;
 
 const selectedMatch = useMemo(
   () => matches.find((m) => m.id === selectedMatchId) || null,
@@ -637,6 +643,42 @@ const commitSecondaryTimerState = useCallback(
   },
   []
 );
+
+  const clearLocalMatchState = useCallback(() => {
+    setActiveMatch(null);
+    setSelectedMatchId(null);
+    setMatches([]);
+    setRosters({ teamA: [], teamB: [] });
+    setLogs([]);
+    setPendingEntries([]);
+    setSetupForm({ ...DEFAULT_SETUP_FORM });
+    setRules({ ...DEFAULT_RULES });
+    setScore({ a: 0, b: 0 });
+    setTimeoutUsage({ ...DEFAULT_TIMEOUT_USAGE });
+    setPossessionTeam(null);
+    setHalftimeTriggered(false);
+    setStoppageActive(false);
+    setMatchStarted(false);
+    setScoreTarget(DEFAULT_RULES.gamePointTarget || null);
+    setSoftCapApplied(false);
+    setHardCapReached(false);
+    commitPrimaryTimerState((DEFAULT_RULES.matchDuration || DEFAULT_DURATION) * 60, false);
+    commitSecondaryTimerState(DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS, false);
+    setTimerLabel(DEFAULT_TIMER_LABEL);
+    setSecondaryLabel(DEFAULT_SECONDARY_LABEL);
+    setSecondaryTotalSeconds(DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS);
+    primaryResetRef.current = null;
+    secondaryResetRef.current = null;
+    secondaryResetTriggeredRef.current = false;
+    matchIdRef.current = null;
+    if (userId) {
+      clearScorekeeperSession(userId);
+    }
+  }, [
+    userId,
+    commitPrimaryTimerState,
+    commitSecondaryTimerState,
+  ]);
 
   const applyEventRules = useCallback(
     (nextRules) => {
@@ -1588,7 +1630,7 @@ const rosterNameLookup = useMemo(() => {
   ]);
 
   const updatePossession = useCallback(
-    async (teamKey, { logTurnover = true } = {}) => {
+    async (teamKey, { logTurnover = true, actorId = null, eventTypeIdOverride = null } = {}) => {
       if (!teamKey || teamKey === possessionTeam) return;
       if (logTurnover && !matchStarted) return;
       setPossessionTeam(teamKey);
@@ -1596,8 +1638,9 @@ const rosterNameLookup = useMemo(() => {
       if (!logTurnover || !consoleReady || !activeMatch?.id) return;
 
       try {
-        const eventTypeId = await resolveEventTypeIdLocal(MATCH_LOG_EVENT_CODES.TURNOVER);
-        if (!eventTypeId) {
+        const resolvedEventTypeId =
+          eventTypeIdOverride ?? (await resolveEventTypeIdLocal(MATCH_LOG_EVENT_CODES.TURNOVER));
+        if (!resolvedEventTypeId) {
           setConsoleError(
             "Missing `turnover` event type in match_events. Please add it in Supabase before logging."
           );
@@ -1613,17 +1656,18 @@ const rosterNameLookup = useMemo(() => {
         const appended = appendLocalLog({
           team: teamKey,
           timestamp,
-          scorerId: null,
+          scorerId: actorId || null,
           assistId: null,
           totals: totalsSnapshot,
-          eventDescription: describeEvent(eventTypeId),
+          eventDescription: describeEvent(resolvedEventTypeId),
           eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
         });
         const entry = {
           matchId: activeMatch.id,
-          eventTypeId,
+          eventTypeId: resolvedEventTypeId,
           eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
           teamId: targetTeamId,
+          scorerId: actorId || null,
           createdAt: timestamp,
           abbaLine: appended.scoreOrderIndex !== null ? appended.abbaLine : null,
         };
@@ -2065,7 +2109,6 @@ const rosterNameLookup = useMemo(() => {
     matchStarted,
     setMatchStarted,
     consoleReady,
-    matchSettingsLocked,
     displayTeamA,
     displayTeamB,
     displayTeamAShort,
@@ -2131,5 +2174,6 @@ const rosterNameLookup = useMemo(() => {
     softCapApplied,
     hardCapReached,
     reachedPointTarget,
+    clearLocalMatchState,
   };
 }

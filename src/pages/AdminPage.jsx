@@ -6,7 +6,7 @@ const ADMIN_MODULES = [
     description:
       "Run the live scoreboard, reconcile offline submissions, and monitor match flow.",
     to: "/score-keeper",
-    accent: "bg-brand/10 text-brand-dark",
+    accent: "bg-brand/10 text-[var(--sc-ink)]",
   },
   {
     label: "Captain",

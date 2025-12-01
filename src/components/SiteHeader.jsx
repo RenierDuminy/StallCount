@@ -94,19 +94,19 @@ export default function SiteHeader() {
           <button
             type="button"
             onClick={handleInstallClick}
-            className="hidden rounded-full border border-emerald-300/50 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 md:inline-flex"
+            className="hidden rounded-full border border-emerald-300/50 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 lg:inline-flex"
           >
             Install app
           </button>
           <Link
             to="/login"
-            className="hidden rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 md:inline-flex"
+            className="hidden rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 lg:inline-flex"
           >
             Log in
           </Link>
           <button
             type="button"
-            className="inline-flex items-center justify-center rounded-full border border-white/20 px-3 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 md:hidden"
+            className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-3 text-base font-semibold text-emerald-50 transition hover:bg-white/10 lg:hidden"
             onClick={() => setMenuOpen((prev) => !prev)}
             aria-label="Toggle navigation menu"
             aria-expanded={menuOpen}
@@ -117,7 +117,7 @@ export default function SiteHeader() {
 
         </div>
         {menuOpen && (
-          <div className="border-t border-[var(--sc-border)]/40 bg-[#04140c] px-6 py-4 text-emerald-50 md:hidden">
+          <div className="border-t border-[var(--sc-border)]/40 bg-[#04140c] px-6 py-4 text-emerald-50 lg:hidden">
             <nav className="flex flex-col gap-3 text-sm font-semibold">
               {NAV_LINKS.map((link) => (
                 <Link
