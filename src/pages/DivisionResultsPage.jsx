@@ -1,129 +1,118 @@
 import { Link } from "react-router-dom";
+import "./divisionResults.css";
 
-const residenceSwissRounds = [
+const residencePoolRounds = [
   {
     label: "W1",
     matches: [
-      { teams: ["Eendrag 1", "Wilgenhof 2"], score: "15-0" },
-      { teams: ["Wilgenhof 1", "Dagbreek 2"], score: "15-1" },
-      { teams: ["Metanoia", "Eendrag 3"], score: "15-2" },
-      { teams: ["Barbarians", "Huis Visser"], score: "13-7" },
-      { teams: ["Molle", "Helshoogte"], score: "10-9" },
-      { teams: ["Simonsberg", "Majuba"], score: "11-8" },
-      { teams: ["Eendrag 2", "Dagbreek 1"], score: "9-6" },
+      { teamA: "Eendrag 1", teamB: "Wilgenhof 2", scoreA: 15, scoreB: 0 },
+      { teamA: "Wilgenhof 1", teamB: "Dagbreek 2", scoreA: 15, scoreB: 1 },
+      { teamA: "Metanoia", teamB: "Eendrag 3", scoreA: 15, scoreB: 2 },
+      { teamA: "Barbarians", teamB: "Huis Visser", scoreA: 13, scoreB: 7 },
+      { teamA: "Molle", teamB: "Helshoogte", scoreA: 10, scoreB: 9 },
+      { teamA: "Simonsberg", teamB: "Majuba", scoreA: 11, scoreB: 8 },
+      { teamA: "Eendrag 2", teamB: "Dagbreek 1", scoreA: 9, scoreB: 6 },
     ],
   },
   {
     label: "W2",
     matches: [
-      { teams: ["Eendrag 1", "Wilgenhof 1"], score: "13-11" },
-      { teams: ["Metanoia", "Barbarians"], score: "15-13" },
-      { teams: ["Simonsberg", "Molle"], score: "13-12" },
-      { teams: ["Eendrag 2", "Majuba"], score: "12-9" },
-      { teams: ["Dagbreek 1", "Helshoogte"], score: "11-10" },
-      { teams: ["Wilgenhof 2", "Dagbreek 2"], score: "10-7" },
-      { teams: ["Huis Visser", "Eendrag 3"], score: "12-6" },
+      { teamA: "Eendrag 1", teamB: "Wilgenhof 1", scoreA: 13, scoreB: 11 },
+      { teamA: "Metanoia", teamB: "Barbarians", scoreA: 15, scoreB: 13 },
+      { teamA: "Simonsberg", teamB: "Molle", scoreA: 13, scoreB: 12 },
+      { teamA: "Eendrag 2", teamB: "Majuba", scoreA: 12, scoreB: 9 },
+      { teamA: "Dagbreek 1", teamB: "Helshoogte", scoreA: 11, scoreB: 10 },
+      { teamA: "Wilgenhof 2", teamB: "Dagbreek 2", scoreA: 10, scoreB: 7 },
+      { teamA: "Huis Visser", teamB: "Eendrag 3", scoreA: 12, scoreB: 6 },
     ],
   },
   {
     label: "W3",
     matches: [
-      { teams: ["Eendrag 1", "Metanoia"], score: "13-12" },
-      { teams: ["Wilgenhof 1", "Barbarians"], score: "12-10" },
-      { teams: ["Simonsberg", "Eendrag 2"], score: "15-13" },
-      { teams: ["Molle", "Dagbreek 1"], score: "11-7" },
-      { teams: ["Majuba", "Dagbreek 2"], score: "12-6" },
-      { teams: ["Helshoogte", "Wilgenhof 2"], score: "13-8" },
-      { teams: ["Huis Visser", "Eendrag 3"], score: "10-9" },
+      { teamA: "Eendrag 1", teamB: "Metanoia", scoreA: 13, scoreB: 12 },
+      { teamA: "Wilgenhof 1", teamB: "Barbarians", scoreA: 12, scoreB: 10 },
+      { teamA: "Simonsberg", teamB: "Eendrag 2", scoreA: 15, scoreB: 13 },
+      { teamA: "Molle", teamB: "Dagbreek 1", scoreA: 11, scoreB: 7 },
+      { teamA: "Majuba", teamB: "Dagbreek 2", scoreA: 12, scoreB: 6 },
+      { teamA: "Helshoogte", teamB: "Wilgenhof 2", scoreA: 13, scoreB: 8 },
+      { teamA: "Huis Visser", teamB: "Eendrag 3", scoreA: 10, scoreB: 9 },
     ],
   },
   {
     label: "W4",
     matches: [
-      { teams: ["Eendrag 1", "Simonsberg"], score: "14-12" },
-      { teams: ["Metanoia", "Wilgenhof 1"], score: "11-13" },
-      { teams: ["Barbarians", "Molle"], score: "15-10" },
-      { teams: ["Eendrag 2", "Majuba"], score: "12-8" },
-      { teams: ["Dagbreek 1", "Helshoogte"], score: "10-11" },
-      { teams: ["Dagbreek 2", "Huis Visser"], score: "9-11" },
-      { teams: ["Wilgenhof 2", "Eendrag 3"], score: "8-11" },
+      { teamA: "Eendrag 1", teamB: "Simonsberg", scoreA: 14, scoreB: 12 },
+      { teamA: "Metanoia", teamB: "Wilgenhof 1", scoreA: 11, scoreB: 13 },
+      { teamA: "Barbarians", teamB: "Molle", scoreA: 15, scoreB: 10 },
+      { teamA: "Eendrag 2", teamB: "Majuba", scoreA: 12, scoreB: 8 },
+      { teamA: "Dagbreek 1", teamB: "Helshoogte", scoreA: 10, scoreB: 11 },
+      { teamA: "Dagbreek 2", teamB: "Huis Visser", scoreA: 9, scoreB: 11 },
+      { teamA: "Wilgenhof 2", teamB: "Eendrag 3", scoreA: 8, scoreB: 11 },
     ],
   },
   {
     label: "W5",
     matches: [
-      { teams: ["Eendrag 1", "Barbarians"], score: "15-11" },
-      { teams: ["Wilgenhof 1", "Simonsberg"], score: "12-13" },
-      { teams: ["Metanoia", "Eendrag 2"], score: "14-12" },
-      { teams: ["Molle", "Majuba"], score: "10-8" },
-      { teams: ["Helshoogte", "Dagbreek 2"], score: "12-6" },
-      { teams: ["Huis Visser", "Wilgenhof 2"], score: "11-7" },
-      { teams: ["Dagbreek 1", "Eendrag 3"], score: "10-9" },
+      { teamA: "Eendrag 1", teamB: "Barbarians", scoreA: 15, scoreB: 11 },
+      { teamA: "Wilgenhof 1", teamB: "Simonsberg", scoreA: 12, scoreB: 13 },
+      { teamA: "Metanoia", teamB: "Eendrag 2", scoreA: 14, scoreB: 12 },
+      { teamA: "Molle", teamB: "Majuba", scoreA: 10, scoreB: 8 },
+      { teamA: "Helshoogte", teamB: "Dagbreek 2", scoreA: 10, scoreB: 10 },
+      { teamA: "Huis Visser", teamB: "Wilgenhof 2", scoreA: 11, scoreB: 7 },
+      { teamA: "Dagbreek 1", teamB: "Eendrag 3", scoreA: 10, scoreB: 9 },
     ],
   },
   {
     label: "W6",
     matches: [
-      { teams: ["Eendrag 1", "Metanoia"], score: "15-9" },
-      { teams: ["Barbarians", "Simonsberg"], score: "13-15" },
-      { teams: ["Wilgenhof 1", "Eendrag 2"], score: "14-12" },
-      { teams: ["Majuba", "Dagbreek 1"], score: "11-10" },
-      { teams: ["Molle", "Huis Visser"], score: "12-9" },
-      { teams: ["Helshoogte", "Eendrag 3"], score: "13-7" },
-      { teams: ["Dagbreek 2", "Wilgenhof 2"], score: "10-8" },
+      { teamA: "Eendrag 1", teamB: "Metanoia", scoreA: 15, scoreB: 9 },
+      { teamA: "Barbarians", teamB: "Simonsberg", scoreA: 13, scoreB: 15 },
+      { teamA: "Wilgenhof 1", teamB: "Eendrag 2", scoreA: 14, scoreB: 12 },
+      { teamA: "Majuba", teamB: "Dagbreek 1", scoreA: 11, scoreB: 10 },
+      { teamA: "Molle", teamB: "Huis Visser", scoreA: 12, scoreB: 9 },
+      { teamA: "Helshoogte", teamB: "Eendrag 3", scoreA: 13, scoreB: 7 },
+      { teamA: "Dagbreek 2", teamB: "Wilgenhof 2", scoreA: 10, scoreB: 8 },
     ],
   },
   {
     label: "W7",
     matches: [
-      { teams: ["Eendrag 1", "Wilgenhof 1"], score: "15-12" },
-      { teams: ["Metanoia", "Simonsberg"], score: "13-14" },
-      { teams: ["Barbarians", "Eendrag 2"], score: "11-12" },
-      { teams: ["Molle", "Dagbreek 1"], score: "10-9" },
-      { teams: ["Huis Visser", "Majuba"], score: "9-12" },
-      { teams: ["Helshoogte", "Dagbreek 2"], score: "12-8" },
-      { teams: ["Wilgenhof 2", "Eendrag 3"], score: "9-11" },
+      { teamA: "Eendrag 1", teamB: "Wilgenhof 1", scoreA: 15, scoreB: 12 },
+      { teamA: "Metanoia", teamB: "Simonsberg", scoreA: 13, scoreB: 14 },
+      { teamA: "Barbarians", teamB: "Eendrag 2", scoreA: 11, scoreB: 12 },
+      { teamA: "Molle", teamB: "Dagbreek 1", scoreA: 10, scoreB: 9 },
+      { teamA: "Huis Visser", teamB: "Majuba", scoreA: 9, scoreB: 12 },
+      { teamA: "Helshoogte", teamB: "Dagbreek 2", scoreA: 12, scoreB: 8 },
+      { teamA: "Wilgenhof 2", teamB: "Eendrag 3", scoreA: 9, scoreB: 11 },
     ],
   },
   {
     label: "W8",
     matches: [
-      { teams: ["Eendrag 1", "Molle"], score: "15-7" },
-      { teams: ["Wilgenhof 1", "Metanoia"], score: "12-11" },
-      { teams: ["Barbarians", "Dagbreek 1"], score: "12-9" },
-      { teams: ["Majuba", "Simonsberg"], score: "10-13" },
-      { teams: ["Helshoogte", "Huis Visser"], score: "11-10" },
-      { teams: ["Eendrag 2", "Dagbreek 2"], score: "13-8" },
-      { teams: ["Wilgenhof 2", "Eendrag 3"], score: "10-12" },
+      { teamA: "Eendrag 1", teamB: "Molle", scoreA: 15, scoreB: 7 },
+      { teamA: "Wilgenhof 1", teamB: "Metanoia", scoreA: 12, scoreB: 11 },
+      { teamA: "Barbarians", teamB: "Dagbreek 1", scoreA: 12, scoreB: 9 },
+      { teamA: "Majuba", teamB: "Simonsberg", scoreA: 10, scoreB: 13 },
+      { teamA: "Helshoogte", teamB: "Huis Visser", scoreA: 11, scoreB: 10 },
+      { teamA: "Eendrag 2", teamB: "Dagbreek 2", scoreA: 13, scoreB: 8 },
+      { teamA: "Wilgenhof 2", teamB: "Eendrag 3", scoreA: 10, scoreB: 12 },
     ],
   },
   {
     label: "W9",
     matches: [
-      { teams: ["Eendrag 1", "Metanoia"], score: "15-13" },
-      { teams: ["Wilgenhof 1", "Eendrag 2"], score: "14-11" },
-      { teams: ["Barbarians", "Wilgenhof 2"], score: "12-8" },
-      { teams: ["Molle", "Helshoogte"], score: "11-10" },
-      { teams: ["Dagbreek 1", "Huis Visser"], score: "10-9" },
-      { teams: ["Simonsberg", "Dagbreek 2"], score: "15-12" },
-      { teams: ["Majuba", "Eendrag 3"], score: "12-9" },
+      { teamA: "Eendrag 1", teamB: "Metanoia", scoreA: 15, scoreB: 13 },
+      { teamA: "Wilgenhof 1", teamB: "Eendrag 2", scoreA: 14, scoreB: 11 },
+      { teamA: "Barbarians", teamB: "Wilgenhof 2", scoreA: 12, scoreB: 12 },
+      { teamA: "Molle", teamB: "Helshoogte", scoreA: 11, scoreB: 10 },
+      { teamA: "Dagbreek 1", teamB: "Huis Visser", scoreA: 0, scoreB: 0 },
+      { teamA: "Simonsberg", teamB: "Dagbreek 2", scoreA: 15, scoreB: 12 },
+      { teamA: "Majuba", teamB: "Eendrag 3", scoreA: 12, scoreB: 9 },
     ],
   },
 ];
 
-const residenceSwissOutcomes = [
-  { label: "Champion", team: "Eendrag 1" },
-  { label: "Runner-up", team: "Wilgenhof 1" },
-  { label: "3rd place", team: "Simonsberg" },
-  { label: "4th place", team: "Barbarians" },
-  { label: "5th place", team: "Molle" },
-  { label: "6th place", team: "Eendrag 2" },
-  { label: "7th place", team: "Metanoia" },
-  { label: "8th place", team: "Dagbreek 1" },
-  { label: "9th place", team: "Majuba" },
-];
-
-const residenceSwissSeeds = [
+const residenceSeeds = [
   { seed: 1, team: "Eendrag 1" },
   { seed: 2, team: "Wilgenhof 1" },
   { seed: 3, team: "Metanoia" },
@@ -140,68 +129,188 @@ const residenceSwissSeeds = [
   { seed: 14, team: "Wilgenhof 2" },
 ];
 
-const residenceSwissPlayoffs = {
-  upper: [
-    { round: "QF Upper", match: "Eendrag 1 vs Dagbreek 2", score: "15-3" },
-    { round: "QF Upper", match: "Dagbreek 1 vs Simonsberg", score: "10-15" },
-    { round: "QF Upper", match: "Barbarians vs Molle", score: "12-11" },
-    { round: "QF Upper", match: "Wilgenhof 1 vs Metanoia", score: "15-8" },
-    { round: "SF Upper", match: "Eendrag 1 vs Barbarians", score: "15-7" },
-    { round: "SF Upper", match: "Wilgenhof 1 vs Simonsberg", score: "11-15" },
-    { round: "Finals", match: "Eendrag 1 vs Wilgenhof 1", score: "15-11" },
-    { round: "3rd place", match: "Barbarians vs Simonsberg", score: "10-13" },
-  ],
-  lower: [
-    { round: "QF Lower", match: "Majuba vs Helshoogte", score: "13-10" },
-    { round: "QF Lower", match: "Huis Visser vs Dagbreek 2", score: "12-8" },
-    { round: "QF Lower", match: "Wilgenhof 2 vs Eendrag 3", score: "8-12" },
-    { round: "Lower redemption", match: "Helshoogte vs Dagbreek 2", score: "10-8" },
-    { round: "Lower redemption", match: "Huis Visser vs Wilgenhof 2", score: "12-9" },
-  ],
-  placements: [
-    { round: "5th/6th", match: "Molle vs Metanoia", score: "12-10" },
-    { round: "7th/8th", match: "Dagbreek 1 vs Eendrag 2", score: "11-9" },
-    { round: "9th", match: "Majuba vs Helshoogte", score: "15-13" },
-  ],
+const residenceResults = [
+  { place: "Champion", team: "Eendrag 1" },
+  { place: "Runner-up", team: "Wilgenhof 1" },
+  { place: "3rd", team: "Simonsberg" },
+  { place: "4th", team: "Barbarians" },
+  { place: "5th", team: "Molle" },
+  { place: "6th", team: "Eendrag 2" },
+  { place: "7th", team: "Metanoia" },
+  { place: "8th", team: "Dagbreek 1" },
+  { place: "9th", team: "Majuba" },
+  { place: "10th", team: "Helshoogte" },
+  { place: "11th", team: "Huis Visser" },
+  { place: "12th", team: "Eendrag 3" },
+  { place: "13th", team: "Dagbreek 2" },
+  { place: "14th", team: "Wilgenhof 2" },
+];
+
+const playoffParticipants = residenceSeeds.map((seedRow) => {
+  const result = residenceResults.find((res) => res.team === seedRow.team);
+  return {
+    team: seedRow.team,
+    seed: seedRow.seed,
+    place: result?.place || null,
+  };
+});
+
+const residencePlayoffUpperColumns = [
+  {
+    label: "W10",
+    sections: [
+      {
+        title: "QF - Upper",
+        matches: [
+          { teamA: "Eendrag 1", teamB: "Dagbreek 2", scoreA: 15, scoreB: 3, seedA: 1, seedB: 13 },
+          { teamA: "Dagbreek 1", teamB: "Simonsberg", scoreA: 10, scoreB: 15, seedA: 8, seedB: 6 },
+          { teamA: "Barbarians", teamB: "Molle", scoreA: 12, scoreB: 11, seedA: 4, seedB: 5 },
+          { teamA: "Wilgenhof 1", teamB: "Metanoia", scoreA: 15, scoreB: 8, seedA: 2, seedB: 3 },
+        ],
+      },
+      {
+        title: "QF - Lower",
+        matches: [
+          { teamA: "Majuba", teamB: "Helshoogte", scoreA: 13, scoreB: 10, seedA: 9, seedB: 10 },
+          { teamA: "Huis Visser", teamB: "Dagbreek 2", scoreA: 12, scoreB: 8, seedA: 11, seedB: 13 },
+          { teamA: "Wilgenhof 2", teamB: "Eendrag 3", scoreA: 8, scoreB: 12, seedA: 14, seedB: 12 },
+        ],
+      },
+    ],
+  },
+  {
+    label: "W11",
+    sections: [
+      {
+        title: "SF - Upper",
+        matches: [
+          { teamA: "Eendrag 1", teamB: "Barbarians", scoreA: 13, scoreB: 5 },
+          { teamA: "Wilgenhof 1", teamB: "Simonsberg", scoreA: 11, scoreB: 9 },
+        ],
+      },
+      {
+        title: "SF - Lower",
+        matches: [
+          { teamA: "Molle", teamB: "Dagbreek 1", scoreA: 15, scoreB: 4 },
+          { teamA: "Metanoia", teamB: "Eendrag 2", scoreA: 13, scoreB: 8 },
+        ],
+      },
+      {
+        title: "Lower redemption",
+        matches: [
+          { teamA: "Helshoogte", teamB: "Dagbreek 2", scoreA: 10, scoreB: 8, seedA: 10, seedB: 13 },
+          { teamA: "Huis Visser", teamB: "Wilgenhof 2", scoreA: 12, scoreB: 9, seedA: 11, seedB: 14 },
+        ],
+      }
+    ],
+  },
+  {
+    label: "W12",
+    sections: [
+      {
+        title: "Finals",
+        matches: [{ teamA: "Eendrag 1", teamB: "Wilgenhof 1", scoreA: 15, scoreB: 11 }],
+      },
+      {
+        title: "3rd/4th",
+        matches: [{ teamA: "Simonsberg", teamB: "Barbarians", scoreA: 13, scoreB: 10 }],
+      },
+      {
+        title: "5th/6th, 7th/8th",
+        matches: [
+          { teamA: "Molle", teamB: "Metanoia", scoreA: 12, scoreB: 10 },
+          { teamA: "Dagbreek 1", teamB: "Eendrag 2", scoreA: 11, scoreB: 9 },
+          { teamA: "Majuba", teamB: "Helshoogte", scoreA: 15, scoreB: 13 },
+        ],
+      },
+    ],
+  },
+];
+
+const deriveMatchDisplay = (match) => {
+  const isTie = match.scoreA === match.scoreB;
+  const teamATop = match.scoreA >= match.scoreB;
+  const top = teamATop
+    ? { name: match.teamA, score: match.scoreA, seed: match.seedA ?? null }
+    : { name: match.teamB, score: match.scoreB, seed: match.seedB ?? null };
+  const bottom = teamATop
+    ? { name: match.teamB, score: match.scoreB, seed: match.seedB ?? null }
+    : { name: match.teamA, score: match.scoreA, seed: match.seedA ?? null };
+  return { top, bottom, isTie };
 };
 
-function SwissRoundCard({ round }) {
+function MatchEntryCard({ match }) {
+  const { top, bottom, isTie } = deriveMatchDisplay(match);
+  const isZeroZero = match.scoreA === 0 && match.scoreB === 0;
+  const cardClasses = ["dr-match-card"];
+  if (isZeroZero) {
+    cardClasses.push("dr-match-card--zero");
+  } else if (isTie) {
+    cardClasses.push("dr-match-card--tie");
+  }
+  const topScoreClass = ["dr-match-score"];
+  const bottomScoreClass = ["dr-match-score", "dr-match-score--secondary"];
+  if (isZeroZero) {
+    topScoreClass.push("dr-match-score--zero");
+    bottomScoreClass.push("dr-match-score--zero");
+  } else if (isTie) {
+    topScoreClass.push("dr-match-score--tie");
+    bottomScoreClass.push("dr-match-score--tie");
+  } else {
+    topScoreClass.push("dr-match-score--lead");
+  }
   return (
-    <div className="min-w-[210px] flex-1 rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-muted)]/60 shadow-lg backdrop-blur">
-      <div className="flex items-center justify-between border-b border-[var(--sc-border)]/80 px-4 py-2">
-        <p className="text-sm font-semibold text-[var(--sc-ink)]">{round.label}</p>
-        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-          Swiss
-        </span>
+    <div className={cardClasses.join(" ")}>
+      <div className="dr-match-row">
+        <div className="dr-match-team">
+          {top.seed ? `(${top.seed}) ` : ""}
+          {top.name}
+        </div>
+        <span className={topScoreClass.join(" ")}>{top.score}</span>
       </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-4 py-3 text-sm">
-        <p className="text-[11px] uppercase tracking-wide text-[var(--sc-ink-muted)]">Match</p>
-        <p className="text-right text-[11px] uppercase tracking-wide text-[var(--sc-ink-muted)]">Result</p>
-        {round.matches.map((item, idx) => (
-          <div key={`${round.label}-${idx}`} className="contents">
-            <p className="truncate text-[var(--sc-ink)]">
-              {item.teams[0]} vs {item.teams[1]}
-            </p>
-            <p className="text-right font-semibold text-[var(--sc-ink)]">{item.score}</p>
-          </div>
+      <div className="dr-match-row">
+        <div className="dr-match-team dr-match-team--secondary">
+          {bottom.seed ? `(${bottom.seed}) ` : ""}
+          {bottom.name}
+        </div>
+        <span className={bottomScoreClass.join(" ")}>{bottom.score}</span>
+      </div>
+    </div>
+  );
+}
+
+function PoolRoundCard({ round }) {
+  return (
+    <div className="dr-pool-card">
+      <div className="dr-card-header">
+        <p className="dr-card-title">{round.label}</p>
+        <span className="dr-badge">Pool play</span>
+      </div>
+      <div className="dr-match-list">
+        <p className="dr-match-label">Match</p>
+        {round.matches.map((match, idx) => (
+          <MatchEntryCard key={`${round.label}-${idx}`} match={match} />
         ))}
       </div>
     </div>
   );
 }
 
-function OutcomeCard({ title, rows, highlight }) {
+function PlayoffTeamsColumn({ rows }) {
   return (
-    <div className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-muted)]/60 p-4 shadow-lg backdrop-blur">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">{title}</p>
-        {highlight ? <span className="sc-chip">Final</span> : null}
+    <div className="dr-teams-column">
+      <div className="dr-teams-column__header">
+        <p className="dr-card-title">Team &amp; seed</p>
+        <span className="dr-badge">Bracket</span>
       </div>
-      <div className="divide-y divide-[var(--sc-border)]/80">
+      <div className="dr-teams-list">
         {rows.map((row) => (
-          <div key={`${title}-${row.label}-${row.team}`} className="flex items-center justify-between py-1.5 text-sm">
-            <span className="text-[var(--sc-ink-muted)]">{row.label}</span>
-            <span className="font-semibold text-[var(--sc-ink)]">{row.team}</span>
+          <div key={row.team} className="dr-team-row">
+            <div className="dr-team-row__info">
+              <p className="dr-match-team">{row.team}</p>
+              {row.place && <p className="dr-team-row__seed">{row.place}</p>}
+            </div>
+            <span className="dr-team-row__badge">Seed {row.seed}</span>
           </div>
         ))}
       </div>
@@ -209,20 +318,21 @@ function OutcomeCard({ title, rows, highlight }) {
   );
 }
 
-function BracketCard({ title, matches }) {
+function PlayoffColumn({ column }) {
   return (
-    <div className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-muted)]/60 p-4 shadow-lg backdrop-blur">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">{title}</p>
-      <div className="mt-2 space-y-1">
-        {matches.map((match) => (
-          <div
-            key={`${title}-${match.round}-${match.match}`}
-            className="rounded-xl border border-[var(--sc-border)]/70 bg-white/5 px-3 py-2"
-          >
-            <p className="text-[11px] uppercase tracking-wide text-[var(--sc-ink-muted)]">{match.round}</p>
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="truncate text-[var(--sc-ink)]">{match.match}</span>
-              <span className="font-semibold text-[var(--sc-ink)]">{match.score}</span>
+    <div className="dr-playoff-column">
+      <div className="dr-card-header">
+        <p className="dr-card-title">{column.label}</p>
+        <span className="dr-badge">Playoffs</span>
+      </div>
+      <div className="dr-match-list">
+        {column.sections.map((section, idx) => (
+          <div key={`${column.label}-${idx}`} className="dr-playoff-section">
+            {section.title ? <p className="dr-playoff-section__title">{section.title}</p> : null}
+            <div className="dr-playoff-section__matches">
+              {section.matches.map((match, matchIdx) => (
+                <MatchEntryCard key={`${column.label}-${idx}-${matchIdx}`} match={match} />
+              ))}
             </div>
           </div>
         ))}
@@ -231,23 +341,49 @@ function BracketCard({ title, matches }) {
   );
 }
 
+function FinalResultsColumn({ rows }) {
+  return (
+    <div className="dr-final-column">
+      <div className="dr-final-column__header">
+        <p className="dr-card-title">Final results</p>
+        <span className="dr-badge">Placements</span>
+      </div>
+      <div className="dr-final-list">
+        {rows.map((row, idx) => {
+          let modifier = "dr-final-row--bottom";
+          if (idx === 0) modifier = "dr-final-row--gold";
+          else if (idx === 1) modifier = "dr-final-row--silver";
+          else if (idx === 2) modifier = "dr-final-row--bronze";
+          else if (idx >= 3 && idx <= 7) modifier = "dr-final-row--top-eight";
+          return (
+            <div key={row.team} className={`dr-final-row ${modifier}`}>
+              <span className="dr-final-row__place">{row.place}</span>
+              <span className="dr-final-row__team">{row.team}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function DivisionResultsPage() {
   return (
-    <div className="pb-16 text-[var(--sc-ink)]">
-      <header className="sc-shell py-6">
-        <div className="sc-card-base p-6 sm:p-8 space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
+    <div className="division-results-page">
+      <header className="sc-shell dr-shell-full dr-shell-padding">
+        <div className="sc-card-base dr-header-card">
+          <div className="dr-chip-row">
             <span className="sc-chip">Division results</span>
             <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              Residence league · Swiss draw
+              Residence league · Pool play & playoffs
             </span>
           </div>
-          <h1 className="text-3xl font-semibold">Residence league results, Swiss-style board.</h1>
+          <h1 className="text-3xl font-semibold">Residence league results, pool table view.</h1>
           <p className="text-sm text-[var(--sc-ink-muted)] max-w-3xl">
-            A quick-glance table of every swiss round plus the playoff crossover. Scroll sideways to follow the weekly
-            matchups and tap through to Divisions to pick a different event.
+            Weeks 1-9 are pool play. Each line uses the short-name format "Team 15 - 10 Team". Scroll sideways to follow
+            weekly matchups, and see outcome, seeding, and bracket details below.
           </p>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="dr-chip-row">
             <Link to="/divisions" className="sc-button is-ghost">
               Back to divisions
             </Link>
@@ -258,46 +394,52 @@ export default function DivisionResultsPage() {
         </div>
       </header>
 
-      <main className="sc-shell space-y-6 sm:space-y-8">
-        <section className="sc-card-base p-6 space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+      <main className="sc-shell dr-shell-full dr-main-stack">
+        <section className="sc-card-base dr-section-card">
+          <div className="dr-section-header">
             <div className="space-y-1">
               <p className="sc-chip">Residence league</p>
-              <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Swiss rounds & playoffs</h2>
+              <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Pool play (Weeks 1-9)</h2>
               <p className="text-sm text-[var(--sc-ink-muted)]">
-                Horizontal table mirrors the shared sheet: weekly swiss pairings on the left, elimination steps on the
-                right. Use the scroll bar to move between weeks.
+                Side-scroll to view all pool weeks. Scores are shown as "Team 15 - 0 Team" for quick scanning.
               </p>
             </div>
-            <div className="text-right text-xs text-[var(--sc-ink-muted)]">
-              <p>Swiss draw · 14 teams · 9 rounds</p>
-              <p>Numbers seeded from the shared example; adjust the data block if anything changes.</p>
+            <div className="dr-section-meta">
+              <p>14 teams ? pool play into playoffs</p>
+              <p>Numbers mirrored from the provided example.</p>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <div className="flex min-w-[1200px] gap-3">
-              {residenceSwissRounds.map((round) => (
-                <SwissRoundCard key={round.label} round={round} />
+          <div className="dr-scroll-wrapper">
+          <div className="dr-pool-row">
+              {residencePoolRounds.map((round) => (
+                <PoolRoundCard key={round.label} round={round} />
               ))}
-
-              <div className="grid min-w-[320px] max-w-[360px] flex-shrink-0 gap-3">
-                <OutcomeCard title="Outcome" rows={residenceSwissOutcomes} highlight />
-                <OutcomeCard
-                  title="Seeding"
-                  rows={residenceSwissSeeds.map((item) => ({
-                    label: `Seed ${item.seed}`,
-                    team: item.team,
-                  }))}
-                />
-              </div>
-
-              <div className="grid min-w-[320px] max-w-[360px] flex-shrink-0 gap-3">
-                <BracketCard title="Upper bracket" matches={residenceSwissPlayoffs.upper} />
-                <BracketCard title="Lower bracket" matches={residenceSwissPlayoffs.lower} />
-                <BracketCard title="Placement games" matches={residenceSwissPlayoffs.placements} />
-              </div>
             </div>
+          </div>
+        </section>
+
+        <section className="dr-playoff-stack">
+          <div className="dr-section-header">
+            <div>
+              <p className="sc-chip">Playoffs board</p>
+              <h2 className="text-lg font-semibold text-[var(--sc-ink)]">Seeds, quarters, semis, and placements</h2>
+              <p className="text-sm text-[var(--sc-ink-muted)]">Structured like the shared sheet ? scroll sideways.</p>
+            </div>
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              Team column + rounds W10-W12
+            </span>
+          </div>
+          <div className="dr-scroll-wrapper">
+            <div className="dr-playoff-row dr-playoff-row--primary">
+              <PlayoffTeamsColumn rows={playoffParticipants} />
+              {residencePlayoffUpperColumns.map((column) => (
+                <PlayoffColumn key={column.label} column={column} />
+              ))}
+              <FinalResultsColumn rows={residenceResults} />
+            </div>
+          </div>
+          <div className="dr-scroll-wrapper">
           </div>
         </section>
       </main>

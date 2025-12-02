@@ -188,6 +188,14 @@ export default function DivisionsPage() {
           <p className="text-sm text-[var(--sc-ink-muted)] max-w-3xl">
             Browse tournaments, check schedules, and jump into match details.
           </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to="/division-results" className="sc-button">
+              Division results
+            </Link>
+            <span className="text-xs text-[var(--sc-ink-muted)]">
+              Residence league swiss table now available.
+            </span>
+          </div>
         </div>
       </header>
 

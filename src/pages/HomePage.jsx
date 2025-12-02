@@ -329,23 +329,26 @@ export default function HomePage() {
             )}
           </div>
 
-          <div id="teams" className="sc-surface-light space-y-4 p-5 sm:p-6 lg:p-7">
+          <div
+            id="teams"
+            className="sc-card-base space-y-4 border border-[var(--sc-border-strong)]/70 bg-[radial-gradient(circle_at_12%_20%,rgba(99,255,160,0.12),transparent_50%),radial-gradient(circle_at_82%_0%,rgba(103,233,193,0.18),transparent_40%),linear-gradient(150deg,rgba(12,33,27,0.9),rgba(6,22,18,0.95))] p-5 sm:p-6 lg:p-7"
+          >
             <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="sc-chip">Teams</p>
-                <h2 className="text-2xl font-semibold text-[#0b1f19]">Teams spotlight</h2>
-                <p className="text-sm text-[#0b1f19]/70 sm:text-base">Featured teams from around the league.</p>
+                <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Teams spotlight</h2>
+                <p className="text-sm text-[var(--sc-ink-muted)] sm:text-base">Featured teams from around the league.</p>
               </div>
               <Link to="/teams" className="sc-button">
                 View all
               </Link>
             </div>
             {loading && featuredTeams.length === 0 ? (
-              <div className="rounded-2xl border border-[#dfeee3] bg-white p-5 text-center text-sm text-[#0b1f19]/70">
+              <div className="rounded-2xl border border-[var(--sc-border)] bg-[rgba(6,22,18,0.7)] p-5 text-center text-sm text-[var(--sc-ink-muted)]">
                 Loading teams...
               </div>
             ) : featuredTeams.length === 0 ? (
-              <div className="rounded-2xl border border-[#dfeee3] bg-white p-5 text-center text-sm text-[#0b1f19]/70">
+              <div className="rounded-2xl border border-[var(--sc-border)] bg-[rgba(6,22,18,0.7)] p-5 text-center text-sm text-[var(--sc-ink-muted)]">
                 No teams found. Add a team to start the list.
               </div>
             ) : (
@@ -354,11 +357,14 @@ export default function HomePage() {
                   <Link
                     key={team.id}
                     to={`/teams/${team.id}`}
-                    className="rounded-2xl border border-[#e5f3e9] bg-white p-4 shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
+                    className="rounded-2xl border border-[var(--sc-border)]/80 bg-[rgba(10,29,24,0.85)] p-4 shadow-lg transition hover:-translate-y-0.5 hover:shadow-strong hover:border-[var(--sc-border-glow)]/60"
                   >
-                    <h3 className="text-xl font-semibold text-[#0b1f19]">{team.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-[var(--sc-accent)] shadow-[0_0_0_6px_rgba(198,255,98,0.12)]" />
+                      <h3 className="text-xl font-semibold text-[var(--sc-ink)]">{team.name}</h3>
+                    </div>
                     {team.short_name && (
-                      <p className="mt-2 text-sm text-[#0b1f19]/70">Short name: {team.short_name}</p>
+                      <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">Short name: {team.short_name}</p>
                     )}
                   </Link>
                 ))}

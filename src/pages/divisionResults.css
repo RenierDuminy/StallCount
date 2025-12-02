@@ -1,0 +1,357 @@
+.division-results-page {
+  padding-bottom: 4rem;
+  color: var(--sc-ink);
+}
+
+.dr-shell-full {
+  max-width: none;
+}
+
+.dr-shell-padding {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+.dr-main-stack {
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.dr-header-card,
+.dr-section-card {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dr-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dr-section-meta {
+  text-align: right;
+  font-size: 0.75rem;
+  color: var(--sc-ink-muted);
+}
+
+.dr-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.dr-scroll-wrapper {
+  overflow-x: auto;
+}
+
+.dr-playoff-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dr-pool-row,
+.dr-playoff-row {
+  display: flex;
+  gap: 0.75rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.dr-playoff-row--primary,
+.dr-playoff-row--secondary {
+  min-width: 0;
+}
+
+.dr-playoff-row--primary {
+  width: 100%;
+}
+
+.dr-playoff-row--secondary {
+  width: 100%;
+}
+
+.dr-pool-card,
+.dr-playoff-column,
+.dr-teams-column,
+.dr-final-column {
+  flex: none;
+  width: fit-content;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(17, 44, 36, 0.6);
+  box-shadow: var(--sc-shadow-card);
+  backdrop-filter: blur(10px);
+}
+
+.dr-pool-card {
+  min-width: 240px;
+  max-width: 320px;
+}
+
+.dr-teams-column {
+  min-width: 200px;
+  padding: 1rem;
+}
+
+.dr-playoff-column {
+  min-width: 240px;
+  max-width: 320px;
+}
+
+.dr-final-column {
+  min-width: 220px;
+  padding: 1rem;
+}
+
+.dr-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 1px solid rgba(18, 53, 44, 0.8);
+  padding: 0.75rem 1rem;
+}
+
+.dr-card-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.dr-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(232, 244, 237, 0.2);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sc-ink-muted);
+}
+
+.dr-match-list {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.dr-match-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sc-ink-muted);
+}
+
+.dr-match-card {
+  border-radius: 0.9rem;
+  border: 0.75px solid rgb(255, 255, 255);
+  padding: 0.65rem 0.85rem;
+  background: rgba(255, 255, 255, 0.05);
+  display: grid;
+  gap: 0.45rem;
+}
+
+.dr-match-card--tie {
+  border-color: rgba(121, 184, 255, 0.7);
+  background: rgba(121, 184, 255, 0.15);
+}
+
+.dr-match-card--zero {
+  border-color: rgba(255, 155, 155, 0.7);
+  background: rgba(255, 136, 136, 0.15);
+}
+
+.dr-match-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.dr-match-team {
+  display: block;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--sc-ink);
+}
+
+.dr-match-team--secondary {
+  color: var(--sc-ink-muted);
+}
+
+.dr-match-score {
+  font-weight: 700;
+  color: var(--sc-ink);
+}
+
+.dr-match-score--lead {
+  color: var(--sc-accent);
+}
+
+.dr-match-score--secondary {
+  color: var(--sc-ink-muted);
+}
+
+.dr-match-score--tie {
+  color: #a7d3ff;
+}
+
+.dr-match-score--zero {
+  color: #ffb2b2;
+}
+
+.dr-teams-column__header,
+.dr-final-column__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+}
+
+.dr-teams-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.dr-team-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.65rem 0.85rem;
+}
+
+.dr-team-row__info {
+  min-width: 0;
+}
+
+.dr-team-row__seed {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sc-ink-muted);
+}
+
+.dr-team-row__badge {
+  border-radius: 999px;
+  background: rgba(198, 255, 98, 0.1);
+  color: var(--sc-accent);
+  padding: 0.2rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.dr-playoff-section {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.85rem;
+}
+
+.dr-playoff-section__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sc-ink-muted);
+  margin-bottom: 0.4rem;
+}
+
+.dr-playoff-section__matches {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dr-final-column .dr-badge {
+  background: transparent;
+}
+
+.dr-final-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.dr-final-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.65rem 0.85rem;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.dr-final-row__place {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sc-ink-muted);
+}
+
+.dr-final-row__team {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.dr-final-row--gold {
+  background: linear-gradient(120deg, #4d3005, #b6860f 48%, #f5d567);
+  border-color: rgba(255, 231, 168, 0.7);
+  box-shadow: 0 10px 35px rgba(245, 213, 103, 0.35);
+}
+
+.dr-final-row--gold .dr-final-row__team {
+  color: #fff5d5;
+}
+
+.dr-final-row--silver {
+  background: linear-gradient(120deg, #2d313d, #5b6474 55%, #c8d3df);
+  border-color: rgba(224, 231, 239, 0.7);
+  box-shadow: 0 10px 35px rgba(200, 210, 224, 0.35);
+}
+
+.dr-final-row--silver .dr-final-row__team {
+  color: #f3f6ff;
+}
+
+.dr-final-row--bronze {
+  background: linear-gradient(120deg, #472b20, #8d4e2a 55%, #f4b992);
+  border-color: rgba(255, 213, 183, 0.6);
+  box-shadow: 0 10px 35px rgba(244, 185, 146, 0.28);
+}
+
+.dr-final-row--bronze .dr-final-row__team {
+  color: #ffe7d4;
+}
+
+.dr-final-row--top-eight {
+  background: linear-gradient(120deg, #1b3328, #1e3e38);
+  border-color: rgba(79, 209, 161, 0.3);
+}
+
+.dr-final-row--top-eight .dr-final-row__team {
+  color: #d7fff0;
+}
+
+.dr-final-row--bottom {
+  background: linear-gradient(120deg, #1a1f2f, #0e131d);
+  border-color: rgba(89, 97, 122, 0.4);
+}
+.dr-playoff-row--primary {
+  width: min(100%, 1400px);
+}
+
+.dr-playoff-row--secondary {
+  width: min(100%, 700px);
+}
