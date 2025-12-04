@@ -708,6 +708,15 @@ function TeamOverviewCard({ title, stats }) {
   const goals = stats?.goals || [];
   const assists = stats?.assists || [];
   const connections = stats?.connections || [];
+  const production = stats?.production;
+  const summaryStats = [
+    { key: "holds", label: "Holds", value: production?.holds },
+    { key: "clean", label: "Clean holds", value: production?.cleanHolds },
+    { key: "turnovers", label: "Total turnovers", value: production?.totalTurnovers },
+    { key: "breaks", label: "Breaks", value: production?.breaks },
+    { key: "breakChances", label: "Break chances", value: production?.breakChances },
+  ];
+  const formatStatValue = (value) => (Number.isFinite(value) ? value : value === 0 ? 0 : "--");
 
   const renderList = (label, rows, valueLabel) => {
     return (
@@ -739,6 +748,23 @@ function TeamOverviewCard({ title, stats }) {
   return (
     <div className="sc-card-base p-3 sm:p-5">
       <h3 className="mb-1.5 text-lg font-semibold text-[var(--sc-ink)] sm:mb-2.5">{title}</h3>
+      {production && (
+        <div className="mb-2 grid grid-cols-2 gap-2 text-center sm:mb-3 sm:grid-cols-5 sm:gap-3">
+          {summaryStats.map((item) => (
+            <div
+              key={item.key}
+              className="rounded-xl border border-[var(--sc-border)] bg-[var(--sc-surface)] px-2 py-3"
+            >
+              <p className="text-lg font-semibold text-[var(--sc-ink)] sm:text-xl">
+                {formatStatValue(item.value)}
+              </p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)] sm:text-[11px]">
+                {item.label}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="grid gap-1.5 sm:grid-cols-2 sm:gap-3">
         {renderList("Goals", goals, "Goal")}
         {renderList("Assists", assists, "Assist")}
@@ -865,6 +891,17 @@ function deriveMatchInsights(match, logs) {
     teamA: createStats(),
     teamB: createStats(),
   };
+  const createProductionTotals = () => ({
+    holds: 0,
+    cleanHolds: 0,
+    breaks: 0,
+    breakChances: 0,
+    totalTurnovers: 0,
+  });
+  const teamProduction = {
+    teamA: createProductionTotals(),
+    teamB: createProductionTotals(),
+  };
   const incrementCount = (map, name) => {
     const normalized = typeof name === "string" ? name.trim() : "";
     if (!normalized) return;
@@ -877,6 +914,34 @@ function deriveMatchInsights(match, logs) {
     const key = `${cleanedAssist}:::${cleanedScorer}`;
     stats.connectionCounts.set(key, (stats.connectionCounts.get(key) || 0) + 1);
   };
+  const toTeamKey = (teamId) => {
+    if (!teamId) return null;
+    if (teamId === teamAId) return "teamA";
+    if (teamId === teamBId) return "teamB";
+    return null;
+  };
+  const getOppositeTeam = (teamKey) => {
+    if (teamKey === "teamA") return "teamB";
+    if (teamKey === "teamB") return "teamA";
+    return null;
+  };
+  const inferInitialOffense = () => {
+    if (match.starting_team_id === teamAId) return "teamB";
+    if (match.starting_team_id === teamBId) return "teamA";
+    return "teamA";
+  };
+  const normalizeTeamKey = (teamKey) => (teamKey === "teamA" || teamKey === "teamB" ? teamKey : null);
+  const fallbackOffense = normalizeTeamKey(inferInitialOffense()) || "teamA";
+  let currentPointOffense = fallbackOffense;
+  let currentPointDefense = getOppositeTeam(currentPointOffense);
+  let pointTurnovers = 0;
+  const resetPointState = (nextOffense) => {
+    const normalized = normalizeTeamKey(nextOffense) || fallbackOffense;
+    currentPointOffense = normalized;
+    currentPointDefense = getOppositeTeam(normalized);
+    pointTurnovers = 0;
+  };
+  resetPointState(currentPointOffense);
 
   let scoreA = 0;
   let scoreB = 0;
@@ -972,8 +1037,17 @@ function deriveMatchInsights(match, logs) {
 
     if (code === MATCH_LOG_EVENT_CODES.SCORE || code === MATCH_LOG_EVENT_CODES.CALAHAN) {
       const teamLabel = log.team_id === teamAId ? teamAName : teamBName;
-      const teamKey =
-        log.team_id === teamAId ? "teamA" : log.team_id === teamBId ? "teamB" : null;
+      const teamKey = toTeamKey(log.team_id);
+      if (teamKey && currentPointOffense && currentPointDefense) {
+        if (teamKey === currentPointOffense) {
+          teamProduction[teamKey].holds += 1;
+          if (pointTurnovers === 0) {
+            teamProduction[teamKey].cleanHolds += 1;
+          }
+        } else if (teamKey === currentPointDefense) {
+          teamProduction[teamKey].breaks += 1;
+        }
+      }
       if (log.team_id === teamAId) {
         scoreA += 1;
         scoringPoints.push({ team: "teamA", time: timestamp, score: scoreA });
@@ -1012,12 +1086,16 @@ function deriveMatchInsights(match, logs) {
           recordConnection(stats, assistName, scorerName);
         }
       }
+      const nextOffense = teamKey ? getOppositeTeam(teamKey) : getOppositeTeam(currentPointOffense);
+      resetPointState(nextOffense);
       previousTime = timestamp;
       pointIndex += 1;
       continue;
     }
 
-    if (code === MATCH_LOG_EVENT_CODES.TURNOVER) {
+    const eventCodeLower = (code || "").toLowerCase();
+
+    if (eventCodeLower === MATCH_LOG_EVENT_CODES.TURNOVER || eventCodeLower === "block") {
       const gainingTeamId = log.team_id;
       const gainingTeamLabel =
         gainingTeamId === teamAId ? teamAName : gainingTeamId === teamBId ? teamBName : "-";
@@ -1026,14 +1104,33 @@ function deriveMatchInsights(match, logs) {
       const variant =
         gainingTeamId === teamAId ? "turnoverA" : gainingTeamId === teamBId ? "turnoverB" : "turnover";
       const possessionTeam =
-        gainingTeamId === teamAId ? "teamB" : gainingTeamId === teamBId ? "teamA" : null;
-      turnovers.push({ time: timestamp, team: possessionTeam });
-
-      const actorName = log.actor?.name ?? log.scorer_name ?? "";
+        gainingTeamId === teamAId ? "teamA" : gainingTeamId === teamBId ? "teamB" : null;
       const eventLabel = (log.event?.description || "").trim();
+      const actorName = log.actor?.name ?? log.scorer_name ?? "";
       const normalizedLabel = eventLabel.toLowerCase();
-      const isBlockEvent = normalizedLabel.includes("block");
+      const isBlockEvent = eventCodeLower === "block" || normalizedLabel.includes("block");
       const description = eventLabel || (isBlockEvent ? "Block" : "Turnover");
+      const gainingTeamKey = toTeamKey(gainingTeamId);
+      const losingTeamKey = getOppositeTeam(gainingTeamKey);
+      if (losingTeamKey) {
+        teamProduction[losingTeamKey].totalTurnovers += 1;
+      }
+      pointTurnovers += 1;
+      const wasDefense =
+        gainingTeamKey && currentPointDefense && gainingTeamKey === currentPointDefense;
+      if (wasDefense && gainingTeamKey) {
+        teamProduction[gainingTeamKey].breakChances += 1;
+      }
+      if (gainingTeamKey) {
+        currentPointOffense = gainingTeamKey;
+        currentPointDefense = getOppositeTeam(gainingTeamKey);
+      }
+      turnovers.push({
+        time: timestamp,
+        team: possessionTeam,
+        source: isBlockEvent ? "block" : "turnover",
+      });
+
       const metaDetails = actorName
         ? isBlockEvent
           ? `${actorName} denied ${losingTeamLabel || "opposition"}`
@@ -1255,11 +1352,13 @@ function deriveMatchInsights(match, logs) {
       goals: mapToSortedList(teamStats.teamA.goalCounts),
       assists: mapToSortedList(teamStats.teamA.assistCounts),
       connections: mapToConnections(teamStats.teamA.connectionCounts),
+      production: { ...teamProduction.teamA },
     },
     teamB: {
       goals: mapToSortedList(teamStats.teamB.goalCounts),
       assists: mapToSortedList(teamStats.teamB.assistCounts),
       connections: mapToConnections(teamStats.teamB.connectionCounts),
+      production: { ...teamProduction.teamB },
     },
   };
 
