@@ -78,6 +78,7 @@ export default function ScoreKeeperView() {
     nextAbbaDescriptor,
     primaryTimerBg,
     secondaryTimerBg,
+    secondaryResetTriggeredRef,
     commitSecondaryTimerState,
     setSecondaryTotalSeconds,
     setSecondaryLabel,
@@ -318,6 +319,11 @@ export default function ScoreKeeperView() {
   };
 
   const handleStartDiscussionTimer = () => {
+    cancelSecondaryHoldReset();
+    if (secondaryResetTriggeredRef?.current) {
+      secondaryResetTriggeredRef.current = false;
+      return;
+    }
     const duration = rules.discussionSeconds || DEFAULT_DISCUSSION_SECONDS;
     commitSecondaryTimerState(duration, true);
     setSecondaryTotalSeconds(duration);
@@ -399,17 +405,45 @@ export default function ScoreKeeperView() {
                 <button
                   type="button"
                   onClick={handleStartDiscussionTimer}
-                  className="rounded-md bg-[#1e3a8a] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#162e6a]"
+                  onMouseDown={startSecondaryHoldReset}
+                  onMouseUp={cancelSecondaryHoldReset}
+                  onMouseLeave={cancelSecondaryHoldReset}
+                  onTouchStart={startSecondaryHoldReset}
+                  onTouchEnd={cancelSecondaryHoldReset}
+                  onTouchCancel={cancelSecondaryHoldReset}
+                  className="rounded-md bg-[#dc2626] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#b91c1c]"
                 >
                   Discussion
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-2 text-center text-sm font-semibold text-slate-800">
                 <div className="rounded border border-slate-400 bg-white px-2 py-1">
-                  {formatClock((rules.matchDuration || 0) * 60)}
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={rules.matchDuration ?? ""}
+                    onChange={(event) =>
+                      handleRuleChange("matchDuration", Math.max(0, Number(event.target.value) || 0))
+                    }
+                    aria-label="Match duration (minutes)"
+                    inputMode="numeric"
+                    className="w-full border-none bg-transparent text-center text-sm font-semibold text-slate-800 focus:outline-none focus:ring-0"
+                  />
                 </div>
                 <div className="rounded border border-slate-400 bg-white px-2 py-1">
-                  {formatClock(rules.timeoutSeconds || 0)}
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={rules.timeoutSeconds ?? ""}
+                    onChange={(event) =>
+                      handleRuleChange("timeoutSeconds", Math.max(0, Number(event.target.value) || 0))
+                    }
+                    aria-label="Timeout duration (seconds)"
+                    inputMode="numeric"
+                    className="w-full border-none bg-transparent text-center text-sm font-semibold text-slate-800 focus:outline-none focus:ring-0"
+                  />
                 </div>
               </div>
               <p className="text-center text-[10px] uppercase tracking-wide text-slate-500">

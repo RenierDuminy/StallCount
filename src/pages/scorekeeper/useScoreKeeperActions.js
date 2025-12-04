@@ -43,7 +43,7 @@ export function useScoreKeeperActions(controller) {
     controller.secondaryResetRef.current = setTimeout(() => {
       handleSecondaryReset();
       controller.secondaryResetTriggeredRef.current = true;
-    }, 800);
+    }, 3000);
   }
 
   async function handleInitialiseMatch(event) {

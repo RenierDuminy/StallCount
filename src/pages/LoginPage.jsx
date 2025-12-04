@@ -34,7 +34,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <div className="mx-auto flex min-h-screen max-w-5xl items-center justify-center px-6 py-12">
+      <div className="flex min-h-screen w-full items-center justify-center px-6 py-12">
         <div className="grid w-full gap-10 rounded-3xl bg-white shadow-xl ring-1 ring-slate-100 md:grid-cols-[1.2fr,1fr] md:gap-12">
           <div className="flex flex-col justify-between rounded-3xl bg-slate-900 px-8 py-10 text-slate-100">
             <div className="space-y-6">

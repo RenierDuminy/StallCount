@@ -932,16 +932,18 @@ function deriveMatchInsights(match, logs) {
   };
   const normalizeTeamKey = (teamKey) => (teamKey === "teamA" || teamKey === "teamB" ? teamKey : null);
   const fallbackOffense = normalizeTeamKey(inferInitialOffense()) || "teamA";
-  let currentPointOffense = fallbackOffense;
-  let currentPointDefense = getOppositeTeam(currentPointOffense);
+  let pointStartingOffense = fallbackOffense;
+  let pointStartingDefense = getOppositeTeam(pointStartingOffense);
+  let currentPossession = pointStartingOffense;
   let pointTurnovers = 0;
   const resetPointState = (nextOffense) => {
     const normalized = normalizeTeamKey(nextOffense) || fallbackOffense;
-    currentPointOffense = normalized;
-    currentPointDefense = getOppositeTeam(normalized);
+    pointStartingOffense = normalized;
+    pointStartingDefense = getOppositeTeam(normalized);
+    currentPossession = pointStartingOffense;
     pointTurnovers = 0;
   };
-  resetPointState(currentPointOffense);
+  resetPointState(fallbackOffense);
 
   let scoreA = 0;
   let scoreB = 0;
@@ -1038,13 +1040,13 @@ function deriveMatchInsights(match, logs) {
     if (code === MATCH_LOG_EVENT_CODES.SCORE || code === MATCH_LOG_EVENT_CODES.CALAHAN) {
       const teamLabel = log.team_id === teamAId ? teamAName : teamBName;
       const teamKey = toTeamKey(log.team_id);
-      if (teamKey && currentPointOffense && currentPointDefense) {
-        if (teamKey === currentPointOffense) {
+      if (teamKey) {
+        if (teamKey === pointStartingOffense) {
           teamProduction[teamKey].holds += 1;
           if (pointTurnovers === 0) {
             teamProduction[teamKey].cleanHolds += 1;
           }
-        } else if (teamKey === currentPointDefense) {
+        } else if (teamKey === pointStartingDefense) {
           teamProduction[teamKey].breaks += 1;
         }
       }
@@ -1086,7 +1088,9 @@ function deriveMatchInsights(match, logs) {
           recordConnection(stats, assistName, scorerName);
         }
       }
-      const nextOffense = teamKey ? getOppositeTeam(teamKey) : getOppositeTeam(currentPointOffense);
+      const nextOffense = teamKey
+        ? getOppositeTeam(teamKey)
+        : getOppositeTeam(pointStartingOffense);
       resetPointState(nextOffense);
       previousTime = timestamp;
       pointIndex += 1;
@@ -1111,19 +1115,16 @@ function deriveMatchInsights(match, logs) {
       const isBlockEvent = eventCodeLower === "block" || normalizedLabel.includes("block");
       const description = eventLabel || (isBlockEvent ? "Block" : "Turnover");
       const gainingTeamKey = toTeamKey(gainingTeamId);
-      const losingTeamKey = getOppositeTeam(gainingTeamKey);
+      const losingTeamKey = currentPossession || getOppositeTeam(gainingTeamKey);
       if (losingTeamKey) {
         teamProduction[losingTeamKey].totalTurnovers += 1;
       }
       pointTurnovers += 1;
-      const wasDefense =
-        gainingTeamKey && currentPointDefense && gainingTeamKey === currentPointDefense;
-      if (wasDefense && gainingTeamKey) {
-        teamProduction[gainingTeamKey].breakChances += 1;
+      if (pointStartingDefense && gainingTeamKey === pointStartingDefense) {
+        teamProduction[pointStartingDefense].breakChances += 1;
       }
       if (gainingTeamKey) {
-        currentPointOffense = gainingTeamKey;
-        currentPointDefense = getOppositeTeam(gainingTeamKey);
+        currentPossession = gainingTeamKey;
       }
       turnovers.push({
         time: timestamp,

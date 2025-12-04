@@ -246,7 +246,7 @@ export default function CaptainPage() {
         </div>
       </header>
 
-      <main className="sc-shell max-w-6xl space-y-10 py-6">
+      <main className="sc-shell space-y-10 py-6">
         <section className="grid gap-8 sc-card-base p-6 shadow-sm lg:grid-cols-[1.1fr,0.9fr]">
           <div>
             <div className="flex items-center justify-between gap-4">

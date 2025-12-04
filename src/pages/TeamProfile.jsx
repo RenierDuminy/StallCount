@@ -222,7 +222,7 @@ export default function TeamProfilePage() {
   return (
     <div className="min-h-screen bg-slate-100">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-6 md:flex-row md:items-center md:justify-between">
+        <div className="flex w-full flex-col gap-4 px-6 py-6 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Team profile
@@ -261,7 +261,7 @@ export default function TeamProfilePage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className="w-full px-6 py-10">
         {state.error ? (
           <div className="rounded-3xl border border-rose-200 bg-rose-50 px-6 py-5 text-rose-700">
             {state.error}{" "}
