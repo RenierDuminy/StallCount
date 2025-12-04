@@ -885,34 +885,36 @@ useEffect(() => {
 }, []);
 
   useEffect(() => {
-    if (!timerRunning) return undefined;
+    if (!timerRunning && !secondaryRunning) return undefined;
     const tick = () => {
-      const remaining = getPrimaryRemainingSeconds();
-      if (remaining <= 0) {
-        commitPrimaryTimerState(0, false);
-        return;
+      if (timerRunning) {
+        const remainingPrimary = getPrimaryRemainingSeconds();
+        if (remainingPrimary <= 0) {
+          commitPrimaryTimerState(0, false);
+        } else {
+          setTimerSeconds(remainingPrimary);
+        }
       }
-      setTimerSeconds(remaining);
+      if (secondaryRunning) {
+        const remainingSecondary = getSecondaryRemainingSeconds();
+        if (remainingSecondary <= 0) {
+          commitSecondaryTimerState(0, false);
+        } else {
+          setSecondarySeconds(remainingSecondary);
+        }
+      }
     };
     tick();
     const interval = setInterval(tick, TIMER_TICK_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [timerRunning, getPrimaryRemainingSeconds, commitPrimaryTimerState]);
-
-useEffect(() => {
-  if (!secondaryRunning) return undefined;
-  const tick = () => {
-    const remaining = getSecondaryRemainingSeconds();
-    if (remaining <= 0) {
-      commitSecondaryTimerState(0, false);
-      return;
-    }
-    setSecondarySeconds(remaining);
-  };
-  tick();
-  const interval = setInterval(tick, TIMER_TICK_INTERVAL_MS);
-  return () => clearInterval(interval);
-}, [secondaryRunning, getSecondaryRemainingSeconds, commitSecondaryTimerState]);
+  }, [
+    timerRunning,
+    secondaryRunning,
+    getPrimaryRemainingSeconds,
+    getSecondaryRemainingSeconds,
+    commitPrimaryTimerState,
+    commitSecondaryTimerState,
+  ]);
 
   useEffect(() => {
     if (!matchStarted) {
@@ -1087,30 +1089,31 @@ useEffect(() => {
   );
   const normalizeAbbaLine = useCallback(
     (line) => {
-      const candidate = (line || "none").trim() || "none";
+      const raw = typeof line === "string" ? line : "";
+      const candidate = raw.trim() || "none";
       return abbaLines.includes(candidate) ? candidate : "none";
     },
     [abbaLines]
   );
 
-const getAbbaLineCode = useCallback(
-  (orderIndex) => {
-    if (!["male", "female"].includes(rules.abbaPattern)) {
-      return "none";
-    }
-    if (typeof orderIndex !== "number" || orderIndex < 0) {
-      return "none";
-    }
-    const startCode = rules.abbaPattern === "male" ? "M" : "F";
-    const alternateCode = startCode === "M" ? "F" : "M";
-    const step = orderIndex % ABBA_LINE_SEQUENCE.length;
-    const suffix = ABBA_LINE_SEQUENCE[step] ?? "2";
-    const useStartCode = step === 0 || step === ABBA_LINE_SEQUENCE.length - 1;
-    const prefix = useStartCode ? startCode : alternateCode;
-    return normalizeAbbaLine(`${prefix}${suffix}`);
-  },
-  [rules.abbaPattern, normalizeAbbaLine]
-);
+  const getAbbaLineCode = useCallback(
+    (orderIndex) => {
+      if (!["male", "female"].includes(rules.abbaPattern)) {
+        return "none";
+      }
+      if (typeof orderIndex !== "number" || orderIndex < 0) {
+        return "none";
+      }
+      const startCode = rules.abbaPattern === "male" ? "M" : "F";
+      const alternateCode = startCode === "M" ? "F" : "M";
+      const step = orderIndex % ABBA_LINE_SEQUENCE.length;
+      const suffix = ABBA_LINE_SEQUENCE[step] ?? "2";
+      const useStartCode = step === 0 || step === ABBA_LINE_SEQUENCE.length - 1;
+      const prefix = useStartCode ? startCode : alternateCode;
+      return normalizeAbbaLine(`${prefix}${suffix}`);
+    },
+    [rules.abbaPattern, normalizeAbbaLine]
+  );
   const startingTeamId = activeMatch?.starting_team_id || setupForm.startingTeamId;
   const matchStartingTeamKey = startingTeamId === teamBId ? "B" : "A";
   const matchDuration = rules.matchDuration || DEFAULT_DURATION;
@@ -1311,6 +1314,7 @@ const recordPendingEntry = useCallback(
       secondaryActorId: normalizedEntry.assistId ?? null,
       abbaLine: normalizedEntry.abbaLine ?? null,
       createdAt: normalizedEntry.createdAt ?? null,
+      optimisticId: optimisticId || null,
     };
     if (normalizedEntry.eventTypeId) {
       dbPayload.eventTypeId = normalizedEntry.eventTypeId;
@@ -1326,7 +1330,7 @@ const recordPendingEntry = useCallback(
       secondary_actor_id: dbPayload.secondaryActorId,
       abba_line: dbPayload.abbaLine,
       created_at: dbPayload.createdAt,
-      optimistic_id: optimisticId || null,
+      optimisticId: optimisticId || null,
     };
     if (!supabasePayload.event_type_id && dbPayload.eventTypeCode) {
       supabasePayload.event_type_code = dbPayload.eventTypeCode;
@@ -1355,7 +1359,8 @@ const recordPendingEntry = useCallback(
   },
   [setPendingEntries, setConsoleError, normalizeAbbaLine]
 );
-const normalizedSecondaryLabel = (secondaryLabel || "").toLowerCase();
+const normalizedSecondaryLabel =
+  typeof secondaryLabel === "string" ? secondaryLabel.toLowerCase() : "";
 const isDiscussionTimer = normalizedSecondaryLabel === "discussion";
 
 const primaryTimerBg =
@@ -1492,10 +1497,11 @@ const rosterNameLookup = useMemo(() => {
             scoreOrderIndex: nextScoreOrder,
             abbaLine,
             isOptimistic: Boolean(optimisticId),
+            optimisticId: optimisticId || null,
           },
         ];
       });
-      return derivedInfo;
+      return { ...derivedInfo, optimisticId: optimisticId || null };
     },
     [rosterNameLookup, getAbbaLineCode, normalizeAbbaLine]
   );
@@ -1562,6 +1568,8 @@ const rosterNameLookup = useMemo(() => {
     }
   }, [logSimpleEvent]);
 
+  const halftimeTriggerLockRef = useRef(false);
+
   const startTrackedSecondaryTimer = useCallback(
     async (duration, label, meta = null) => {
       await finalizeSecondaryTimerEvent();
@@ -1597,37 +1605,50 @@ const rosterNameLookup = useMemo(() => {
     previousPrimaryRunningRef.current = timerRunning;
   }, [timerRunning, logSimpleEvent]);
 
+  const halftimeLogged = logs.some(
+    (entry) =>
+      entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START ||
+      entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
+  );
+
   const triggerHalftime = useCallback(async () => {
-    if (halftimeTriggered || !matchStarted) return;
+    if (halftimeTriggerLockRef.current || halftimeTriggered || !matchStarted || halftimeLogged) {
+      return;
+    }
+    halftimeTriggerLockRef.current = true;
     setHalftimeTriggered(true);
     const breakSeconds = Math.max(1, (rules.halftimeBreakMinutes || 0) * 60);
-    await startTrackedSecondaryTimer(breakSeconds || 60, "Halftime break", {
-      eventStartCode: MATCH_LOG_EVENT_CODES.HALFTIME_START,
-      eventEndCode: MATCH_LOG_EVENT_CODES.HALFTIME_END,
-    });
+    try {
+      await startTrackedSecondaryTimer(breakSeconds || 60, "Halftime break", {
+        eventStartCode: MATCH_LOG_EVENT_CODES.HALFTIME_START,
+        eventEndCode: MATCH_LOG_EVENT_CODES.HALFTIME_END,
+      });
+    } finally {
+      halftimeTriggerLockRef.current = false;
+    }
   }, [
     halftimeTriggered,
+    halftimeLogged,
     matchStarted,
     rules.halftimeBreakMinutes,
     startTrackedSecondaryTimer,
   ]);
 
   useEffect(() => {
-    if (!matchStarted || halftimeTriggered) return;
+    if (!halftimeTriggered) {
+      halftimeTriggerLockRef.current = false;
+    }
+  }, [halftimeTriggered]);
+
+  useEffect(() => {
+    if (!matchStarted || halftimeTriggered || halftimeLogged) return;
     const halftimeMinutes = rules.halftimeMinutes || 0;
     if (halftimeMinutes <= 0) return;
     const elapsedSeconds = matchDuration * 60 - timerSeconds;
     if (elapsedSeconds >= halftimeMinutes * 60) {
       void triggerHalftime();
     }
-  }, [
-    matchStarted,
-    halftimeTriggered,
-    rules.halftimeMinutes,
-    matchDuration,
-    timerSeconds,
-    triggerHalftime,
-  ]);
+  }, [matchStarted, halftimeTriggered, halftimeLogged, rules.halftimeMinutes, matchDuration, timerSeconds, triggerHalftime]);
 
   const updatePossession = useCallback(
     async (teamKey, { logTurnover = true, actorId = null, eventTypeIdOverride = null } = {}) => {
@@ -1783,7 +1804,7 @@ const rosterNameLookup = useMemo(() => {
           scoreOrderIndex,
           abbaLine: normalizeAbbaLine(row.abba_line || getAbbaLineCode(scoreOrderIndex)),
           isOptimistic: false,
-          optimisticId: null,
+          optimisticId: row.optimistic_id ?? null,
         };
       });
 
@@ -1808,11 +1829,23 @@ const rosterNameLookup = useMemo(() => {
         const derived = deriveLogsFromRows(rows, matchScore);
         initialScoreRef.current = derived.baseScore;
         setLogs((prev) => {
-          const optimistic = prev.filter((entry) => entry.isOptimistic);
+          const serverOptimisticIds = new Set(
+            derived.logs
+              .map((log) => log.optimisticId)
+              .filter((id) => typeof id === "string" && id.length > 0)
+          );
+          const optimistic = prev.filter(
+            (entry) =>
+              entry.isOptimistic &&
+              (!entry.optimisticId || !serverOptimisticIds.has(entry.optimisticId))
+          );
           const merged = [...derived.logs];
           optimistic.forEach((entry) => {
             const exists = merged.some(
               (log) =>
+                (entry.optimisticId &&
+                  log.optimisticId &&
+                  log.optimisticId === entry.optimisticId) ||
                 log.id === entry.id ||
                 (log.eventCode === entry.eventCode &&
                   log.team === entry.team &&

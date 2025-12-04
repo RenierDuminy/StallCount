@@ -470,7 +470,6 @@ export function useScoreKeeperActions(controller) {
     controller.setTimeoutUsage((prev) => ({ ...prev, [team]: prev[team] + 1 }));
     await controller.startTrackedSecondaryTimer(
       controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
-      controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
       `${team === "A" ? controller.displayTeamA : controller.displayTeamB} timeout`,
       {
         teamKey: team,

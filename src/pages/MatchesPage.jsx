@@ -808,15 +808,28 @@ function PointLogTable({ rows, teamAName, teamBName }) {
                   ? "bg-[#edf2ff]"
                 : row.variant === "goalB"
                   ? "bg-[#fff3e7]"
+                : row.variant === "turnoverA"
+                  ? "bg-[#e0f2fe]"
+                : row.variant === "turnoverB"
+                  ? "bg-[#fce7f3]"
                   : ""
               }`}
             >
               <td className="px-1 py-0.5 whitespace-nowrap text-black sm:px-2 sm:py-1.5">{row.formattedTime}</td>
               <td className="px-1 py-0.5 font-semibold text-black sm:px-2 sm:py-1.5">{row.teamLabel}</td>
               <td className="px-1 py-0.5 sm:px-2 sm:py-1.5">
-                {row.description === "Timeout" || row.description === "Halftime" || row.description === "Match start" || row.description === "Stoppage" ? (
+                {row.description === "Timeout" ||
+                row.description === "Halftime" ||
+                row.description === "Match start" ||
+                row.description === "Stoppage" ||
+                row.variant?.startsWith("turnover") ? (
                   <div className="text-center text-xs font-semibold text-black sm:text-sm">
-                    {row.description}
+                    <div>{row.description}</div>
+                    {row.metaDetails && (
+                      <p className="text-[10px] font-normal text-[var(--sc-ink-muted)] sm:text-xs">
+                        {row.metaDetails}
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="grid auto-rows-min items-center gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-1.5">
@@ -1005,9 +1018,42 @@ function deriveMatchInsights(match, logs) {
     }
 
     if (code === MATCH_LOG_EVENT_CODES.TURNOVER) {
+      const gainingTeamId = log.team_id;
+      const gainingTeamLabel =
+        gainingTeamId === teamAId ? teamAName : gainingTeamId === teamBId ? teamBName : "-";
+      const losingTeamLabel =
+        gainingTeamId === teamAId ? teamBName : gainingTeamId === teamBId ? teamAName : "-";
+      const variant =
+        gainingTeamId === teamAId ? "turnoverA" : gainingTeamId === teamBId ? "turnoverB" : "turnover";
       const possessionTeam =
-        log.team_id === teamAId ? "teamB" : log.team_id === teamBId ? "teamA" : null;
+        gainingTeamId === teamAId ? "teamB" : gainingTeamId === teamBId ? "teamA" : null;
       turnovers.push({ time: timestamp, team: possessionTeam });
+
+      const actorName = log.actor?.name ?? log.scorer_name ?? "";
+      const eventLabel = (log.event?.description || "").trim();
+      const normalizedLabel = eventLabel.toLowerCase();
+      const isBlockEvent = normalizedLabel.includes("block");
+      const description = eventLabel || (isBlockEvent ? "Block" : "Turnover");
+      const metaDetails = actorName
+        ? isBlockEvent
+          ? `${actorName} denied ${losingTeamLabel || "opposition"}`
+          : `${actorName} credited`
+        : `${gainingTeamLabel || "Team"} gains possession`;
+
+      logRows.push({
+        label: "TO",
+        index: pointIndex,
+        timestamp,
+        formattedTime,
+        teamLabel: gainingTeamLabel,
+        scorer: "-",
+        assist: "-",
+        description,
+        metaDetails,
+        gap,
+        variant,
+      });
+      previousTime = timestamp;
       continue;
     }
 

@@ -53,14 +53,6 @@ export default function AppRoutes() {
             }
           />
           <Route
-            path="/score-keeper"
-            element={
-              <ProtectedRoute>
-                <ScoreKeeperPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/spirit-scores"
             element={
               <ProtectedRoute>
@@ -101,6 +93,14 @@ export default function AppRoutes() {
             }
           />
         </Route>
+        <Route
+          path="/score-keeper"
+          element={
+            <ProtectedRoute>
+              <ScoreKeeperPage />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );

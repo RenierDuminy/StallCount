@@ -37,6 +37,7 @@ export type MatchLogInput = {
   secondaryActorId?: string | null;
   abbaLine?: string | null;
   createdAt?: string | null;
+  optimisticId?: string | null;
 };
 
 export type MatchLogRow = {
@@ -47,6 +48,7 @@ export type MatchLogRow = {
   actor_id: string | null;
   secondary_actor_id: string | null;
   abba_line: string | null;
+  optimistic_id?: string | null;
   created_at: string;
   event?: {
     id: number;
@@ -68,7 +70,22 @@ export type MatchLogUpdate = {
 const eventTypeCache = new Map<string, number>();
 
 const MATCH_LOG_SELECT =
+  "id, match_id, event_type_id, team_id, actor_id, secondary_actor_id, abba_line, created_at, optimistic_id, event:match_events!match_logs_event_type_id_fkey(id, code, description), actor:player!match_logs_actor_id_fkey(id, name), secondary_actor:player!match_logs_secondary_actor_id_fkey(id, name)";
+const MATCH_LOG_SELECT_LEGACY =
   "id, match_id, event_type_id, team_id, actor_id, secondary_actor_id, abba_line, created_at, event:match_events!match_logs_event_type_id_fkey(id, code, description), actor:player!match_logs_actor_id_fkey(id, name), secondary_actor:player!match_logs_secondary_actor_id_fkey(id, name)";
+
+const prefersOptimisticId =
+  typeof import.meta !== "undefined" &&
+  typeof import.meta.env !== "undefined" &&
+  import.meta.env?.VITE_SUPPORTS_MATCH_LOG_OPTIMISTIC_ID === "true";
+
+let matchLogsSupportsOptimisticId: boolean = Boolean(prefersOptimisticId);
+
+function isMissingOptimisticColumn(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const message = "message" in error ? String((error as any).message || "") : "";
+  return message.toLowerCase().includes("optimistic_id");
+}
 
 async function ensureDefaultMatchEvents() {
   // Writes are blocked by RLS; keep this noop to avoid accidental inserts.
@@ -106,13 +123,18 @@ async function resolveEventTypeId(eventTypeCode: string): Promise<number> {
 }
 
 export async function getMatchLogs(matchId: string) {
+  const selectClause = matchLogsSupportsOptimisticId ? MATCH_LOG_SELECT : MATCH_LOG_SELECT_LEGACY;
   const { data, error } = await supabase
     .from("match_logs")
-    .select(MATCH_LOG_SELECT)
+    .select(selectClause)
     .eq("match_id", matchId)
     .order("created_at", { ascending: true });
 
   if (error) {
+    if (matchLogsSupportsOptimisticId && isMissingOptimisticColumn(error)) {
+      matchLogsSupportsOptimisticId = false;
+      return getMatchLogs(matchId);
+    }
     throw new Error(error.message || "Failed to fetch match logs");
   }
 
@@ -131,21 +153,31 @@ export async function createMatchLogEntry(input: MatchLogInput) {
     throw new Error("eventTypeId or eventTypeCode is required to create a match log entry.");
   }
 
+  const payload: Record<string, unknown> = {
+    match_id: input.matchId,
+    event_type_id: resolvedEventTypeId,
+    team_id: input.teamId ?? null,
+    actor_id: input.actorId ?? null,
+    secondary_actor_id: input.secondaryActorId ?? null,
+    abba_line: input.abbaLine ?? null,
+    created_at: input.createdAt || undefined,
+  };
+
+  if (matchLogsSupportsOptimisticId) {
+    payload.optimistic_id = input.optimisticId ?? null;
+  }
+
   const { data, error } = await supabase
     .from("match_logs")
-    .insert({
-      match_id: input.matchId,
-      event_type_id: resolvedEventTypeId,
-      team_id: input.teamId ?? null,
-      actor_id: input.actorId ?? null,
-      secondary_actor_id: input.secondaryActorId ?? null,
-      abba_line: input.abbaLine ?? null,
-      created_at: input.createdAt || undefined,
-    })
-    .select(MATCH_LOG_SELECT)
+    .insert(payload)
+    .select(matchLogsSupportsOptimisticId ? MATCH_LOG_SELECT : MATCH_LOG_SELECT_LEGACY)
     .maybeSingle();
 
   if (error || !data) {
+    if (matchLogsSupportsOptimisticId && isMissingOptimisticColumn(error)) {
+      matchLogsSupportsOptimisticId = false;
+      return createMatchLogEntry(input);
+    }
     throw new Error(error?.message || "Failed to create match log");
   }
 

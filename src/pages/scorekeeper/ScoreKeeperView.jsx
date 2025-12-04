@@ -91,6 +91,13 @@ export default function ScoreKeeperView() {
 
   const safeTeamAName = displayTeamA || "Team A";
   const safeTeamBName = displayTeamB || "Team B";
+  const formatTeamLabel = (teamKey) => {
+    if (teamKey === "A") return safeTeamAName;
+    if (teamKey === "B") return safeTeamBName;
+    return null;
+  };
+  const possessionDisplay =
+    formatTeamLabel(possessionTeam) || possessionLeader || "Unassigned";
 
   const formatPlayerSelectLabel = (player) => {
     if (!player) return "Unassigned";
@@ -156,14 +163,9 @@ export default function ScoreKeeperView() {
     const blockTeam = nextTeam === "A" ? "B" : "A";
     const rosterSourceTeam = possessionResult === "block" ? blockTeam : nextTeam;
     const options = getRosterOptionsForTeam(rosterSourceTeam);
-    let nextActorId = possessionActorId;
-    if (nextActorId && !options.some((player) => player.id === nextActorId)) {
-      nextActorId = "";
-    }
-
     setPendingPossessionTeam(nextTeam);
     setPossessionPreviewTeam(nextTeam);
-    setPossessionActorId(nextActorId);
+    setPossessionActorId("");
     setPossessionEventReady(true);
     setPossessionModalOpen(true);
   };
@@ -242,7 +244,9 @@ export default function ScoreKeeperView() {
 
   useEffect(() => {
     if (!activeActorOptions.length) {
-      setPossessionActorId("");
+      if (possessionActorId) {
+        setPossessionActorId("");
+      }
       return;
     }
     if (possessionActorId && !activeActorOptions.some((player) => player.id === possessionActorId)) {
@@ -327,7 +331,7 @@ export default function ScoreKeeperView() {
       <header className="compact-card w-full">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-col leading-tight">
-            <h1 className="text-xl font-semibold text-black">Score keeper console</h1>
+            <h1 className="text-xl font-semibold text-white">Score keeper console</h1>
           </div>
           <Link to="/admin" className="compact-button is-ghost text-xs">
             Back to admin hub
@@ -350,142 +354,83 @@ export default function ScoreKeeperView() {
                     {kickoffLabel} - {venueName || "Venue TBD"} - {statusLabel}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSetupModalOpen(true)}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-emerald-400 hover:text-emerald-800"
-                >
-                  Adjust setup
-                </button>
+                <div className="flex flex-col gap-2 sm:items-end">
+                  <button
+                    type="button"
+                    onClick={() => setSetupModalOpen(true)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-emerald-400 hover:text-emerald-800"
+                  >
+                    Adjust setup
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-2 rounded-3xl border border-emerald-900/15 bg-gradient-to-b from-white to-slate-50 p-2 shadow-lg w-full">
-              <div className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white/90 shadow-inner">
-                <div className="grid gap-1.5 p-1.5 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="rounded-2xl p-1 text-center text-slate-800 min-w-0">
-                    <div
-                      className={`flex w-full flex-col items-center rounded-2xl border border-slate-200 px-2.5 py-4 text-slate-900 transition-colors ${primaryTimerBg}`}
-                    >
-                      <p className="w-full min-w-0 text-[clamp(3rem,12vw,5.5rem)] font-semibold leading-none">
-                        {formattedPrimaryClock}
-                      </p>
-                      <p className="text-xs uppercase tracking-wide text-slate-700/80">
-                        {timerLabel}
-                      </p>
-                    </div>
-                    <div className="mt-3 flex flex-col items-center gap-1">
-                      <div className="flex items-center gap-1.5">
-                        <label className="inline-flex items-center gap-2 text-sm font-semibold">
-                          Set Time (min):
-                          <input
-                            type="number"
-                            min="1"
-                            value={rules.matchDuration}
-                            onChange={(event) =>
-                              handleRuleChange("matchDuration", Number(event.target.value) || 0)
-                            }
-                            disabled={false}
-                            className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-center text-slate-800 outline-none transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleToggleTimer}
-                          onMouseDown={startPrimaryHoldReset}
-                          onMouseUp={cancelPrimaryHoldReset}
-                          onMouseLeave={cancelPrimaryHoldReset}
-                          onTouchStart={startPrimaryHoldReset}
-                          onTouchEnd={cancelPrimaryHoldReset}
-                          className="w-24 rounded-full bg-[#1e3a8a] px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#162e6a]"
-                        >
-                          {timerRunning ? "Pause" : "Play"}
-                        </button>
-                      </div>
-                      <p className="text-[10px] uppercase tracking-wide text-slate-500">
-                        Hold to reset
-                      </p>
-                    </div>
-                  </div>
+            <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-3 shadow-card/30">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800">
+                  <p className="text-[clamp(3rem,12vw,5.5rem)] font-semibold leading-none text-slate-900">
+                    {formattedPrimaryClock}
+                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Game</p>
                 </div>
-                <div className="grid gap-1.5 p-1.5 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="rounded-2xl p-1 text-center text-slate-800 min-w-0">
-                    <div
-                      className={`flex w-full flex-col items-center rounded-2xl border border-slate-200 px-2.5 py-4 text-slate-900 transition-colors ${secondaryTimerBg}`}
-                    >
-                      <p className="w-full min-w-0 text-[clamp(2.6rem,11vw,5rem)] font-semibold leading-none">
-                        {formattedSecondaryClock}
-                      </p>
-                      <p className="text-xs uppercase tracking-wide text-slate-700/80">
-                        {secondaryLabel}
-                      </p>
-                    </div>
-                    <div className="mt-3 flex flex-col items-center gap-1">
-                      <div className="flex items-center gap-1.5">
-                        <label className="inline-flex items-center gap-2 text-sm font-semibold">
-                          Set Time (sec):
-                          <input
-                            type="number"
-                            min="0"
-                            value={rules.timeoutSeconds}
-                            onChange={(event) =>
-                              handleRuleChange("timeoutSeconds", Number(event.target.value) || 0)
-                            }
-                            disabled={false}
-                            className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-center text-slate-800 outline-none transition focus:border-emerald-500 focus:ring-1 focus:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => handleSecondaryToggle()}
-                          onMouseDown={startSecondaryHoldReset}
-                          onMouseUp={cancelSecondaryHoldReset}
-                          onMouseLeave={cancelSecondaryHoldReset}
-                          onTouchStart={startSecondaryHoldReset}
-                          onTouchEnd={cancelSecondaryHoldReset}
-                          className="w-24 rounded-full bg-[#1e3a8a] px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#162e6a]"
-                        >
-                          {secondaryRunning ? "Pause" : "Play"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleStartDiscussionTimer}
-                          className="w-32 rounded-full bg-[#1e3a8a] px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#162e6a]"
-                        >
-                          Discussion 1:00
-                        </button>
-                      </div>
-                      <p className="text-[10px] uppercase tracking-wide text-slate-500">
-                        Hold to reset
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <button
-                  type="button"
-                  onClick={() => setTimeModalOpen(true)}
-                  disabled={!matchStarted}
-                  className={`w-full rounded-full px-3 py-2 text-sm font-semibold shadow-card transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                    matchStarted
-                      ? "bg-[#1e3a8a] text-white hover:bg-[#162e6a]"
-                      : "bg-slate-200 text-slate-600"
-                  }`}
-                >
-                  Additional time options
-                </button>
-              </div>
-            </div>
-
-              {matchStarted && (
-                <div className="rounded-3xl border border-slate-200 bg-white p-2 shadow-card/30 w-full">
-                <div className="flex flex-col gap-1 text-slate-800 sm:flex-row sm:items-center sm:justify-between">
-                  <h3 className="text-xl font-semibold">Possession</h3>
-                  <p className="text-sm font-semibold">
-                    {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
+                <div className="rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800">
+                  <p className="text-[clamp(2.6rem,11vw,4.5rem)] font-semibold leading-none text-slate-900">
+                    {formattedSecondaryClock}
+                  </p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    Inter point
                   </p>
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleTimer}
+                  onMouseDown={startPrimaryHoldReset}
+                  onMouseUp={cancelPrimaryHoldReset}
+                  onMouseLeave={cancelPrimaryHoldReset}
+                  onTouchStart={startPrimaryHoldReset}
+                  onTouchEnd={cancelPrimaryHoldReset}
+                  className="rounded-md bg-[#1e3a8a] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#162e6a]"
+                >
+                  Start/Stop
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartDiscussionTimer}
+                  className="rounded-md bg-[#1e3a8a] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#162e6a]"
+                >
+                  Discussion
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-center text-sm font-semibold text-slate-800">
+                <div className="rounded border border-slate-400 bg-white px-2 py-1">
+                  {formatClock((rules.matchDuration || 0) * 60)}
+                </div>
+                <div className="rounded border border-slate-400 bg-white px-2 py-1">
+                  {formatClock(rules.timeoutSeconds || 0)}
+                </div>
+              </div>
+              <p className="text-center text-[10px] uppercase tracking-wide text-slate-500">
+                Hold a button to reset its timer
+              </p>
+              <button
+                type="button"
+                onClick={() => setTimeModalOpen(true)}
+                disabled={!matchStarted}
+                className={`w-full rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  matchStarted
+                    ? "bg-[#1e3a8a] text-white shadow-card hover:bg-[#162e6a]"
+                    : "bg-slate-200 text-slate-600"
+                }`}
+              >
+                Additional time options
+              </button>
+            </div>
+
+            {matchStarted && (
+              <div className="rounded-3xl border border-slate-200 bg-white p-2 shadow-card/30 w-full">
                 <div className="mt-3 space-y-2">
                   <div
                     ref={possessionPadRef}
@@ -524,11 +469,16 @@ export default function ScoreKeeperView() {
                       {displayTeamBShort}
                     </button>
                   </div>
+                  <div className="flex flex-col gap-1 text-slate-800 sm:flex-row sm:items-center sm:justify-between">
+                    <h3 className="text-xl font-semibold">Possession</h3>
+                    <p className="text-sm font-semibold">
+                      {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
+                    </p>
+                  </div>
                   <p className="text-center text-[11px] uppercase tracking-wide text-slate-500">
                     Drag across to update possession
                   </p>
                 </div>
-
               </div>
             )}
 
@@ -557,7 +507,10 @@ export default function ScoreKeeperView() {
                         Add score - {displayTeamAShort}
                       </button>
                       <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
-                        {nextAbbaDescriptor ? `Next: ${nextAbbaDescriptor}` : "ABBA disabled"}
+                        <p>{nextAbbaDescriptor ? `ABBA: ${nextAbbaDescriptor}` : "ABBA disabled"}</p>
+                        <p className="text-lg font-semibold text-[#0f5132]">
+                          {score.a} - {score.b}
+                        </p>
                       </div>
                       <button
                         type="button"
@@ -579,26 +532,40 @@ export default function ScoreKeeperView() {
                       No match events captured yet. Use the buttons above to log an event.
                     </div>
                   ) : (
-                    orderedLogs.map((log) => {
-                      const chronologicalIndex = logs.findIndex((entry) => entry.id === log.id);
-                      const editIndex =
-                        chronologicalIndex >= 0 ? chronologicalIndex : logs.indexOf(log);
-                      return (
-                        <MatchLogCard
-                          key={log.id}
-                          log={log}
-                          chronologicalIndex={chronologicalIndex}
-                          editIndex={editIndex}
-                          displayTeamA={displayTeamA}
-                          displayTeamB={displayTeamB}
-                          displayTeamAShort={displayTeamAShort}
-                          displayTeamBShort={displayTeamBShort}
-                          getAbbaDescriptor={getAbbaDescriptor}
-                          openScoreModal={openScoreModal}
-                          openSimpleEventModal={openSimpleEventModal}
-                        />
-                      );
-                    })
+                    (() => {
+                      const seen = new Set();
+                      return orderedLogs
+                        .filter((log) => {
+                          const key = log.optimisticId || log.id;
+                          if (key && seen.has(key)) {
+                            return false;
+                          }
+                          if (key) {
+                            seen.add(key);
+                          }
+                          return true;
+                        })
+                        .map((log) => {
+                          const chronologicalIndex = logs.findIndex((entry) => entry.id === log.id);
+                          const editIndex =
+                            chronologicalIndex >= 0 ? chronologicalIndex : logs.indexOf(log);
+                          return (
+                            <MatchLogCard
+                              key={log.id}
+                              log={log}
+                              chronologicalIndex={chronologicalIndex}
+                              editIndex={editIndex}
+                              displayTeamA={displayTeamA}
+                              displayTeamB={displayTeamB}
+                              displayTeamAShort={displayTeamAShort}
+                              displayTeamBShort={displayTeamBShort}
+                              getAbbaDescriptor={getAbbaDescriptor}
+                              openScoreModal={openScoreModal}
+                              openSimpleEventModal={openSimpleEventModal}
+                            />
+                          );
+                        });
+                    })()
                   )}
                 <button
                   type="button"
