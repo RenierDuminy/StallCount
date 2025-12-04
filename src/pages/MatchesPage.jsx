@@ -316,17 +316,8 @@ export default function MatchesPage() {
             <section className="sc-card-base space-y-2 p-4 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="sc-chip">Score progression</span>
-                <div className="flex items-center gap-3 text-sm font-semibold">
-                  <LegendSwatch color={SERIES_COLORS.teamA} label={selectedMatch?.team_a?.name || "Team A"} />
-                  <LegendSwatch color={SERIES_COLORS.teamB} label={selectedMatch?.team_b?.name || "Team B"} />
-                </div>
               </div>
               <TimelineChart match={selectedMatch} timeline={derived.timeline} possessionTimeline={derived.possessionTimeline} />
-              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--sc-ink-muted)]">
-                <LegendSwatch color={BAND_COLORS.timeout} label="Timeout" />
-                <LegendSwatch color={BAND_COLORS.stoppage} label="Stoppage" />
-                <LegendSwatch color={BAND_COLORS.halftime} label="Halftime" />
-              </div>
             </section>
 
             {derived.summaries && (
@@ -396,15 +387,18 @@ function InsightTable({ title, rows }) {
 
 function TimelineChart({ match, timeline, possessionTimeline }) {
   const [isMobile, setIsMobile] = useState(false);
+  const [graphClassName, setGraphClassName] = useState("mx-auto w-full");
 
   useEffect(() => {
-    const update = () => {
+    const handleResize = () => {
       if (typeof window === "undefined") return;
-      setIsMobile(window.innerWidth <= 640);
+      const small = window.innerWidth <= 640;
+      setIsMobile(small);
+      setGraphClassName(small ? "mx-auto w-full" : "mx-auto w-[70%]");
     };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   if (!match || !timeline) {
@@ -431,10 +425,7 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
     return padding.left + ratio * chartWidth;
   };
 
-  const getY = (score) => {
-    const ratio = score / (yMax || 1);
-    return padding.top + (1 - ratio) * chartHeight;
-  };
+  const getY = (score) => padding.top + (1 - score / (yMax || 1)) * chartHeight;
 
   const renderLinePath = (points, color) => {
     if (!points.length) return null;
@@ -447,156 +438,175 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
     return <path d={path} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" />;
   };
 
+  const teamAName = match?.team_a?.name || "Team A";
+  const teamBName = match?.team_b?.name || "Team B";
+  const finalScoreA =
+    timeline.series?.teamA?.[timeline.series.teamA.length - 1]?.score ?? match?.score_a ?? 0;
+  const finalScoreB =
+    timeline.series?.teamB?.[timeline.series.teamB.length - 1]?.score ?? match?.score_b ?? 0;
+  const chartTitle = `${teamAName} ${finalScoreA} - ${finalScoreB} ${teamBName}`;
+
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
-      <rect x="0" y="0" width={width} height={height} fill="white" rx="18" />
+    <div className={`${graphClassName} relative pb-14`}>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" preserveAspectRatio="xMidYMid meet">
+        <rect x="0" y="0" width={width} height={height} fill="white" rx="18" />
 
-      {timeline.bands.map((band) => (
-        <rect
-          key={`${band.type}-${band.start}`}
-          x={getX(band.start)}
-          y={padding.top}
-          width={Math.max(2, getX(band.end) - getX(band.start))}
-          height={chartHeight}
-          fill={BAND_COLORS[band.type] || "rgba(125,125,125,0.15)"}
-        />
-      ))}
-
-      <line
-        x1={padding.left}
-        y1={padding.top + chartHeight}
-        x2={padding.left + chartWidth}
-        y2={padding.top + chartHeight}
-        stroke="#cbd5f5"
-        strokeWidth="1"
-      />
-      <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + chartHeight} stroke="#cbd5f5" strokeWidth="1" />
-
-      {Array.from({ length: yMax + 1 }).map((_, index) => {
-        const y = getY(index);
-        return (
-          <g key={index}>
-            <line x1={padding.left} x2={padding.left + chartWidth} y1={y} y2={y} stroke="#cbd5f5" strokeDasharray="4 6" strokeWidth="0.5" />
-            <text x={padding.left - 10} y={y + 4} fontSize="11" textAnchor="end" fill="#475569">
-              {index}
-            </text>
-          </g>
-        );
-      })}
-
-      {timeline.timeTicks.map((tick) => {
-        const x = getX(tick.value);
-        const y = padding.top + chartHeight + 12;
-        return (
-          <g key={tick.value}>
-            <text fontSize="11" fill="#475569" textAnchor="middle" dominantBaseline="middle" x={x} y={y}>
-              {tick.label}
-            </text>
-            <line
-              x1={x}
-              x2={x}
-              y1={padding.top + chartHeight}
-              y2={padding.top + chartHeight + 6}
-              stroke="#94a3b8"
-              strokeWidth="1"
-            />
-          </g>
-        );
-      })}
-
-  {renderLinePath(timeline.series.teamA, SERIES_COLORS.teamA)}
-  {renderLinePath(timeline.series.teamB, SERIES_COLORS.teamB)}
-
-  {timeline.scoringPoints.map((point) => (
-    <circle
-      key={`${point.team}-${point.time}`}
-      cx={getX(point.time)}
-      cy={getY(point.score)}
-      r={4}
-      fill={SERIES_COLORS[point.team]}
-      stroke="white"
-      strokeWidth="1.5"
-    />
-  ))}
-
-      <text x={width / 2} y={20} textAnchor="middle" fontSize="16" fontWeight="600" fill="#0f172a">
-        Score vs Time
-      </text>
-      {possessionSegments.length > 0 && (
-        <g>
+        {timeline.bands.map((band) => (
           <rect
-            x={padding.left}
-            y={padding.top + chartHeight + possessionBandGap}
-            width={chartWidth}
-            height={possessionBandHeight}
-            fill="#f8fafc"
-            rx="4"
+            key={`${band.type}-${band.start}`}
+            x={getX(band.start)}
+            y={padding.top}
+            width={Math.max(2, getX(band.end) - getX(band.start))}
+            height={chartHeight}
+            fill={BAND_COLORS[band.type] || "rgba(125,125,125,0.15)"}
           />
-          {possessionScores.map((score, index) => {
-            const x = getX(score.time);
-            const y = padding.top + chartHeight + possessionBandGap + possessionBandHeight + 8;
-            return (
-              <path
-                key={`${score.team || "score"}-${score.time}-${index}`}
-                d={`M${x - 3.25},${y + 5} L${x},${y} L${x + 3.25},${y + 5}`}
-                fill="none"
-                stroke="#0f172a"
-                strokeWidth="1.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+        ))}
+
+        <line
+          x1={padding.left}
+          y1={padding.top + chartHeight}
+          x2={padding.left + chartWidth}
+          y2={padding.top + chartHeight}
+          stroke="#cbd5f5"
+          strokeWidth="1"
+        />
+        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + chartHeight} stroke="#cbd5f5" strokeWidth="1" />
+
+        {Array.from({ length: yMax + 1 }).map((_, index) => {
+          const y = getY(index);
+          return (
+            <g key={index}>
+              <line x1={padding.left} x2={padding.left + chartWidth} y1={y} y2={y} stroke="#cbd5f5" strokeDasharray="4 6" strokeWidth="0.5" />
+              <text x={padding.left - 10} y={y + 4} fontSize="9.35" textAnchor="end" fill="#000">
+                {index}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* X-axis labels removed to make room for unified timeline labels */}
+
+        {timeline.scoringPoints.map((point) => {
+          const cx = getX(point.time);
+          const cy = getY(point.score);
+          const baselineY = padding.top + chartHeight;
+          return (
+            <g key={`${point.team}-${point.time}`}>
+              <line x1={cx} x2={cx} y1={cy} y2={baselineY} stroke="#cbd5f5" strokeWidth="0.8" />
+              <circle
+                cx={cx}
+                cy={cy}
+                r={4}
+                fill={SERIES_COLORS[point.team]}
+                stroke="white"
+                strokeWidth="1.5"
               />
-            );
-          })}
-          {possessionSegments.map((segment, index) => {
-            const xStart = getX(segment.start);
-            const xEnd = getX(segment.end);
-            const segWidth = Math.max(2, xEnd - xStart);
-            const fill =
-              segment.team === "teamA"
-                ? SERIES_COLORS.teamA
-                : segment.team === "teamB"
-                  ? SERIES_COLORS.teamB
-                  : segment.team === "band"
-                    ? "rgba(148, 163, 184, 0.9)"
-                    : "rgba(226, 232, 240, 0.9)";
-            return (
-              <rect
-                key={`${segment.team || "unknown"}-${segment.start}-${index}`}
-                x={xStart}
-                y={padding.top + chartHeight + possessionBandGap}
-                width={segWidth}
-                height={possessionBandHeight}
-                fill={fill}
-                opacity="0.9"
-              />
-            );
-          })}
-          <text
-            x={padding.left}
-            y={padding.top + chartHeight + possessionBandGap + possessionBandHeight + 30}
-            fontSize="11"
-            fill="#475569"
+            </g>
+          );
+        })}
+
+        {renderLinePath(timeline.series.teamA, SERIES_COLORS.teamA)}
+        {renderLinePath(timeline.series.teamB, SERIES_COLORS.teamB)}
+
+        <text x={width / 2} y={12} textAnchor="middle" fontSize="13.6" fontWeight="600" fill="#0f172a">
+          {chartTitle}
+        </text>
+
+        {possessionSegments.length > 0 && (
+          <g>
+            <rect
+              x={padding.left}
+              y={padding.top + chartHeight}
+              width={chartWidth}
+              height={possessionBandHeight}
+              fill="#f8fafc"
+              rx="4"
+            />
+            {timeline.timeTicks.map((tick) => {
+              const x = getX(tick.value);
+              const labelY = padding.top + chartHeight + possessionBandHeight + 12;
+              return (
+                <text
+                  key={`possession-tick-${tick.value}`}
+                  fontSize="9.35"
+                  fill="#475569"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  x={x}
+                  y={labelY}
+                >
+                  {tick.label}
+                </text>
+              );
+            })}
+            {possessionSegments.map((segment, index) => {
+              const xStart = getX(segment.start);
+              const xEnd = getX(segment.end);
+              const segWidth = Math.max(2, xEnd - xStart);
+              const fill =
+                segment.team === "teamA"
+                  ? SERIES_COLORS.teamA
+                  : segment.team === "teamB"
+                    ? SERIES_COLORS.teamB
+                    : segment.team === "band"
+                      ? "rgba(148, 163, 184, 0.9)"
+                      : "rgba(226, 232, 240, 0.9)";
+              return (
+                <rect
+                  key={`${segment.team || "unknown"}-${segment.start}-${index}`}
+                  x={xStart}
+                  y={padding.top + chartHeight}
+                  width={segWidth}
+                  height={possessionBandHeight}
+                  fill={fill}
+                  opacity="0.9"
+                />
+              );
+            })}
+            <text
+              x={padding.left}
+              y={padding.top + chartHeight + possessionBandHeight + 30}
+              fontSize="9.35"
+              fill="#000"
+            >
+              Possession (color matches team lines)
+            </text>
+          </g>
+        )}
+
+        <text x={width / 2} y={height - 20} textAnchor="middle" fontSize="10.2" fill="#000">
+          Minutes
+        </text>
+        <text
+          x="14"
+          y={height / 2}
+          textAnchor="middle"
+          fontSize="10.2"
+          transform={`rotate(-90 14 ${height / 2})`}
+          fill="#000">
+          Score
+        </text>
+
+        <foreignObject x={width * 0.15} y={height - 45} width={width * 0.7} height="40">
+          <div
+            xmlns="http://www.w3.org/1999/xhtml"
+            className="flex flex-wrap items-center justify-center gap-4 text-xs"
           >
-            Possession (color matches team lines)
-          </text>
-        </g>
-      )}
-      <text x={width / 2} y={height - 20} textAnchor="middle" fontSize="12" fill="#475569">
-        Minutes
-      </text>
-      <text
-        x="14"
-        y={height / 2}
-        textAnchor="middle"
-        fontSize="12"
-        transform={`rotate(-90 14 ${height / 2})`}
-        fill="#475569">
-        Score
-      </text>
-    </svg>
+            <span className="flex flex-wrap items-center gap-3 text-sm font-semibold">
+              <LegendSwatch color={SERIES_COLORS.teamA} label={teamAName} />
+              <LegendSwatch color={SERIES_COLORS.teamB} label={teamBName} />
+            </span>
+            <span className="flex flex-wrap items-center gap-2 text-xs text-black">
+              <LegendSwatch color={BAND_COLORS.timeout} label="Timeout" />
+              <LegendSwatch color={BAND_COLORS.stoppage} label="Stoppage" />
+              <LegendSwatch color={BAND_COLORS.halftime} label="Halftime" />
+            </span>
+          </div>
+        </foreignObject>
+      </svg>
+    </div>
   );
 }
-
 function PossessionTimeline({ timeline, teamAName, teamBName }) {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -1033,6 +1043,18 @@ function deriveMatchInsights(match, logs) {
       }
       timelineEnd = matchEndEventTime;
       pushSnapshot(matchEndEventTime);
+      logRows.push({
+        label: "End",
+        index: 0,
+        timestamp,
+        formattedTime,
+        teamLabel: "-",
+        scorer: "-",
+        assist: "-",
+        description: "Match end",
+        gap: "-",
+        variant: "halftime",
+      });
       previousTime = matchEndEventTime;
       continue;
     }
