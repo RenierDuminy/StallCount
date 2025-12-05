@@ -10,6 +10,12 @@ import {
   resolveTopicsInput,
   upsertSubscription,
 } from "../services/subscriptionService";
+import {
+  disablePushSubscription,
+  ensurePushSubscription,
+  getExistingSubscription,
+  isPushSupported,
+} from "../pwa/pushClient";
 
 const TARGET_OPTIONS = [
   { value: "match", label: "Match" },
@@ -58,6 +64,14 @@ export default function NotificationsPage() {
   const [choices, setChoices] = useState([]);
   const [choiceLoading, setChoiceLoading] = useState(false);
   const [choiceSearch, setChoiceSearch] = useState("");
+  const [pushState, setPushState] = useState(() => ({
+    supported: isPushSupported(),
+    permission:
+      typeof window !== "undefined" && "Notification" in window ? Notification.permission : "default",
+    enabled: false,
+    busy: false,
+    error: null,
+  }));
 
   const topicOptions = useMemo(
     () => TOPIC_PRESETS.map((topic) => ({ value: topic, label: topic.replace(/_/g, " ") })),
@@ -127,6 +141,42 @@ export default function NotificationsPage() {
     };
   }, [targetType]);
 
+  useEffect(() => {
+    if (!pushState.supported) return undefined;
+    let ignore = false;
+    getExistingSubscription()
+      .then((subscription) => {
+        if (ignore) return;
+        setPushState((prev) => ({
+          ...prev,
+          enabled: Boolean(subscription),
+          permission:
+            typeof Notification !== "undefined" ? Notification.permission : prev.permission,
+        }));
+      })
+      .catch(() => {
+        if (ignore) return;
+        setPushState((prev) => ({ ...prev, enabled: false }));
+      });
+    const handleMessage = (event) => {
+      if (event.data?.type === "PUSH_SUBSCRIPTION_CHANGED") {
+        getExistingSubscription().then((subscription) => {
+          setPushState((prev) => ({
+            ...prev,
+            enabled: Boolean(subscription),
+            permission:
+              typeof Notification !== "undefined" ? Notification.permission : prev.permission,
+          }));
+        });
+      }
+    };
+    navigator.serviceWorker?.addEventListener("message", handleMessage);
+    return () => {
+      ignore = true;
+      navigator.serviceWorker?.removeEventListener("message", handleMessage);
+    };
+  }, [pushState.supported]);
+
   const isLoggedOut = !authLoading && !profileId;
 
   function toggleTopic(value) {
@@ -141,6 +191,21 @@ export default function NotificationsPage() {
   function buildTopicsFromForm() {
     return uniqueTopics([...selectedTopics, ...resolveTopicsInput(customTopics)]);
   }
+
+  const formatMatchChoiceLabel = (match) => {
+    if (!match) return "";
+    const teamA = match.team_a?.short_name || match.team_a?.name || "Team A";
+    const teamB = match.team_b?.short_name || match.team_b?.name || "Team B";
+    return `${teamA} vs ${teamB}`;
+  };
+
+  const choiceDisplayLabel = (item) => {
+    if (!item) return "";
+    if (targetType === "match") {
+      return formatMatchChoiceLabel(item);
+    }
+    return item.name || item.full_name || item.short_name || item.id || "";
+  };
 
   const filteredChoices = useMemo(() => {
     if (!choiceSearch.trim()) return choices;
@@ -237,40 +302,154 @@ export default function NotificationsPage() {
     }
   }
 
-  return (
-    <div className="pb-16 text-[var(--sc-ink)]">
-      <header className="sc-shell py-4 sm:py-6">
-        <div className="sc-card-base space-y-3 p-6 sm:p-7">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="sc-chip">Notifications</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              Follow updates across StallCount
-            </span>
-          </div>
-          <p className="max-w-3xl text-sm text-[var(--sc-ink-muted)]">
-            Manage which matches, teams, players, events, or divisions you follow. Topics filter which event types
-            trigger alerts.
-          </p>
-        </div>
-      </header>
+  async function handleEnablePush() {
+    if (pushState.busy) return;
+    setPushState((prev) => ({ ...prev, busy: true, error: null }));
+    try {
+      if (!profileId) {
+        throw new Error("Sign in to enable push notifications.");
+      }
+      await ensurePushSubscription(profileId);
+      setPushState((prev) => ({
+        ...prev,
+        enabled: true,
+        busy: false,
+        permission:
+          typeof Notification !== "undefined" ? Notification.permission : prev.permission,
+      }));
+    } catch (err) {
+      setPushState((prev) => ({
+        ...prev,
+        busy: false,
+        error: err instanceof Error ? err.message : "Failed to enable push notifications.",
+        permission:
+          typeof Notification !== "undefined" ? Notification.permission : prev.permission,
+      }));
+    }
+  }
 
-      <main className="sc-shell space-y-6 py-6">
+  async function handleDisablePush() {
+    if (pushState.busy) return;
+    setPushState((prev) => ({ ...prev, busy: true, error: null }));
+    try {
+      await disablePushSubscription(profileId || undefined);
+      setPushState((prev) => ({
+        ...prev,
+        enabled: false,
+        busy: false,
+      }));
+    } catch (err) {
+      setPushState((prev) => ({
+        ...prev,
+        busy: false,
+        error: err instanceof Error ? err.message : "Failed to disable push notifications.",
+      }));
+    }
+  }
+
+  return (
+    <div className="sc-page">
+      <div className="sc-page__glow" aria-hidden="true" />
+      <div className="relative z-10">
+        <header className="sc-shell pt-6">
+          <div className="sc-card space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="sc-chip">Notifications</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                    Follow updates across StallCount
+                  </span>
+                </div>
+                <h1 className="text-3xl font-semibold">Signal preferences</h1>
+                <p className="max-w-2xl text-sm text-[var(--sc-ink-muted)]">
+                  Subscribe to matches, teams, players, events, or divisions. Fine-tune the event types you want to be
+                  nudged about so your phone only buzzes for the right moments.
+                </p>
+              </div>
+              <div className="rounded-3xl border border-[var(--sc-border)]/60 bg-[var(--sc-surface-muted)] px-5 py-4 text-right">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                  Active follows
+                </p>
+                <p className="text-3xl font-bold text-[var(--sc-accent)]">
+                  {loading ? "…" : subscriptions.length}
+                </p>
+                <p className="text-[11px] text-[var(--sc-ink-muted)]">targets currently tracked</p>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="sc-shell space-y-6 pb-16">
         {isLoggedOut && (
-          <div className="sc-card-muted border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+          <div className="sc-card-muted border border-rose-400/30 px-5 py-4 text-sm text-rose-200">
             Sign in to create or manage your notification subscriptions.
           </div>
         )}
 
         {error && (
-          <div className="sc-card-muted border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+          <div className="sc-card-muted border border-rose-400/45 px-5 py-4 text-sm text-rose-200">
             {error}
           </div>
         )}
         {success && (
-          <div className="sc-card-muted border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-[var(--sc-ink)]">
+          <div className="sc-card-muted border border-emerald-400/30 px-5 py-4 text-sm text-[var(--sc-ink)]">
             {success}
           </div>
         )}
+
+        <section className="sc-card space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Browser push status</h2>
+              <p className="text-sm text-[var(--sc-ink-muted)]">
+                We use the PWA service worker to deliver alerts in the background. Enable this to
+                receive match updates without opening the site.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-[var(--sc-border)]/60 bg-[var(--sc-surface-muted)] px-4 py-3 text-right">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                Permission
+              </p>
+              <p className="text-lg font-semibold text-[var(--sc-ink)]">{pushState.permission}</p>
+              <p className="text-[11px] text-[var(--sc-ink-muted)]">
+                {pushState.enabled ? "Subscribed" : "Not subscribed"}
+              </p>
+            </div>
+          </div>
+
+          {!pushState.supported ? (
+            <p className="text-sm text-rose-200">
+              Push notifications are not supported in this browser.
+            </p>
+          ) : pushState.permission === "denied" ? (
+            <p className="text-sm text-rose-200">
+              Notifications are blocked in your browser. Update the permission settings and retry.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleEnablePush}
+                disabled={pushState.busy || pushState.enabled}
+                className="rounded-2xl bg-[var(--sc-accent)] px-4 py-2 text-sm font-semibold text-[#041311] shadow disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {pushState.busy ? "Working..." : pushState.enabled ? "Enabled" : "Enable push"}
+              </button>
+              {pushState.enabled && (
+                <button
+                  type="button"
+                  onClick={handleDisablePush}
+                  disabled={pushState.busy}
+                  className="rounded-2xl border border-[var(--sc-border-strong)] px-4 py-2 text-sm font-semibold text-[var(--sc-ink)] hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Disable push
+                </button>
+              )}
+            </div>
+          )}
+          {pushState.error && <p className="text-sm text-rose-200">{pushState.error}</p>}
+        </section>
 
         <section className="sc-card space-y-4">
           <div>
@@ -282,7 +461,7 @@ export default function NotificationsPage() {
               <label className="block text-sm font-semibold text-[var(--sc-ink)]">
                 Target type
                 <select
-                  className="mt-1 w-full rounded-2xl border border-[var(--sc-border)] bg-white px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-2xl border border-[var(--sc-border-strong)] bg-[var(--sc-surface)] px-3 py-2 text-sm text-[var(--sc-ink)] focus:border-[var(--sc-accent)] focus:outline-none"
                   value={targetType}
                   onChange={(e) => {
                     setTargetType(e.target.value);
@@ -305,13 +484,13 @@ export default function NotificationsPage() {
                 </label>
                 <input
                   type="text"
-                  className="w-full rounded-2xl border border-[var(--sc-border)] bg-white px-3 py-2 text-sm"
+                  className="w-full rounded-2xl border border-[var(--sc-border-strong)] bg-[var(--sc-surface)] px-3 py-2 text-sm text-[var(--sc-ink)] placeholder:text-[var(--sc-ink-muted)] focus:border-[var(--sc-accent)] focus:outline-none"
                   placeholder="Search by name, location, or ID"
                   value={choiceSearch}
                   onChange={(e) => setChoiceSearch(e.target.value)}
                   disabled={saving || isLoggedOut}
                 />
-                <div className="max-h-56 overflow-auto rounded-2xl border border-[var(--sc-border)] bg-white">
+                <div className="max-h-56 overflow-auto rounded-2xl border border-[var(--sc-border)]/80 bg-[var(--sc-surface-muted)]">
                   {choiceLoading ? (
                     <p className="px-3 py-2 text-xs text-[var(--sc-ink-muted)]">Loading {targetType}s...</p>
                   ) : filteredChoices.length === 0 ? (
@@ -324,19 +503,17 @@ export default function NotificationsPage() {
                             type="button"
                             onClick={() => {
                               setTargetId(item.id);
-                              setChoiceSearch(item.name || item.full_name || item.short_name || item.id);
+                              setChoiceSearch(choiceDisplayLabel(item));
                             }}
                             className={`flex w-full items-start justify-between gap-3 px-3 py-2 text-left transition ${
                               targetId === item.id
-                                ? "bg-emerald-50 text-emerald-900"
-                                : "hover:bg-[var(--sc-surface)]"
+                                ? "bg-[var(--sc-accent)]/10 text-[var(--sc-accent)]"
+                                : "hover:bg-[var(--sc-surface)]/80"
                             }`}
                             disabled={saving || isLoggedOut}
                           >
                             <div>
-                              <p className="font-semibold">
-                                {item.name || item.full_name || item.short_name || "Untitled"}
-                              </p>
+                              <p className="font-semibold text-[var(--sc-ink)]">{choiceDisplayLabel(item)}</p>
                               <p className="text-xs text-[var(--sc-ink-muted)]">
                                 {item.location ||
                                   item.level ||
@@ -346,7 +523,7 @@ export default function NotificationsPage() {
                                   "ID: " + item.id}
                               </p>
                             </div>
-                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                            <span className="rounded-full bg-[var(--sc-accent)]/90 px-2 py-0.5 text-[10px] font-semibold text-[#041311]">
                               Select
                             </span>
                           </button>
@@ -358,7 +535,7 @@ export default function NotificationsPage() {
                 <input type="hidden" value={targetId} required readOnly />
               </div>
 
-              <div className="rounded-2xl border border-[var(--sc-border)] bg-white/70 px-3 py-3 text-xs text-[var(--sc-ink-muted)]">
+              <div className="rounded-2xl border border-[var(--sc-border-strong)] bg-[var(--sc-surface-muted)] px-3 py-3 text-xs text-[var(--sc-ink-muted)]">
                 <p className="font-semibold text-[var(--sc-ink)]">How this works</p>
                 <ul className="mt-1 space-y-1 list-disc pl-4">
                   <li>Each row in <code>public.subscriptions</code> maps you to one entity.</li>
@@ -377,15 +554,17 @@ export default function NotificationsPage() {
                     return (
                       <label
                         key={topic.value}
-                        className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${
-                          checked ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-[var(--sc-border)]"
+                        className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                          checked
+                            ? "border-[var(--sc-accent)]/70 bg-[var(--sc-accent)]/10 text-[var(--sc-accent)]"
+                            : "border-[var(--sc-border-strong)] text-[var(--sc-ink)] hover:border-[var(--sc-accent)]/40"
                         }`}
                       >
                         <input
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggleTopic(topic.value)}
-                          className="h-4 w-4"
+                          className="h-4 w-4 rounded border-[var(--sc-border-strong)] bg-[var(--sc-surface)] text-[var(--sc-accent)] focus:ring-0"
                           disabled={saving || isLoggedOut}
                         />
                         {topic.label}
@@ -398,7 +577,7 @@ export default function NotificationsPage() {
               <label className="block text-sm font-semibold text-[var(--sc-ink)]">
                 Additional topics (comma or newline separated)
                 <textarea
-                  className="mt-1 w-full rounded-2xl border border-[var(--sc-border)] bg-white px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-2xl border border-[var(--sc-border-strong)] bg-[var(--sc-surface)] px-3 py-2 text-sm text-[var(--sc-ink)] placeholder:text-[var(--sc-ink-muted)] focus:border-[var(--sc-accent)] focus:outline-none"
                   rows={3}
                   placeholder="e.g. custom_event, roster_change"
                   value={customTopics}
@@ -409,7 +588,7 @@ export default function NotificationsPage() {
 
               <button
                 type="submit"
-                className="inline-flex w-full items-center justify-center rounded-2xl bg-[var(--sc-accent)] px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center rounded-2xl bg-[var(--sc-accent)] px-4 py-3 text-sm font-semibold text-[#041311] shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={saving || isLoggedOut}
               >
                 {saving ? "Saving..." : "Save subscription"}
@@ -442,7 +621,7 @@ export default function NotificationsPage() {
               {subscriptions.map((sub) => (
                 <article
                   key={sub.id}
-                  className="flex flex-col gap-3 rounded-3xl border border-[var(--sc-border)] bg-white p-4 text-sm shadow-sm"
+                  className="flex flex-col gap-3 rounded-3xl border border-[var(--sc-border-strong)] bg-[var(--sc-surface-muted)] p-4 text-sm shadow-sm"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -455,7 +634,7 @@ export default function NotificationsPage() {
                       type="button"
                       onClick={() => handleDelete(sub)}
                       disabled={saving}
-                      className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-full border border-rose-400/40 bg-rose-500/15 px-3 py-1 text-xs font-semibold text-rose-200 transition hover:border-rose-300 hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Unfollow
                     </button>
@@ -465,7 +644,7 @@ export default function NotificationsPage() {
                     <p className="text-xs font-semibold text-[var(--sc-ink-muted)]">Topics</p>
                     <input
                       type="text"
-                      className="w-full rounded-2xl border border-[var(--sc-border)] bg-white px-3 py-2 text-sm"
+                      className="w-full rounded-2xl border border-[var(--sc-border-strong)] bg-[var(--sc-surface)] px-3 py-2 text-sm text-[var(--sc-ink)] placeholder:text-[var(--sc-ink-muted)] focus:border-[var(--sc-accent)] focus:outline-none"
                       value={topicEdits[sub.id] ?? (sub.topics || []).join(", ")}
                       onChange={(e) =>
                         setTopicEdits((prev) => ({
@@ -481,7 +660,7 @@ export default function NotificationsPage() {
                         type="button"
                         onClick={() => handleUpdateTopics(sub)}
                         disabled={saving}
-                        className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-xl bg-[var(--sc-accent)] px-3 py-2 text-xs font-semibold text-[#041311] shadow hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Update topics
                       </button>
@@ -489,7 +668,7 @@ export default function NotificationsPage() {
                         type="button"
                         onClick={() => setTopicEdits((prev) => ({ ...prev, [sub.id]: (sub.topics || []).join(", ") }))}
                         disabled={saving}
-                        className="rounded-xl border border-[var(--sc-border)] px-3 py-2 text-xs font-semibold text-[var(--sc-ink)]"
+                        className="rounded-xl border border-[var(--sc-border-strong)] px-3 py-2 text-xs font-semibold text-[var(--sc-ink)] hover:border-[var(--sc-accent)]/40"
                       >
                         Reset
                       </button>
@@ -506,5 +685,6 @@ export default function NotificationsPage() {
         </section>
       </main>
     </div>
-  );
+  </div>
+);
 }

@@ -1107,8 +1107,9 @@ useEffect(() => {
       const startCode = rules.abbaPattern === "male" ? "M" : "F";
       const alternateCode = startCode === "M" ? "F" : "M";
       const step = orderIndex % ABBA_LINE_SEQUENCE.length;
-      const suffix = ABBA_LINE_SEQUENCE[step] ?? "2";
-      const useStartCode = step === 0 || step === ABBA_LINE_SEQUENCE.length - 1;
+      const suffix = ABBA_LINE_SEQUENCE[step] ?? "1";
+      const halfSequence = Math.max(1, Math.floor(ABBA_LINE_SEQUENCE.length / 2));
+      const useStartCode = step < halfSequence;
       const prefix = useStartCode ? startCode : alternateCode;
       return normalizeAbbaLine(`${prefix}${suffix}`);
     },

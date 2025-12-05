@@ -148,6 +148,7 @@ export default function ScoreKeeperView() {
   const [possessionModalOpen, setPossessionModalOpen] = useState(false);
   const [pendingPossessionTeam, setPendingPossessionTeam] = useState(null);
   const [possessionPreviewTeam, setPossessionPreviewTeam] = useState(null);
+  const [scorePopupOpen, setScorePopupOpen] = useState(false);
 
   const updatePossessionFromCoordinate = (clientX) => {
     const track = possessionPadRef.current;
@@ -330,6 +331,11 @@ export default function ScoreKeeperView() {
     setSecondaryLabel("Discussion");
     setSecondaryFlashActive(false);
     setSecondaryFlashPulse(false);
+  };
+
+  const handleScorePopupSelection = (teamKey) => {
+    setScorePopupOpen(false);
+    openScoreModal(teamKey);
   };
 
   return (
@@ -535,26 +541,35 @@ export default function ScoreKeeperView() {
                       Start match
                     </button>
                   ) : (
-                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => openScoreModal("A")}
-                        className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-center text-sm font-semibold text-white shadow-card transition hover:bg-[#0a3b24]"
-                      >
-                        Add score - {displayTeamAShort}
-                      </button>
-                      <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
-                        <p>{nextAbbaDescriptor ? `ABBA: ${nextAbbaDescriptor}` : "ABBA disabled"}</p>
-                        <p className="text-lg font-semibold text-[#0f5132]">
-                          {score.a} - {score.b}
-                        </p>
+                    <div className="space-y-1.5">
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openScoreModal("A")}
+                          className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-center text-sm font-semibold text-white shadow-card transition hover:bg-[#0a3b24]"
+                        >
+                          Add score - {displayTeamAShort}
+                        </button>
+                        <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
+                          <p>{nextAbbaDescriptor ? `ABBA: ${nextAbbaDescriptor}` : "ABBA disabled"}</p>
+                          <p className="text-lg font-semibold text-[#0f5132]">
+                            {score.a} - {score.b}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openScoreModal("B")}
+                          className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-center text-sm font-semibold text-white shadow-card transition hover:bg-[#0a3b24]"
+                        >
+                          Add score - {displayTeamBShort}
+                        </button>
                       </div>
                       <button
                         type="button"
-                        onClick={() => openScoreModal("B")}
-                        className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-center text-sm font-semibold text-white shadow-card transition hover:bg-[#0a3b24]"
+                        onClick={() => setScorePopupOpen(true)}
+                        className="w-full rounded-full border border-[#0f5132]/40 bg-white px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#ecfdf3]"
                       >
-                        Add score - {displayTeamBShort}
+                        Open score popup
                       </button>
                     </div>
                   )}
@@ -1138,6 +1153,44 @@ export default function ScoreKeeperView() {
   )}
 
 
+      {scorePopupOpen && (
+        <ActionModal title="Log a score" onClose={() => setScorePopupOpen(false)}>
+          <div className="space-y-3 text-[#0f5132]">
+            <div className="text-center">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
+                Current score
+              </p>
+              <p className="text-4xl font-bold text-[#0f5132]">
+                {score.a} - {score.b}
+              </p>
+              <p className="text-sm text-[#0f5132]/80">
+                {safeTeamAName} vs {safeTeamBName}
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => handleScorePopupSelection("A")}
+                className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+              >
+                Log {displayTeamAShort || safeTeamAName}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleScorePopupSelection("B")}
+                className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+              >
+                Log {displayTeamBShort || safeTeamBName}
+              </button>
+            </div>
+            <p className="text-center text-[11px] uppercase tracking-wide text-[#0f5132]/70">
+              Choose a team to open the detailed score form.
+            </p>
+          </div>
+        </ActionModal>
+      )}
+
+
       {scoreModalState.open && (
         <ActionModal
           title={scoreModalState.mode === "edit" ? "Edit score" : "Add score"}
@@ -1182,6 +1235,24 @@ export default function ScoreKeeperView() {
                   </option>
                 ))}
                 <option value={CALAHAN_ASSIST_VALUE}>CALLAHAN!!</option>
+              </select>
+            </label>
+            <label className="block text-base font-semibold text-[#0f5132]">
+              Scorer:
+              <select
+                value={scoreForm.scorerId}
+                onChange={(event) =>
+                  setScoreForm((prev) => ({ ...prev, scorerId: event.target.value }))
+                }
+                required
+                className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
+              >
+                <option value="">Select Scorer</option>
+                {rosterOptionsForModal.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {formatPlayerSelectLabel(player)}
+                  </option>
+                ))}
               </select>
             </label>
             <div className="space-y-1.5">

@@ -132,11 +132,11 @@ CREATE TABLE public.matches (
   confirmed_at timestamp with time zone,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   scorekeeper uuid,
-  media_link jsonb,
-  media_provider text GENERATED ALWAYS AS (lower(NULLIF(btrim(COALESCE(media_link #>> '{primary,provider}', '')), ''))) STORED,
-  media_url text GENERATED ALWAYS AS (NULLIF(btrim(COALESCE(media_link #>> '{primary,url}', '')), '')) STORED,
-  media_status text GENERATED ALWAYS AS (NULLIF(btrim(COALESCE(media_link #>> '{primary,status}', '')), '')) STORED,
-  has_media boolean GENERATED ALWAYS AS (NULLIF(btrim(COALESCE(media_link #>> '{primary,url}', '')), '') IS NOT NULL) STORED,
+  media_link jsonb CHECK (is_valid_media_link(media_link)),
+  media_provider text DEFAULT ((media_link -> 'primary'::text) ->> 'provider'::text),
+  media_url text DEFAULT ((media_link -> 'primary'::text) ->> 'url'::text),
+  media_status text DEFAULT NULLIF(((media_link -> 'primary'::text) ->> 'status'::text), ''::text),
+  has_media boolean DEFAULT (media_link ? 'primary'::text),
   CONSTRAINT matches_pkey PRIMARY KEY (id),
   CONSTRAINT matches_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
   CONSTRAINT matches_division_id_fkey FOREIGN KEY (division_id) REFERENCES public.divisions(id),
@@ -146,44 +146,6 @@ CREATE TABLE public.matches (
   CONSTRAINT matches_team_b_fkey FOREIGN KEY (team_b) REFERENCES public.teams(id),
   CONSTRAINT matches_starting_team_id_fkey FOREIGN KEY (starting_team_id) REFERENCES public.teams(id),
   CONSTRAINT matches_status_fkey FOREIGN KEY (status) REFERENCES public.match_status(code),
-  CONSTRAINT matches_media_link_shape_chk CHECK (
-    media_link IS NULL
-    OR (
-      jsonb_typeof(media_link) = 'object'
-      AND jsonb_typeof(media_link -> 'primary') = 'object'
-      AND jsonb_typeof(media_link -> 'primary' -> 'provider') = 'string'
-      AND jsonb_typeof(media_link -> 'primary' -> 'url') = 'string'
-      AND (media_link #>> '{primary,url}') ~* '^https?:\/\/'
-      AND (
-        NOT ((media_link -> 'primary') ? 'status')
-        OR jsonb_typeof(media_link -> 'primary' -> 'status') = 'string'
-      )
-      AND (
-        NOT ((media_link -> 'primary') ? 'embed_url')
-        OR (
-          jsonb_typeof(media_link -> 'primary' -> 'embed_url') = 'string'
-          AND (media_link #>> '{primary,embed_url}') ~* '^https?:\/\/'
-        )
-      )
-      AND (
-        NOT ((media_link -> 'primary') ? 'start_time')
-        OR jsonb_typeof(media_link -> 'primary' -> 'start_time') = 'string'
-      )
-      AND (
-        media_link -> 'vod' IS NULL
-        OR jsonb_typeof(media_link -> 'vod') = 'array'
-      )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements(COALESCE(media_link -> 'vod', '[]'::jsonb)) elem
-        WHERE NOT (
-          jsonb_typeof(elem) = 'object'
-          AND jsonb_typeof(elem -> 'url') = 'string'
-          AND (elem ->> 'url') ~* '^https?:\/\/'
-        )
-      )
-    )
-  ),
   CONSTRAINT matches_scorekeeper_fkey FOREIGN KEY (scorekeeper) REFERENCES auth.users(id)
 );
 CREATE TABLE public.player (

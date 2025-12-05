@@ -254,7 +254,7 @@ export default function MediaAdminPage() {
               />
             </label>
             <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--sc-ink)]">
-              Embed URL
+              Embed URL (optional)
               <input
                 type="url"
                 value={form.embedUrl}
@@ -464,7 +464,8 @@ function parseMediaLink(match) {
 function buildMediaPayload(form) {
   const provider = form.provider || undefined;
   const status = form.mediaStatus || undefined;
-  const embedUrl = form.embedUrl || undefined;
+  const trimmedEmbedUrl = (form.embedUrl || "").trim();
+  const embedUrl = trimmedEmbedUrl ? trimmedEmbedUrl : undefined;
   const startTimeIso = form.startTime ? new Date(form.startTime).toISOString() : undefined;
   const vodEntries = form.vodText
     .split("\n")
