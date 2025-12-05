@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import useInstallPrompt from "../hooks/useInstallPrompt";
 
 const NAV_LINKS = [
-  { label: "Overview", to: "/#stats" },
+  { label: "Home", to: "/" },
   { label: "Divisions", to: "/divisions" },
   { label: "Matches", to: "/matches" },
   { label: "Teams", to: "/teams" },

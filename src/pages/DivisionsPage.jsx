@@ -368,6 +368,45 @@ export default function DivisionsPage() {
                   match.status === "halftime" ||
                   match.status === "finished" ||
                   match.status === "completed";
+                const rawMediaUrl = typeof match.media_url === "string" ? match.media_url.trim() : "";
+                const mediaUrl = rawMediaUrl && /^https?:\/\//i.test(rawMediaUrl) ? rawMediaUrl : null;
+                const mediaProviderLabel = (() => {
+                  const raw = (match.media_provider || "stream").replace(/_/g, " ").trim();
+                  if (!raw) return "Stream";
+                  return raw
+                    .split(" ")
+                    .filter(Boolean)
+                    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(" ");
+                })();
+                const handleMediaClick = (event) => {
+                  event.stopPropagation();
+                  if (isNavigable) {
+                    event.preventDefault();
+                  }
+                  if (mediaUrl && typeof window !== "undefined") {
+                    window.open(mediaUrl, "_blank", "noopener,noreferrer");
+                  }
+                };
+                const handleMediaKeyDown = (event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleMediaClick(event);
+                  }
+                };
+                const mediaButton = mediaUrl ? (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={handleMediaClick}
+                    onKeyDown={handleMediaKeyDown}
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-[var(--sc-border)] bg-white/70 text-[var(--sc-ink)] transition hover:-translate-y-0.5 hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea4335]"
+                    title={`Watch on ${mediaProviderLabel}`}
+                    aria-label={`Watch on ${mediaProviderLabel}`}
+                  >
+                    <img src="/youtube.png" alt="" className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                ) : null;
                 const cardContent = (
                   <article
                     key={match.id}
@@ -379,19 +418,24 @@ export default function DivisionsPage() {
                       <span>
                         {formatDate(match.start_time)} at {formatTime(match.start_time)}
                       </span>
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                          match.status === "live"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : match.status === "halftime"
-                              ? "bg-sky-100 text-sky-800"
-                              : match.status === "scheduled" || match.status === "ready" || match.status === "pending"
-                                ? "bg-slate-100 text-slate-700"
-                                : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {match.status || "Status"}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {mediaButton}
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                            match.status === "live"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : match.status === "halftime"
+                                ? "bg-sky-100 text-sky-800"
+                                : match.status === "scheduled" ||
+                                    match.status === "ready" ||
+                                    match.status === "pending"
+                                  ? "bg-slate-100 text-slate-700"
+                                  : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {match.status || "Status"}
+                        </span>
+                      </div>
                     </div>
                     <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
                       {resolveVenueName(match)}

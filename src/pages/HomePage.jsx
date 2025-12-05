@@ -111,6 +111,7 @@ export default function HomePage() {
   const safeMatches = useMemo(() => matches ?? [], [matches]);
   const nextMatch = safeMatches[0] || null;
   const highlightedEvent = safeEvents[0] || null;
+  const nextStreamedMatch = safeMatches.find((match) => matchHasStream(match)) || null;
 
   async function handleLogout() {
     setSignOutError(null);
@@ -198,6 +199,31 @@ export default function HomePage() {
                 <p className="text-sm text-[var(--sc-ink-muted)]">
                   {nextMatch ? formatMatchTime(nextMatch.start_time) : "Add matches to see them highlighted here."}
                 </p>
+              </div>
+              <div className="sc-card-muted sc-frosted p-5">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                  <span>Next streamed match</span>
+                  <span className="sc-chip">{nextStreamedMatch ? "Stream ready" : "No media"}</span>
+                </div>
+                <p className="mt-2 text-lg font-semibold text-[var(--sc-ink)]">
+                  {nextStreamedMatch ? formatMatchup(nextStreamedMatch) : "Stream schedule pending"}
+                </p>
+                <p className="text-sm text-[var(--sc-ink-muted)]">
+                  {nextStreamedMatch
+                    ? formatMatchTime(nextStreamedMatch.start_time)
+                    : "Attach media links to upcoming matches to see them here."}
+                </p>
+                {nextStreamedMatch && (
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                    Provider:{" "}
+                    <span className="text-[var(--sc-ink)]">
+                      {formatMediaProvider(nextStreamedMatch.media_provider)}
+                    </span>{" "}
+                    <span className="ml-2 text-[var(--sc-ink-muted)]">
+                      Status: {nextStreamedMatch.media_status || nextStreamedMatch.status || "pending"}
+                    </span>
+                  </p>
+                )}
               </div>
               <div className="sc-card-muted sc-frosted p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Spotlight event</p>
@@ -428,4 +454,22 @@ function formatMatchup(match) {
   const teamA = match.team_a?.name || "Team A";
   const teamB = match.team_b?.name || "Team B";
   return `${teamA} vs ${teamB}`;
+}
+
+function matchHasStream(match) {
+  if (!match) return false;
+  if (typeof match.media_url === "string" && match.media_url.trim()) return true;
+  if (match.has_media) return true;
+  const primaryUrl = match.media_link?.primary?.url;
+  return typeof primaryUrl === "string" && primaryUrl.trim().length > 0;
+}
+
+function formatMediaProvider(provider) {
+  const normalized = typeof provider === "string" ? provider.replace(/_/g, " ").trim() : "";
+  if (!normalized) return "Custom";
+  return normalized
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }

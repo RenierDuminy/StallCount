@@ -20,6 +20,7 @@ import UserPage from "./pages/UserPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import AppLayout from "./components/AppLayout";
 import TournamentDirectorPage from "./pages/TournamentDirectorPage";
+import MediaAdminPage from "./pages/MediaAdminPage";
 
 export default function AppRoutes() {
   return (
@@ -65,6 +66,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute>
                 <TournamentDirectorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/media"
+            element={
+              <ProtectedRoute>
+                <MediaAdminPage />
               </ProtectedRoute>
             }
           />

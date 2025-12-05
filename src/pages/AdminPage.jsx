@@ -30,6 +30,13 @@ const ADMIN_MODULES = [
     accent: "bg-slate-200 text-slate-800",
   },
   {
+    label: "Media",
+    description:
+      "Attach or edit stream links for existing matches without leaving the admin suite.",
+    to: "/admin/media",
+    accent: "bg-rose-100 text-rose-700",
+  },
+  {
     label: "Spirit scores",
     description: "Capture and review spirit scores for completed matches.",
     to: "/spirit-scores",

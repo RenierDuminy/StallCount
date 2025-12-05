@@ -504,9 +504,12 @@ export default function ScoreKeeperView() {
                     </button>
                   </div>
                   <div className="flex flex-col gap-1 text-slate-800 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="text-xl font-semibold">Possession</h3>
-                    <p className="text-sm font-semibold">
-                      {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
+                    <p className="flex items-center gap-1 text-sm font-semibold text-slate-600">
+                      <span className="text-base font-semibold text-slate-900">Possession</span>
+                      <span>:</span>
+                      <span className="text-base text-slate-900">
+                        {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
+                      </span>
                     </p>
                   </div>
                   <p className="text-center text-[11px] uppercase tracking-wide text-slate-500">
@@ -963,8 +966,14 @@ export default function ScoreKeeperView() {
                   ? `${displayTeamB} in possession`
                   : "Select possession"}
             </p>
-            <div className="flex flex-col gap-2 text-sm font-semibold">
-              <label className="inline-flex items-center gap-2">
+            <div className="grid grid-cols-2 gap-2 text-sm font-semibold">
+              <label
+                className={`flex items-center gap-2 rounded-2xl border px-3 py-2 ${
+                  possessionResult === "throwaway"
+                    ? "border-[#0f5132] bg-[#0f5132] text-white"
+                    : "border-[#0f5132]/30 bg-white text-[#0f5132]"
+                }`}
+              >
                 <input
                   type="radio"
                   name="possession-outcome-modal"
@@ -976,7 +985,13 @@ export default function ScoreKeeperView() {
                 />
                 <span>Turnover</span>
               </label>
-              <label className="inline-flex items-center gap-2">
+              <label
+                className={`flex items-center gap-2 rounded-2xl border px-3 py-2 ${
+                  possessionResult === "block"
+                    ? "border-[#0f5132] bg-[#0f5132] text-white"
+                    : "border-[#0f5132]/30 bg-white text-[#0f5132]"
+                }`}
+              >
                 <input
                   type="radio"
                   name="possession-outcome-modal"
@@ -998,10 +1013,10 @@ export default function ScoreKeeperView() {
               <select
                 value={possessionActorId}
                 onChange={(event) => setPossessionActorId(event.target.value || "")}
-                className="w-full rounded-xl border border-[#0f5132]/30 bg-white px-3 py-2 text-sm font-semibold text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!activeActorOptions.length}
+                className="w-full rounded-xl border border-[#0f5132]/30 bg-white px-3 py-2 text-sm font-semibold text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30"
               >
-                {!activeActorOptions.length && <option value="">No players available</option>}
+                <option value="">N/A</option>
+                {!activeActorOptions.length && <option value="__no_players" disabled>No players available</option>}
                 {activeActorOptions.map((player) => (
                   <option key={player.id} value={player.id}>
                     {player.name}

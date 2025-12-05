@@ -13,7 +13,12 @@ const MATCH_FIELDS = `
   venue:venues!matches_venue_id_fkey (id, name),
   event:events!matches_event_id_fkey (id, name, rules),
   team_a:teams!matches_team_a_fkey (id, name, short_name),
-  team_b:teams!matches_team_b_fkey (id, name, short_name)
+  team_b:teams!matches_team_b_fkey (id, name, short_name),
+  media_link,
+  media_provider,
+  media_url,
+  media_status,
+  has_media
 `;
 
 export async function getRecentMatches(limit = 4) {
@@ -141,6 +146,25 @@ export async function updateMatchStatus(matchId, nextStatus = "finished") {
 
   if (error) {
     throw new Error(error.message || "Failed to update match status");
+  }
+
+  return data || null;
+}
+
+export async function updateMatchMediaLink(matchId, mediaPayload) {
+  if (!matchId) {
+    throw new Error("Match ID is required to update media link.");
+  }
+
+  const { data, error } = await supabase
+    .from("matches")
+    .update({ media_link: mediaPayload ?? null })
+    .eq("id", matchId)
+    .select(MATCH_FIELDS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to update match media link");
   }
 
   return data || null;

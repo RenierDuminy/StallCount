@@ -116,6 +116,11 @@ export type TeamMatchRow = {
   status: string;
   score_a: number;
   score_b: number;
+  media_link: Record<string, unknown> | null;
+  media_provider: string | null;
+  media_url: string | null;
+  media_status: string | null;
+  has_media: boolean | null;
   venue_id: string | null;
   event: {
     id: string;
@@ -151,6 +156,11 @@ export async function getTeamMatches(teamId: string): Promise<TeamMatchRow[]> {
         status,
         score_a,
         score_b,
+        media_link,
+        media_provider,
+        media_url,
+        media_status,
+        has_media,
         venue_id,
         event:events(id, name),
         division:divisions(id, name),

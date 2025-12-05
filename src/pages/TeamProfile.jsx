@@ -370,6 +370,7 @@ function GamesTable({ matches, teamId, venueLookup }) {
             const opponent = isTeamA ? match.team_b : match.team_a;
             const goalsFor = isTeamA ? match.score_a ?? 0 : match.score_b ?? 0;
             const goalsAgainst = isTeamA ? match.score_b ?? 0 : match.score_a ?? 0;
+            const mediaDetails = getMatchMediaDetails(match);
             const scoreClass =
               goalsFor > goalsAgainst
                 ? "text-emerald-600"
@@ -380,7 +381,12 @@ function GamesTable({ matches, teamId, venueLookup }) {
             return (
               <tr key={match.id} className="align-top">
                 <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                  {formatMatchTime(match.start_time)}
+                  <div className="flex items-center gap-2">
+                    <span>{formatMatchTime(match.start_time)}</span>
+                    {mediaDetails ? (
+                      <MatchMediaButton media={mediaDetails} />
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-4 py-3 font-semibold text-slate-900">
                   {match.team_a ? (
@@ -604,6 +610,61 @@ function EmptyState({ message }) {
       {message}
     </div>
   );
+}
+
+function MatchMediaButton({ media }) {
+  const label = media.providerLabel || "Stream";
+
+  const handleClick = (event) => {
+    event.stopPropagation();
+    if (typeof window !== "undefined") {
+      window.open(media.url, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  const handleKeyDown = (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleClick(event);
+    }
+  };
+
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white/70 text-slate-700 transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea4335]"
+      title={`Watch on ${label}`}
+      aria-label={`Watch on ${label}`}
+    >
+      <img src="/youtube.png" alt="" className="h-4 w-4" aria-hidden="true" />
+    </span>
+  );
+}
+
+function getMatchMediaDetails(match) {
+  if (!match) return null;
+  const rawUrl = typeof match.media_url === "string" ? match.media_url.trim() : "";
+  if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) {
+    return null;
+  }
+
+  return {
+    url: rawUrl,
+    providerLabel: formatMediaProviderLabel(match.media_provider),
+  };
+}
+
+function formatMediaProviderLabel(provider) {
+  const normalized = typeof provider === "string" ? provider.replace(/_/g, " ").trim() : "";
+  if (!normalized) return "Stream";
+  return normalized
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function resolveOpponent(match, teamId) {
