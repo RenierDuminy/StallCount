@@ -26,3 +26,28 @@ VITE_SUPABASE_REDIRECT_URL=http://localhost:3000/login
 ```
 
 Whatever value you supply for `VITE_SUPABASE_REDIRECT_URL` **must** also be included in **Authentication → URL Configuration → Redirect URLs** inside the Supabase dashboard. During local development you can switch the origin (for example to `http://localhost:5173/login`) without touching the code—just update the env variable and restart Vite.
+
+## Notification Edge Function
+
+Push fan-out logic for Supabase runs inside `supabase/functions/notification-dispatcher/index.ts`.
+
+Deploy and schedule it like so:
+
+```bash
+# deploy
+supabase functions deploy notification-dispatcher --no-verify-jwt
+
+# required secrets
+supabase secrets set \
+  SUPABASE_URL="https://<project>.supabase.co" \
+  SUPABASE_SERVICE_ROLE_KEY="service-role-key" \
+  VAPID_PUBLIC_KEY="BL4H..." \
+  VAPID_PRIVATE_KEY="oq_K..."
+
+# run every 30 seconds
+supabase schedule create notification-dispatcher \
+  --function notification-dispatcher \
+  --cron "*/30 * * * * *"
+```
+
+The function queries pending rows in `live_events`, maps matching `subscriptions`, fetches each follower's `push_subscriptions`, and sends notifications via Web Push before marking each event as `sent`.
