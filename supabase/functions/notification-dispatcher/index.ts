@@ -2,19 +2,19 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import webpush from "https://deno.land/x/webpush@v1.4.3/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
+type PushSubscriptionRow = {
+  profile_id: string;
+  endpoint: string;
+  p256dh_key: string;
+  auth_key: string;
+};
+
 type LiveEventRow = {
   id: string;
   match_id: string;
   event_type: string;
   data?: Record<string, unknown> | null;
   created_at: string;
-};
-
-type PushSubscriptionRow = {
-  profile_id: string;
-  endpoint: string;
-  p256dh_key: string;
-  auth_key: string;
 };
 
 const REQUIRED_ENV = [
@@ -116,19 +116,31 @@ async function fetchPushEndpoints(profileIds: string[]): Promise<PushSubscriptio
 
 function buildPayload(event: LiveEventRow) {
   const data = (event.data ?? {}) as Record<string, unknown>;
+  const fallbackName =
+    (typeof data.target_name === "string" && data.target_name) ||
+    (typeof data.match_name === "string" && data.match_name) ||
+    "";
   const url =
     (typeof data.url === "string" && data.url) ||
     (typeof data.link === "string" && data.link) ||
     (event.match_id ? `/matches/${event.match_id}` : "/notifications");
 
+  const decorate = (value: string | undefined, fallback: string) => {
+    if (value && fallbackName && !value.toLowerCase().includes(fallbackName.toLowerCase())) {
+      return `${value} · ${fallback}`;
+    }
+    return value ?? fallback;
+  };
+
   return JSON.stringify({
-    title:
-      (typeof data.title === "string" && data.title) ||
-      `Match update: ${event.event_type}`,
-    body:
-      (typeof data.body === "string" && data.body) ||
-      (typeof data.description === "string" && data.description) ||
-      "New activity on StallCount.",
+    title: decorate(
+      typeof data.title === "string" ? data.title : undefined,
+      fallbackName ? `Update: ${fallbackName}` : `Match update: ${event.event_type}`,
+    ),
+    body: decorate(
+      typeof data.body === "string" ? data.body : undefined,
+      (typeof data.description === "string" && data.description) || "New activity on StallCount.",
+    ),
     icon: (typeof data.icon === "string" && data.icon) || "/icon-192.png",
     badge: (typeof data.badge === "string" && data.badge) || "/icon-192.png",
     tag: (typeof data.tag === "string" && data.tag) || `live-event-${event.id}`,

@@ -4,6 +4,7 @@ import { getDivisions, getEventsList, getEventsByIds } from "../services/leagueS
 import { getRecentMatches } from "../services/matchService";
 import { getPlayerDirectory } from "../services/playerService";
 import { getAllTeams } from "../services/teamService";
+import { getRecentLiveEvents } from "../services/liveEventService";
 import {
   deleteSubscriptionById,
   getSubscriptions,
@@ -46,6 +47,65 @@ function uniqueTopics(topics) {
   );
 }
 
+function getEventDataValue(data, ...keys) {
+  if (!data) return "";
+  for (const key of keys) {
+    if (key in data && data[key]) {
+      return String(data[key]);
+    }
+  }
+  return "";
+}
+
+function eventMatchesSubscription(event, subscription) {
+  if (!subscription?.target_type || !subscription?.target_id) return false;
+  const type = String(subscription.target_type).toLowerCase();
+  const targetId = String(subscription.target_id);
+  const data = event?.data && typeof event.data === "object" ? event.data : {};
+
+  const equalsTarget = (value) => {
+    if (value == null) return false;
+    return String(value) === targetId;
+  };
+
+  let matches = false;
+  switch (type) {
+    case "match":
+      matches = equalsTarget(event.match_id);
+      break;
+    case "team":
+      matches = equalsTarget(getEventDataValue(data, "team_id", "teamId", "team"));
+      break;
+    case "player":
+      matches = equalsTarget(getEventDataValue(data, "player_id", "playerId", "player"));
+      break;
+    case "event":
+      matches = equalsTarget(getEventDataValue(data, "event_id", "eventId"));
+      break;
+    case "division":
+      matches = equalsTarget(getEventDataValue(data, "division_id", "divisionId"));
+      break;
+    default:
+      if (Array.isArray(data.targets)) {
+        matches = data.targets.some((target) => {
+          if (!target || typeof target !== "object") return false;
+          const entry = target;
+          return (
+            String(entry.type || "").toLowerCase() === type &&
+            equalsTarget(entry.id)
+          );
+        });
+      }
+      break;
+  }
+
+  if (!matches) return false;
+  const topics = Array.isArray(subscription.topics) ? subscription.topics : [];
+  if (!topics.length) return true;
+  const eventType = String(event.event_type || "").toLowerCase();
+  return topics.some((topic) => String(topic || "").toLowerCase() === eventType);
+}
+
 export default function NotificationsPage() {
   const { session, loading: authLoading } = useAuth();
   const profileId = session?.user?.id ?? null;
@@ -65,6 +125,9 @@ export default function NotificationsPage() {
   const [choiceLoading, setChoiceLoading] = useState(false);
   const [choiceSearch, setChoiceSearch] = useState("");
   const [targetLabels, setTargetLabels] = useState({});
+  const [recentNotifications, setRecentNotifications] = useState([]);
+  const [recentLoading, setRecentLoading] = useState(false);
+  const [recentError, setRecentError] = useState(null);
   const [pushState, setPushState] = useState(() => ({
     supported: isPushSupported(),
     permission:
@@ -214,6 +277,42 @@ export default function NotificationsPage() {
       navigator.serviceWorker?.removeEventListener("message", handleMessage);
     };
   }, [pushState.supported]);
+
+  useEffect(() => {
+    if (!profileId) {
+      setRecentNotifications([]);
+      setRecentLoading(false);
+      setRecentError(null);
+      return;
+    }
+    if (!subscriptions.length) {
+      setRecentNotifications([]);
+      setRecentLoading(false);
+      setRecentError(null);
+      return;
+    }
+    let cancelled = false;
+    setRecentLoading(true);
+    setRecentError(null);
+    getRecentLiveEvents(50)
+      .then((events) => {
+        if (cancelled) return;
+        const filtered = (events || []).filter((event) =>
+          subscriptions.some((sub) => eventMatchesSubscription(event, sub)),
+        );
+        setRecentNotifications(filtered.slice(0, 5));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setRecentError(err.message || "Unable to load recent notifications.");
+      })
+      .finally(() => {
+        if (!cancelled) setRecentLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId, subscriptions]);
 
   const isLoggedOut = !authLoading && !profileId;
 
@@ -728,6 +827,85 @@ export default function NotificationsPage() {
                 </article>
               ))}
             </div>
+          )}
+        </section>
+
+        <section className="sc-card space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Recent notifications</h2>
+              <p className="text-sm text-[var(--sc-ink-muted)]">
+                The latest updates that match your follow preferences.
+              </p>
+            </div>
+            <span className="rounded-full border border-[var(--sc-border)] px-3 py-1 text-xs font-semibold text-[var(--sc-ink-muted)]">
+              {recentNotifications.length} shown
+            </span>
+          </div>
+
+          {isLoggedOut ? (
+            <p className="rounded-3xl border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-4 py-3 text-sm text-[var(--sc-ink-muted)]">
+              Sign in and follow something to see recent notifications here.
+            </p>
+          ) : recentError ? (
+            <p className="rounded-3xl border border-rose-400/40 bg-rose-500/15 px-4 py-3 text-sm text-rose-200">
+              {recentError}
+            </p>
+          ) : recentLoading ? (
+            <p className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-4 py-4 text-center text-sm text-[var(--sc-ink-muted)]">
+              Loading recent notifications...
+            </p>
+          ) : recentNotifications.length === 0 ? (
+            <p className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-4 py-4 text-center text-sm text-[var(--sc-ink-muted)]">
+              No recent notifications match your current follows.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {recentNotifications.map((event) => {
+                const data = (event.data && typeof event.data === "object" ? event.data : {}) ?? {};
+                const matchLabel =
+                  (typeof data.target_name === "string" && data.target_name.trim()) ||
+                  (typeof data.match_name === "string" && data.match_name.trim()) ||
+                  getSubscriptionLabel("match", event.match_id);
+                const title =
+                  (typeof data.title === "string" && data.title.trim()) ||
+                  (matchLabel ? `Update · ${matchLabel}` : event.event_type.replace(/_/g, " ")) ||
+                  "Match update";
+                const body =
+                  (typeof data.body === "string" && data.body.trim()) ||
+                  (typeof data.description === "string" && data.description.trim()) ||
+                  (matchLabel ? `New activity for ${matchLabel}` : "");
+                const createdAt = event.created_at ? new Date(event.created_at).toLocaleString() : "";
+                return (
+                  <li
+                    key={event.id}
+                    className="rounded-3xl border border-[var(--sc-border-strong)] bg-[var(--sc-surface-muted)] p-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-accent)]">
+                          {event.event_type}
+                        </p>
+                        <p className="text-base font-semibold text-[var(--sc-ink)]">{title}</p>
+                      </div>
+                      <p className="text-xs text-[var(--sc-ink-muted)]">{createdAt}</p>
+                    </div>
+                    {body && <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">{body}</p>}
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--sc-ink-muted)]">
+                      <span>Match: {matchLabel}</span>
+                      {event.match_id && (
+                        <a
+                          href={`/matches/${event.match_id}`}
+                          className="font-semibold text-[var(--sc-accent)] hover:underline"
+                        >
+                          View match
+                        </a>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </section>
       </main>
