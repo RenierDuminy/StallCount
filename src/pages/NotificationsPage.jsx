@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { getDivisions, getEventsList } from "../services/leagueService";
+import { getDivisions, getEventsList, getEventsByIds } from "../services/leagueService";
 import { getRecentMatches } from "../services/matchService";
 import { getPlayerDirectory } from "../services/playerService";
 import { getAllTeams } from "../services/teamService";
@@ -64,6 +64,7 @@ export default function NotificationsPage() {
   const [choices, setChoices] = useState([]);
   const [choiceLoading, setChoiceLoading] = useState(false);
   const [choiceSearch, setChoiceSearch] = useState("");
+  const [targetLabels, setTargetLabels] = useState({});
   const [pushState, setPushState] = useState(() => ({
     supported: isPushSupported(),
     permission:
@@ -122,7 +123,18 @@ export default function NotificationsPage() {
           rows = await getDivisions(200);
         }
         if (!cancelled) {
-          setChoices(rows || []);
+          const nextRows = rows || [];
+          setChoices(nextRows);
+          if (nextRows.length) {
+            setTargetLabels((prev) => {
+              const next = { ...prev };
+              nextRows.forEach((row) => {
+                const label = choiceDisplayLabel(row) || row.id;
+                next[`${targetType}:${row.id}`] = label;
+              });
+              return next;
+            });
+          }
         }
       } catch (err) {
         console.error("[Notifications] Failed to load selectable targets", err);
@@ -140,6 +152,32 @@ export default function NotificationsPage() {
       cancelled = true;
     };
   }, [targetType]);
+
+  useEffect(() => {
+    const missingEventIds = subscriptions
+      .filter((sub) => sub.target_type === "event")
+      .map((sub) => sub.target_id)
+      .filter((id) => id && !targetLabels[`event:${id}`]);
+    if (!missingEventIds.length) return undefined;
+    let ignore = false;
+    getEventsByIds(missingEventIds)
+      .then((rows) => {
+        if (ignore || !rows?.length) return;
+        setTargetLabels((prev) => {
+          const next = { ...prev };
+          rows.forEach((row) => {
+            next[`event:${row.id}`] = row.name || row.id;
+          });
+          return next;
+        });
+      })
+      .catch((err) => {
+        console.error("[Notifications] Failed to load event labels", err);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [subscriptions, targetLabels]);
 
   useEffect(() => {
     if (!pushState.supported) return undefined;
@@ -194,8 +232,8 @@ export default function NotificationsPage() {
 
   const formatMatchChoiceLabel = (match) => {
     if (!match) return "";
-    const teamA = match.team_a?.short_name || match.team_a?.name || "Team A";
-    const teamB = match.team_b?.short_name || match.team_b?.name || "Team B";
+    const teamA = match.team_a?.name || match.team_a?.short_name || "Team A";
+    const teamB = match.team_b?.name || match.team_b?.short_name || "Team B";
     return `${teamA} vs ${teamB}`;
   };
 
@@ -284,6 +322,13 @@ export default function NotificationsPage() {
       setSaving(false);
     }
   }
+
+  const getSubscriptionLabel = useCallback(
+    (type, id) => {
+      return targetLabels[`${type}:${id}`] || id;
+    },
+    [targetLabels],
+  );
 
   async function handleDelete(sub) {
     if (!sub?.id || !profileId) return;
@@ -628,7 +673,9 @@ export default function NotificationsPage() {
                       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-accent)]">
                         {sub.target_type}
                       </p>
-                      <p className="break-all font-semibold text-[var(--sc-ink)]">{sub.target_id}</p>
+                      <p className="break-all font-semibold text-[var(--sc-ink)]">
+                        {getSubscriptionLabel(sub.target_type, sub.target_id)}
+                      </p>
                     </div>
                     <button
                       type="button"
