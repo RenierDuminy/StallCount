@@ -1,6 +1,6 @@
-| trigger_name                 | schema_name | table_name         | trigger_definition                                                                                                                               | function_name          | function_definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ---------------------------- | ----------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| trg_audit_bracket_nodes      | public      | bracket_nodes      | CREATE TRIGGER trg_audit_bracket_nodes AFTER INSERT OR DELETE OR UPDATE ON bracket_nodes FOR EACH ROW EXECUTE FUNCTION audit_row()               | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trigger_name                      | schema_name | table_name         | trigger_definition                                                                                                                               | function_name               | function_definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------- | ----------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| trg_audit_bracket_nodes           | public      | bracket_nodes      | CREATE TRIGGER trg_audit_bracket_nodes AFTER INSERT OR DELETE OR UPDATE ON bracket_nodes FOR EACH ROW EXECUTE FUNCTION audit_row()               | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -54,7 +54,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_brackets           | public      | brackets           | CREATE TRIGGER trg_audit_brackets AFTER INSERT OR DELETE OR UPDATE ON brackets FOR EACH ROW EXECUTE FUNCTION audit_row()                         | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_brackets                | public      | brackets           | CREATE TRIGGER trg_audit_brackets AFTER INSERT OR DELETE OR UPDATE ON brackets FOR EACH ROW EXECUTE FUNCTION audit_row()                         | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -108,7 +108,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_division_teams     | public      | division_teams     | CREATE TRIGGER trg_audit_division_teams AFTER INSERT OR DELETE OR UPDATE ON division_teams FOR EACH ROW EXECUTE FUNCTION audit_row()             | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_division_teams          | public      | division_teams     | CREATE TRIGGER trg_audit_division_teams AFTER INSERT OR DELETE OR UPDATE ON division_teams FOR EACH ROW EXECUTE FUNCTION audit_row()             | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -162,7 +162,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_divisions          | public      | divisions          | CREATE TRIGGER trg_audit_divisions AFTER INSERT OR DELETE OR UPDATE ON divisions FOR EACH ROW EXECUTE FUNCTION audit_row()                       | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_divisions               | public      | divisions          | CREATE TRIGGER trg_audit_divisions AFTER INSERT OR DELETE OR UPDATE ON divisions FOR EACH ROW EXECUTE FUNCTION audit_row()                       | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -216,7 +216,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_events             | public      | events             | CREATE TRIGGER trg_audit_events AFTER INSERT OR DELETE OR UPDATE ON events FOR EACH ROW EXECUTE FUNCTION audit_row()                             | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_events                  | public      | events             | CREATE TRIGGER trg_audit_events AFTER INSERT OR DELETE OR UPDATE ON events FOR EACH ROW EXECUTE FUNCTION audit_row()                             | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -270,7 +270,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_live_events        | public      | live_events        | CREATE TRIGGER trg_audit_live_events AFTER INSERT OR DELETE OR UPDATE ON live_events FOR EACH ROW EXECUTE FUNCTION audit_row()                   | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_live_events             | public      | live_events        | CREATE TRIGGER trg_audit_live_events AFTER INSERT OR DELETE OR UPDATE ON live_events FOR EACH ROW EXECUTE FUNCTION audit_row()                   | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -324,7 +324,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_match_events       | public      | match_events       | CREATE TRIGGER trg_audit_match_events AFTER INSERT OR DELETE OR UPDATE ON match_events FOR EACH ROW EXECUTE FUNCTION audit_row()                 | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_match_events            | public      | match_events       | CREATE TRIGGER trg_audit_match_events AFTER INSERT OR DELETE OR UPDATE ON match_events FOR EACH ROW EXECUTE FUNCTION audit_row()                 | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -378,7 +378,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_match_logs         | public      | match_logs         | CREATE TRIGGER trg_audit_match_logs AFTER INSERT OR DELETE OR UPDATE ON match_logs FOR EACH ROW EXECUTE FUNCTION audit_row()                     | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_match_logs              | public      | match_logs         | CREATE TRIGGER trg_audit_match_logs AFTER INSERT OR DELETE OR UPDATE ON match_logs FOR EACH ROW EXECUTE FUNCTION audit_row()                     | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -432,7 +432,66 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_match_status       | public      | match_status       | CREATE TRIGGER trg_audit_match_status AFTER INSERT OR DELETE OR UPDATE ON match_status FOR EACH ROW EXECUTE FUNCTION audit_row()                 | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_match_logs_enqueue_live_event | public      | match_logs         | CREATE TRIGGER trg_match_logs_enqueue_live_event AFTER INSERT ON match_logs FOR EACH ROW EXECUTE FUNCTION enqueue_live_event_from_log()          | enqueue_live_event_from_log | CREATE OR REPLACE FUNCTION public.enqueue_live_event_from_log()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  event_code text;
+  payload jsonb;
+  match_rec record;
+begin
+  -- resolve the textual event code (live_events.event_type references match_events.code)
+  select code into event_code
+  from public.match_events
+  where id = new.event_type_id;
+
+  if event_code is null then
+    -- unknown event type: skip silently
+    return new;
+  end if;
+
+  -- optional: pull match details for richer payloads/title/url defaults
+  select
+    m.id,
+    m.event_id,
+    m.division_id,
+    m.team_a,
+    m.team_b,
+    m.start_time
+  into match_rec
+  from public.matches m
+  where m.id = new.match_id;
+
+  payload := jsonb_build_object(
+    'log_id', new.id,
+    'match_id', new.match_id,
+    'event_id', match_rec.event_id,
+    'division_id', match_rec.division_id,
+    'team_id', new.team_id,
+    'player_id', new.actor_id,
+    'secondary_player_id', new.secondary_actor_id,
+    'abba_line', new.abba_line,
+    'match_start_time', match_rec.start_time,
+    'title', coalesce(event_code || ' event recorded', 'Match update'),
+    'body', format(
+      'New %s event logged for match %s',
+      event_code,
+      new.match_id
+    ),
+    'url', format('/matches/%s', new.match_id)
+  );
+
+  insert into public.live_events (match_id, event_type, data)
+  values (new.match_id, event_code, payload);
+
+  return new;
+end;
+$function$
+                                                                                                                                                                                                |
+| trg_audit_match_status            | public      | match_status       | CREATE TRIGGER trg_audit_match_status AFTER INSERT OR DELETE OR UPDATE ON match_status FOR EACH ROW EXECUTE FUNCTION audit_row()                 | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -486,7 +545,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_matches            | public      | matches            | CREATE TRIGGER trg_audit_matches AFTER INSERT OR DELETE OR UPDATE ON matches FOR EACH ROW EXECUTE FUNCTION audit_row()                           | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_matches                 | public      | matches            | CREATE TRIGGER trg_audit_matches AFTER INSERT OR DELETE OR UPDATE ON matches FOR EACH ROW EXECUTE FUNCTION audit_row()                           | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -540,7 +599,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_matches_media_normalize  | public      | matches            | CREATE TRIGGER trg_matches_media_normalize BEFORE INSERT OR UPDATE OF media_link ON matches FOR EACH ROW EXECUTE FUNCTION normalize_media_link() | normalize_media_link   | CREATE OR REPLACE FUNCTION public.normalize_media_link()
+| trg_matches_media_normalize       | public      | matches            | CREATE TRIGGER trg_matches_media_normalize BEFORE INSERT OR UPDATE OF media_link ON matches FOR EACH ROW EXECUTE FUNCTION normalize_media_link() | normalize_media_link        | CREATE OR REPLACE FUNCTION public.normalize_media_link()
  RETURNS trigger
  LANGUAGE plpgsql
  SET search_path TO 'public'
@@ -598,7 +657,7 @@ BEGIN
 END
 $function$
  |
-| trg_audit_players            | public      | player             | CREATE TRIGGER trg_audit_players AFTER INSERT OR DELETE OR UPDATE ON player FOR EACH ROW EXECUTE FUNCTION audit_row()                            | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_players                 | public      | player             | CREATE TRIGGER trg_audit_players AFTER INSERT OR DELETE OR UPDATE ON player FOR EACH ROW EXECUTE FUNCTION audit_row()                            | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -652,14 +711,14 @@ BEGIN
 END
 $function$
                                    |
-| trg_players_touch            | public      | player             | CREATE TRIGGER trg_players_touch BEFORE UPDATE ON player FOR EACH ROW EXECUTE FUNCTION touch_updated_at()                                        | touch_updated_at       | CREATE OR REPLACE FUNCTION public.touch_updated_at()
+| trg_players_touch                 | public      | player             | CREATE TRIGGER trg_players_touch BEFORE UPDATE ON player FOR EACH ROW EXECUTE FUNCTION touch_updated_at()                                        | touch_updated_at            | CREATE OR REPLACE FUNCTION public.touch_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
 BEGIN NEW.updated_at := now(); RETURN NEW; END
 $function$
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| trg_players_tsv              | public      | player             | CREATE TRIGGER trg_players_tsv BEFORE INSERT OR UPDATE OF name, gender_code ON player FOR EACH ROW EXECUTE FUNCTION players_tsv_trigger()        | players_tsv_trigger    | CREATE OR REPLACE FUNCTION public.players_tsv_trigger()
+| trg_players_tsv                   | public      | player             | CREATE TRIGGER trg_players_tsv BEFORE INSERT OR UPDATE OF name, gender_code ON player FOR EACH ROW EXECUTE FUNCTION players_tsv_trigger()        | players_tsv_trigger         | CREATE OR REPLACE FUNCTION public.players_tsv_trigger()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
@@ -672,7 +731,7 @@ BEGIN
 END
 $function$
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| trg_audit_pool_teams         | public      | pool_teams         | CREATE TRIGGER trg_audit_pool_teams AFTER INSERT OR DELETE OR UPDATE ON pool_teams FOR EACH ROW EXECUTE FUNCTION audit_row()                     | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_pool_teams              | public      | pool_teams         | CREATE TRIGGER trg_audit_pool_teams AFTER INSERT OR DELETE OR UPDATE ON pool_teams FOR EACH ROW EXECUTE FUNCTION audit_row()                     | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -726,7 +785,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_pools              | public      | pools              | CREATE TRIGGER trg_audit_pools AFTER INSERT OR DELETE OR UPDATE ON pools FOR EACH ROW EXECUTE FUNCTION audit_row()                               | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_pools                   | public      | pools              | CREATE TRIGGER trg_audit_pools AFTER INSERT OR DELETE OR UPDATE ON pools FOR EACH ROW EXECUTE FUNCTION audit_row()                               | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -780,7 +839,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_spirit_scores      | public      | spirit_scores      | CREATE TRIGGER trg_audit_spirit_scores AFTER INSERT OR DELETE OR UPDATE ON spirit_scores FOR EACH ROW EXECUTE FUNCTION audit_row()               | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_spirit_scores           | public      | spirit_scores      | CREATE TRIGGER trg_audit_spirit_scores AFTER INSERT OR DELETE OR UPDATE ON spirit_scores FOR EACH ROW EXECUTE FUNCTION audit_row()               | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -834,7 +893,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_team_roster        | public      | team_roster        | CREATE TRIGGER trg_audit_team_roster AFTER INSERT OR DELETE OR UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION audit_row()                   | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_team_roster             | public      | team_roster        | CREATE TRIGGER trg_audit_team_roster AFTER INSERT OR DELETE OR UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION audit_row()                   | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -888,14 +947,14 @@ BEGIN
 END
 $function$
                                    |
-| trg_roster_touch             | public      | team_roster        | CREATE TRIGGER trg_roster_touch BEFORE UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION touch_updated_at()                                    | touch_updated_at       | CREATE OR REPLACE FUNCTION public.touch_updated_at()
+| trg_roster_touch                  | public      | team_roster        | CREATE TRIGGER trg_roster_touch BEFORE UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION touch_updated_at()                                    | touch_updated_at            | CREATE OR REPLACE FUNCTION public.touch_updated_at()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
 BEGIN NEW.updated_at := now(); RETURN NEW; END
 $function$
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| trg_team_roster_gender       | public      | team_roster        | CREATE TRIGGER trg_team_roster_gender AFTER INSERT OR DELETE OR UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION trg_roster_gender_sync()     | trg_roster_gender_sync | CREATE OR REPLACE FUNCTION public.trg_roster_gender_sync()
+| trg_team_roster_gender            | public      | team_roster        | CREATE TRIGGER trg_team_roster_gender AFTER INSERT OR DELETE OR UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION trg_roster_gender_sync()     | trg_roster_gender_sync      | CREATE OR REPLACE FUNCTION public.trg_roster_gender_sync()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
@@ -907,7 +966,7 @@ BEGIN
 END
 $function$
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| trg_audit_teams              | public      | teams              | CREATE TRIGGER trg_audit_teams AFTER INSERT OR DELETE OR UPDATE ON teams FOR EACH ROW EXECUTE FUNCTION audit_row()                               | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_teams                   | public      | teams              | CREATE TRIGGER trg_audit_teams AFTER INSERT OR DELETE OR UPDATE ON teams FOR EACH ROW EXECUTE FUNCTION audit_row()                               | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -961,7 +1020,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_webhook_deliveries | public      | webhook_deliveries | CREATE TRIGGER trg_audit_webhook_deliveries AFTER INSERT OR DELETE OR UPDATE ON webhook_deliveries FOR EACH ROW EXECUTE FUNCTION audit_row()     | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_webhook_deliveries      | public      | webhook_deliveries | CREATE TRIGGER trg_audit_webhook_deliveries AFTER INSERT OR DELETE OR UPDATE ON webhook_deliveries FOR EACH ROW EXECUTE FUNCTION audit_row()     | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -1015,7 +1074,7 @@ BEGIN
 END
 $function$
                                    |
-| trg_audit_webhook_endpoints  | public      | webhook_endpoints  | CREATE TRIGGER trg_audit_webhook_endpoints AFTER INSERT OR DELETE OR UPDATE ON webhook_endpoints FOR EACH ROW EXECUTE FUNCTION audit_row()       | audit_row              | CREATE OR REPLACE FUNCTION public.audit_row()
+| trg_audit_webhook_endpoints       | public      | webhook_endpoints  | CREATE TRIGGER trg_audit_webhook_endpoints AFTER INSERT OR DELETE OR UPDATE ON webhook_endpoints FOR EACH ROW EXECUTE FUNCTION audit_row()       | audit_row                   | CREATE OR REPLACE FUNCTION public.audit_row()
  RETURNS trigger
  LANGUAGE plpgsql
  SECURITY DEFINER
