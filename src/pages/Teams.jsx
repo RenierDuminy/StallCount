@@ -55,12 +55,13 @@ export default function TeamsPage() {
           <div className="flex flex-wrap items-center gap-3">
             <span className="sc-chip">Teams</span>
             <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              League overview
+              Operations directory
             </span>
           </div>
           <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">Registered teams</h1>
           <p className="text-sm text-[var(--sc-ink-muted)]">
-            Explore every team in the league. Search quickly and tap a card for more detail.
+            Review participating clubs, confirm short codes, and launch into individual team workspaces without leaving
+            the control room.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <Link to="/" className="sc-button is-ghost">
@@ -79,7 +80,7 @@ export default function TeamsPage() {
             <div className="space-y-1">
               <p className="sc-chip">Teams list</p>
               <p className="text-sm text-[var(--sc-ink-muted)]">
-                {loading ? "Loading..." : `${filteredTeams.length} of ${teams.length} teams shown`}
+                {loading ? "Refreshing enrollment..." : `${filteredTeams.length} of ${teams.length} clubs visible`}
               </p>
             </div>
             <label className="sc-card-muted flex w-full max-w-xs items-center gap-2 p-2 text-sm text-[var(--sc-ink-muted)]">
@@ -90,7 +91,7 @@ export default function TeamsPage() {
                 type="text"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Team name or short code"
+                placeholder="Search by team or short code"
                 className="w-full bg-transparent text-[var(--sc-ink)] placeholder:text-[var(--sc-ink-muted)] outline-none"
               />
             </label>
@@ -119,7 +120,7 @@ export default function TeamsPage() {
                 <Link
                   key={team.id}
                   to={`/teams/${team.id}`}
-                  className="sc-card-base group p-5 transition hover:-translate-y-0.5"
+                  className="rounded-2xl border border-[var(--sc-border)]/80 bg-[rgba(10,29,24,0.85)] p-4 shadow-lg transition hover:-translate-y-0.5 hover:shadow-strong hover:border-[var(--sc-border-glow)]/60"
                 >
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Team</p>
                   <h3 className="mt-3 text-xl font-semibold text-[var(--sc-ink)] group-hover:text-[var(--sc-accent)]">

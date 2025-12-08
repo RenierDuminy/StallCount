@@ -435,48 +435,54 @@ function GamesTable({ matches, teamId, venueLookup }) {
 }
 
 function PlayersTable({ stats, rosterCount }) {
-  const [filters, setFilters] = useState({
-    jersey: "",
-    name: "",
-    minGoals: "",
-    minAssists: "",
-    minBlocks: "",
-    minTurnovers: "",
-    minGames: "",
-  });
+  const [sortConfig, setSortConfig] = useState({ key: "total", direction: "desc" });
 
-  const filteredStats = useMemo(() => {
-    return (stats ?? []).filter((stat) => {
-      const matchesJersey =
-        !filters.jersey ||
-        String(stat.jerseyNumber ?? "")
-          .toLowerCase()
-          .includes(filters.jersey.toLowerCase());
-      const matchesName =
-        !filters.name ||
-        stat.playerName.toLowerCase().includes(filters.name.toLowerCase());
+  const sortedStats = useMemo(() => {
+    if (!stats?.length) return [];
+    const data = [...stats];
+    const compare = (a, b) => {
+      const dir = sortConfig.direction === "asc" ? 1 : -1;
+      const getValue = (row) => {
+        if (sortConfig.key === "total") return row.goals + row.assists;
+        if (sortConfig.key === "playerName") return row.playerName?.toLowerCase() ?? "";
+        if (sortConfig.key === "jerseyNumber") return row.jerseyNumber ?? Number.NEGATIVE_INFINITY;
+        return row[sortConfig.key] ?? 0;
+      };
+      const aVal = getValue(a);
+      const bVal = getValue(b);
+      if (aVal === bVal) {
+        return a.playerName.localeCompare(b.playerName) * dir;
+      }
+      if (typeof aVal === "string" || typeof bVal === "string") {
+        return (aVal > bVal ? 1 : -1) * dir;
+      }
+      return (Number(aVal) > Number(bVal) ? 1 : -1) * dir;
+    };
+    return data.sort(compare);
+  }, [stats, sortConfig]);
 
-      const goalsOk =
-        filters.minGoals === "" || stat.goals >= Number(filters.minGoals);
-      const assistsOk =
-      filters.minAssists === "" || stat.assists >= Number(filters.minAssists);
-      const blocksOk =
-        filters.minBlocks === "" || stat.blocks >= Number(filters.minBlocks);
-      const turnoversOk =
-        filters.minTurnovers === "" ||
-        stat.turnovers >= Number(filters.minTurnovers);
-      const gamesOk =
-        filters.minGames === "" || stat.games >= Number(filters.minGames);
-
-      return matchesJersey && matchesName && goalsOk && assistsOk && blocksOk && turnoversOk && gamesOk;
+  const requestSort = (key) => {
+    setSortConfig((prev) => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
+      }
+      return { key, direction: "desc" };
     });
-  }, [filters, stats]);
-
-  const handleFilterChange = (key, value) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
-  const dataToRender = filteredStats;
+  const renderSortLabel = (label, key) => {
+    const isActive = sortConfig.key === key;
+    const arrow = isActive ? (sortConfig.direction === "asc" ? "↑" : "↓") : "";
+    return (
+      <button
+        type="button"
+        onClick={() => requestSort(key)}
+        className={`inline-flex items-center gap-1 text-left ${isActive ? "text-slate-900" : ""}`}
+      >
+        {label} {arrow && <span className="text-[10px]">{arrow}</span>}
+      </button>
+    );
+  };
 
   if (!stats?.length) {
     return (
@@ -495,99 +501,18 @@ function PlayersTable({ stats, rosterCount }) {
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-100/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">Number</th>
-              <th className="px-4 py-3">Player</th>
-              <th className="px-4 py-3 text-right">Goals</th>
-              <th className="px-4 py-3 text-right">Assists</th>
-              <th className="px-4 py-3 text-right">Blocks</th>
-              <th className="px-4 py-3 text-right">Turnovers</th>
-              <th className="px-4 py-3 text-right">Games</th>
-              <th className="px-4 py-3 text-right">Tot/Gm</th>
-            </tr>
-            <tr>
-              <th className="px-4 py-2">
-                <input
-                  type="text"
-                  value={filters.jersey}
-                  onChange={(e) => handleFilterChange("jersey", e.target.value)}
-                  placeholder="Filter"
-                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 focus:border-brand focus:outline-none"
-                />
-              </th>
-              <th className="px-4 py-2">
-                <input
-                  type="text"
-                  value={filters.name}
-                  onChange={(e) => handleFilterChange("name", e.target.value)}
-                  placeholder="Search name"
-                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 focus:border-brand focus:outline-none"
-                />
-              </th>
-              <th className="px-4 py-2">
-                <input
-                  type="number"
-                  min="0"
-                  value={filters.minGoals}
-                  onChange={(e) =>
-                    handleFilterChange("minGoals", e.target.value)
-                  }
-                  placeholder="≥"
-                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right text-slate-600 focus:border-brand focus:outline-none"
-                />
-              </th>
-              <th className="px-4 py-2">
-                <input
-                  type="number"
-                  min="0"
-                  value={filters.minAssists}
-                  onChange={(e) =>
-                    handleFilterChange("minAssists", e.target.value)
-                  }
-                  placeholder="≥"
-                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right text-slate-600 focus:border-brand focus:outline-none"
-                />
-              </th>
-              <th className="px-4 py-2">
-                <input
-                  type="number"
-                  min="0"
-                  value={filters.minBlocks}
-                  onChange={(e) =>
-                    handleFilterChange("minBlocks", e.target.value)
-                  }
-                  placeholder="≥"
-                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right text-slate-600 focus:border-brand focus:outline-none"
-                />
-              </th>
-              <th className="px-4 py-2">
-                <input
-                  type="number"
-                  min="0"
-                  value={filters.minTurnovers}
-                  onChange={(e) =>
-                    handleFilterChange("minTurnovers", e.target.value)
-                  }
-                  placeholder="≥"
-                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right text-slate-600 focus:border-brand focus:outline-none"
-                />
-              </th>
-              <th className="px-4 py-2">
-                <input
-                  type="number"
-                  min="0"
-                  value={filters.minGames}
-                  onChange={(e) =>
-                    handleFilterChange("minGames", e.target.value)
-                  }
-                  placeholder="≥"
-                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right text-slate-600 focus:border-brand focus:outline-none"
-                />
-              </th>
-              <th />
+              <th className="px-4 py-3">{renderSortLabel("Number", "jerseyNumber")}</th>
+              <th className="px-4 py-3">{renderSortLabel("Player", "playerName")}</th>
+              <th className="px-4 py-3 text-right">{renderSortLabel("Goals", "goals")}</th>
+              <th className="px-4 py-3 text-right">{renderSortLabel("Assists", "assists")}</th>
+              <th className="px-4 py-3 text-right">{renderSortLabel("Blocks", "blocks")}</th>
+              <th className="px-4 py-3 text-right">{renderSortLabel("Turnovers", "turnovers")}</th>
+              <th className="px-4 py-3 text-right">{renderSortLabel("Games", "games")}</th>
+              <th className="px-4 py-3 text-right">{renderSortLabel("Total (G+A)", "total")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-slate-700">
-            {dataToRender.map((stat) => {
+            {sortedStats.map((stat) => {
               const total = stat.goals + stat.assists;
               return (
                 <tr key={stat.playerId}>
@@ -620,7 +545,7 @@ function PlayersTable({ stats, rosterCount }) {
         </table>
       </div>
       <p className="text-center text-sm text-slate-500">
-        Active roster count: {rosterCount || 0} • Showing {dataToRender.length} players
+        Active roster count: {rosterCount || 0}
       </p>
     </div>
   );

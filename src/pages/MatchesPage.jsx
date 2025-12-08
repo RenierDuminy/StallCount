@@ -167,11 +167,12 @@ export default function MatchesPage() {
           <div className="flex flex-wrap items-center gap-3">
             <span className="sc-chip">Matches</span>
             <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              Timeline and logs
+              Broadcast & officiating view
             </span>
           </div>
           <p className="text-base text-[var(--sc-ink-muted)]">
-            Explore completed matches, view the scoring progression, and dig into a detailed point-by-point log.
+            Audit full-match context: confirm event slates, stream links, scoring tempo, and the official point-by-point
+            chronology from a single console.
           </p>
           <div className="grid gap-3 md:grid-cols-[1.1fr_0.9fr] md:items-center">
             <label className="space-y-1 text-sm font-semibold text-[var(--sc-ink)]">
@@ -297,15 +298,15 @@ export default function MatchesPage() {
         )}
         {!selectedEventId ? (
           <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
-            Select an event to view its matches.
+            Choose an event above to load its fixture list and associated telemetry.
           </div>
         ) : !selectedMatchId ? (
           <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
-            Choose a match to see the scoring timeline and full log.
+            Select a match to unlock the scoring timeline, possession map, and match log.
           </div>
         ) : logsLoading || !derived ? (
           <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
-            Loading match data...
+            Loading match intelligence...
           </div>
         ) : (
           <>

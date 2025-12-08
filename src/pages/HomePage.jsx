@@ -152,12 +152,12 @@ export default function HomePage() {
                   StallCount Insight Hub
                 </p>
                 <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
-                  Building competitive growth with{" "}
-                  <span className="text-[var(--sc-accent)]">clarity</span> & intent
+                  Delivering{" "}
+                  <span className="text-[var(--sc-accent)]">clarity</span> for every competition touchpoint
                 </h1>
                 <p className="max-w-2xl text-base text-[var(--sc-ink-muted)]">
-                  Track matches, elevate player data, and keep every division aligned. Purpose-built for directors,
-                  captains, and fans.
+                  Keep tournaments, clubs, and broadcast partners aligned with live scoring, curated player data, and
+                  division intelligence built for modern event directors.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
@@ -248,7 +248,7 @@ export default function HomePage() {
               <div>
                 <p className="sc-chip">Events</p>
                 <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Timeline</h2>
-                <p className="text-sm text-[var(--sc-ink-muted)]">Latest events with dates and locations.</p>
+                <p className="text-sm text-[var(--sc-ink-muted)]">Key milestones, launch dates, and venues at a glance.</p>
               </div>
             </div>
             {loading && safeEvents.length === 0 ? (
@@ -286,7 +286,7 @@ export default function HomePage() {
               <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p className="sc-chip">Matches</p>
-                  <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Latest scores</h2>
+                  <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Latest match reports</h2>
                 </div>
               </div>
               {loading && safeMatches.length === 0 ? (
@@ -298,25 +298,31 @@ export default function HomePage() {
               ) : (
                 <div className="space-y-3">
                   {safeMatches.slice(0, 4).map((match) => (
-                    <article key={match.id} className="sc-card-muted p-4">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                            {match.event?.name || "Match"}
-                          </p>
-                          <h3 className="text-xl font-semibold text-[var(--sc-ink)]">{formatMatchup(match)}</h3>
-                          <p className="text-xs text-[var(--sc-ink-muted)]">{formatMatchTime(match.start_time)}</p>
+                    <Link
+                      key={match.id}
+                      to={`/matches?matchId=${match.id}`}
+                      className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/70"
+                    >
+                      <article className="rounded-2xl border border-[var(--sc-border)]/80 bg-[rgba(10,29,24,0.85)] p-4 shadow-lg transition hover:-translate-y-0.5 hover:shadow-strong hover:border-[var(--sc-border-glow)]/60">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                              {match.event?.name || "Match"}
+                            </p>
+                            <h3 className="text-xl font-semibold text-[var(--sc-ink)]">{formatMatchup(match)}</h3>
+                            <p className="text-xs text-[var(--sc-ink-muted)]">{formatMatchTime(match.start_time)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-3xl font-semibold text-[var(--sc-accent)]">
+                              {match.score_a} <span className="text-[var(--sc-border)]">-</span> {match.score_b}
+                            </p>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                              {match.status || "scheduled"}
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-3xl font-semibold text-[var(--sc-accent)]">
-                            {match.score_a} <span className="text-[var(--sc-border)]">-</span> {match.score_b}
-                          </p>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                            {match.status || "scheduled"}
-                          </p>
-                        </div>
-                      </div>
-                    </article>
+                      </article>
+                    </Link>
                   ))}
                 </div>
               )}
@@ -363,7 +369,9 @@ export default function HomePage() {
               <div>
                 <p className="sc-chip">Teams</p>
                 <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Teams spotlight</h2>
-                <p className="text-sm text-[var(--sc-ink-muted)] sm:text-base">Featured teams from around the league.</p>
+                <p className="text-sm text-[var(--sc-ink-muted)] sm:text-base">
+                  Handpicked programs showcasing league talent and operational excellence.
+                </p>
               </div>
               <Link to="/teams" className="sc-button">
                 View all
@@ -403,7 +411,7 @@ export default function HomePage() {
       <footer className="sc-shell mt-10">
         <div className="sc-card-muted flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
           <p className="font-semibold text-[var(--sc-ink)]">
-            &copy; {new Date().getFullYear()} StallCount. Live league data.
+            &copy; {new Date().getFullYear()} StallCount. Trusted competition intelligence.
           </p>
           <div className="flex flex-wrap items-center gap-3 md:gap-4">
             <a href="#events" className="font-semibold text-[var(--sc-accent)]">

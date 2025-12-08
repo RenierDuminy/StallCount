@@ -181,19 +181,20 @@ export default function DivisionsPage() {
           <div className="flex flex-wrap items-center gap-3">
             <span className="sc-chip">Divisions</span>
             <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              Events and fixtures
+              Event operations
             </span>
           </div>
-          <h1 className="text-3xl font-semibold">Pick an event to explore its details.</h1>
+          <h1 className="text-3xl font-semibold">Division control center</h1>
           <p className="text-sm text-[var(--sc-ink-muted)] max-w-3xl">
-            Browse tournaments, check schedules, and jump into match details.
+            Select a tournament to view its calendar, venue posture, rule set, and live fixtures—everything organizers
+            need to keep divisions moving on time.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Link to="/division-results" className="sc-button">
               Division results
             </Link>
             <span className="text-xs text-[var(--sc-ink-muted)]">
-              Residence league swiss table now available.
+              View consolidated standings and scoring ladders.
             </span>
           </div>
         </div>
@@ -317,7 +318,7 @@ export default function DivisionsPage() {
                   </div>
                 )}
                 <p className="text-xs text-[var(--sc-ink-muted)]">
-                  Choose an event, then head to Matches for full fixtures.
+                  Lock an event here and transition to Matches for deeper analytics or officiating detail.
                 </p>
               </div>
             )}
@@ -328,7 +329,9 @@ export default function DivisionsPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="sc-chip">Scoreboard</p>
-              <p className="text-sm text-[var(--sc-ink-muted)]">View matches for the selected event by status.</p>
+              <p className="text-sm text-[var(--sc-ink-muted)]">
+                Monitor streaming assignments and results for the selected event, filtered by competitive state.
+              </p>
             </div>
             <div className="inline-flex flex-wrap items-center gap-2">
               {[

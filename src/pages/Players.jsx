@@ -71,14 +71,12 @@ export default function Players() {
         <div className="flex w-full flex-col gap-3 px-6 py-6 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              League overview
+              Roster intelligence
             </p>
-            <h1 className="text-3xl font-semibold text-slate-900">
-              Player roster
-            </h1>
+            <h1 className="text-3xl font-semibold text-slate-900">Player roster</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Live list sourced from Supabase. Filter by team or name and double-check
-              jersey numbers before syncing to match sheets.
+              Audit-ready player data synced from Supabase. Search by athlete or team, validate jersey assignments, and
+              keep broadcast notes accurate.
             </p>
           </div>
           <Link
@@ -106,7 +104,7 @@ export default function Players() {
               />
             </label>
             <p className="text-sm text-slate-500">
-              {loading ? "Updating roster..." : `${players.length} players`}
+              {loading ? "Refreshing roster..." : `${players.length} active profiles`}
             </p>
           </div>
 
@@ -119,11 +117,11 @@ export default function Players() {
           <div className="mt-6 space-y-6">
             {loading && players.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-                Loading player data...
+                Retrieving player data...
               </div>
             ) : groupedPlayers.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-                No players match this search.
+                No roster entries match this filter.
               </div>
             ) : (
               groupedPlayers.map(([teamName, roster]) => (
@@ -155,7 +153,7 @@ export default function Players() {
                         {roster.map((player) => (
                           <tr key={player.id}>
                             <td className="px-4 py-3 font-semibold text-slate-900">
-                              {player.jersey_number ?? "—"}
+                              {player.jersey_number ?? "--"}
                             </td>
                             <td className="px-4 py-3">
                               <div className="font-medium text-slate-900">
@@ -171,7 +169,7 @@ export default function Players() {
                                   {GENDER_BADGES[player.gender_code] || player.gender_code}
                                 </span>
                               ) : (
-                                <span className="text-slate-400">—</span>
+                                <span className="text-slate-400">--</span>
                               )}
                             </td>
                           </tr>
