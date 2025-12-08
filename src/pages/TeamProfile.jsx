@@ -435,6 +435,49 @@ function GamesTable({ matches, teamId, venueLookup }) {
 }
 
 function PlayersTable({ stats, rosterCount }) {
+  const [filters, setFilters] = useState({
+    jersey: "",
+    name: "",
+    minGoals: "",
+    minAssists: "",
+    minBlocks: "",
+    minTurnovers: "",
+    minGames: "",
+  });
+
+  const filteredStats = useMemo(() => {
+    return (stats ?? []).filter((stat) => {
+      const matchesJersey =
+        !filters.jersey ||
+        String(stat.jerseyNumber ?? "")
+          .toLowerCase()
+          .includes(filters.jersey.toLowerCase());
+      const matchesName =
+        !filters.name ||
+        stat.playerName.toLowerCase().includes(filters.name.toLowerCase());
+
+      const goalsOk =
+        filters.minGoals === "" || stat.goals >= Number(filters.minGoals);
+      const assistsOk =
+      filters.minAssists === "" || stat.assists >= Number(filters.minAssists);
+      const blocksOk =
+        filters.minBlocks === "" || stat.blocks >= Number(filters.minBlocks);
+      const turnoversOk =
+        filters.minTurnovers === "" ||
+        stat.turnovers >= Number(filters.minTurnovers);
+      const gamesOk =
+        filters.minGames === "" || stat.games >= Number(filters.minGames);
+
+      return matchesJersey && matchesName && goalsOk && assistsOk && blocksOk && turnoversOk && gamesOk;
+    });
+  }, [filters, stats]);
+
+  const handleFilterChange = (key, value) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const dataToRender = filteredStats;
+
   if (!stats?.length) {
     return (
       <div className="space-y-4">
@@ -448,44 +491,128 @@ function PlayersTable({ stats, rosterCount }) {
 
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded-2xl border border-slate-200">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <thead className="bg-slate-100/80 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">#</th>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3 text-right">Total</th>
-              <th className="px-4 py-3 text-right">Assists</th>
+              <th className="px-4 py-3">Number</th>
+              <th className="px-4 py-3">Player</th>
               <th className="px-4 py-3 text-right">Goals</th>
+              <th className="px-4 py-3 text-right">Assists</th>
+              <th className="px-4 py-3 text-right">Blocks</th>
+              <th className="px-4 py-3 text-right">Turnovers</th>
               <th className="px-4 py-3 text-right">Games</th>
               <th className="px-4 py-3 text-right">Tot/Gm</th>
-              <th className="px-4 py-3 text-right">Ast/Gm</th>
-              <th className="px-4 py-3 text-right">Gls/Gm</th>
-              <th className="px-4 py-3 text-right">Callahans</th>
+            </tr>
+            <tr>
+              <th className="px-4 py-2">
+                <input
+                  type="text"
+                  value={filters.jersey}
+                  onChange={(e) => handleFilterChange("jersey", e.target.value)}
+                  placeholder="Filter"
+                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-4 py-2">
+                <input
+                  type="text"
+                  value={filters.name}
+                  onChange={(e) => handleFilterChange("name", e.target.value)}
+                  placeholder="Search name"
+                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-4 py-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={filters.minGoals}
+                  onChange={(e) =>
+                    handleFilterChange("minGoals", e.target.value)
+                  }
+                  placeholder="≥"
+                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right text-slate-600 focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-4 py-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={filters.minAssists}
+                  onChange={(e) =>
+                    handleFilterChange("minAssists", e.target.value)
+                  }
+                  placeholder="≥"
+                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right text-slate-600 focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-4 py-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={filters.minBlocks}
+                  onChange={(e) =>
+                    handleFilterChange("minBlocks", e.target.value)
+                  }
+                  placeholder="≥"
+                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right text-slate-600 focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-4 py-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={filters.minTurnovers}
+                  onChange={(e) =>
+                    handleFilterChange("minTurnovers", e.target.value)
+                  }
+                  placeholder="≥"
+                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right text-slate-600 focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th className="px-4 py-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={filters.minGames}
+                  onChange={(e) =>
+                    handleFilterChange("minGames", e.target.value)
+                  }
+                  placeholder="≥"
+                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs text-right text-slate-600 focus:border-brand focus:outline-none"
+                />
+              </th>
+              <th />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
-            {stats.map((stat) => {
+          <tbody className="divide-y divide-slate-100 text-slate-700">
+            {dataToRender.map((stat) => {
               const total = stat.goals + stat.assists;
               return (
                 <tr key={stat.playerId}>
-                  <td className="px-4 py-2 text-slate-600">{stat.jerseyNumber ?? "-"}</td>
-                  <td className="px-4 py-2 font-semibold text-slate-900">
-                    <Link
-                      to={`/players/${stat.playerId}`}
-                      className="text-slate-900 underline decoration-dotted decoration-slate-300 underline-offset-4 transition hover:text-slate-600"
-                    >
-                      {stat.playerName}
-                    </Link>
+                  <td className="px-4 py-3 font-semibold text-slate-900">
+                    {stat.jerseyNumber ?? "--"}
                   </td>
-                  <td className="px-4 py-2 text-right font-semibold text-slate-900">{total}</td>
-                  <td className="px-4 py-2 text-right">{stat.assists}</td>
-                  <td className="px-4 py-2 text-right">{stat.goals}</td>
-                  <td className="px-4 py-2 text-right">{stat.games}</td>
-                  <td className="px-4 py-2 text-right">{formatPerGame(total, stat.games)}</td>
-                  <td className="px-4 py-2 text-right">{formatPerGame(stat.assists, stat.games)}</td>
-                  <td className="px-4 py-2 text-right">{formatPerGame(stat.goals, stat.games)}</td>
-                  <td className="px-4 py-2 text-right text-slate-400">0</td>
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-slate-900">
+                      <Link
+                        to={`/players/${stat.playerId}`}
+                        className="text-slate-900 underline decoration-dotted decoration-slate-300 underline-offset-4 transition hover:text-slate-600"
+                      >
+                        {stat.playerName}
+                      </Link>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Total: {total} ({stat.goals} G / {stat.assists} A)
+                    </p>
+                  </td>
+                  <td className="px-4 py-3 text-right font-semibold text-slate-900">{stat.goals}</td>
+                  <td className="px-4 py-3 text-right">{stat.assists}</td>
+                  <td className="px-4 py-3 text-right">{stat.blocks}</td>
+                  <td className="px-4 py-3 text-right">{stat.turnovers}</td>
+                  <td className="px-4 py-3 text-right">{stat.games || 0}</td>
+                  <td className="px-4 py-3 text-right">{formatPerGame(total, stat.games)}</td>
                 </tr>
               );
             })}
@@ -493,7 +620,7 @@ function PlayersTable({ stats, rosterCount }) {
         </table>
       </div>
       <p className="text-center text-sm text-slate-500">
-        Active roster count: {rosterCount || 0}
+        Active roster count: {rosterCount || 0} • Showing {dataToRender.length} players
       </p>
     </div>
   );
