@@ -521,6 +521,63 @@ export default function NotificationsPage() {
                 <p className="text-[11px] text-[var(--sc-ink-muted)]">targets currently tracked</p>
               </div>
             </div>
+
+            <div className="rounded-3xl border border-[var(--sc-border)]/70 bg-[var(--sc-surface-muted)] p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Browser push status</h2>
+                  <p className="text-sm text-[var(--sc-ink-muted)]">
+                    We use the PWA service worker to deliver alerts in the background. Enable this to receive match
+                    updates without opening the site.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[var(--sc-border)]/60 bg-[var(--sc-surface)] px-4 py-3 text-right">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                    Permission
+                  </p>
+                  <p className="text-lg font-semibold text-[var(--sc-ink)]">{pushState.permission}</p>
+                  <p className="text-[11px] text-[var(--sc-ink-muted)]">
+                    {pushState.enabled ? "Subscribed" : "Not subscribed"}
+                  </p>
+                </div>
+              </div>
+
+              {!pushState.supported ? (
+                <p className="mt-3 rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">
+                  Push notifications are not supported in this browser.
+                </p>
+              ) : pushState.permission === "denied" ? (
+                <p className="mt-3 rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">
+                  Notifications are blocked in your browser. Update the permission settings and retry.
+                </p>
+              ) : (
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={handleEnablePush}
+                    disabled={pushState.busy || pushState.enabled}
+                    className="rounded-2xl bg-[var(--sc-accent)] px-4 py-2 text-sm font-semibold text-[#041311] shadow disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {pushState.busy ? "Working..." : pushState.enabled ? "Enabled" : "Enable push"}
+                  </button>
+                  {pushState.enabled && (
+                    <button
+                      type="button"
+                      onClick={handleDisablePush}
+                      disabled={pushState.busy}
+                      className="rounded-2xl border border-[var(--sc-border-strong)] px-4 py-2 text-sm font-semibold text-[var(--sc-ink)] hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Disable push
+                    </button>
+                  )}
+                </div>
+              )}
+              {pushState.error && (
+                <p className="mt-3 rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">
+                  {pushState.error}
+                </p>
+              )}
+            </div>
           </div>
         </header>
 
@@ -541,59 +598,6 @@ export default function NotificationsPage() {
             {success}
           </div>
         )}
-
-        <section className="sc-card space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Browser push status</h2>
-              <p className="text-sm text-[var(--sc-ink-muted)]">
-                We use the PWA service worker to deliver alerts in the background. Enable this to
-                receive match updates without opening the site.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[var(--sc-border)]/60 bg-[var(--sc-surface-muted)] px-4 py-3 text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                Permission
-              </p>
-              <p className="text-lg font-semibold text-[var(--sc-ink)]">{pushState.permission}</p>
-              <p className="text-[11px] text-[var(--sc-ink-muted)]">
-                {pushState.enabled ? "Subscribed" : "Not subscribed"}
-              </p>
-            </div>
-          </div>
-
-          {!pushState.supported ? (
-            <p className="text-sm text-rose-200">
-              Push notifications are not supported in this browser.
-            </p>
-          ) : pushState.permission === "denied" ? (
-            <p className="text-sm text-rose-200">
-              Notifications are blocked in your browser. Update the permission settings and retry.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={handleEnablePush}
-                disabled={pushState.busy || pushState.enabled}
-                className="rounded-2xl bg-[var(--sc-accent)] px-4 py-2 text-sm font-semibold text-[#041311] shadow disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {pushState.busy ? "Working..." : pushState.enabled ? "Enabled" : "Enable push"}
-              </button>
-              {pushState.enabled && (
-                <button
-                  type="button"
-                  onClick={handleDisablePush}
-                  disabled={pushState.busy}
-                  className="rounded-2xl border border-[var(--sc-border-strong)] px-4 py-2 text-sm font-semibold text-[var(--sc-ink)] hover:border-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Disable push
-                </button>
-              )}
-            </div>
-          )}
-          {pushState.error && <p className="text-sm text-rose-200">{pushState.error}</p>}
-        </section>
 
         <section className="sc-card space-y-4">
           <div>

@@ -22,8 +22,8 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "StallCount";
   const options = {
     body: payload.body || "Tap to open StallCount.",
-    icon: payload.icon || "/icon-192.png",
-    badge: payload.badge || "/icon-192.png",
+    icon: payload.icon || "/StallCount logo_192_v1.png",
+    badge: payload.badge || "/StallCount logo_192_v1.png",
     tag: payload.tag || "stallcount-updates",
     data: { url: payload.url || "/", ...payload.data },
     renotify: Boolean(payload.renotify),

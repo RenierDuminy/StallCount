@@ -3,6 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES, getMatchLogs } from "../services/matchLogService";
 import { getMatchById, getMatchesByEvent } from "../services/matchService";
 import { getEventsList } from "../services/leagueService";
+import { MatchMediaButton } from "../components/MatchMediaButton";
+import { getMatchMediaDetails } from "../utils/matchMedia";
 
 const SERIES_COLORS = {
   teamA: "#1d4ed8",
@@ -155,6 +157,7 @@ export default function MatchesPage() {
     };
   }, [selectedMatchId]);
 
+  const matchMediaDetails = useMemo(() => getMatchMediaDetails(selectedMatch), [selectedMatch]);
   const derived = useMemo(() => deriveMatchInsights(selectedMatch, matchLogs), [selectedMatch, matchLogs]);
 
   return (
@@ -268,13 +271,18 @@ export default function MatchesPage() {
             </label>
             {selectedMatch && (
               <div className="sc-card-muted p-4">
-                <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Current selection</p>
-                <p className="font-semibold text-[var(--sc-ink)]">
-                  {selectedMatch.team_a?.name} vs {selectedMatch.team_b?.name}
-                </p>
-                <p className="text-xs text-[var(--sc-ink-muted)]">
-                  Kickoff {formatKickoff(selectedMatch.start_time)} | Status {selectedMatch.status}
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Current selection</p>
+                    <p className="font-semibold text-[var(--sc-ink)]">
+                      {selectedMatch.team_a?.name} vs {selectedMatch.team_b?.name}
+                    </p>
+                    <p className="text-xs text-[var(--sc-ink-muted)]">
+                      Kickoff {formatKickoff(selectedMatch.start_time)} | Status {selectedMatch.status}
+                    </p>
+                  </div>
+                  {matchMediaDetails ? <MatchMediaButton media={matchMediaDetails} /> : null}
+                </div>
               </div>
             )}
           </div>
