@@ -41,6 +41,7 @@ import {
 const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
+const MAX_OVERTIME_SECONDS = 30 * 60;
 
 const OPTIMISTIC_PREFIX = "local-";
 
@@ -361,18 +362,31 @@ function deriveTimerStateFromSnapshot(
   };
 }
 
-function normalizeSeconds(value, fallback = 0) {
+function normalizeSeconds(value, fallback = 0, options = {}) {
+  const { min = 0, max = null } = options;
   const numeric = Number.isFinite(value) ? value : fallback;
-  return Math.max(0, Math.round(numeric));
+  let next = Math.round(numeric);
+  if (typeof max === "number") {
+    next = Math.min(max, next);
+  }
+  if (typeof min === "number") {
+    next = Math.max(min, next);
+  }
+  return next;
 }
 
-function computeRemainingSeconds(anchor, isRunning, fallback = 0) {
-  const base = normalizeSeconds(anchor?.baseSeconds, fallback);
+function computeRemainingSeconds(anchor, isRunning, fallback = 0, options = {}) {
+  const { minSeconds = 0 } = options;
+  const base = normalizeSeconds(anchor?.baseSeconds, fallback, { min: minSeconds });
   if (!isRunning || !anchor?.anchorTimestamp) {
     return base;
   }
   const elapsedSeconds = Math.floor((Date.now() - anchor.anchorTimestamp) / 1000);
-  return Math.max(0, base - elapsedSeconds);
+  const raw = base - elapsedSeconds;
+  if (typeof minSeconds === "number") {
+    return Math.max(minSeconds, raw);
+  }
+  return raw;
 }
 
 export function useScoreKeeperData() {
@@ -432,8 +446,11 @@ const [secondaryTotalSeconds, setSecondaryTotalSeconds] = useState(
   const [hardCapReached, setHardCapReached] = useState(false);
 const [secondaryFlashActive, setSecondaryFlashActive] = useState(false);
 const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
+const [secondaryFlashRateMs, setSecondaryFlashRateMs] = useState(400);
 const [possessionTeam, setPossessionTeam] = useState(null);
 const [halftimeTriggered, setHalftimeTriggered] = useState(false);
+const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
+const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
   const [resumeCandidate, setResumeCandidate] = useState(null);
   const [resumeHandled, setResumeHandled] = useState(false);
   const [resumeBusy, setResumeBusy] = useState(false);
@@ -607,7 +624,10 @@ useEffect(() => {
 }, [activeMatch?.venue_id, selectedMatch?.venue_id, venueLookup]);
 
 const getPrimaryRemainingSeconds = useCallback(
-  () => computeRemainingSeconds(primaryTimerAnchorRef.current, timerRunning),
+  () =>
+    computeRemainingSeconds(primaryTimerAnchorRef.current, timerRunning, 0, {
+      minSeconds: -MAX_OVERTIME_SECONDS,
+    }),
   [timerRunning]
 );
 
@@ -618,7 +638,7 @@ const getSecondaryRemainingSeconds = useCallback(
 
 const commitPrimaryTimerState = useCallback(
   (seconds, running) => {
-    const normalized = normalizeSeconds(seconds);
+    const normalized = normalizeSeconds(seconds, 0, { min: -MAX_OVERTIME_SECONDS });
     primaryTimerAnchorRef.current = {
       baseSeconds: normalized,
       anchorTimestamp: running ? Date.now() : null,
@@ -657,6 +677,8 @@ const commitSecondaryTimerState = useCallback(
     setTimeoutUsage({ ...DEFAULT_TIMEOUT_USAGE });
     setPossessionTeam(null);
     setHalftimeTriggered(false);
+    setHalftimeBreakActive(false);
+    setHalftimeTimeCapArmed(false);
     setStoppageActive(false);
     setMatchStarted(false);
     setScoreTarget(DEFAULT_RULES.gamePointTarget || null);
@@ -848,12 +870,17 @@ useEffect(() => {
     return;
   }
   const normalizedSecondaryLabel = (secondaryLabel || "").toLowerCase();
-  const flashThreshold = normalizedSecondaryLabel === "discussion" ? 15 : 30;
-  if (secondarySeconds <= flashThreshold) {
+  const shouldFlash = secondarySeconds <= 30;
+  if (shouldFlash) {
+    const fastThreshold = normalizedSecondaryLabel === "discussion" ? 15 : 15;
+    const nextRate = secondarySeconds <= fastThreshold ? 175 : 450;
+    setSecondaryFlashRateMs(nextRate);
     setSecondaryFlashActive(true);
+    setSecondaryFlashPulse(false);
   } else {
     setSecondaryFlashActive(false);
     setSecondaryFlashPulse(false);
+    setSecondaryFlashRateMs(450);
   }
 }, [secondaryRunning, secondarySeconds, secondaryLabel]);
 
@@ -861,9 +888,9 @@ useEffect(() => {
   if (!secondaryFlashActive) return undefined;
   const interval = setInterval(() => {
     setSecondaryFlashPulse((prev) => !prev);
-  }, 250);
+  }, secondaryFlashRateMs);
   return () => clearInterval(interval);
-}, [secondaryFlashActive]);
+}, [secondaryFlashActive, secondaryFlashRateMs]);
 
 useEffect(() => {
   if (resumeHydrationRef.current) return;
@@ -886,11 +913,19 @@ useEffect(() => {
 
   useEffect(() => {
     if (!timerRunning && !secondaryRunning) return undefined;
+    const hasScoreCapWinner = Boolean(
+      scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget)
+    );
+    const allowOvertime = matchStarted && !hasScoreCapWinner;
     const tick = () => {
       if (timerRunning) {
         const remainingPrimary = getPrimaryRemainingSeconds();
-        if (remainingPrimary <= 0) {
+        if (!allowOvertime && remainingPrimary <= 0) {
+          setTimerSeconds(0);
           commitPrimaryTimerState(0, false);
+        } else if (allowOvertime && remainingPrimary <= -MAX_OVERTIME_SECONDS) {
+          setTimerSeconds(-MAX_OVERTIME_SECONDS);
+          commitPrimaryTimerState(-MAX_OVERTIME_SECONDS, false);
         } else {
           setTimerSeconds(remainingPrimary);
         }
@@ -914,13 +949,17 @@ useEffect(() => {
     getSecondaryRemainingSeconds,
     commitPrimaryTimerState,
     commitSecondaryTimerState,
+    matchStarted,
+    scoreTarget,
+    score.a,
+    score.b,
   ]);
 
-  useEffect(() => {
-    if (!matchStarted) {
-      setSoftCapApplied(false);
-      setHardCapReached(false);
-      setScoreTarget(rules.gamePointTarget || null);
+useEffect(() => {
+  if (!matchStarted) {
+    setSoftCapApplied(false);
+    setHardCapReached(false);
+    setScoreTarget(rules.gamePointTarget || null);
       return;
     }
   }, [matchStarted, rules.gamePointTarget]);
@@ -962,14 +1001,37 @@ useEffect(() => {
     score.b,
   ]);
 
-  useEffect(() => {
-    if (!matchStarted || hardCapReached) return;
-    if (timerSeconds > 0) return;
-    setHardCapReached(true);
-    if (rules.gameHardCapEndMode === "immediate") {
-      setTimerLabel("Hard cap reached");
+useEffect(() => {
+  if (!matchStarted || hardCapReached) return;
+  if (timerSeconds > 0) return;
+  setHardCapReached(true);
+  if (rules.gameHardCapEndMode === "immediate") {
+    setTimerLabel("Hard cap reached");
+  }
+}, [matchStarted, hardCapReached, timerSeconds, rules.gameHardCapEndMode]);
+
+useEffect(() => {
+  if (!matchStarted) {
+    if (timerLabel !== DEFAULT_TIMER_LABEL) {
+      setTimerLabel(DEFAULT_TIMER_LABEL);
     }
-  }, [matchStarted, hardCapReached, timerSeconds, rules.gameHardCapEndMode]);
+    return;
+  }
+  if (hardCapReached) return;
+  const hasScoreCapWinner = Boolean(
+    scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget)
+  );
+  const overtimeActive = timerSeconds < 0 && !hasScoreCapWinner;
+  if (overtimeActive) {
+    if (timerLabel !== "Over time (highest + 1)") {
+      setTimerLabel("Over time (highest + 1)");
+    }
+    return;
+  }
+  if (timerLabel !== DEFAULT_TIMER_LABEL) {
+    setTimerLabel(DEFAULT_TIMER_LABEL);
+  }
+}, [matchStarted, hardCapReached, timerSeconds, scoreTarget, score.a, score.b, timerLabel]);
 
 useEffect(() => {
   const matchSource = activeMatch || selectedMatch || null;
@@ -1365,7 +1427,7 @@ const normalizedSecondaryLabel =
 const isDiscussionTimer = normalizedSecondaryLabel === "discussion";
 
 const primaryTimerBg =
-  timerSeconds === 0 ? "bg-[#fee2e2]" : timerRunning ? "bg-[#dcfce7]" : "bg-[#e2e8f0]";
+  timerSeconds <= 0 ? "bg-[#fee2e2]" : timerRunning ? "bg-[#dcfce7]" : "bg-[#e2e8f0]";
 const secondaryTimerBg = (() => {
   if (secondaryRunning) {
     if (isDiscussionTimer) {
@@ -1381,8 +1443,19 @@ const secondaryTimerBg = (() => {
       }
       return "bg-[#dcfce7]";
     }
-    if (secondaryFlashActive) {
-      return secondaryFlashPulse ? "bg-[#fcd34d]" : "bg-[#fef3c7]";
+    if (secondarySeconds <= 15) {
+      return secondaryFlashActive
+        ? secondaryFlashPulse
+          ? "bg-[#fb923c]"
+          : "bg-[#fed7aa]"
+        : "bg-[#fed7aa]";
+    }
+    if (secondarySeconds <= 30) {
+      return secondaryFlashActive
+        ? secondaryFlashPulse
+          ? "bg-[#fcd34d]"
+          : "bg-[#fef3c7]"
+        : "bg-[#fef3c7]";
     }
     return "bg-[#dcfce7]";
   }
@@ -1614,16 +1687,20 @@ const rosterNameLookup = useMemo(() => {
 
   const triggerHalftime = useCallback(async () => {
     if (halftimeTriggerLockRef.current || halftimeTriggered || !matchStarted || halftimeLogged) {
-      return;
+      setHalftimeTimeCapArmed(false);
+      return false;
     }
     halftimeTriggerLockRef.current = true;
     setHalftimeTriggered(true);
+    setHalftimeBreakActive(true);
+    setHalftimeTimeCapArmed(false);
     const breakSeconds = Math.max(1, (rules.halftimeBreakMinutes || 0) * 60);
     try {
-      await startTrackedSecondaryTimer(breakSeconds || 60, "Halftime break", {
+      await startTrackedSecondaryTimer(breakSeconds || 60, "Half time", {
         eventStartCode: MATCH_LOG_EVENT_CODES.HALFTIME_START,
         eventEndCode: MATCH_LOG_EVENT_CODES.HALFTIME_END,
       });
+      return true;
     } finally {
       halftimeTriggerLockRef.current = false;
     }
@@ -1642,18 +1719,40 @@ const rosterNameLookup = useMemo(() => {
   }, [halftimeTriggered]);
 
   useEffect(() => {
-    if (!matchStarted || halftimeTriggered || halftimeLogged) return;
-    const halftimeMinutes = rules.halftimeMinutes || 0;
-    if (halftimeMinutes <= 0) return;
-    const elapsedSeconds = matchDuration * 60 - timerSeconds;
-    if (elapsedSeconds >= halftimeMinutes * 60) {
-      void triggerHalftime();
+    if (!matchStarted || halftimeTriggered || halftimeLogged) {
+      if (halftimeTimeCapArmed) {
+        setHalftimeTimeCapArmed(false);
+      }
+      return;
     }
-  }, [matchStarted, halftimeTriggered, halftimeLogged, rules.halftimeMinutes, matchDuration, timerSeconds, triggerHalftime]);
+    const halftimeMinutes = rules.halftimeMinutes || 0;
+    if (halftimeMinutes <= 0) {
+      if (halftimeTimeCapArmed) {
+        setHalftimeTimeCapArmed(false);
+      }
+      return;
+    }
+    const elapsedSeconds = matchDuration * 60 - timerSeconds;
+    if (elapsedSeconds >= halftimeMinutes * 60 && !halftimeTimeCapArmed) {
+      setHalftimeTimeCapArmed(true);
+    }
+  }, [
+    matchStarted,
+    halftimeTriggered,
+    halftimeLogged,
+    rules.halftimeMinutes,
+    matchDuration,
+    timerSeconds,
+    halftimeTimeCapArmed,
+  ]);
 
   const updatePossession = useCallback(
-    async (teamKey, { logTurnover = true, actorId = null, eventTypeIdOverride = null } = {}) => {
-      if (!teamKey || teamKey === possessionTeam) return;
+    async (
+      teamKey,
+      { logTurnover = true, actorId = null, eventTypeIdOverride = null, eventTeamKey = null } = {}
+    ) => {
+      const previousTeam = possessionTeam;
+      if (!teamKey || teamKey === previousTeam) return;
       if (logTurnover && !matchStarted) return;
       setPossessionTeam(teamKey);
 
@@ -1668,15 +1767,25 @@ const rosterNameLookup = useMemo(() => {
           );
           return;
         }
-        const targetTeamId = teamKey === "A" ? teamAId : teamBId;
+
+        const derivedEventTeamKey =
+          eventTeamKey ||
+          (eventTypeIdOverride ? teamKey : previousTeam) ||
+          teamKey ||
+          null;
+
+        const targetTeamId =
+          derivedEventTeamKey === "A" ? teamAId : derivedEventTeamKey === "B" ? teamBId : null;
+
         if (!targetTeamId) {
           setConsoleError("Missing team mapping for turnover entry.");
           return;
         }
+
         const timestamp = new Date().toISOString();
         const totalsSnapshot = score;
         const appended = appendLocalLog({
-          team: teamKey,
+          team: derivedEventTeamKey,
           timestamp,
           scorerId: actorId || null,
           assistId: null,
@@ -1714,6 +1823,24 @@ const rosterNameLookup = useMemo(() => {
       score,
     ]
   );
+
+  useEffect(() => {
+    if (!halftimeBreakActive) return;
+    const normalizedSecondaryLabel = (secondaryLabel || "").toLowerCase();
+    if (secondaryRunning || normalizedSecondaryLabel !== "half time") {
+      return;
+    }
+    setHalftimeBreakActive(false);
+    const nextTeam = matchStartingTeamKey === "A" ? "A" : matchStartingTeamKey === "B" ? "B" : null;
+    if (!nextTeam) return;
+    void updatePossession(nextTeam, { logTurnover: false });
+  }, [
+    halftimeBreakActive,
+    secondaryRunning,
+    secondaryLabel,
+    matchStartingTeamKey,
+    updatePossession,
+  ]);
   const matchLogMatchId = activeMatch?.id || selectedMatch?.id || null;
   const currentMatchScore = useMemo(
     () => ({
@@ -2130,6 +2257,8 @@ const rosterNameLookup = useMemo(() => {
     setPossessionTeam,
     halftimeTriggered,
     setHalftimeTriggered,
+    halftimeTimeCapArmed,
+    setHalftimeTimeCapArmed,
     resumeCandidate,
     setResumeCandidate,
     resumeHandled,

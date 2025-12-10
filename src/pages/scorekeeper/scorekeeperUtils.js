@@ -10,11 +10,13 @@ export function deriveShortName(name = "") {
 }
 
 export function formatClock(totalSeconds) {
-  const minutes = Math.floor(totalSeconds / 60)
+  const sign = totalSeconds < 0 ? "-" : "";
+  const absolute = Math.abs(totalSeconds);
+  const minutes = Math.floor(absolute / 60)
     .toString()
     .padStart(2, "0");
-  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
-  return `${minutes}:${seconds}`;
+  const seconds = (absolute % 60).toString().padStart(2, "0");
+  return `${sign}${minutes}:${seconds}`;
 }
 
 export function formatMatchTime(timestamp) {

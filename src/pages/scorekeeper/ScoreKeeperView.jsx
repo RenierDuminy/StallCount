@@ -275,8 +275,14 @@ export default function ScoreKeeperView() {
     const actorId = options.find((player) => player.id === possessionActorId)?.id || possessionActorId || null;
     setPossessionActorId(actorId || "");
     resetPossessionModalState();
-    const eventTypeIdOverride = possessionResult === "block" ? 19 : null;
-    void updatePossession(nextTeam, { actorId: actorId || null, eventTypeIdOverride });
+    const isBlock = possessionResult === "block";
+    const eventTypeIdOverride = isBlock ? 19 : null;
+    const eventTeamKey = isBlock ? nextTeam : null;
+    void updatePossession(nextTeam, {
+      actorId: actorId || null,
+      eventTypeIdOverride,
+      eventTeamKey,
+    });
   };
 
   const scorerAssistClash =
@@ -384,14 +390,16 @@ export default function ScoreKeeperView() {
                   <p className="text-[clamp(3rem,12vw,5.5rem)] font-semibold leading-none text-slate-900">
                     {formattedPrimaryClock}
                   </p>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Game</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    {timerLabel || "Game time"}
+                  </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800">
                   <p className="text-[clamp(2.6rem,11vw,4.5rem)] font-semibold leading-none text-slate-900">
                     {formattedSecondaryClock}
                   </p>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    Inter point
+                    {secondaryLabel || "Inter point"}
                   </p>
                 </div>
               </div>
@@ -453,7 +461,7 @@ export default function ScoreKeeperView() {
                 </div>
               </div>
               <p className="text-center text-[10px] uppercase tracking-wide text-slate-500">
-                Hold a button to reset its timer
+                Hold 3s to reset
               </p>
               <button
                 type="button"

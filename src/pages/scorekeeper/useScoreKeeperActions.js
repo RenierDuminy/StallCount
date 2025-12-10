@@ -285,20 +285,25 @@ export function useScoreKeeperActions(controller) {
     if (receivingTeam) {
       void controller.updatePossession(receivingTeam, { logTurnover: false });
     }
+    const reachedHalftimeScore =
+      Math.max(nextTotals.a, nextTotals.b) >=
+      (controller.rules.halftimeScoreThreshold || HALFTIME_SCORE_THRESHOLD);
+    let halftimeStarted = false;
     if (
       !controller.halftimeTriggered &&
-      Math.max(nextTotals.a, nextTotals.b) >=
-        (controller.rules.halftimeScoreThreshold || HALFTIME_SCORE_THRESHOLD)
+      (reachedHalftimeScore || controller.halftimeTimeCapArmed)
     ) {
-      await controller.triggerHalftime();
+      halftimeStarted = Boolean(await controller.triggerHalftime());
     }
-    controller.startSecondaryTimer(
-      controller.rules.interPointSeconds ||
-        controller.rules.interPointTimeoutAddsSeconds ||
-        controller.rules.timeoutSeconds ||
-        DEFAULT_INTERPOINT_SECONDS,
-      "Inter point"
-    );
+    if (!halftimeStarted) {
+      controller.startSecondaryTimer(
+        controller.rules.interPointSeconds ||
+          controller.rules.interPointTimeoutAddsSeconds ||
+          controller.rules.timeoutSeconds ||
+          DEFAULT_INTERPOINT_SECONDS,
+        "Inter point"
+      );
+    }
   }
 
   async function syncActiveMatchScore(nextScore) {
@@ -468,9 +473,21 @@ export function useScoreKeeperActions(controller) {
     const remaining = Math.max(controller.rules.timeoutsTotal - controller.timeoutUsage[team], 0);
     if (remaining === 0) return;
     controller.setTimeoutUsage((prev) => ({ ...prev, [team]: prev[team] + 1 }));
+    const timeoutSeconds = controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
+    let stackedDuration = timeoutSeconds;
+    let timeoutLabel =
+      `${team === "A" ? controller.displayTeamA : controller.displayTeamB} timeout`.trim();
+    const normalizedSecondaryLabel = (controller.secondaryLabel || "").toLowerCase();
+    const isInterPointWindow =
+      controller.secondaryRunning && normalizedSecondaryLabel === "inter point";
+    if (isInterPointWindow) {
+      const remainingInterPoint = Math.max(controller.getSecondaryRemainingSeconds(), 0);
+      stackedDuration += remainingInterPoint;
+      timeoutLabel = "Inter point timeout";
+    }
     await controller.startTrackedSecondaryTimer(
-      controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
-      `${team === "A" ? controller.displayTeamA : controller.displayTeamB} timeout`,
+      stackedDuration,
+      timeoutLabel,
       {
         teamKey: team,
         eventStartCode: MATCH_LOG_EVENT_CODES.TIMEOUT_START,
