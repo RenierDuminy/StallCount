@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { getDivisions, getEventsList, getEventsByIds } from "../services/leagueService";
 import { getRecentMatches } from "../services/matchService";
 import { getPlayerDirectory } from "../services/playerService";
 import { getAllTeams } from "../services/teamService";
 import { getRecentLiveEvents } from "../services/liveEventService";
+import { supabase } from "../services/supabaseClient";
 import {
   deleteSubscriptionById,
   getSubscriptions,
@@ -136,103 +137,46 @@ export default function NotificationsPage() {
     busy: false,
     error: null,
   }));
-  const [swDebug, setSwDebug] = useState(() => ({
-    supported: typeof navigator !== "undefined" && "serviceWorker" in navigator,
-    ready: false,
-    controllerState: typeof navigator !== "undefined" && navigator.serviceWorker?.controller?.state ? navigator.serviceWorker.controller.state : null,
-    scope: null,
-    registrations: null,
-    error: null,
-  }));
-  const [documentVisibility, setDocumentVisibility] = useState(
-    typeof document !== "undefined" ? document.visibilityState : null
-  );
-  const [testNotificationPayload, setTestNotificationPayload] = useState(
-    JSON.stringify(
-      {
-        title: "StallCount test notification",
-        body: "If you can read this, the service worker showed the notification.",
-        icon: "/StallCount logo_192_v1.png",
-        data: {
-          url: "/matches",
-        },
-      },
-      null,
-      2,
-    ),
-  );
-  const [testNotificationStatus, setTestNotificationStatus] = useState("");
-
   const topicOptions = useMemo(
     () => TOPIC_PRESETS.map((topic) => ({ value: topic, label: topic.replace(/_/g, " ") })),
     [],
   );
-  const debugData = useMemo(() => {
-    const secureContext = typeof window !== "undefined" ? window.isSecureContext : null;
-    const origin = typeof window !== "undefined" ? window.location.origin : null;
-    const protocol = typeof window !== "undefined" ? window.location.protocol : null;
-    const notificationPermission =
-      typeof window !== "undefined" && "Notification" in window ? Notification.permission : null;
-    return {
-      timestamp: new Date().toISOString(),
-      secureContext,
-      origin,
-      protocol,
-      documentVisibility,
-      notificationPermission,
-      pushState,
-      serviceWorker: swDebug,
-      subscriptionsTracked: subscriptions.length,
-      recentNotificationsLoaded: recentNotifications.length,
-      sessionUserId: session?.user?.id ?? null,
-    };
-  }, [
-    documentVisibility,
-    pushState,
-    swDebug,
-    subscriptions.length,
-    recentNotifications.length,
-    session?.user?.id,
-  ]);
+  const notifiedEventIdsRef = useRef(new Set());
+  const liveEventsChannelRef = useRef(null);
 
-  const handleTriggerTestNotification = useCallback(async () => {
+  useEffect(() => {
+    notifiedEventIdsRef.current.clear();
+  }, [profileId]);
+
+  const showNotificationPayload = useCallback(async (payload) => {
+    if (!payload) throw new Error("No notification payload specified.");
     if (typeof window === "undefined" || typeof navigator === "undefined") {
-      setTestNotificationStatus("Browser APIs unavailable.");
-      return;
+      throw new Error("Browser APIs unavailable.");
     }
-    setTestNotificationStatus("Sending test notification…");
-    try {
-      if (!("serviceWorker" in navigator)) {
-        throw new Error("Service workers not supported.");
-      }
-      if (!("Notification" in window)) {
-        throw new Error("Notification API unavailable.");
-      }
-      if (Notification.permission !== "granted") {
-        throw new Error("Permission is not granted.");
-      }
-      let payload;
-      try {
-        payload = JSON.parse(testNotificationPayload || "{}");
-      } catch (err) {
-        throw new Error(`Invalid JSON payload: ${(err instanceof Error && err.message) || "Unknown error"}`);
-      }
-      const ready = await navigator.serviceWorker.ready;
-      const title = typeof payload.title === "string" && payload.title.trim().length ? payload.title.trim() : "StallCount test notification";
-      const options = {
-        body: payload.body || "Testing notification rendering.",
-        icon: payload.icon || "/StallCount logo_192_v1.png",
-        data: payload.data || { url: "/" },
-        vibrate: payload.vibrate || [100, 50, 100],
-        requireInteraction: Boolean(payload.requireInteraction),
-        tag: payload.tag || "stallcount-test",
-      };
-      await ready.showNotification(title, options);
-      setTestNotificationStatus("Notification dispatched via service worker.");
-    } catch (err) {
-      setTestNotificationStatus(err instanceof Error ? err.message : "Unable to trigger notification.");
+    if (!("serviceWorker" in navigator)) {
+      throw new Error("Service workers not supported.");
     }
-  }, [testNotificationPayload]);
+    if (!("Notification" in window)) {
+      throw new Error("Notification API unavailable.");
+    }
+    if (Notification.permission !== "granted") {
+      throw new Error("Permission is not granted.");
+    }
+    const ready = await navigator.serviceWorker.ready;
+    const title =
+      typeof payload.title === "string" && payload.title.trim().length
+        ? payload.title.trim()
+        : "StallCount update";
+    const options = {
+      body: payload.body || "New activity detected.",
+      icon: payload.icon || "/StallCount logo_192_v1.png",
+      data: payload.data || { url: "/" },
+      vibrate: payload.vibrate || [100, 50, 100],
+      requireInteraction: Boolean(payload.requireInteraction),
+      tag: payload.tag || "stallcount-event",
+    };
+    await ready.showNotification(title, options);
+  }, []);
 
   useEffect(() => {
     if (!profileId) {
@@ -259,6 +203,24 @@ export default function NotificationsPage() {
       ignore = true;
     };
   }, [profileId]);
+
+  const formatMatchChoiceLabel = useCallback((match) => {
+    if (!match) return "";
+    const teamA = match.team_a?.name || match.team_a?.short_name || "Team A";
+    const teamB = match.team_b?.name || match.team_b?.short_name || "Team B";
+    return `${teamA} vs ${teamB}`;
+  }, []);
+
+  const choiceDisplayLabel = useCallback(
+    (item) => {
+      if (!item) return "";
+      if (targetType === "match") {
+        return formatMatchChoiceLabel(item);
+      }
+      return item.name || item.full_name || item.short_name || item.id || "";
+    },
+    [formatMatchChoiceLabel, targetType],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -306,74 +268,7 @@ export default function NotificationsPage() {
     return () => {
       cancelled = true;
     };
-  }, [targetType]);
-
-  useEffect(() => {
-    if (typeof document === "undefined") return undefined;
-    const handleVisibility = () => setDocumentVisibility(document.visibilityState);
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, []);
-
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
-      return undefined;
-    }
-    let cancelled = false;
-
-    const captureRegistrations = async () => {
-      try {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        if (!cancelled) {
-          setSwDebug((prev) => ({
-            ...prev,
-            registrations: registrations.length,
-            scope: registrations[0]?.scope || prev.scope,
-          }));
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setSwDebug((prev) => ({
-            ...prev,
-            error: err instanceof Error ? err.message : String(err),
-          }));
-        }
-      }
-      try {
-        const ready = await navigator.serviceWorker.ready;
-        if (!cancelled) {
-          setSwDebug((prev) => ({
-            ...prev,
-            ready: true,
-            scope: ready.scope,
-            controllerState: ready.active?.state || navigator.serviceWorker.controller?.state || prev.controllerState,
-          }));
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setSwDebug((prev) => ({
-            ...prev,
-            error: err instanceof Error ? err.message : String(err),
-          }));
-        }
-      }
-    };
-
-    const handleControllerChange = () => {
-      setSwDebug((prev) => ({
-        ...prev,
-        controllerState: navigator.serviceWorker.controller?.state || null,
-      }));
-    };
-
-    navigator.serviceWorker.addEventListener?.("controllerchange", handleControllerChange);
-    captureRegistrations();
-
-    return () => {
-      cancelled = true;
-      navigator.serviceWorker.removeEventListener?.("controllerchange", handleControllerChange);
-    };
-  }, []);
+  }, [choiceDisplayLabel, targetType]);
 
   useEffect(() => {
     const missingEventIds = subscriptions
@@ -488,21 +383,6 @@ export default function NotificationsPage() {
     return uniqueTopics([...selectedTopics, ...resolveTopicsInput(customTopics)]);
   }
 
-  const formatMatchChoiceLabel = (match) => {
-    if (!match) return "";
-    const teamA = match.team_a?.name || match.team_a?.short_name || "Team A";
-    const teamB = match.team_b?.name || match.team_b?.short_name || "Team B";
-    return `${teamA} vs ${teamB}`;
-  };
-
-  const choiceDisplayLabel = (item) => {
-    if (!item) return "";
-    if (targetType === "match") {
-      return formatMatchChoiceLabel(item);
-    }
-    return item.name || item.full_name || item.short_name || item.id || "";
-  };
-
   const filteredChoices = useMemo(() => {
     if (!choiceSearch.trim()) return choices;
     const text = choiceSearch.toLowerCase();
@@ -587,6 +467,68 @@ export default function NotificationsPage() {
     },
     [targetLabels],
   );
+
+  const handleRealtimeLiveEvent = useCallback(
+    (rawEvent) => {
+      if (!rawEvent || !subscriptions.length) return;
+      const event = normalizeLiveEventRow(rawEvent);
+      if (!event) return;
+      const matches = subscriptions.some((sub) => eventMatchesSubscription(event, sub));
+      if (!matches) return;
+      setRecentNotifications((prev) => {
+        const filtered = prev.filter((existing) => existing.id !== event.id);
+        return [event, ...filtered].slice(0, 5);
+      });
+    },
+    [subscriptions],
+  );
+
+  useEffect(() => {
+    if (!profileId || !subscriptions.length) {
+      if (liveEventsChannelRef.current) {
+        supabase.removeChannel(liveEventsChannelRef.current);
+        liveEventsChannelRef.current = null;
+      }
+      return undefined;
+    }
+    const channel = supabase.channel(`live_events_notifications:${profileId}`);
+    liveEventsChannelRef.current = channel;
+    channel
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "live_events" },
+        (payload) => {
+          if (payload?.new) {
+            handleRealtimeLiveEvent(payload.new);
+          }
+        },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.error("[Notifications] Realtime channel error for live_events");
+        }
+      });
+    return () => {
+      if (liveEventsChannelRef.current) {
+        supabase.removeChannel(liveEventsChannelRef.current);
+        liveEventsChannelRef.current = null;
+      }
+    };
+  }, [handleRealtimeLiveEvent, profileId, subscriptions.length]);
+
+  useEffect(() => {
+    if (!recentNotifications.length) return;
+    recentNotifications.forEach((event) => {
+      if (!event?.id) return;
+      if (notifiedEventIdsRef.current.has(event.id)) return;
+      notifiedEventIdsRef.current.add(event.id);
+      const payload = buildNotificationPayloadFromEvent(event, getSubscriptionLabel);
+      if (!payload) return;
+      showNotificationPayload(payload).catch((err) => {
+        console.error("[Notifications] Unable to display notification", err);
+      });
+    });
+  }, [recentNotifications, getSubscriptionLabel, showNotificationPayload]);
 
   async function handleDelete(sub) {
     if (!sub?.id || !profileId) return;
@@ -1072,41 +1014,57 @@ export default function NotificationsPage() {
           )}
         </section>
 
-        <section className="space-y-3">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--sc-ink)]">Debug: browser notification readiness</h2>
-            <pre className="mt-2 max-h-72 overflow-auto bg-black/70 p-3 text-[11px] text-emerald-200">
-              {JSON.stringify(debugData, null, 2)}
-            </pre>
-          </div>
-          <div className="rounded-xl border border-[var(--sc-border)]/60 bg-[rgba(0,0,0,0.35)] p-3 text-[13px] text-[var(--sc-ink)]">
-            <p className="text-sm font-semibold">Trigger local test notification</p>
-            <p className="text-xs text-[var(--sc-ink-muted)]">
-              This bypasses the backend and asks the active service worker to display a notification using the payload below.
-              Useful to confirm the worker and browser permissions are behaving as expected.
-            </p>
-            <textarea
-              className="mt-2 w-full rounded-lg border border-[var(--sc-border)] bg-black/40 p-2 font-mono text-[12px] text-[var(--sc-ink)]"
-              rows={6}
-              value={testNotificationPayload}
-              onChange={(event) => setTestNotificationPayload(event.target.value)}
-            />
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={handleTriggerTestNotification}
-                className="rounded-full bg-[var(--sc-accent)] px-3 py-1.5 text-xs font-semibold text-[#041311] shadow hover:-translate-y-0.5 hover:shadow-lg"
-              >
-                Send test notification
-              </button>
-              {testNotificationStatus ? (
-                <span className="text-xs text-[var(--sc-ink-muted)]">{testNotificationStatus}</span>
-              ) : null}
-            </div>
-          </div>
-        </section>
       </main>
     </div>
   </div>
 );
+}
+
+function buildNotificationPayloadFromEvent(event, labelResolver) {
+  if (!event) return null;
+  const rawData = (event.data && typeof event.data === "object" ? event.data : {}) ?? {};
+
+  const matchLabel =
+    (typeof rawData.target_name === "string" && rawData.target_name.trim()) ||
+    (typeof rawData.match_name === "string" && rawData.match_name.trim()) ||
+    (event.match_id ? labelResolver?.("match", event.match_id) : null);
+
+  const formattedType = (event.event_type || "").replace(/_/g, " ").trim();
+  const title =
+    (typeof rawData.title === "string" && rawData.title.trim()) ||
+    (matchLabel ? `Update · ${matchLabel}` : formattedType || "Match update");
+  const body =
+    (typeof rawData.body === "string" && rawData.body.trim()) ||
+    (typeof rawData.description === "string" && rawData.description.trim()) ||
+    (matchLabel ? `New activity for ${matchLabel}` : "");
+
+  const payload = {
+    title,
+    body,
+    icon: rawData.icon || "/StallCount logo_192_v1.png",
+    data: {
+      ...rawData,
+      url: rawData.url || (event.match_id ? `/matches/${event.match_id}` : "/"),
+      event_type: event.event_type,
+      match_id: event.match_id,
+      event_id: event.id,
+    },
+    tag: rawData.tag || event.event_type || "stallcount-event",
+    requireInteraction: Boolean(rawData.requireInteraction),
+  };
+
+  return payload;
+}
+
+function normalizeLiveEventRow(event) {
+  if (!event) return null;
+  let data = event.data;
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      // leave data as string if parsing fails
+    }
+  }
+  return { ...event, data };
 }
