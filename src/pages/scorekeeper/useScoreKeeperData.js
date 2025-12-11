@@ -411,6 +411,7 @@ export function useScoreKeeperData() {
   const [setupForm, setSetupForm] = useState(() => ({ ...DEFAULT_SETUP_FORM }));
 
   const [rules, setRules] = useState(() => ({ ...DEFAULT_RULES }));
+  const [rulesManuallyEdited, setRulesManuallyEdited] = useState(false);
 
   const [score, setScore] = useState({ a: 0, b: 0 });
   const [logs, setLogs] = useState([]);
@@ -664,15 +665,20 @@ const commitSecondaryTimerState = useCallback(
   []
 );
 
-  const clearLocalMatchState = useCallback(() => {
-    setActiveMatch(null);
-    setSelectedMatchId(null);
-    setMatches([]);
+const markRulesManuallyEdited = useCallback(() => {
+  setRulesManuallyEdited(true);
+}, []);
+
+const clearLocalMatchState = useCallback(() => {
+  setActiveMatch(null);
+  setSelectedMatchId(null);
+  setMatches([]);
     setRosters({ teamA: [], teamB: [] });
     setLogs([]);
     setPendingEntries([]);
     setSetupForm({ ...DEFAULT_SETUP_FORM });
     setRules({ ...DEFAULT_RULES });
+    setRulesManuallyEdited(false);
     setScore({ a: 0, b: 0 });
     setTimeoutUsage({ ...DEFAULT_TIMEOUT_USAGE });
     setPossessionTeam(null);
@@ -703,9 +709,14 @@ const commitSecondaryTimerState = useCallback(
   ]);
 
   const applyEventRules = useCallback(
-    (nextRules) => {
+    (nextRules, options = {}) => {
+      const { force = false } = options;
       if (!nextRules) return;
+      if (!force && rulesManuallyEdited) {
+        return;
+      }
       setRules(nextRules);
+      setRulesManuallyEdited(false);
       const primarySeconds = (nextRules.matchDuration || DEFAULT_DURATION) * 60;
       commitPrimaryTimerState(primarySeconds, false);
       const timeoutSeconds = nextRules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
@@ -715,7 +726,7 @@ const commitSecondaryTimerState = useCallback(
       setSoftCapApplied(false);
       setHardCapReached(false);
     },
-    [commitPrimaryTimerState, commitSecondaryTimerState]
+    [commitPrimaryTimerState, commitSecondaryTimerState, rulesManuallyEdited]
   );
 
 useEffect(() => {
@@ -768,7 +779,7 @@ useEffect(() => {
     if (!eventWithRules) return;
     if (appliedEventRulesRef.current === selectedEventId) return;
     const normalizedRules = normalizeEventRules(eventWithRules.rules);
-    applyEventRules(normalizedRules);
+    applyEventRules(normalizedRules, { force: true });
     appliedEventRulesRef.current = selectedEventId;
   }, [selectedEventId, events, applyEventRules, matchStarted]);
 
@@ -783,7 +794,7 @@ useEffect(() => {
     const appliedKey = `event-${selectedEventId}`;
     if (appliedEventRulesRef.current === appliedKey) return;
     const normalizedRules = normalizeEventRules(eventWithRules.rules);
-    applyEventRules(normalizedRules);
+    applyEventRules(normalizedRules, { force: true });
     appliedEventRulesRef.current = appliedKey;
   }, [selectedEventId, events, applyEventRules, matchStarted]);
 
@@ -794,7 +805,7 @@ useEffect(() => {
     if (!matchSource?.id || !rulesSource) return;
     const appliedKey = `match-${matchSource.id}`;
     if (appliedEventRulesRef.current === appliedKey) return;
-    applyEventRules(normalizeEventRules(rulesSource));
+    applyEventRules(normalizeEventRules(rulesSource), { force: true });
     appliedEventRulesRef.current = appliedKey;
   }, [activeMatch, selectedMatch, applyEventRules, matchStarted]);
 
@@ -2046,6 +2057,7 @@ const rosterNameLookup = useMemo(() => {
       ...prev,
       ...(snapshot.rules || {}),
     }));
+    setRulesManuallyEdited(Boolean(snapshot.rules));
     setScore(snapshot.score ?? { a: 0, b: 0 });
     setTimeoutUsage(snapshot.timeoutUsage ?? { ...DEFAULT_TIMEOUT_USAGE });
     setPossessionTeam(snapshot.possessionTeam ?? null);
@@ -2206,6 +2218,7 @@ const rosterNameLookup = useMemo(() => {
     setSetupForm,
     rules,
     setRules,
+    markRulesManuallyEdited,
     score,
     setScore,
     logs,

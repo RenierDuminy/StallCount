@@ -24,9 +24,6 @@ export default function MediaAdminPage() {
       try {
         const list = await getEventsList(200);
         setEvents(list ?? []);
-        if (list?.length) {
-          setSelectedEventId(list[0].id);
-        }
       } catch (err) {
         setEventError(err instanceof Error ? err.message : "Unable to load events.");
       }
@@ -37,7 +34,7 @@ export default function MediaAdminPage() {
   useEffect(() => {
     if (!selectedEventId) {
       setMatches([]);
-      setForm((prev) => ({ ...prev, matchId: "" }));
+      setForm(createEmptyForm());
       return;
     }
     let ignore = false;
@@ -48,11 +45,7 @@ export default function MediaAdminPage() {
         const rows = await getMatchesByEvent(selectedEventId, 200, { includeFinished: true });
         if (!ignore) {
           setMatches(rows ?? []);
-          if (rows?.length) {
-            setForm((prev) => syncFormWithMatch(prev, rows[0]));
-          } else {
-            setForm((prev) => ({ ...prev, matchId: "" }));
-          }
+          setForm(createEmptyForm());
         }
       } catch (err) {
         if (!ignore) {
@@ -76,8 +69,18 @@ export default function MediaAdminPage() {
   }, [form.matchId, matches]);
 
   const handleSelectMatch = (matchId) => {
-    const match = matches.find((m) => m.id === matchId);
-    setForm((prev) => syncFormWithMatch(prev, match));
+    const match = matches.find((m) => m.id === matchId) || null;
+    setForm(() => {
+      const baseForm = createEmptyForm();
+      if (!match) {
+        return { ...baseForm, matchId };
+      }
+      return {
+        ...baseForm,
+        matchId: match.id,
+        defaultStartTime: match.start_time ? toDateTimeLocal(match.start_time) : "",
+      };
+    });
     setResultMessage("");
     setResultError("");
   };
@@ -324,7 +327,7 @@ export default function MediaAdminPage() {
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="inline-flex items-center justify-center rounded-lg bg-[var(--sc-ink)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--sc-ink-muted)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[var(--sc-accent)] to-[var(--sc-accent-strong)] px-5 py-2.5 text-sm font-semibold text-[#03140f] shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(198,255,98,0.5)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? "Saving..." : "Save media link"}
             </button>
@@ -332,7 +335,7 @@ export default function MediaAdminPage() {
               type="button"
               onClick={handleClearMedia}
               disabled={saving || !form.matchId}
-              className="inline-flex items-center justify-center rounded-lg border border-[var(--sc-border)] px-4 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-full border border-rose-400/70 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-400/20 hover:text-rose-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300/60 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Remove media
             </button>
@@ -340,7 +343,7 @@ export default function MediaAdminPage() {
               type="button"
               onClick={handlePopulateFromMatch}
               disabled={!selectedMatch}
-              className="inline-flex items-center justify-center rounded-lg border border-[var(--sc-border)] px-4 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-full border border-[var(--sc-border-strong)]/70 bg-[var(--sc-surface)] px-4 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-accent)]/50 hover:text-[var(--sc-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--sc-accent)]/40 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Load current media
             </button>

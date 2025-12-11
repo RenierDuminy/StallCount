@@ -326,6 +326,9 @@ export function useScoreKeeperActions(controller) {
   }
 
   function handleRuleChange(field, value) {
+    if (typeof controller.markRulesManuallyEdited === "function") {
+      controller.markRulesManuallyEdited();
+    }
     controller.setRules((prev) => ({
       ...prev,
       [field]: value,
