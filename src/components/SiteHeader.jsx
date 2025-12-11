@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import useInstallPrompt from "../hooks/useInstallPrompt";
+import { useAuth } from "../context/AuthContext";
 
 const NAV_LINKS = [
   { label: "Home", to: "/" },
@@ -26,6 +27,7 @@ function isLinkActive(linkTo, location) {
 }
 
 export default function SiteHeader() {
+  const { session } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);

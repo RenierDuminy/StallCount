@@ -136,11 +136,103 @@ export default function NotificationsPage() {
     busy: false,
     error: null,
   }));
+  const [swDebug, setSwDebug] = useState(() => ({
+    supported: typeof navigator !== "undefined" && "serviceWorker" in navigator,
+    ready: false,
+    controllerState: typeof navigator !== "undefined" && navigator.serviceWorker?.controller?.state ? navigator.serviceWorker.controller.state : null,
+    scope: null,
+    registrations: null,
+    error: null,
+  }));
+  const [documentVisibility, setDocumentVisibility] = useState(
+    typeof document !== "undefined" ? document.visibilityState : null
+  );
+  const [testNotificationPayload, setTestNotificationPayload] = useState(
+    JSON.stringify(
+      {
+        title: "StallCount test notification",
+        body: "If you can read this, the service worker showed the notification.",
+        icon: "/StallCount logo_192_v1.png",
+        data: {
+          url: "/matches",
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  const [testNotificationStatus, setTestNotificationStatus] = useState("");
 
   const topicOptions = useMemo(
     () => TOPIC_PRESETS.map((topic) => ({ value: topic, label: topic.replace(/_/g, " ") })),
     [],
   );
+  const debugData = useMemo(() => {
+    const secureContext = typeof window !== "undefined" ? window.isSecureContext : null;
+    const origin = typeof window !== "undefined" ? window.location.origin : null;
+    const protocol = typeof window !== "undefined" ? window.location.protocol : null;
+    const notificationPermission =
+      typeof window !== "undefined" && "Notification" in window ? Notification.permission : null;
+    return {
+      timestamp: new Date().toISOString(),
+      secureContext,
+      origin,
+      protocol,
+      documentVisibility,
+      notificationPermission,
+      pushState,
+      serviceWorker: swDebug,
+      subscriptionsTracked: subscriptions.length,
+      recentNotificationsLoaded: recentNotifications.length,
+      sessionUserId: session?.user?.id ?? null,
+    };
+  }, [
+    documentVisibility,
+    pushState,
+    swDebug,
+    subscriptions.length,
+    recentNotifications.length,
+    session?.user?.id,
+  ]);
+
+  const handleTriggerTestNotification = useCallback(async () => {
+    if (typeof window === "undefined" || typeof navigator === "undefined") {
+      setTestNotificationStatus("Browser APIs unavailable.");
+      return;
+    }
+    setTestNotificationStatus("Sending test notification…");
+    try {
+      if (!("serviceWorker" in navigator)) {
+        throw new Error("Service workers not supported.");
+      }
+      if (!("Notification" in window)) {
+        throw new Error("Notification API unavailable.");
+      }
+      if (Notification.permission !== "granted") {
+        throw new Error("Permission is not granted.");
+      }
+      let payload;
+      try {
+        payload = JSON.parse(testNotificationPayload || "{}");
+      } catch (err) {
+        throw new Error(`Invalid JSON payload: ${(err instanceof Error && err.message) || "Unknown error"}`);
+      }
+      const ready = await navigator.serviceWorker.ready;
+      const title = typeof payload.title === "string" && payload.title.trim().length ? payload.title.trim() : "StallCount test notification";
+      const options = {
+        body: payload.body || "Testing notification rendering.",
+        icon: payload.icon || "/StallCount logo_192_v1.png",
+        data: payload.data || { url: "/" },
+        vibrate: payload.vibrate || [100, 50, 100],
+        requireInteraction: Boolean(payload.requireInteraction),
+        tag: payload.tag || "stallcount-test",
+      };
+      await ready.showNotification(title, options);
+      setTestNotificationStatus("Notification dispatched via service worker.");
+    } catch (err) {
+      setTestNotificationStatus(err instanceof Error ? err.message : "Unable to trigger notification.");
+    }
+  }, [testNotificationPayload]);
 
   useEffect(() => {
     if (!profileId) {
@@ -215,6 +307,73 @@ export default function NotificationsPage() {
       cancelled = true;
     };
   }, [targetType]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const handleVisibility = () => setDocumentVisibility(document.visibilityState);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+      return undefined;
+    }
+    let cancelled = false;
+
+    const captureRegistrations = async () => {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        if (!cancelled) {
+          setSwDebug((prev) => ({
+            ...prev,
+            registrations: registrations.length,
+            scope: registrations[0]?.scope || prev.scope,
+          }));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSwDebug((prev) => ({
+            ...prev,
+            error: err instanceof Error ? err.message : String(err),
+          }));
+        }
+      }
+      try {
+        const ready = await navigator.serviceWorker.ready;
+        if (!cancelled) {
+          setSwDebug((prev) => ({
+            ...prev,
+            ready: true,
+            scope: ready.scope,
+            controllerState: ready.active?.state || navigator.serviceWorker.controller?.state || prev.controllerState,
+          }));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSwDebug((prev) => ({
+            ...prev,
+            error: err instanceof Error ? err.message : String(err),
+          }));
+        }
+      }
+    };
+
+    const handleControllerChange = () => {
+      setSwDebug((prev) => ({
+        ...prev,
+        controllerState: navigator.serviceWorker.controller?.state || null,
+      }));
+    };
+
+    navigator.serviceWorker.addEventListener?.("controllerchange", handleControllerChange);
+    captureRegistrations();
+
+    return () => {
+      cancelled = true;
+      navigator.serviceWorker.removeEventListener?.("controllerchange", handleControllerChange);
+    };
+  }, []);
 
   useEffect(() => {
     const missingEventIds = subscriptions
@@ -859,13 +1018,13 @@ export default function NotificationsPage() {
             <p className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-4 py-4 text-center text-sm text-[var(--sc-ink-muted)]">
               Loading recent notifications...
             </p>
-          ) : recentNotifications.length === 0 ? (
-            <p className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-4 py-4 text-center text-sm text-[var(--sc-ink-muted)]">
-              No recent notifications match your current follows.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {recentNotifications.map((event) => {
+        ) : recentNotifications.length === 0 ? (
+          <p className="rounded-3xl border border-dashed border-[var(--sc-border)] bg-[var(--sc-surface)] px-4 py-4 text-center text-sm text-[var(--sc-ink-muted)]">
+            No recent notifications match your current follows.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {recentNotifications.map((event) => {
                 const data = (event.data && typeof event.data === "object" ? event.data : {}) ?? {};
                 const matchLabel =
                   (typeof data.target_name === "string" && data.target_name.trim()) ||
@@ -911,6 +1070,40 @@ export default function NotificationsPage() {
               })}
             </ul>
           )}
+        </section>
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--sc-ink)]">Debug: browser notification readiness</h2>
+            <pre className="mt-2 max-h-72 overflow-auto bg-black/70 p-3 text-[11px] text-emerald-200">
+              {JSON.stringify(debugData, null, 2)}
+            </pre>
+          </div>
+          <div className="rounded-xl border border-[var(--sc-border)]/60 bg-[rgba(0,0,0,0.35)] p-3 text-[13px] text-[var(--sc-ink)]">
+            <p className="text-sm font-semibold">Trigger local test notification</p>
+            <p className="text-xs text-[var(--sc-ink-muted)]">
+              This bypasses the backend and asks the active service worker to display a notification using the payload below.
+              Useful to confirm the worker and browser permissions are behaving as expected.
+            </p>
+            <textarea
+              className="mt-2 w-full rounded-lg border border-[var(--sc-border)] bg-black/40 p-2 font-mono text-[12px] text-[var(--sc-ink)]"
+              rows={6}
+              value={testNotificationPayload}
+              onChange={(event) => setTestNotificationPayload(event.target.value)}
+            />
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleTriggerTestNotification}
+                className="rounded-full bg-[var(--sc-accent)] px-3 py-1.5 text-xs font-semibold text-[#041311] shadow hover:-translate-y-0.5 hover:shadow-lg"
+              >
+                Send test notification
+              </button>
+              {testNotificationStatus ? (
+                <span className="text-xs text-[var(--sc-ink-muted)]">{testNotificationStatus}</span>
+              ) : null}
+            </div>
+          </div>
         </section>
       </main>
     </div>
