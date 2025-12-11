@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES, getMatchLogs } from "../services/matchLogService";
 import { getMatchById, getMatchesByEvent } from "../services/matchService";
 import { getEventsList } from "../services/leagueService";
 import { MatchMediaButton } from "../components/MatchMediaButton";
 import { getMatchMediaDetails } from "../utils/matchMedia";
+import { useAuth } from "../context/AuthContext";
 
 const SERIES_COLORS = {
   teamA: "#1d4ed8",
@@ -23,6 +24,7 @@ const MATCH_EVENT_ID_HINTS = {
 };
 
 export default function MatchesPage() {
+  const { session } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -159,6 +161,7 @@ export default function MatchesPage() {
 
   const matchMediaDetails = useMemo(() => getMatchMediaDetails(selectedMatch), [selectedMatch]);
   const derived = useMemo(() => deriveMatchInsights(selectedMatch, matchLogs), [selectedMatch, matchLogs]);
+  const showLoginBanner = !session && selectedMatchId && !logsLoading && !derived?.timeline;
 
   return (
     <div className="pb-16 text-[var(--sc-ink)]">
@@ -291,6 +294,27 @@ export default function MatchesPage() {
       </header>
 
       <main className="sc-shell matches-compact-shell space-y-3 py-2 sm:space-y-6 sm:py-4">
+        {showLoginBanner && (
+          <div
+            role="alert"
+            className="sc-card-base border border-amber-300/60 bg-amber-50/90 text-amber-900 shadow-lg"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Match data hidden</p>
+                <p className="text-xs text-amber-800">
+                  Detailed score progression and logs are visible only after signing in.
+                </p>
+              </div>
+              <Link
+                to="/login"
+                className="rounded-full bg-amber-500 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-amber-600"
+              >
+                Sign in to view
+              </Link>
+            </div>
+          </div>
+        )}
         {logsError && (
           <p className="sc-card-muted border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
             {logsError}
@@ -1714,7 +1738,4 @@ function buildMatchInsights({
 
   return { match: matchRows, tempo: tempoRows };
 }
-
-
-
 
