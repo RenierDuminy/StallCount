@@ -523,7 +523,8 @@ const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
       const data = await getEventsList(12);
       setEvents(data);
     } catch (err) {
-      setEventsError(err.message || "Unable to load events.");
+      const message = err instanceof Error ? err.message : "Unable to load events.";
+      setEventsError(message);
     } finally {
       setEventsLoading(false);
     }
@@ -564,7 +565,8 @@ const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
         }
         setSelectedMatchId(allowDefaultSelect ? data[0].id : null);
       } catch (err) {
-        setMatchesError(err.message || "Unable to load matches.");
+        const message = err instanceof Error ? err.message : "Unable to load matches.";
+        setMatchesError(message);
         setSelectedMatchId(null);
       } finally {
         setMatchesLoading(false);
@@ -833,7 +835,8 @@ useEffect(() => {
       })
       .catch((err) => {
         if (!ignore) {
-          setRostersError(err.message || "Failed to load rosters.");
+          const message = err instanceof Error ? err.message : "Failed to load rosters.";
+          setRostersError(message);
         }
       })
       .finally(() => {
@@ -2085,7 +2088,6 @@ const rosterNameLookup = useMemo(() => {
       snapshot.secondaryTimer?.totalSeconds ??
       rules.timeoutSeconds ??
       secondaryTotalSeconds ??
-      DEFAULT_TIMEOUT_SECONDS;
       DEFAULT_TIMEOUT_SECONDS;
     const restoredSecondary = deriveTimerStateFromSnapshot(
       snapshot.secondaryTimer,

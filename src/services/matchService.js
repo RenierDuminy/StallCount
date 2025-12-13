@@ -7,6 +7,7 @@ const MATCH_FIELDS = `
   status,
   score_a,
   score_b,
+  scorekeeper,
   starting_team_id,
   abba_pattern,
   venue_id,
@@ -168,4 +169,31 @@ export async function updateMatchMediaLink(matchId, mediaPayload) {
   }
 
   return data || null;
+}
+
+export async function getMatchesByIds(ids = []) {
+  const uniqueIds = Array.from(
+    new Set(
+      (ids || [])
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter((id) => id.length > 0),
+    ),
+  );
+
+  if (!uniqueIds.length) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("matches")
+    .select(MATCH_FIELDS)
+    .in("id", uniqueIds);
+
+  if (error) {
+    throw new Error(error.message || "Failed to load matches by id");
+  }
+
+  const rows = data ?? [];
+  const lookup = new Map(rows.map((row) => [row.id, row]));
+  return uniqueIds.map((id) => lookup.get(id)).filter(Boolean);
 }

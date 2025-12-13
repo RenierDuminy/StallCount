@@ -10,8 +10,9 @@ export function deriveShortName(name = "") {
 }
 
 export function formatClock(totalSeconds) {
-  const sign = totalSeconds < 0 ? "-" : "";
-  const absolute = Math.abs(totalSeconds);
+  const safeSeconds = Number.isFinite(totalSeconds) ? totalSeconds : 0;
+  const sign = safeSeconds < 0 ? "-" : "";
+  const absolute = Math.abs(safeSeconds);
   const minutes = Math.floor(absolute / 60)
     .toString()
     .padStart(2, "0");
@@ -22,6 +23,9 @@ export function formatClock(totalSeconds) {
 export function formatMatchTime(timestamp) {
   if (!timestamp) return "Start time pending";
   const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "Start time pending";
+  }
   return `${date.toLocaleDateString()} @ ${date.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -29,7 +33,11 @@ export function formatMatchTime(timestamp) {
 }
 
 export function toDateTimeLocal(value) {
-  const date = value ? new Date(value) : new Date();
+  const fallback = new Date();
+  let date = value ? new Date(value) : fallback;
+  if (Number.isNaN(date.getTime())) {
+    date = fallback;
+  }
   const pad = (num) => String(num).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
     date.getHours()
@@ -37,17 +45,22 @@ export function toDateTimeLocal(value) {
 }
 
 export function formatMatchLabel(match) {
+  if (!match) return "Match TBD";
   const teamA = match.team_a?.short_name || match.team_a?.name || "Team A";
   const teamB = match.team_b?.short_name || match.team_b?.name || "Team B";
-  const kickoff = match.start_time
-    ? new Date(match.start_time).toLocaleString([], {
+  let kickoff = "Time TBD";
+  if (match.start_time) {
+    const kickoffDate = new Date(match.start_time);
+    if (!Number.isNaN(kickoffDate.getTime())) {
+      kickoff = kickoffDate.toLocaleString([], {
         weekday: "short",
         month: "short",
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
-      })
-    : "Time TBD";
+      });
+    }
+  }
   return `${kickoff} - ${teamA} vs ${teamB}`;
 }
 

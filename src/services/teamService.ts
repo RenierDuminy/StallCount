@@ -26,6 +26,32 @@ export async function getAllTeams(limit?: number): Promise<TeamRow[]> {
   return (data ?? []) as TeamRow[];
 }
 
+export async function getTeamsByIds(ids: string[]): Promise<TeamRow[]> {
+  const uniqueIds = Array.from(
+    new Set(
+      (ids || [])
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter((value) => value.length > 0),
+    ),
+  );
+
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("teams")
+    .select("id, name, short_name, created_at")
+    .in("id", uniqueIds);
+
+  if (error) {
+    throw new Error(error.message || "Failed to load teams by id");
+  }
+
+  const lookup = new Map(((data ?? []) as TeamRow[]).map((row) => [row.id, row]));
+  return uniqueIds.map((id) => lookup.get(id)).filter((row): row is TeamRow => Boolean(row));
+}
+
 export type TeamDivisionInfo = {
   id: string;
   name: string;

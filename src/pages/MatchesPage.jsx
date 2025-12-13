@@ -142,11 +142,10 @@ export default function MatchesPage() {
           setMatchLogs(logs ?? []);
         }
       } catch (err) {
-        if (!ignore) {
-          setLogsError(err.message || "Unable to load match details.");
-          setSelectedMatch(null);
-          setMatchLogs([]);
-        }
+        if (!ignore) return;
+        setLogsError(err instanceof Error ? err.message : "Unable to load match details.");
+        setSelectedMatch(null);
+        setMatchLogs([]);
       } finally {
         if (!ignore) {
           setLogsLoading(false);
@@ -750,6 +749,7 @@ function PossessionTimeline({ timeline, teamAName, teamBName }) {
 function TeamOverviewCard({ title, stats }) {
   const goals = stats?.goals || [];
   const assists = stats?.assists || [];
+  const turnovers = stats?.turnovers || [];
   const connections = stats?.connections || [];
   const production = stats?.production;
   const summaryStats = [
@@ -768,8 +768,8 @@ function TeamOverviewCard({ title, stats }) {
           <table className="w-full text-left text-sm text-[var(--sc-ink)]">
             <thead>
               <tr className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                <th className="py-0.5 pr-2">Player</th>
-                <th className="py-0.5 text-right">{valueLabel}</th>
+                <th className="py-0.5 pr-2">{valueLabel}</th>
+                <th className="py-0.5 text-right"></th>
               </tr>
             </thead>
             <tbody>
@@ -808,9 +808,10 @@ function TeamOverviewCard({ title, stats }) {
           ))}
         </div>
       )}
-      <div className="grid gap-1.5 sm:grid-cols-2 sm:gap-3">
+      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 sm:gap-3">
         {renderList("Goals", goals, "Goal")}
         {renderList("Assists", assists, "Assist")}
+        {renderList("Turnovers", turnovers, "Turnover")}
       </div>
       <div className="mt-1.5 sc-card-muted p-3 sm:mt-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Top connections</p>
@@ -928,6 +929,7 @@ function deriveMatchInsights(match, logs) {
   const createStats = () => ({
     goalCounts: new Map(),
     assistCounts: new Map(),
+    turnoverCounts: new Map(),
     connectionCounts: new Map(),
   });
   const teamStats = {
@@ -1180,6 +1182,10 @@ function deriveMatchInsights(match, logs) {
       }
       if (gainingTeamKey) {
         currentPossession = gainingTeamKey;
+        const gainingTeamStats = teamStats[gainingTeamKey];
+        if (gainingTeamStats?.turnoverCounts && actorName) {
+          incrementCount(gainingTeamStats.turnoverCounts, actorName);
+        }
       }
       turnovers.push({
         time: timestamp,
@@ -1407,12 +1413,14 @@ function deriveMatchInsights(match, logs) {
     teamA: {
       goals: mapToSortedList(teamStats.teamA.goalCounts),
       assists: mapToSortedList(teamStats.teamA.assistCounts),
+      turnovers: mapToSortedList(teamStats.teamA.turnoverCounts),
       connections: mapToConnections(teamStats.teamA.connectionCounts),
       production: { ...teamProduction.teamA },
     },
     teamB: {
       goals: mapToSortedList(teamStats.teamB.goalCounts),
       assists: mapToSortedList(teamStats.teamB.assistCounts),
+      turnovers: mapToSortedList(teamStats.teamB.turnoverCounts),
       connections: mapToConnections(teamStats.teamB.connectionCounts),
       production: { ...teamProduction.teamB },
     },
@@ -1623,11 +1631,13 @@ function formatMatchDate(timestamp) {
   if (!timestamp) return "TBD";
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return "TBD";
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${yyyy}/${mm}/${dd}`;
-} 
+  return date.toLocaleDateString([], {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 function buildMatchInsights({
   match,
@@ -1657,10 +1667,17 @@ function buildMatchInsights({
 
   const matchRows = [
     { label: "Match date", value: formatMatchDate(match.start_time) },
-    { label: "Match duration", value: formatDurationLong(duration) },
     { label: "Match start", value: matchStartLabel },
     { label: "First point", value: formatTimeLabel(firstPoint, true) },
     { label: "Last point", value: formatTimeLabel(lastPoint, true) },
+    {
+      label: "Match duration",
+      value: (() => {
+        const base = formatDurationLong(duration);
+        const minutes = Number.isFinite(duration) ? Math.round(duration / 60000) : null;
+        return Number.isFinite(minutes) ? `${base} (${minutes} min)` : base;
+      })(),
+    },
   ];
 
   const averageTempo = (() => {
@@ -1738,4 +1755,3 @@ function buildMatchInsights({
 
   return { match: matchRows, tempo: tempoRows };
 }
-

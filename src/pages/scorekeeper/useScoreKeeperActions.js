@@ -10,6 +10,7 @@ import {
   DEFAULT_INTERPOINT_SECONDS,
   HALFTIME_SCORE_THRESHOLD,
   CALAHAN_ASSIST_VALUE,
+  SCORE_NA_PLAYER_VALUE,
 } from "./scorekeeperConstants";
 
 export function useScoreKeeperActions(controller) {
@@ -114,7 +115,9 @@ export function useScoreKeeperActions(controller) {
 
       controller.setSetupModalOpen(false);
     } catch (err) {
-      controller.setConsoleError(err.message || "Failed to initialise match.");
+      const message =
+        err instanceof Error ? err.message : "Failed to initialise match.";
+      controller.setConsoleError(message);
     } finally {
       controller.setInitialising(false);
     }
@@ -321,7 +324,8 @@ export function useScoreKeeperActions(controller) {
     try {
       await updateScore(matchId, nextScore.a, nextScore.b);
     } catch (err) {
-      console.error("Failed to sync score:", err.message);
+      const message = err instanceof Error ? err.message : err;
+      console.error("Failed to sync score:", message);
     }
   }
 
@@ -353,11 +357,14 @@ export function useScoreKeeperActions(controller) {
     if (mode === "edit" && logIndex !== null) {
       const log = controller.logs[logIndex];
       controller.setScoreForm({
-        scorerId: log?.scorerId || "",
+        scorerId:
+          log?.scorerId === null || log?.scorerId === undefined ? SCORE_NA_PLAYER_VALUE : log?.scorerId,
         assistId:
           log?.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN
             ? CALAHAN_ASSIST_VALUE
-            : log?.assistId || "",
+            : log?.assistId === null || log?.assistId === undefined
+              ? SCORE_NA_PLAYER_VALUE
+              : log?.assistId,
       });
     } else {
       controller.setScoreForm({ scorerId: "", assistId: "" });
@@ -377,24 +384,33 @@ export function useScoreKeeperActions(controller) {
     }
     if (
       controller.scoreForm.assistId !== CALAHAN_ASSIST_VALUE &&
+      controller.scoreForm.assistId !== SCORE_NA_PLAYER_VALUE &&
       controller.scoreForm.assistId === controller.scoreForm.scorerId
     ) {
       controller.setConsoleError("Scorer and assist must be different players.");
       return;
     }
     const isCalahan = controller.scoreForm.assistId === CALAHAN_ASSIST_VALUE;
-    const normalizedAssistId = isCalahan ? null : controller.scoreForm.assistId;
+    const normalizedScorerId =
+      controller.scoreForm.scorerId === SCORE_NA_PLAYER_VALUE
+        ? null
+        : controller.scoreForm.scorerId || null;
+    const normalizedAssistSelection =
+      controller.scoreForm.assistId === SCORE_NA_PLAYER_VALUE
+        ? null
+        : controller.scoreForm.assistId || null;
+    const normalizedAssistId = isCalahan ? null : normalizedAssistSelection;
 
     if (controller.scoreModalState.mode === "edit" && controller.scoreModalState.logIndex !== null) {
       await handleUpdateLog(controller.scoreModalState.logIndex, {
-        scorerId: controller.scoreForm.scorerId || null,
+        scorerId: normalizedScorerId,
         assistId: normalizedAssistId || null,
         eventCode: isCalahan ? MATCH_LOG_EVENT_CODES.CALAHAN : MATCH_LOG_EVENT_CODES.SCORE,
       });
     } else {
       await handleAddScore(
         controller.scoreModalState.team,
-        controller.scoreForm.scorerId || null,
+        normalizedScorerId,
         normalizedAssistId || null,
         { isCalahan }
       );

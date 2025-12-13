@@ -4,7 +4,11 @@ import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import { formatClock, formatMatchLabel } from "./scorekeeperUtils";
 import { useScoreKeeperData } from "./useScoreKeeperData";
 import { useScoreKeeperActions } from "./useScoreKeeperActions";
-import { CALAHAN_ASSIST_VALUE, DEFAULT_DISCUSSION_SECONDS } from "./scorekeeperConstants";
+import {
+  CALAHAN_ASSIST_VALUE,
+  DEFAULT_DISCUSSION_SECONDS,
+  SCORE_NA_PLAYER_VALUE,
+} from "./scorekeeperConstants";
 
 export default function ScoreKeeperView() {
   const data = useScoreKeeperData();
@@ -163,7 +167,7 @@ export default function ScoreKeeperView() {
     if (nextTeam === possessionTeam && !possessionPreviewTeam) return;
 
     const blockTeam = nextTeam === "A" ? "B" : "A";
-    const rosterSourceTeam = possessionResult === "block" ? blockTeam : nextTeam;
+    const rosterSourceTeam = possessionResult === "block" ? nextTeam : blockTeam;
     const options = getRosterOptionsForTeam(rosterSourceTeam);
     setPendingPossessionTeam(nextTeam);
     setPossessionPreviewTeam(nextTeam);
@@ -235,12 +239,12 @@ export default function ScoreKeeperView() {
   const currentPossessionTeam = possessionPreviewTeam || possessionTeam;
   const activeActorTeam =
     possessionResult === "block"
-      ? currentPossessionTeam === "A"
+      ? currentPossessionTeam
+      : currentPossessionTeam === "A"
         ? "B"
         : currentPossessionTeam === "B"
           ? "A"
-          : null
-      : currentPossessionTeam;
+          : null;
 
   const activeActorOptions = useMemo(() => getRosterOptionsForTeam(activeActorTeam), [activeActorTeam, sortedRosters]);
 
@@ -270,7 +274,7 @@ export default function ScoreKeeperView() {
       return;
     }
     const blockTeam = nextTeam === "A" ? "B" : "A";
-    const rosterSourceTeam = possessionResult === "block" ? blockTeam : nextTeam;
+    const rosterSourceTeam = possessionResult === "block" ? nextTeam : blockTeam;
     const options = getRosterOptionsForTeam(rosterSourceTeam);
     const actorId = options.find((player) => player.id === possessionActorId)?.id || possessionActorId || null;
     setPossessionActorId(actorId || "");
@@ -288,7 +292,9 @@ export default function ScoreKeeperView() {
   const scorerAssistClash =
     scoreForm.assistId &&
     scoreForm.assistId !== CALAHAN_ASSIST_VALUE &&
+    scoreForm.assistId !== SCORE_NA_PLAYER_VALUE &&
     scoreForm.scorerId &&
+    scoreForm.scorerId !== SCORE_NA_PLAYER_VALUE &&
     scoreForm.assistId === scoreForm.scorerId;
   const isScoreFormValid = Boolean(scoreForm.scorerId && scoreForm.assistId && !scorerAssistClash);
 
@@ -1031,7 +1037,7 @@ export default function ScoreKeeperView() {
             </div>
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
-                Player ({possessionResult === "block" ? "opposition" : "current team"})
+                Player ({possessionResult === "block" ? "current team" : "opposition"})
               </p>
               <select
                 value={possessionActorId}
@@ -1219,6 +1225,7 @@ export default function ScoreKeeperView() {
                 className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
               >
                 <option value="">Select Scorer</option>
+                <option value={SCORE_NA_PLAYER_VALUE}>N/A</option>
                 {rosterOptionsForModal.map((player) => (
                   <option key={player.id} value={player.id}>
                     {formatPlayerSelectLabel(player)}
@@ -1237,6 +1244,7 @@ export default function ScoreKeeperView() {
                 className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
               >
                 <option value="">Select Assist</option>
+                <option value={SCORE_NA_PLAYER_VALUE}>N/A</option>
                 {rosterOptionsForModal.map((player) => (
                   <option key={player.id} value={player.id}>
                     {formatPlayerSelectLabel(player)}
@@ -1256,6 +1264,7 @@ export default function ScoreKeeperView() {
                 className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
               >
                 <option value="">Select Scorer</option>
+                <option value={SCORE_NA_PLAYER_VALUE}>N/A</option>
                 {rosterOptionsForModal.map((player) => (
                   <option key={player.id} value={player.id}>
                     {formatPlayerSelectLabel(player)}
@@ -1555,8 +1564,6 @@ function MatchLogCard({
     </article>
   );
 }
-
-
 
 
 
