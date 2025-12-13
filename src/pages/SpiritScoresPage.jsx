@@ -115,17 +115,17 @@ export default function SpiritScoresPage() {
   };
 
   return (
-    <div className="pb-16 text-[var(--sc-ink)]">
+    <div className="pb-16 text-ink">
       <header className="sc-shell py-4 sm:py-6">
         <div className="sc-card-base space-y-3 p-6 sm:p-7">
           <div className="flex flex-wrap items-center gap-3">
             <span className="sc-chip">Spirit entry</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
               Submit post-match scores
             </span>
           </div>
-          <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">Spirit scores</h1>
-          <p className="text-sm text-[var(--sc-ink-muted)]">
+          <h1 className="text-3xl font-semibold text-ink">Spirit scores</h1>
+          <p className="text-sm text-ink-muted">
             Capture spirit scores for both teams after the final whistle and submit them directly to the event database.
           </p>
           <Link to="/score-keeper" className="sc-button is-ghost">

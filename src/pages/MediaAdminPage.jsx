@@ -158,15 +158,15 @@ export default function MediaAdminPage() {
   };
 
   return (
-    <div className="pb-16 text-[var(--sc-ink)]">
+    <div className="pb-16 text-ink">
       <header className="sc-shell py-6">
         <div className="sc-card-base space-y-3 p-6 sm:p-8">
           <div className="flex flex-wrap items-center gap-3">
             <span className="sc-chip">Admin tools</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Media</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Media</span>
           </div>
           <h1 className="text-3xl font-semibold">Match media control</h1>
-          <p className="text-sm text-[var(--sc-ink-muted)]">
+          <p className="text-sm text-ink-muted">
             Select any scheduled match and attach or edit its streaming metadata. The database normalizer will tidy the payload automatically.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -184,28 +184,28 @@ export default function MediaAdminPage() {
         <section className="sc-card-base space-y-4 p-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Update media</p>
-              <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Attach stream to an existing match</h2>
-              <p className="text-xs text-[var(--sc-ink-muted)]">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Update media</p>
+              <h2 className="text-xl font-semibold text-ink">Attach stream to an existing match</h2>
+              <p className="text-xs text-ink-muted">
                 Pick the event and match, confirm the existing status, then drop in the stream details. Fields mirror the quick-create widget from the Tournament Director.
               </p>
             </div>
             <button
               type="button"
               onClick={handleClearForm}
-              className="rounded border border-[var(--sc-border)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)] hover:border-[var(--sc-ink-muted)]"
+              className="rounded border border-border px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ink-muted hover:border-[var(--sc-ink-muted)]"
             >
               Clear fields
             </button>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--sc-ink)]">
+            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
               Event
               <select
                 value={selectedEventId}
                 onChange={(event) => setSelectedEventId(event.target.value)}
-                className="rounded-lg border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-3 py-2 text-sm focus:border-[var(--sc-border-strong)] focus:outline-none"
+                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
               >
                 <option value="">Select event</option>
                 {events.map((event) => (
@@ -215,13 +215,13 @@ export default function MediaAdminPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--sc-ink)]">
+            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
               Match
               <select
                 value={form.matchId}
                 onChange={(event) => handleSelectMatch(event.target.value)}
                 disabled={!selectedEventId || matchesLoading}
-                className="rounded-lg border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-3 py-2 text-sm focus:border-[var(--sc-border-strong)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <option value="">{matchesLoading ? "Loading matches..." : "Choose a match"}</option>
                 {matches.map((match) => (
@@ -231,12 +231,12 @@ export default function MediaAdminPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--sc-ink)]">
+            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
               Provider
               <select
                 value={form.provider}
                 onChange={handleInput("provider")}
-                className="rounded-lg border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-3 py-2 text-sm capitalize focus:border-[var(--sc-border-strong)] focus:outline-none"
+                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm capitalize focus:border-border-strong focus:outline-none"
               >
                 <option value="">Use auto-detect</option>
                 {MEDIA_PROVIDER_PRESETS.map((provider) => (
@@ -246,32 +246,32 @@ export default function MediaAdminPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--sc-ink)]">
+            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
               Media URL
               <input
                 type="url"
                 value={form.url}
                 onChange={handleInput("url")}
                 placeholder="https://youtu.be/stream-id"
-                className="rounded-lg border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-3 py-2 text-sm focus:border-[var(--sc-border-strong)] focus:outline-none"
+                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--sc-ink)]">
+            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
               Embed URL (optional)
               <input
                 type="url"
                 value={form.embedUrl}
                 onChange={handleInput("embedUrl")}
                 placeholder="https://www.youtube.com/embed/..."
-                className="rounded-lg border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-3 py-2 text-sm focus:border-[var(--sc-border-strong)] focus:outline-none"
+                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--sc-ink)]">
+            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
               Media status
               <select
                 value={form.mediaStatus}
                 onChange={handleInput("mediaStatus")}
-                className="rounded-lg border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-3 py-2 text-sm capitalize focus:border-[var(--sc-border-strong)] focus:outline-none"
+                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm capitalize focus:border-border-strong focus:outline-none"
               >
                 <option value="">Mirror match status ({selectedMatch?.status || "N/A"})</option>
                 {MEDIA_STATUS_OPTIONS.map((status) => (
@@ -281,32 +281,32 @@ export default function MediaAdminPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--sc-ink)]">
+            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
               Stream start time
               <input
                 type="datetime-local"
                 value={form.startTime}
                 onChange={handleInput("startTime")}
-                className="rounded-lg border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-3 py-2 text-sm focus:border-[var(--sc-border-strong)] focus:outline-none"
+                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
               />
               {form.defaultStartTime && (
                 <button
                   type="button"
                   onClick={() => setForm((prev) => ({ ...prev, startTime: prev.defaultStartTime }))}
-                  className="text-xs font-semibold text-[var(--sc-ink-muted)] underline decoration-dotted decoration-[var(--sc-ink-muted)] underline-offset-4"
+                  className="text-xs font-semibold text-ink-muted underline decoration-dotted decoration-[var(--sc-ink-muted)] underline-offset-4"
                 >
                   Use match start
                 </button>
               )}
             </label>
-            <label className="md:col-span-2 lg:col-span-3 flex flex-col gap-1 text-sm font-semibold text-[var(--sc-ink)]">
+            <label className="md:col-span-2 lg:col-span-3 flex flex-col gap-1 text-sm font-semibold text-ink">
               Replay / VOD URLs
               <textarea
                 value={form.vodText}
                 onChange={handleVodChange}
                 rows={3}
                 placeholder="One URL per line"
-                className="rounded-xl border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-3 py-2 text-sm focus:border-[var(--sc-border-strong)] focus:outline-none"
+                className="rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
               />
             </label>
           </div>
@@ -343,7 +343,7 @@ export default function MediaAdminPage() {
               type="button"
               onClick={handlePopulateFromMatch}
               disabled={!selectedMatch}
-              className="inline-flex items-center justify-center rounded-full border border-[var(--sc-border-strong)]/70 bg-[var(--sc-surface)] px-4 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-accent)]/50 hover:text-[var(--sc-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--sc-accent)]/40 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center rounded-full border border-[var(--sc-border-strong)]/70 bg-surface px-4 py-2 text-sm font-semibold text-ink transition hover:border-[var(--sc-accent)]/50 hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--sc-accent)]/40 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Load current media
             </button>
@@ -362,42 +362,42 @@ export default function MediaAdminPage() {
         </section>
 
         <section className="sc-card-base space-y-4 p-6">
-          <h3 className="text-lg font-semibold text-[var(--sc-ink)]">Selected match details</h3>
+          <h3 className="text-lg font-semibold text-ink">Selected match details</h3>
           {selectedMatch ? (
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-4 py-3 space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Match</p>
-                <p className="text-sm font-semibold text-[var(--sc-ink)]">{formatMatchLabel(selectedMatch)}</p>
-                <p className="text-xs text-[var(--sc-ink-muted)]">
-                  Status: <span className="font-semibold text-[var(--sc-ink)]">{selectedMatch.status}</span>
+              <div className="rounded-2xl border border-border bg-surface-muted px-4 py-3 space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Match</p>
+                <p className="text-sm font-semibold text-ink">{formatMatchLabel(selectedMatch)}</p>
+                <p className="text-xs text-ink-muted">
+                  Status: <span className="font-semibold text-ink">{selectedMatch.status}</span>
                 </p>
-                <p className="text-xs text-[var(--sc-ink-muted)]">
-                  Has media: <span className="font-semibold text-[var(--sc-ink)]">{selectedMatch.has_media ? "Yes" : "No"}</span>
+                <p className="text-xs text-ink-muted">
+                  Has media: <span className="font-semibold text-ink">{selectedMatch.has_media ? "Yes" : "No"}</span>
                 </p>
               </div>
-              <div className="rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] px-4 py-3 space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Current media snapshot</p>
+              <div className="rounded-2xl border border-border bg-surface-muted px-4 py-3 space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Current media snapshot</p>
                 {selectedMatch.media_url ? (
                   <>
-                    <p className="text-sm font-semibold text-[var(--sc-ink)]">{selectedMatch.media_provider || "custom"}</p>
-                    <p className="text-xs text-[var(--sc-ink-muted)] break-all">{selectedMatch.media_url}</p>
+                    <p className="text-sm font-semibold text-ink">{selectedMatch.media_provider || "custom"}</p>
+                    <p className="text-xs text-ink-muted break-all">{selectedMatch.media_url}</p>
                     {selectedMatch.media_status && (
-                      <p className="text-xs text-[var(--sc-ink-muted)]">Status: {selectedMatch.media_status}</p>
+                      <p className="text-xs text-ink-muted">Status: {selectedMatch.media_status}</p>
                     )}
                   </>
                 ) : (
-                  <p className="text-sm text-[var(--sc-ink-muted)]">No media link stored.</p>
+                  <p className="text-sm text-ink-muted">No media link stored.</p>
                 )}
               </div>
               <div className="md:col-span-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Preview payload</p>
-                <pre className="mt-2 max-h-64 overflow-auto rounded-2xl border border-[var(--sc-border)] bg-[var(--sc-surface-muted)] p-4 text-xs text-[var(--sc-ink)]">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Preview payload</p>
+                <pre className="mt-2 max-h-64 overflow-auto rounded-2xl border border-border bg-surface-muted p-4 text-xs text-ink">
                   {JSON.stringify(buildMediaPayload(form), null, 2)}
                 </pre>
               </div>
             </div>
           ) : (
-            <p className="text-sm text-[var(--sc-ink-muted)]">Select an event and match to view details.</p>
+            <p className="text-sm text-ink-muted">Select an event and match to view details.</p>
           )}
         </section>
       </main>

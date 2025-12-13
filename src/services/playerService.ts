@@ -127,6 +127,16 @@ export async function getPlayerDirectory(): Promise<PlayerDirectoryRow[]> {
   return (data ?? []) as PlayerDirectoryRow[];
 }
 
+export async function getPlayersByIds(ids: string[]): Promise<PlayerDirectoryRow[]> {
+  const uniqueIds = Array.from(new Set((ids || []).filter((id) => typeof id === "string" && id.trim().length > 0)));
+  if (!uniqueIds.length) return [];
+  const { data, error } = await supabase.from("player").select(PLAYER_SELECT).in("id", uniqueIds);
+  if (error) {
+    throw new Error(error.message || "Failed to load players");
+  }
+  return (data ?? []) as PlayerDirectoryRow[];
+}
+
 type UpsertPlayerPayload = {
   id?: string | null;
   name: string;

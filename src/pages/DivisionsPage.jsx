@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { getEventsList } from "../services/leagueService";
 import { getMatchesByEvent } from "../services/matchService";
 import { hydrateVenueLookup } from "../services/venueService";
+import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
 
 export default function DivisionsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialEventId = searchParams.get("eventId") || null;
   const [events, setEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [selectedEventId, setSelectedEventId] = useState(initialEventId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [matches, setMatches] = useState([]);
@@ -24,7 +27,6 @@ export default function DivisionsPage() {
         const list = await getEventsList(50);
         if (!ignore) {
           setEvents(list || []);
-          setSelectedEventId((list && list[0]?.id) || null);
         }
       } catch (err) {
         if (!ignore) {
@@ -41,6 +43,24 @@ export default function DivisionsPage() {
       ignore = true;
     };
   }, []);
+
+  const requestedEventId = searchParams.get("eventId") || null;
+
+  useEffect(() => {
+    if (!events.length) return;
+    let nextId = requestedEventId;
+    if (!nextId || !events.some((evt) => evt.id === nextId)) {
+      nextId = events[0]?.id || null;
+    }
+    setSelectedEventId(nextId);
+    if (nextId) {
+      if (requestedEventId !== nextId) {
+        setSearchParams({ eventId: nextId }, { replace: true });
+      }
+    } else if (requestedEventId) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [events, requestedEventId, setSearchParams]);
 
   const selectedEvent = useMemo(
     () => events.find((evt) => evt.id === selectedEventId) || null,
@@ -77,6 +97,15 @@ export default function DivisionsPage() {
       ignore = true;
     };
   }, [selectedEventId]);
+
+  const handleSelectEvent = (eventId) => {
+    setSelectedEventId(eventId);
+    if (eventId) {
+      setSearchParams({ eventId }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  };
 
   useEffect(() => {
     const venueIds = matches
@@ -175,55 +204,46 @@ export default function DivisionsPage() {
   }, [selectedEvent?.rules]);
 
   return (
-    <div className="pb-16 text-[var(--sc-ink)]">
-      <header className="sc-shell py-6">
-        <div className="sc-card-base p-6 sm:p-8 space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="sc-chip">Divisions</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              Event operations
-            </span>
-          </div>
-          <h1 className="text-3xl font-semibold">Division control center</h1>
-          <p className="text-sm text-[var(--sc-ink-muted)] max-w-3xl">
-            Select a tournament to view its calendar, venue posture, rule set, and live fixtures—everything organizers
-            need to keep divisions moving on time.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link to="/division-results" className="sc-button">
-              Division results
-            </Link>
-            <span className="text-xs text-[var(--sc-ink-muted)]">
-              View consolidated standings and scoring ladders.
-            </span>
-          </div>
-        </div>
-      </header>
+    <div className="pb-16 text-ink">
+      <SectionShell as="header" className="py-6">
+        <Card className="space-y-4 p-6 sm:p-8">
+          <SectionHeader
+            eyebrow="Divisions"
+            title="Division control center"
+            description="Select a tournament to view its calendar, venue posture, rule set, and live fixtures. Everything organizers need to keep divisions moving on time."
+            action={
+              <Link to="/division-results" className="sc-button is-ghost">
+                Division results
+              </Link>
+            }
+          >
+            <p className="text-xs text-ink-muted">View consolidated standings and scoring ladders.</p>
+          </SectionHeader>
+        </Card>
+      </SectionShell>
 
-      <main className="sc-shell space-y-4 sm:space-y-6">
-        {error && (
-          <p className="sc-card-muted border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
-            {error}
-          </p>
-        )}
+      <SectionShell as="main" className="space-y-4 sm:space-y-6">
+        {error && <div className="sc-alert is-error">{error}</div>}
 
-        <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <section className="sc-card-base p-6 space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="sc-chip">Events</span>
-                <p className="text-sm font-semibold text-[var(--sc-ink)]">Select an event</p>
-              </div>
-              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                {loading ? "Loading..." : `${events.length} total`}
-              </span>
-            </div>
+        <div className="grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
+          <Card className="space-y-4 p-6">
+            <SectionHeader
+              eyebrow="Events"
+              title="Select an event"
+              action={
+                <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  {loading ? "Loading..." : `${events.length} total`}
+                </span>
+              }
+            />
             {loading && events.length === 0 ? (
-              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading events...</div>
+              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                Loading events...
+              </Card>
             ) : events.length === 0 ? (
-              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
                 No events registered yet.
-              </div>
+              </Card>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {events.map((event) => {
@@ -232,69 +252,55 @@ export default function DivisionsPage() {
                     <button
                       key={event.id}
                       type="button"
-                      onClick={() => setSelectedEventId(event.id)}
-                      className={`w-full text-left transition ${
-                        isActive ? "sc-button" : "sc-button is-ghost !text-[var(--sc-ink)]"
-                      } !flex !flex-col !items-start !justify-start !gap-1.5 !rounded-2xl !px-4 !py-3`}
+                      onClick={() => handleSelectEvent(event.id)}
+                      className={`${isActive ? "sc-button" : "sc-button is-ghost"} is-option transition hover:-translate-y-0.5`}
                     >
-                      <p
-                        className={`text-xs font-semibold uppercase tracking-wide ${
-                          isActive ? "text-[#0b2c23]" : "text-[var(--sc-ink-muted)]"
-                        }`}
-                      >
-                        {event.type || "Event"}
-                      </p>
-                      <p className={`text-base font-semibold ${isActive ? "text-[#03140f]" : "text-[var(--sc-ink)]"}`}>
-                        {event.name}
-                      </p>
-                      <p className={`text-xs ${isActive ? "text-[#0b2c23]" : "text-[var(--sc-ink-muted)]"}`}>
+                      <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{event.type || "Event"}</p>
+                      <p className="text-base font-semibold leading-tight">{event.name}</p>
+                      <p className="text-xs opacity-80">
                         {formatDate(event.start_date)} - {formatDate(event.end_date)}
                       </p>
-                      {event.location && (
-                        <p className={`mt-1 text-xs ${isActive ? "text-[#0b2c23]" : "text-[var(--sc-ink-muted)]"}`}>
-                          Location: {event.location}
-                        </p>
-                      )}
+                      {event.location && <p className="text-xs opacity-80">Location: {event.location}</p>}
                     </button>
                   );
                 })}
               </div>
             )}
-          </section>
+          </Card>
 
-          <section className="sc-card-base p-6 space-y-3">
-            <p className="sc-chip">Event details</p>
+          <Card className="space-y-3 p-6">
+            <Chip>Event details</Chip>
             {!selectedEvent ? (
-              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
                 Select an event to view its details.
-              </div>
+              </Card>
             ) : (
               <div className="grid gap-3">
-                <div className="sc-card-muted p-3">
-                  <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Name</p>
-                  <p className="text-base font-semibold text-[var(--sc-ink)]">{selectedEvent.name}</p>
-                </div>
+                <Panel variant="muted" className="p-3">
+                  <p className="text-xs uppercase tracking-wide text-ink-muted">Name</p>
+                  <p className="text-base font-semibold text-ink">{selectedEvent.name}</p>
+                </Panel>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="sc-card-muted p-3">
-                    <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Start date</p>
-                    <p className="font-semibold text-[var(--sc-ink)]">{formatDate(selectedEvent.start_date)}</p>
-                  </div>
-                  <div className="sc-card-muted p-3">
-                    <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">End date</p>
-                    <p className="font-semibold text-[var(--sc-ink)]">{formatDate(selectedEvent.end_date)}</p>
-                  </div>
+                  <Panel variant="muted" className="p-3">
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">Start date</p>
+                    <p className="font-semibold text-ink">{formatDate(selectedEvent.start_date)}</p>
+                  </Panel>
+                  <Panel variant="muted" className="p-3">
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">End date</p>
+                    <p className="font-semibold text-ink">{formatDate(selectedEvent.end_date)}</p>
+                  </Panel>
                 </div>
-                <div className="sc-card-muted p-3">
-                  <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Event type</p>
-                  <p className="font-semibold text-[var(--sc-ink)]">{selectedEvent.type || "Not specified"}</p>
-                </div>
-                <div className="sc-card-muted p-3">
-                  <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Location</p>
-                  <p className="font-semibold text-[var(--sc-ink)]">{selectedEvent.location || "TBD"}</p>
-                </div>
-                <div className="sc-card-muted p-3">
-                  <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Created</p>
-                  <p className="font-semibold text-[var(--sc-ink)]">
+                <Panel variant="muted" className="p-3">
+                  <p className="text-xs uppercase tracking-wide text-ink-muted">Event type</p>
+                  <p className="font-semibold text-ink">{selectedEvent.type || "Not specified"}</p>
+                </Panel>
+                <Panel variant="muted" className="p-3">
+                  <p className="text-xs uppercase tracking-wide text-ink-muted">Location</p>
+                  <p className="font-semibold text-ink">{selectedEvent.location || "TBD"}</p>
+                </Panel>
+                <Panel variant="muted" className="p-3">
+                  <p className="text-xs uppercase tracking-wide text-ink-muted">Created</p>
+                  <p className="font-semibold text-ink">
                     {formatDate(selectedEvent.created_at)} at{" "}
                     {selectedEvent.created_at
                       ? new Date(selectedEvent.created_at).toLocaleTimeString([], {
@@ -303,66 +309,62 @@ export default function DivisionsPage() {
                         })
                       : "--"}
                   </p>
-                </div>
+                </Panel>
                 {rulesSummary && (
-                  <div className="sc-card-muted p-3 space-y-2">
-                    <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Rules snapshot</p>
+                  <Panel variant="muted" className="space-y-2 p-3">
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">Rules snapshot</p>
                     <div className="grid gap-1.5 sm:grid-cols-2">
                       {rulesSummary.map((row) => (
-                        <div key={row.label} className="rounded-xl border border-[var(--sc-border)]/60 bg-white/5 px-3 py-2">
-                          <p className="text-[11px] uppercase tracking-wide text-[var(--sc-ink-muted)]">{row.label}</p>
-                          <p className="text-sm font-semibold text-[var(--sc-ink)]">{row.value}</p>
-                        </div>
+                        <Panel key={row.label} variant="tinted" className="p-3">
+                          <p className="text-[11px] uppercase tracking-wide text-ink-muted">{row.label}</p>
+                          <p className="text-sm font-semibold text-ink">{row.value}</p>
+                        </Panel>
                       ))}
                     </div>
-                  </div>
+                  </Panel>
                 )}
-                <p className="text-xs text-[var(--sc-ink-muted)]">
+                <p className="text-xs text-ink-muted">
                   Lock an event here and transition to Matches for deeper analytics or officiating detail.
                 </p>
               </div>
             )}
-          </section>
+          </Card>
         </div>
 
-        <section className="sc-card-base p-6 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="sc-chip">Scoreboard</p>
-              <p className="text-sm text-[var(--sc-ink-muted)]">
-                Monitor streaming assignments and results for the selected event, filtered by competitive state.
-              </p>
-            </div>
-            <div className="inline-flex flex-wrap items-center gap-2">
-              {[
-                { key: "current", label: "Current Games" },
-                { key: "upcoming", label: "Upcoming Games" },
-                { key: "past", label: "Recent Games" },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setMatchTab(tab.key)}
-                  className={matchTab === tab.key ? "sc-button" : "sc-button is-ghost"}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
+        <Card className="space-y-4 p-6">
+          <SectionHeader
+            eyebrow="Scoreboard"
+            description="Monitor streaming assignments and results for the selected event, filtered by competitive state."
+            action={
+              <div className="inline-flex flex-wrap items-center gap-2">
+                {[
+                  { key: "current", label: "Current Games" },
+                  { key: "upcoming", label: "Upcoming Games" },
+                  { key: "past", label: "Recent Games" },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setMatchTab(tab.key)}
+                    className={matchTab === tab.key ? "sc-button" : "sc-button is-ghost"}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            }
+          />
 
-          {matchesError && (
-            <p className="sc-card-muted border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
-              {matchesError}
-            </p>
-          )}
+          {matchesError && <div className="sc-alert is-error text-sm">{matchesError}</div>}
 
           {matchesLoading && activeMatches.length === 0 ? (
-            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading matches...</div>
+            <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+              Loading matches...
+            </Card>
           ) : activeMatches.length === 0 ? (
-            <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+            <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
               No matches in this category yet.
-            </div>
+            </Card>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {activeMatches.map((match) => {
@@ -403,47 +405,42 @@ export default function DivisionsPage() {
                     tabIndex={0}
                     onClick={handleMediaClick}
                     onKeyDown={handleMediaKeyDown}
-                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-[var(--sc-border)] bg-white/70 text-[var(--sc-ink)] transition hover:-translate-y-0.5 hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea4335]"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border bg-white/70 text-ink transition hover:-translate-y-0.5 hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea4335]"
                     title={`Watch on ${mediaProviderLabel}`}
                     aria-label={`Watch on ${mediaProviderLabel}`}
                   >
                     <img src="/youtube.png" alt="" className="h-4 w-4" aria-hidden="true" />
                   </span>
                 ) : null;
-                const cardContent = (
-                  <article
-                    key={match.id}
-                    className={`sc-card-base h-full p-4 text-sm transition ${
-                      isNavigable ? "hover:-translate-y-0.5" : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-xs text-[var(--sc-ink-muted)]">
+
+                const statusClass =
+                  match.status === "live"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : match.status === "halftime"
+                      ? "bg-sky-100 text-sky-800"
+                      : match.status === "scheduled" || match.status === "ready" || match.status === "pending"
+                        ? "bg-slate-100 text-slate-700"
+                        : "bg-amber-100 text-amber-800";
+
+                const content = (
+                  <>
+                    <div className="flex items-center justify-between text-xs text-ink-muted">
                       <span>
                         {formatDate(match.start_time)} at {formatTime(match.start_time)}
                       </span>
                       <div className="flex items-center gap-2">
                         {mediaButton}
                         <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                            match.status === "live"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : match.status === "halftime"
-                                ? "bg-sky-100 text-sky-800"
-                                : match.status === "scheduled" ||
-                                    match.status === "ready" ||
-                                    match.status === "pending"
-                                  ? "bg-slate-100 text-slate-700"
-                                  : "bg-amber-100 text-amber-800"
-                          }`}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${statusClass}`}
                         >
                           {match.status || "Status"}
                         </span>
                       </div>
                     </div>
-                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
                       {resolveVenueName(match)}
                     </p>
-                    <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm font-semibold text-[var(--sc-ink)]">
+                    <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm font-semibold text-ink">
                       <div className="min-w-0">
                         <p className="truncate">{match.team_a?.name || "Team A"}</p>
                       </div>
@@ -454,27 +451,33 @@ export default function DivisionsPage() {
                         <p className="truncate">{match.team_b?.name || "Team B"}</p>
                       </div>
                     </div>
-                  </article>
+                  </>
                 );
 
-                return isNavigable ? (
-                  <Link
-                    key={match.id}
-                    to={`/matches?matchId=${encodeURIComponent(match.id)}`}
-                    className="block h-full"
-                  >
-                    {cardContent}
-                  </Link>
-                ) : (
-                  <div key={match.id} className="h-full">
-                    {cardContent}
-                  </div>
+                if (isNavigable) {
+                  return (
+                    <Panel
+                      key={match.id}
+                      as={Link}
+                      to={`/matches?matchId=${encodeURIComponent(match.id)}`}
+                      variant="tinted"
+                      className="h-full p-4 text-sm transition hover:-translate-y-0.5"
+                    >
+                      {content}
+                    </Panel>
+                  );
+                }
+
+                return (
+                  <Panel key={match.id} as="article" variant="tinted" className="h-full p-4 text-sm">
+                    {content}
+                  </Panel>
                 );
               })}
             </div>
           )}
-        </section>
-      </main>
+        </Card>
+      </SectionShell>
     </div>
   );
 }

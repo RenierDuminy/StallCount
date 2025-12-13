@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Card, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
 
 const ADMIN_MODULES = [
   {
@@ -6,7 +7,7 @@ const ADMIN_MODULES = [
     description:
       "Run the live scoreboard, reconcile offline submissions, and monitor match flow.",
     to: "/score-keeper",
-    accent: "bg-brand/10 text-[var(--sc-ink)]",
+    accent: "bg-brand/10 text-ink",
   },
   {
     label: "Captain",
@@ -46,37 +47,35 @@ const ADMIN_MODULES = [
 
 export default function AdminPage() {
   return (
-    <div className="pb-16 text-[var(--sc-ink)]">
-      <header className="sc-shell py-6">
-        <div className="sc-card-base space-y-3 p-6 sm:p-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="sc-chip">Admin</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              StallCount control
-            </span>
-          </div>
-          <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">Admin tools</h1>
-          <p className="text-sm text-[var(--sc-ink-muted)]">
-            Choose your workspace to access the specialised controls you need.
-          </p>
-          <Link to="/dashboard" className="sc-button is-ghost">
-            View dashboard overview
-          </Link>
-        </div>
-      </header>
+    <div className="pb-16 text-ink">
+      <SectionShell as="header" className="py-6">
+        <Card className="space-y-4 p-6 sm:p-8">
+          <SectionHeader
+            eyebrow="Admin"
+            title="Admin tools"
+            description="Choose your workspace to access the specialised controls you need."
+            action={
+              <Link to="/dashboard" className="sc-button is-ghost">
+                View dashboard overview
+              </Link>
+            }
+          />
+        </Card>
+      </SectionShell>
 
-      <main className="sc-shell space-y-6 py-6">
-        <section className="sc-card-base p-5 sm:p-6 space-y-2">
-          <h2 className="text-lg font-semibold text-[var(--sc-ink)]">Backend workspaces</h2>
-          <p className="text-sm text-[var(--sc-ink-muted)]">
-            Each module routes to its dedicated screens. Use the cards below to jump straight into your tools.
-          </p>
-        </section>
+      <SectionShell as="main" className="space-y-6 py-6">
+        <Card as="section" className="space-y-2 p-5 sm:p-6">
+          <SectionHeader
+            title="Backend workspaces"
+            description="Each module routes to its dedicated screens. Use the cards below to jump straight into your tools."
+          />
+        </Card>
         <div className="grid gap-6 md:grid-cols-3">
           {ADMIN_MODULES.map((module) => (
-            <article
+            <Panel
               key={module.label}
-              className="sc-card-base flex h-full flex-col justify-between p-6 transition hover:-translate-y-0.5"
+              variant="tinted"
+              className="flex h-full flex-col justify-between p-6 transition hover:-translate-y-0.5"
             >
               <header className="space-y-2">
                 <span
@@ -84,15 +83,15 @@ export default function AdminPage() {
                 >
                   {module.label}
                 </span>
-                <p className="text-sm text-[var(--sc-ink-muted)]">{module.description}</p>
+                <p className="text-sm text-ink-muted">{module.description}</p>
               </header>
               <Link to={module.to} className="mt-6 sc-button">
                 Open {module.label}
               </Link>
-            </article>
+            </Panel>
           ))}
         </div>
-      </main>
+      </SectionShell>
     </div>
   );
 }

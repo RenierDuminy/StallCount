@@ -163,26 +163,26 @@ export default function MatchesPage() {
   const showLoginBanner = !session && selectedMatchId && !logsLoading && !derived?.timeline;
 
   return (
-    <div className="pb-16 text-[var(--sc-ink)]">
+    <div className="pb-16 text-ink">
       <header className="sc-shell py-4 sm:py-6">
         <div className="sc-card-base space-y-3 p-5 sm:p-7">
           <div className="flex flex-wrap items-center gap-3">
             <span className="sc-chip">Matches</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
               Select a Event and Match to view
             </span>
           </div>
           <div className="grid gap-3 md:grid-cols-2 md:gap-4 md:items-start">
-            <label className="space-y-1 text-sm font-semibold text-[var(--sc-ink)]">
+            <label className="space-y-1 text-sm font-semibold text-ink">
               <span>Select event</span>
               <div className="sc-card-muted relative flex items-center gap-3 p-3">
-                <div className="text-[var(--sc-ink-muted)]" aria-hidden="true">
+                <div className="text-ink-muted" aria-hidden="true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />
                   </svg>
                 </div>
                 {eventsLoading ? (
-                  <p className="text-sm text-[var(--sc-ink-muted)]">Loading events...</p>
+                  <p className="text-sm text-ink-muted">Loading events...</p>
                 ) : eventsError ? (
                   <p className="text-sm text-rose-600">{eventsError}</p>
                 ) : (
@@ -196,33 +196,33 @@ export default function MatchesPage() {
                         setSearchParams({}, { replace: true });
                       }
                     }}
-                    className="w-full appearance-none rounded-xl border border-[var(--sc-border)] bg-[var(--sc-surface)] px-3 py-2 text-sm font-semibold text-[var(--sc-ink)] shadow-inner outline-none focus:border-[var(--sc-accent)] focus:ring-2 focus:ring-[var(--sc-accent)]/50"
+                    className="w-full appearance-none rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink shadow-inner outline-none focus:border-accent focus:ring-2 focus:ring-[var(--sc-accent)]/50"
                   >
-                    <option value="" className="bg-[var(--sc-surface)] text-[var(--sc-ink)]">
+                    <option value="" className="bg-surface text-ink">
                       Pick an event...
                     </option>
                     {events.map((event) => (
                       <option
                         key={event.id}
                         value={event.id}
-                        className="bg-[var(--sc-surface)] text-[var(--sc-ink)]"
+                        className="bg-surface text-ink"
                       >
                         {event.name}
                       </option>
                     ))}
                   </select>
                 )}
-                <div className="text-[var(--sc-ink-muted)]" aria-hidden="true">
+                <div className="text-ink-muted" aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.117l3.71-3.886a.75.75 0 0 1 1.08 1.04l-4.24 4.44a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" />
                   </svg>
                 </div>
               </div>
             </label>
-            <label className="space-y-1 text-sm font-semibold text-[var(--sc-ink)]">
+            <label className="space-y-1 text-sm font-semibold text-ink">
               <span>Select match</span>
               <div className="sc-card-muted relative flex items-center gap-3 p-3">
-                <div className="text-[var(--sc-ink-muted)]" aria-hidden="true">
+                <div className="text-ink-muted" aria-hidden="true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h8m-10 4h12m-9 4h6" />
                     <rect x="3.75" y="4.75" width="16.5" height="14.5" rx="3" />
@@ -240,9 +240,9 @@ export default function MatchesPage() {
                       setSearchParams({}, { replace: true });
                     }
                   }}
-                  className="w-full appearance-none rounded-xl border border-[var(--sc-border)] bg-[var(--sc-surface)] px-3 py-2 text-sm font-semibold text-[var(--sc-ink)] shadow-inner outline-none focus:border-[var(--sc-accent)] focus:ring-2 focus:ring-[var(--sc-accent)]/50 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="w-full appearance-none rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink shadow-inner outline-none focus:border-accent focus:ring-2 focus:ring-[var(--sc-accent)]/50 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  <option value="" className="bg-[var(--sc-surface)] text-[var(--sc-ink)]">
+                  <option value="" className="bg-surface text-ink">
                     {!selectedEventId
                       ? "Select an event first..."
                       : matchLoading
@@ -255,13 +255,13 @@ export default function MatchesPage() {
                     <option
                       key={match.id}
                       value={match.id}
-                      className="bg-[var(--sc-surface)] text-[var(--sc-ink)]"
+                      className="bg-surface text-ink"
                     >
                       {formatMatchLabel(match)}
                     </option>
                   ))}
                 </select>
-                <div className="text-[var(--sc-ink-muted)]" aria-hidden="true">
+                <div className="text-ink-muted" aria-hidden="true">
                   <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.117l3.71-3.886a.75.75 0 0 1 1.08 1.04l-4.24 4.44a.75.75 0 0 1-1.08 0L5.21 8.27a.75.75 0 0 1 .02-1.06z" />
                   </svg>
@@ -272,11 +272,11 @@ export default function MatchesPage() {
               <div className="sc-card-muted p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">Current selection</p>
-                    <p className="font-semibold text-[var(--sc-ink)]">
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">Current selection</p>
+                    <p className="font-semibold text-ink">
                       {selectedMatch.team_a?.name} vs {selectedMatch.team_b?.name}
                     </p>
-                    <p className="text-xs text-[var(--sc-ink-muted)]">
+                    <p className="text-xs text-ink-muted">
                       Kickoff {formatKickoff(selectedMatch.start_time)} | Status {selectedMatch.status}
                     </p>
                   </div>
@@ -316,15 +316,15 @@ export default function MatchesPage() {
           </p>
         )}
         {!selectedEventId ? (
-          <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+          <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">
             Choose an event above to load its fixture list and associated telemetry.
           </div>
         ) : !selectedMatchId ? (
-          <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+          <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">
             Select a match to unlock the scoring timeline, possession map, and match log.
           </div>
         ) : logsLoading || !derived ? (
-          <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+          <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">
             Loading match intelligence...
           </div>
         ) : (
@@ -394,20 +394,20 @@ function LegendSwatch({ color, label }) {
 function InsightTable({ title, rows }) {
   if (!rows?.length) {
     return (
-      <div className="sc-card-muted p-4 text-sm text-[var(--sc-ink-muted)]">No {title.toLowerCase()} available.</div>
+      <div className="sc-card-muted p-4 text-sm text-ink-muted">No {title.toLowerCase()} available.</div>
     );
   }
   return (
     <div className="sc-card-base">
-      <div className="border-b border-[var(--sc-border)] px-4 py-3">
-        <h3 className="text-sm font-semibold text-[var(--sc-ink)]">{title}</h3>
+      <div className="border-b border-border px-4 py-3">
+        <h3 className="text-sm font-semibold text-ink">{title}</h3>
       </div>
-      <table className="w-full text-sm text-[var(--sc-ink)]">
+      <table className="w-full text-sm text-ink">
         <tbody>
           {rows.map((row) => (
-            <tr key={row.label} className="border-t border-[var(--sc-border)] text-sm">
-              <td className="px-4 py-2 font-medium text-[var(--sc-ink-muted)]">{row.label}</td>
-              <td className="px-4 py-2 text-right font-semibold text-[var(--sc-ink)]">{row.value}</td>
+            <tr key={row.label} className="border-t border-border text-sm">
+              <td className="px-4 py-2 font-medium text-ink-muted">{row.label}</td>
+              <td className="px-4 py-2 text-right font-semibold text-ink">{row.value}</td>
             </tr>
           ))}
         </tbody>
@@ -432,7 +432,7 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
 
   if (!match || !timeline) {
     return (
-      <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Timeline data unavailable.</div>
+      <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">Timeline data unavailable.</div>
     );
   }
 
@@ -646,7 +646,7 @@ function PossessionTimeline({ timeline, teamAName, teamBName }) {
 
   if (!timeline) {
     return (
-      <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+      <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">
         Possession data unavailable. Log turnovers to populate this view.
       </div>
     );
@@ -757,16 +757,16 @@ function TeamOverviewCard({ title, stats }) {
     return (
       <div className="sc-card-muted p-3">
         {rows.length ? (
-          <table className="w-full text-left text-sm text-[var(--sc-ink)]">
+          <table className="w-full text-left text-sm text-ink">
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              <tr className="text-xs uppercase tracking-wide text-ink-muted">
                 <th className="py-0.5 pr-2">{valueLabel}</th>
                 <th className="py-0.5 text-right"></th>
               </tr>
             </thead>
             <tbody>
               {rows.slice(0, 8).map((row) => (
-                <tr key={`${label}-${row.player}`} className="border-t border-[var(--sc-border)] text-sm">
+                <tr key={`${label}-${row.player}`} className="border-t border-border text-sm">
                   <td className="py-1 pr-2">{row.player}</td>
                   <td className="py-1 text-right font-semibold">{row.count}</td>
                 </tr>
@@ -774,7 +774,7 @@ function TeamOverviewCard({ title, stats }) {
             </tbody>
           </table>
         ) : (
-          <p className="mt-0.5 text-xs text-[var(--sc-ink-muted)] sm:mt-1.5">No {label.toLowerCase()} recorded.</p>
+          <p className="mt-0.5 text-xs text-ink-muted sm:mt-1.5">No {label.toLowerCase()} recorded.</p>
         )}
       </div>
     );
@@ -782,18 +782,18 @@ function TeamOverviewCard({ title, stats }) {
 
   return (
     <div className="sc-card-base p-3 sm:p-5">
-      <h3 className="mb-1.5 text-lg font-semibold text-[var(--sc-ink)] sm:mb-2.5">{title}</h3>
+      <h3 className="mb-1.5 text-lg font-semibold text-ink sm:mb-2.5">{title}</h3>
       {production && (
         <div className="mb-2 grid grid-cols-2 gap-2 text-center sm:mb-3 sm:grid-cols-5 sm:gap-3">
           {summaryStats.map((item) => (
             <div
               key={item.key}
-              className="rounded-xl border border-[var(--sc-border)] bg-[var(--sc-surface)] px-2 py-3"
+              className="rounded-xl border border-border bg-surface px-2 py-3"
             >
-              <p className="text-lg font-semibold text-[var(--sc-ink)] sm:text-xl">
+              <p className="text-lg font-semibold text-ink sm:text-xl">
                 {formatStatValue(item.value)}
               </p>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)] sm:text-[11px]">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted sm:text-[11px]">
                 {item.label}
               </p>
             </div>
@@ -806,11 +806,11 @@ function TeamOverviewCard({ title, stats }) {
         {renderList("Turnovers", turnovers, "Turnover")}
       </div>
       <div className="mt-1.5 sc-card-muted p-3 sm:mt-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Top connections</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Top connections</p>
         {connections.length ? (
-          <table className="mt-1 w-full text-left text-sm text-[var(--sc-ink)] sm:mt-1.5">
+          <table className="mt-1 w-full text-left text-sm text-ink sm:mt-1.5">
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              <tr className="text-xs uppercase tracking-wide text-ink-muted">
                 <th className="py-0.5 pr-2">Assist</th>
                 <th className="py-0.5" />
                 <th className="py-0.5 pr-2">Scorer</th>
@@ -819,9 +819,9 @@ function TeamOverviewCard({ title, stats }) {
             </thead>
             <tbody>
               {connections.slice(0, 6).map((row) => (
-                <tr key={`${row.assist}-${row.scorer}`} className="border-t border-[var(--sc-border)] text-sm">
+                <tr key={`${row.assist}-${row.scorer}`} className="border-t border-border text-sm">
                   <td className="py-1 pr-2">{row.assist}</td>
-                  <td className="py-1 text-center text-sm font-bold text-[var(--sc-ink-muted)]">→</td>
+                  <td className="py-1 text-center text-sm font-bold text-ink-muted">→</td>
                   <td className="py-1 pr-2">{row.scorer}</td>
                   <td className="py-1 text-right font-semibold">{row.count}</td>
                 </tr>
@@ -829,7 +829,7 @@ function TeamOverviewCard({ title, stats }) {
             </tbody>
           </table>
         ) : (
-          <p className="mt-1 text-xs text-[var(--sc-ink-muted)] sm:mt-1.5">No assisted goals recorded.</p>
+          <p className="mt-1 text-xs text-ink-muted sm:mt-1.5">No assisted goals recorded.</p>
         )}
       </div>
     </div>
@@ -839,7 +839,7 @@ function TeamOverviewCard({ title, stats }) {
 function PointLogTable({ rows, teamAName, teamBName }) {
   if (!rows.length) {
     return (
-      <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">No match events recorded yet.</div>
+      <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">No match events recorded yet.</div>
     );
   }
   return (
@@ -857,7 +857,7 @@ function PointLogTable({ rows, teamAName, teamBName }) {
           {rows.map((row) => (
             <tr
               key={`${row.index}-${row.timestamp}`}
-              className={`border-b border-[var(--sc-border)] last:border-none ${
+              className={`border-b border-border last:border-none ${
                 row.variant === "timeout"
                   ? "bg-[#95df88]"
                 : row.variant === "stoppage"
@@ -888,7 +888,7 @@ function PointLogTable({ rows, teamAName, teamBName }) {
                   <div className="text-center text-xs font-semibold text-black sm:text-sm">
                     <div>{row.description}</div>
                     {row.metaDetails && (
-                      <p className="text-[10px] font-normal text-[var(--sc-ink-muted)] sm:text-xs">
+                      <p className="text-[10px] font-normal text-ink-muted sm:text-xs">
                         {row.metaDetails}
                       </p>
                     )}

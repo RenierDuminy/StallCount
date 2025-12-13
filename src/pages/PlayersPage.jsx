@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getAllPlayerMatchStats } from "../services/teamService";
+import { Card, SectionHeader, SectionShell, Field, Input } from "../components/ui/primitives";
 
 export default function PlayersPage() {
   const [rows, setRows] = useState([]);
@@ -166,51 +167,45 @@ export default function PlayersPage() {
   ];
 
   return (
-    <div className="pb-16 text-[var(--sc-ink)]">
-      <header className="sc-shell py-4 sm:py-6">
-        <div className="sc-card-base space-y-2 p-5 sm:p-7">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="sc-chip">Players</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              Impact across matches
-            </span>
-          </div>
-          <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">Player impact across recorded matches</h1>
-          <p className="text-sm text-[var(--sc-ink-muted)]">Tap a player for their game-by-game breakdown.</p>
-        </div>
-      </header>
+    <div className="pb-16 text-ink">
+      <SectionShell as="header" className="py-4 sm:py-6">
+        <Card className="space-y-4 p-5 sm:p-7">
+          <SectionHeader
+            eyebrow="Players"
+            title="Player impact across recorded matches"
+            description="Impact across matches."
+          />
+        </Card>
+      </SectionShell>
 
-      <main className="sc-shell matches-compact-shell space-y-3 py-2 sm:space-y-6 sm:py-4">
+      <SectionShell as="main" className="space-y-4 sm:space-y-6">
         {error && (
-          <p className="sc-card-muted border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+          <Card variant="muted" className="border border-rose-400/40 p-4 text-sm font-semibold text-rose-100">
             {error}
-          </p>
+          </Card>
         )}
 
-        <section className="sc-card-base p-4 sm:p-6 space-y-3">
-          <div className="grid gap-2 sm:grid-cols-[1fr_480px]">
-            <label className="sc-card-muted flex items-center gap-2 p-2 text-sm font-semibold text-[var(--sc-ink)]">
-              <span className="whitespace-nowrap text-[var(--sc-ink-muted)]">Search player</span>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Name or jersey #"
-                className="w-full bg-transparent text-sm text-[var(--sc-ink)] outline-none placeholder:text-[var(--sc-ink-muted)]"
-              />
-            </label>
-          </div>
+        <Card className="space-y-4 p-4 sm:p-6">
+          <SectionHeader
+            eyebrow="Player stats"
+            description={`Showing ${sortedRows.length} of ${rows.length || 0} players`}
+            action={
+              <Field className="w-full max-w-sm" label="Search player" htmlFor="player-search">
+                <Input
+                  id="player-search"
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Name or jersey #"
+                />
+              </Field>
+            }
+          />
 
-          <div className="sc-card-muted text-xs text-[var(--sc-ink-muted)]">
-            <p className="p-2">
-              Showing {sortedRows.length} of {rows.length || 0} players
-            </p>
-          </div>
-
-          <div className="overflow-x-auto rounded-2xl border border-[var(--sc-border)]">
-            <table className="min-w-full text-left text-sm text-[var(--sc-ink)]">
+          <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
+            <table className="min-w-full text-left text-sm text-ink">
               <thead>
-                <tr className="uppercase tracking-wide text-[11px] text-[var(--sc-ink-muted)]">
+                <tr className="uppercase tracking-wide text-[11px] text-ink-muted">
                   <th className="px-3 py-2 text-center">#</th>
                   <th className="px-3 py-2">Name</th>
                   {statHeaders.map((col) => (
@@ -219,7 +214,7 @@ export default function PlayersPage() {
                         type="button"
                         onClick={() => toggleSort(col.key)}
                         className={`flex w-full items-center justify-center gap-1 rounded-md px-1 py-0.5 text-xs font-semibold transition ${
-                          sortBy === col.key ? "bg-[var(--sc-surface-muted)] text-[var(--sc-ink)]" : "text-[var(--sc-ink-muted)] hover:bg-[var(--sc-surface)]"
+                          sortBy === col.key ? "bg-surface-muted text-ink" : "text-ink-muted hover:bg-surface"
                         }`}
                       >
                         <span>{col.label}</span>
@@ -234,27 +229,22 @@ export default function PlayersPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={statHeaders.length + 2} className="px-2 py-3 text-center text-sm text-[var(--sc-ink-muted)]">
+                    <td colSpan={statHeaders.length + 2} className="px-2 py-4 text-center text-sm text-ink-muted">
                       Loading player stats...
                     </td>
                   </tr>
                 ) : sortedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={statHeaders.length + 2} className="px-2 py-3 text-center text-sm text-[var(--sc-ink-muted)]">
+                    <td colSpan={statHeaders.length + 2} className="px-2 py-4 text-center text-sm text-ink-muted">
                       No player stats found.
                     </td>
                   </tr>
                 ) : (
                   sortedRows.map((row) => (
-                    <tr key={row.playerId} className="border-t border-[var(--sc-border)] hover:bg-[var(--sc-surface)]">
-                      <td className="px-3 py-2 text-center font-semibold text-[var(--sc-ink-muted)]">
-                        {row.jerseyNumber ?? "-"}
-                      </td>
+                    <tr key={row.playerId} className="border-t border-border hover:bg-surface-muted">
+                      <td className="px-3 py-2 text-center font-semibold text-ink-muted">{row.jerseyNumber ?? "-"}</td>
                       <td className="px-3 py-2">
-                        <Link
-                          to={`/players/${row.playerId}`}
-                          className="font-semibold text-[var(--sc-ink)] hover:text-[var(--sc-accent)]"
-                        >
+                        <Link to={`/players/${row.playerId}`} className="font-semibold text-ink hover:text-accent">
                           {row.playerName}
                         </Link>
                       </td>
@@ -272,8 +262,8 @@ export default function PlayersPage() {
               </tbody>
             </table>
           </div>
-        </section>
-      </main>
+        </Card>
+      </SectionShell>
     </div>
   );
 }

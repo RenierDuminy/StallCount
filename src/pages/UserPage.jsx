@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
+import { Card, Panel, SectionShell, SectionHeader } from "../components/ui/primitives";
 
 const ROLE_LABELS = {
   admin: "Administrator",
@@ -19,7 +20,7 @@ const ROLE_NAME_BY_ID = {
 };
 
 function formatDate(value) {
-  if (!value) return "—";
+  if (!value) return "Unknown";
   try {
     return new Date(value).toLocaleString();
   } catch {
@@ -36,10 +37,7 @@ function resolveAccessLevel(user) {
     ROLE_NAME_BY_ID[user.user_metadata?.role_id] ||
     ROLE_LABELS[metaRole] ||
     "Authenticated user";
-  const accessLevel =
-    ACCESS_LEVELS[metaRole] ||
-    ACCESS_LEVELS[user.app_metadata?.role] ||
-    "Standard access";
+  const accessLevel = ACCESS_LEVELS[metaRole] || ACCESS_LEVELS[user.app_metadata?.role] || "Standard access";
 
   return { role: profileRole, level: accessLevel };
 }
@@ -55,55 +53,39 @@ export default function UserPage() {
     return [
       { label: "Full name", value: metadata.full_name || metadata.name || "Unknown" },
       { label: "Email", value: user.email || "Unknown" },
-      { label: "Access level", value: `${accessInfo.role} · ${accessInfo.level}` },
+      { label: "Access level", value: `${accessInfo.role} - ${accessInfo.level}` },
       { label: "User ID", value: user.id || "-" },
-      {
-        label: "Created",
-        value: user.created_at ? formatDate(user.created_at) : "Unknown",
-      },
-      {
-        label: "Last sign-in",
-        value: user.last_sign_in_at ? formatDate(user.last_sign_in_at) : "Unknown",
-      },
+      { label: "Created", value: formatDate(user.created_at) },
+      { label: "Last sign-in", value: formatDate(user.last_sign_in_at) },
     ];
   }, [user, accessInfo]);
 
   return (
-    <div className="pb-16 text-[var(--sc-ink)]">
-      <div className="sc-shell space-y-6">
-        <header className="sc-card-base p-6 sm:p-7">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="sc-chip">Account overview</p>
-              <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">
-                {user?.user_metadata?.full_name || "User profile"}
-              </h1>
-              <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">
-                Quick access to the information we have on record for your StallCount login.
-              </p>
-            </div>
-          </div>
-        </header>
+    <div className="pb-16 text-ink">
+      <SectionShell className="space-y-6">
+        <Card className="p-6 sm:p-7">
+          <SectionHeader
+            eyebrow="Account overview"
+            title={user?.user_metadata?.full_name || "User profile"}
+            description="Quick access to the information we have on record for your StallCount login."
+          />
+        </Card>
 
-        <section className="sc-card-base space-y-4 p-6">
+        <Card className="space-y-4 p-6">
           {!user ? (
-            <p className="text-sm text-[var(--sc-ink-muted)]">
-              You are not signed in. Log in to view your profile information.
-            </p>
+            <p className="text-sm text-ink-muted">You are not signed in. Log in to view your profile information.</p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               {profileEntries.map((entry) => (
-                <article key={entry.label} className="sc-card-muted p-4 text-sm">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                    {entry.label}
-                  </p>
-                  <p className="mt-1 text-base font-semibold text-[var(--sc-ink)]">{entry.value}</p>
-                </article>
+                <Panel key={entry.label} variant="muted" className="p-4 text-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{entry.label}</p>
+                  <p className="mt-1 break-words text-base font-semibold text-ink">{entry.value}</p>
+                </Panel>
               ))}
             </div>
           )}
-        </section>
-      </div>
+        </Card>
+      </SectionShell>
     </div>
   );
 }

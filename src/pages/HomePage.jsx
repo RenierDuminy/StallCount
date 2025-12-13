@@ -9,11 +9,11 @@ import { getSubscriptions, upsertSubscription, deleteSubscriptionById } from "..
 import { getCurrentUser } from "../services/userService";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabaseClient";
+import { getPlayersByIds } from "../services/playerService";
+import { Card, Chip, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
 
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
-const TIMELINE_TYPES = ["all", "league", "tournament", "internal", "testing"];
-const TIMELINE_SCOPES = ["current", "upcoming", "completed", "all"];
 const MAX_MY_TEAMS = 2;
 const MAX_MY_MATCHES = 3;
 const MAX_SUBSCRIPTIONS_PREVIEW = 4;
@@ -37,22 +37,14 @@ export default function HomePage() {
   const [personalizedMessage, setPersonalizedMessage] = useState(null);
   const [myTeamInsights, setMyTeamInsights] = useState([]);
   const [myMatchInsights, setMyMatchInsights] = useState([]);
+  const [followedPlayers, setFollowedPlayers] = useState([]);
   const [myTeamsLoading, setMyTeamsLoading] = useState(false);
   const [myMatchesLoading, setMyMatchesLoading] = useState(false);
-
-  const [timelineScope, setTimelineScope] = useState("current");
-  const [timelineTypeFilter, setTimelineTypeFilter] = useState("all");
-  const [nearMeOnly, setNearMeOnly] = useState(false);
-  const [homeBase, setHomeBase] = useState(() => readStoredHomeBase());
 
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState(null);
 
   const { session } = useAuth();
-
-  useEffect(() => {
-    writeStoredHomeBase(homeBase);
-  }, [homeBase]);
 
   useEffect(() => {
     if (!heroActionStatus) return;
@@ -241,6 +233,17 @@ export default function HomePage() {
     );
   }, [subscriptions]);
 
+  const followedPlayerIds = useMemo(() => {
+    return Array.from(
+      new Set(
+        (subscriptions || [])
+          .filter((sub) => normalizeTargetType(sub.target_type) === "player")
+          .map((sub) => sub.target_id)
+          .filter(Boolean),
+      ),
+    );
+  }, [subscriptions]);
+
   useEffect(() => {
     const teamIds = followedTeamIds.slice(0, MAX_MY_TEAMS);
 
@@ -349,6 +352,29 @@ export default function HomePage() {
     };
   }, [followedMatchIds]);
 
+  useEffect(() => {
+    if (!followedPlayerIds.length) {
+      setFollowedPlayers([]);
+      return;
+    }
+    let ignore = false;
+    getPlayersByIds(followedPlayerIds)
+      .then((rows) => {
+        if (!ignore) {
+          setFollowedPlayers(rows || []);
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          console.error("[HomePage] Unable to load followed players:", err);
+          setFollowedPlayers([]);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [followedPlayerIds]);
+
   const safeDivisions = useMemo(() => divisions ?? [], [divisions]);
   const safeEvents = useMemo(() => events ?? [], [events]);
   const safeLatestMatches = useMemo(() => latestMatches ?? [], [latestMatches]);
@@ -404,6 +430,16 @@ export default function HomePage() {
     [safeLatestMatches, safeOpenMatches, myMatchInsights],
   );
 
+  const playerLookup = useMemo(() => {
+    const map = new Map();
+    (followedPlayers || []).forEach((player) => {
+      if (player?.id) {
+        map.set(player.id, player.name || "Player");
+      }
+    });
+    return map;
+  }, [followedPlayers]);
+
   const subscriptionLookup = useMemo(() => {
     const map = new Map();
     (subscriptions || []).forEach((sub) => {
@@ -429,15 +465,25 @@ export default function HomePage() {
     return unique;
   }, [subscriptions]);
 
+  const eventLookup = useMemo(() => {
+    const map = new Map();
+    safeEvents.forEach((event) => {
+      if (event?.id) {
+        map.set(event.id, event.name || "Event");
+      }
+    });
+    return map;
+  }, [safeEvents]);
+
   const mySubscriptionsDetailed = useMemo(
     () =>
       mySubscriptionsPreview.map((sub) => ({
         ...sub,
         normalizedType: normalizeTargetType(sub.target_type),
-        label: describeSubscriptionTarget(sub, teamLookup, matchLookup),
+        label: describeSubscriptionTarget(sub, teamLookup, matchLookup, playerLookup, eventLookup),
         href: buildSubscriptionLink(sub),
       })),
-    [mySubscriptionsPreview, teamLookup, matchLookup],
+    [mySubscriptionsPreview, teamLookup, matchLookup, playerLookup, eventLookup],
   );
 
   const heroCardMatch = liveNowMatch || nextMatchCandidate || null;
@@ -452,22 +498,8 @@ export default function HomePage() {
   const heroTrackerHref = heroCardMatch ? buildMatchLink(heroCardMatch.id) : "/matches";
   const heroCardMatchId = heroCardMatch?.id || null;
 
-  const homeBaseLabel = typeof homeBase === "string" ? homeBase.trim() : "";
-  const filteredTimelineEvents = useMemo(
-    () =>
-      filterTimelineEvents(safeEvents, {
-        scope: timelineScope,
-        type: timelineTypeFilter,
-        nearMeOnly: nearMeOnly && Boolean(homeBaseLabel),
-        homeBase: homeBaseLabel,
-      }),
-    [safeEvents, timelineScope, timelineTypeFilter, nearMeOnly, homeBaseLabel],
-  );
-  const nearMeRequiresLocation = nearMeOnly && !homeBaseLabel;
-  const timelineEmptyMessage = nearMeRequiresLocation
-    ? "Set your home base to use the Near me filter."
-    : "No events match the current filters.";
-  const timelineScopeLabel = formatTimelineScopeLabel(timelineScope);
+  const filteredTimelineEvents = useMemo(() => filterTimelineEvents(safeEvents), [safeEvents]);
+  const timelineEmptyMessage = "No upcoming events on the calendar.";
 
   const upcomingStreamMatch = useMemo(
     () => safeOpenMatches.find((match) => matchHasStream(match)),
@@ -479,7 +511,6 @@ export default function HomePage() {
     [filteredTimelineEvents, safeEvents],
   );
 
-  const myTasks = useMemo(() => deriveTaskList(safeOpenMatches), [safeOpenMatches]);
   const forYouLoading = personalizedLoading || myTeamsLoading || myMatchesLoading;
   const liveAndUpcomingMatches = useMemo(() => {
     return safeOpenMatches.filter((match) => match?.id !== heroCardMatchId).slice(0, 5);
@@ -504,16 +535,6 @@ export default function HomePage() {
       answer: nextMatchCandidate
         ? `${formatMatchup(nextMatchCandidate)} - ${formatMatchVenue(nextMatchCandidate)}`
         : "Add your fixtures",
-    },
-    {
-      label: "How do I start scoring?",
-      answer: "Open the scorekeeper, assign a crew, and log every touch.",
-      href: "/scorekeeper",
-    },
-    {
-      label: "Where do I see standings?",
-      answer: "Dive into divisions for live ladders and tiebreakers.",
-      href: "/divisions",
     },
   ];
 
@@ -595,86 +616,56 @@ export default function HomePage() {
     }
   };
 
-  const handlePromptHomeBase = () => {
-    if (typeof window === "undefined") return;
-    const next = window.prompt("Where should we treat as your home base?", homeBaseLabel);
-    if (next === null) return;
-    setHomeBase(next.trim());
-  };
-
-  const handleClearHomeBase = () => {
-    setHomeBase("");
-    setNearMeOnly(false);
-  };
   return (
-    <div className="pb-20 text-[var(--sc-ink)]">
-      <header className="sc-shell space-y-6 py-8">
-        <div className="sc-card-base sc-hero p-6 sm:p-8 lg:p-10">
+    <div className="pb-20 text-ink">
+      <SectionShell as="header" className="space-y-6 py-8">
+        <Card className="sc-hero p-6 sm:p-8 lg:p-10">
           <div className="grid gap-8 lg:grid-cols-[1.05fr,0.95fr] lg:items-start">
             <div className="space-y-6">
               <div className="space-y-4">
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--sc-ink-muted)]">
+                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-ink-muted">
                   Ultimate ops console
                 </p>
                 <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
                   Know what's live, what's next, and who's responsible.
                 </h1>
-                <p className="max-w-2xl text-sm text-[var(--sc-ink-muted)]">
+                <p className="max-w-2xl text-sm text-ink-muted">
                   This homepage answers four Ultimate operations questions: live scores, the next assignment, how to
                   start scoring, and where to see standings.
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {heroQuestionCards.map((card) => (
-                  <div
-                    key={card.label}
-                    className="rounded-2xl border border-[var(--sc-border)]/60 bg-[rgba(10,29,24,0.8)] p-4"
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                      {card.label}
-                    </p>
-                    <p className="text-sm text-[var(--sc-ink)]">{card.answer}</p>
+                  <Panel key={card.label} variant="tinted" className="p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{card.label}</p>
+                    <p className="text-sm text-ink">{card.answer}</p>
                     {card.href && (
-                      <Link to={card.href} className="mt-2 inline-flex text-xs font-semibold text-[var(--sc-accent)]">
+                      <Link to={card.href} className="mt-2 inline-flex text-xs font-semibold text-accent">
                         Jump in {"->"}
                       </Link>
                     )}
-                  </div>
+                  </Panel>
                 ))}
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Link to="/scorekeeper" className="sc-button">
-                  Start scoring
-                </Link>
-                <Link to="/matches" className="sc-button is-ghost">
-                  Follow matches
-                </Link>
-                <Link to="/divisions" className="sc-button is-ghost">
-                  Standings
-                </Link>
               </div>
               <div className="flex flex-wrap gap-3">
                 {heroStats.map((item) => (
-                  <div key={item.label} className="sc-metric">
-                    <strong>{loading ? "..." : item.value}</strong>
-                    <span className="text-sm text-[var(--sc-ink-muted)]">{item.label}</span>
-                  </div>
+                  <Metric key={item.label} value={loading ? "..." : item.value} label={item.label} />
                 ))}
               </div>
               {heroActionStatus && (
-                <p className="text-xs font-semibold text-[var(--sc-accent)]">{heroActionStatus}</p>
+                <p className="text-xs font-semibold text-accent">{heroActionStatus}</p>
               )}
             </div>
             <div className="space-y-4">
-              <div className="sc-card-muted sc-frosted p-5">
-                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              <Card variant="muted" className="sc-frosted p-5">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-ink-muted">
                   <span>{heroCardIsLive ? "Live now" : "Next up"}</span>
-                  {heroPointStatus && heroCardIsLive && <span className="sc-chip">{heroPointStatus} point</span>}
+                  {heroPointStatus && heroCardIsLive && <Chip as="span">{heroPointStatus} point</Chip>}
                 </div>
-                <p className="mt-2 text-xl font-semibold text-[var(--sc-ink)]">
+                <p className="mt-2 text-xl font-semibold text-ink">
                   {heroCardMatch ? formatMatchup(heroCardMatch) : "No matches scheduled"}
                 </p>
-                <p className="text-sm text-[var(--sc-ink-muted)]">
+                <p className="text-sm text-ink-muted">
                   {heroCardIsLive
                     ? heroClockLabel || "Waiting for next score update"
                     : heroCardMatch
@@ -682,12 +673,12 @@ export default function HomePage() {
                       : "Add matches to see them here."}
                 </p>
                 {heroCardIsLive && (
-                  <p className="mt-2 text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                    Last event: <span className="text-[var(--sc-ink)]">{heroLastEvent || "No logs yet"}</span>
+                  <p className="mt-2 text-xs uppercase tracking-wide text-ink-muted">
+                    Last event: <span className="text-ink">{heroLastEvent || "No logs yet"}</span>
                   </p>
                 )}
                 {!heroCardIsLive && heroCardMatch?.venue?.name && (
-                  <p className="mt-2 text-xs text-[var(--sc-ink-muted)]">Field: {heroCardMatch.venue.name}</p>
+                  <p className="mt-2 text-xs text-ink-muted">Field: {heroCardMatch.venue.name}</p>
                 )}
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   <Link to={heroTrackerHref} className="sc-button text-center">
@@ -709,12 +700,15 @@ export default function HomePage() {
                       Stream
                     </a>
                   ) : (
-                    <div className="flex items-center justify-center rounded-2xl border border-dashed border-[var(--sc-border)]/70 px-3 py-2 text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                    <Panel
+                      variant="dashed"
+                      className="flex items-center justify-center px-3 py-2 text-center text-xs uppercase tracking-wide text-ink-muted"
+                    >
                       No stream linked
-                    </div>
+                    </Panel>
                   )}
                 </div>
-              </div>
+              </Card>
               {error && (
                 <p className="rounded-2xl border border-rose-400/30 bg-rose-950/50 p-4 text-sm font-semibold text-rose-100">
                   {error}
@@ -722,269 +716,192 @@ export default function HomePage() {
               )}
             </div>
           </div>
-        </div>
-      </header>
+        </Card>
+      </SectionShell>
       {isLoggedIn && (
-        <section className="sc-shell space-y-5">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="sc-chip">For you</p>
-              <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">My teams, matches, alerts</h2>
-              <p className="text-sm text-[var(--sc-ink-muted)]">
-                Personalized answers to the same four questions once you sign in.
-              </p>
-              {profile?.full_name && (
-                <p className="text-xs text-[var(--sc-ink-muted)]">Signed in as {profile.full_name}</p>
-              )}
-            </div>
-            {forYouLoading && (
-              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">Refreshing...</span>
+        <SectionShell as="section">
+          <Card className="space-y-5 p-5 sm:p-6">
+            <SectionHeader
+              eyebrow="For you"
+              title="My teams, matches, alerts"
+              description="Personalized answers to the same four questions once you sign in."
+              divider
+              action={
+                <>
+                  <Link to="/notifications" className="sc-button text-xs">
+                    Notifications
+                  </Link>
+                  {forYouLoading && (
+                    <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Refreshing...</span>
+                  )}
+                </>
+              }
+            >
+              {profile?.full_name && <p className="text-xs text-ink-muted">Signed in as {profile.full_name}</p>}
+            </SectionHeader>
+            {personalizedError && (
+              <Card
+                as="p"
+                variant="muted"
+                className="border border-rose-400/40 bg-rose-950/40 p-4 text-sm text-rose-100"
+              >
+                {personalizedError}
+              </Card>
             )}
-          </div>
-          {personalizedError && (
-            <p className="rounded-2xl border border-rose-400/40 bg-rose-950/40 p-4 text-sm text-rose-100">
-              {personalizedError}
-            </p>
-          )}
-          {personalizedMessage && (
-            <p className="rounded-2xl border border-[var(--sc-border)] bg-[rgba(6,22,18,0.7)] p-4 text-sm text-[var(--sc-ink)]">
-              {personalizedMessage}
-            </p>
-          )}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <div className="sc-card-base space-y-3 p-5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-[var(--sc-ink)]">My teams</h3>
-                <Link to="/teams" className="sc-button is-ghost">
-                  Manage
-                </Link>
-              </div>
-              {myTeamsLoading ? (
-                <p className="text-sm text-[var(--sc-ink-muted)]">Loading teams...</p>
-              ) : myTeamInsights.length === 0 ? (
-                <p className="text-sm text-[var(--sc-ink-muted)]">Follow a team to see records and fixtures here.</p>
-              ) : (
-                <div className="space-y-3">
-                  {myTeamInsights.map((team) => (
-                    <div key={team.teamId} className="rounded-xl border border-[var(--sc-border)]/70 p-3">
-                      <p className="text-sm font-semibold text-[var(--sc-ink)]">{team.name}</p>
-                      {team.record && <p className="text-xs text-[var(--sc-ink-muted)]">Record {formatRecord(team.record)}</p>}
-                      {team.nextFixture && (
-                        <p className="text-xs text-[var(--sc-ink-muted)]">Next: {formatFixture(team.nextFixture)}</p>
-                      )}
-                      {team.lastResult && (
-                        <p className="text-xs text-[var(--sc-ink-muted)]">Last: {formatResult(team.lastResult)}</p>
-                      )}
+            {personalizedMessage && (
+              <Card as="p" variant="muted" className="border border-border bg-[rgba(6,22,18,0.7)] p-4 text-sm text-ink">
+                {personalizedMessage}
+              </Card>
+            )}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <Panel className="p-5">
+                <h3 className="text-lg font-semibold text-ink">My teams</h3>
+                <div className="mt-3">
+                  {myTeamsLoading ? (
+                    <p className="text-sm text-ink-muted">Loading teams...</p>
+                  ) : myTeamInsights.length === 0 ? (
+                    <p className="text-sm text-ink-muted">Follow a team to see records and fixtures here.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {myTeamInsights.map((team) => (
+                        <Card key={team.teamId} variant="muted" className="p-3">
+                          <p className="text-sm font-semibold text-ink">{team.name}</p>
+                          <div className="mt-1 space-y-1 text-xs text-ink-muted">
+                            {team.record && <p>Record {formatRecord(team.record)}</p>}
+                            {team.nextFixture && <p>Next: {formatFixture(team.nextFixture)}</p>}
+                            {team.lastResult && <p>Last: {formatResult(team.lastResult)}</p>}
+                          </div>
+                        </Card>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="sc-card-base space-y-3 p-5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-[var(--sc-ink)]">My matches</h3>
-                <Link to="/matches" className="sc-button is-ghost">
-                  Match hub
-                </Link>
-              </div>
-              {myMatchesLoading ? (
-                <p className="text-sm text-[var(--sc-ink-muted)]">Loading matches...</p>
-              ) : myMatchInsights.length === 0 ? (
-                <p className="text-sm text-[var(--sc-ink-muted)]">Follow matches to keep them pinned here.</p>
-              ) : (
-                <div className="space-y-3">
-                  {myMatchInsights.map((match) => (
-                    <article key={match.id} className="rounded-xl border border-[var(--sc-border)]/70 p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                        {match.event?.name || match.venue?.name || "Match"}
-                      </p>
-                      <p className="text-sm font-semibold text-[var(--sc-ink)]">{formatMatchup(match)}</p>
-                            <p className="text-xs text-[var(--sc-ink-muted)]">{formatMatchMeta(match)}</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Link to={`/matches?matchId=${match.id}`} className="sc-button is-ghost text-xs">
-                          Open
-                        </Link>
-                        <Link to="/scorekeeper" className="sc-button is-ghost text-xs">
-                          Score
-                        </Link>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="sc-card-base space-y-3 p-5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-[var(--sc-ink)]">My subscriptions</h3>
-                <Link to="/notifications" className="sc-button is-ghost">
-                  Alerts
-                </Link>
-              </div>
-              {mySubscriptionsDetailed.length === 0 ? (
-                <p className="text-sm text-[var(--sc-ink-muted)]">Follow teams, matches, or players to receive alerts.</p>
-              ) : (
-                <div className="space-y-2">
-                  {mySubscriptionsDetailed.map((sub) => (
-                    <div key={sub.id} className="flex items-center justify-between gap-3 rounded-xl border border-[var(--sc-border)]/70 p-3">
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--sc-ink)]">{sub.label}</p>
-                        <p className="text-xs uppercase tracking-wide text-[var(--sc-ink-muted)]">{sub.normalizedType}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void handleUnfollowSubscriptionRow(sub)}
-                        className="sc-button is-ghost text-xs"
-                      >
-                        Unfollow
-                      </button>
+              </Panel>
+              <Panel className="p-5">
+                <h3 className="text-lg font-semibold text-ink">My matches</h3>
+                <div className="mt-3">
+                  {myMatchesLoading ? (
+                    <p className="text-sm text-ink-muted">Loading matches...</p>
+                  ) : myMatchInsights.length === 0 ? (
+                    <p className="text-sm text-ink-muted">Follow matches to keep them pinned here.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {myMatchInsights.map((match) => (
+                        <Card key={match.id} as="article" variant="muted" className="p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                            {match.event?.name || match.venue?.name || "Match"}
+                          </p>
+                          <p className="text-sm font-semibold text-ink">{formatMatchup(match)}</p>
+                          <p className="text-xs text-ink-muted">{formatMatchMeta(match)}</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Link to={`/matches?matchId=${match.id}`} className="sc-button is-ghost text-xs">
+                              Open
+                            </Link>
+                            <Link to="/scorekeeper" className="sc-button is-ghost text-xs">
+                              Score
+                            </Link>
+                          </div>
+                        </Card>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
+              </Panel>
+              <Panel className="p-5">
+                <h3 className="text-lg font-semibold text-ink">My subscriptions</h3>
+                <div className="mt-3">
+                  {mySubscriptionsDetailed.length === 0 ? (
+                    <p className="text-sm text-ink-muted">Follow teams, matches, or players to receive alerts.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {mySubscriptionsDetailed.map((sub) => (
+                        <Card key={sub.id} variant="muted" className="flex items-center justify-between gap-3 p-3">
+                          <div>
+                            <p className="text-sm font-semibold text-ink">{sub.label}</p>
+                            <p className="text-xs uppercase tracking-wide text-ink-muted">{sub.normalizedType}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleUnfollowSubscriptionRow(sub)}
+                            className="sc-button is-ghost text-xs"
+                          >
+                            Unfollow
+                          </button>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Panel>
             </div>
-            <div className="sc-card-base space-y-3 p-5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-[var(--sc-ink)]">My tasks</h3>
-                <Link to="/dashboard" className="sc-button is-ghost">
-                  Dashboard
-                </Link>
-              </div>
-              {myTasks.length === 0 ? (
-                <p className="text-sm text-[var(--sc-ink-muted)]">You're all caught up. Enjoy the games!</p>
-              ) : (
-                <ul className="space-y-2">
-                  {myTasks.map((task) => (
-                    <li key={task.id} className="flex items-center justify-between gap-3 rounded-xl border border-[var(--sc-border)]/70 p-3">
-                      <span className="text-sm text-[var(--sc-ink)]">{task.label}</span>
-                      {task.href && (
-                        <Link to={task.href} className="sc-button is-ghost text-xs">
-                          {task.cta || "Review"}
-                        </Link>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </section>
+          </Card>
+        </SectionShell>
       )}
 
       <main className="space-y-12">
-        <section className="sc-shell">
-          <div className="sc-card-base space-y-5 p-5 sm:p-6 lg:p-7">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="sc-chip">Timeline</p>
-                  <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">{timelineScopeLabel}</h2>
-                  <p className="text-sm text-[var(--sc-ink-muted)]">Season/event selector, type chips, and a near-me filter.</p>
-                </div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                  Scope
-                  <select
-                    className="ml-2 rounded-lg border border-[var(--sc-border)] bg-transparent px-2 py-1 text-[var(--sc-ink)]"
-                    value={timelineScope}
-                    onChange={(event) => setTimelineScope(event.target.value)}
-                  >
-                    {TIMELINE_SCOPES.map((scope) => (
-                      <option key={scope} value={scope}>
-                        {formatTimelineScopeLabel(scope)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {TIMELINE_TYPES.map((type) => {
-                  const isActive = timelineTypeFilter === type;
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => setTimelineTypeFilter(type)}
-                      className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
-                        isActive
-                          ? "border-[var(--sc-accent)] text-[var(--sc-ink)]"
-                          : "border-[var(--sc-border)] text-[var(--sc-ink-muted)]"
-                      }`}
-                    >
-                      {type === "all" ? "All" : type}
-                    </button>
-                  );
-                })}
-                <label className="ml-auto inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-                  <input
-                    type="checkbox"
-                    className="rounded border-[var(--sc-border)] bg-transparent"
-                    checked={nearMeOnly}
-                    onChange={(event) => setNearMeOnly(event.target.checked)}
-                  />
-                  Near me
-                </label>
-                {homeBaseLabel ? (
-                  <button type="button" className="sc-button is-ghost text-xs" onClick={handleClearHomeBase}>
-                    {homeBaseLabel}
-                  </button>
-                ) : (
-                  <button type="button" className="sc-button is-ghost text-xs" onClick={handlePromptHomeBase}>
-                    Set home base
-                  </button>
-                )}
-              </div>
-            </div>
+        <SectionShell as="section">
+          <Card className="space-y-5 p-5 sm:p-6 lg:p-7">
+            <SectionHeader
+              eyebrow="Timeline"
+              title="Upcoming events"
+              description="Future tournaments and fixtures, sorted by start time."
+            />
             {loading && safeEvents.length === 0 ? (
-              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading events...</div>
+              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                Loading events...
+              </Card>
             ) : filteredTimelineEvents.length === 0 ? (
-              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">{timelineEmptyMessage}</div>
+              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                {timelineEmptyMessage}
+              </Card>
             ) : (
               <div className="space-y-3">
                 {filteredTimelineEvents.slice(0, 8).map((event) => (
-                  <article key={event.id} className="sc-card-muted p-4">
+                  <Card key={event.id} as="article" variant="muted" className="p-4">
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                           {formatEventType(event.type)}
                         </p>
-                        <h3 className="text-lg font-semibold text-[var(--sc-ink)]">{event.name}</h3>
-                        {event.location && (
-                          <p className="text-xs text-[var(--sc-ink-muted)]">{event.location}</p>
-                        )}
+                        <h3 className="text-lg font-semibold text-ink">{event.name}</h3>
+                        {event.location && <p className="text-xs text-ink-muted">{event.location}</p>}
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-[var(--sc-ink-muted)]">
+                        <p className="text-sm text-ink-muted">
                           {formatDateRange(event.start_date, event.end_date)}
                         </p>
-                        <Link to={`/matches?eventId=${event.id}`} className="sc-button is-ghost mt-2 inline-flex text-xs">
+                        <Link to={`/divisions?eventId=${event.id}`} className="sc-button is-ghost mt-2 inline-flex text-xs">
                           View matches
                         </Link>
                       </div>
                     </div>
-                  </article>
+                  </Card>
                 ))}
               </div>
             )}
-          </div>
-        </section>
+          </Card>
+        </SectionShell>
 
-        <section className="sc-shell grid gap-6 lg:grid-cols-[1.05fr,0.95fr]">
+        <SectionShell as="section" className="grid gap-6 lg:grid-cols-[1.05fr,0.95fr]">
           <div className="space-y-6">
-            <div className="sc-card-base space-y-4 p-5 sm:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="sc-chip">Matches</p>
-                  <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Live & upcoming</h2>
-                </div>
-                <Link to="/matches" className="sc-button is-ghost">
-                  All matches
-                </Link>
-              </div>
+            <Card className="space-y-4 p-5 sm:p-6">
+              <SectionHeader
+                eyebrow="Matches"
+                title="Live & upcoming"
+                action={
+                  <Link to="/matches" className="sc-button is-ghost">
+                    All matches
+                  </Link>
+                }
+              />
               {loading && liveAndUpcomingMatches.length === 0 ? (
-                <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading matches...</div>
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                  Loading matches...
+                </Card>
               ) : liveAndUpcomingMatches.length === 0 ? (
-                <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
                   No open matches right now.
-                </div>
+                </Card>
               ) : (
                 <div className="space-y-3">
                   {liveAndUpcomingMatches.map((match) => {
@@ -992,28 +909,25 @@ export default function HomePage() {
                     const final = isMatchFinal(match.status);
                     const showScore = live || final;
                     return (
-                      <article
-                        key={match.id}
-                        className="rounded-2xl border border-[var(--sc-border)]/80 bg-[rgba(10,29,24,0.9)] p-4"
-                      >
+                      <Panel key={match.id} as="article" variant="tintedAlt" className="p-4">
                         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                               {match.event?.name || match.venue?.name || "Match"}
                             </p>
-                            <h3 className="text-lg font-semibold text-[var(--sc-ink)]">{formatMatchup(match)}</h3>
-                            <p className="text-xs text-[var(--sc-ink-muted)]">{formatMatchMeta(match)}</p>
+                            <h3 className="text-lg font-semibold text-ink">{formatMatchup(match)}</h3>
+                            <p className="text-xs text-ink-muted">{formatMatchMeta(match)}</p>
                           </div>
                           <div className="text-right">
                             {showScore ? (
                               <>
-                                <p className="text-2xl font-semibold text-[var(--sc-accent)]">{formatLiveScore(match)}</p>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                                <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                                   {formatMatchStatus(match.status) || (live ? "Live" : "Final")}
                                 </p>
                               </>
                             ) : (
-                              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                                 {formatMatchStatus(match.status) || "Scheduled"}
                               </p>
                             )}
@@ -1029,67 +943,70 @@ export default function HomePage() {
                             </a>
                           )}
                         </div>
-                      </article>
+                      </Panel>
                     );
                   })}
                 </div>
               )}
-            </div>
+            </Card>
 
-            <div className="sc-card-base space-y-4 p-5 sm:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="sc-chip">Finals</p>
-                  <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Latest results</h2>
-                </div>
-                <Link to="/matches" className="sc-button is-ghost">
-                  Match archive
-                </Link>
-              </div>
+            <Card className="space-y-4 p-5 sm:p-6">
+              <SectionHeader
+                eyebrow="Finals"
+                title="Latest results"
+                action={
+                  <Link to="/matches" className="sc-button is-ghost">
+                    Match archive
+                  </Link>
+                }
+              />
               {loading && latestResults.length === 0 ? (
-                <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading results...</div>
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                  Loading results...
+                </Card>
               ) : latestResults.length === 0 ? (
-                <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
                   No finals saved yet.
-                </div>
+                </Card>
               ) : (
                 <div className="space-y-3">
                   {latestResults.map((match) => (
-                    <Link
+                    <Panel
                       key={match.id}
+                      as={Link}
+                      variant="tinted"
                       to={`/matches?matchId=${match.id}`}
-                      className="block rounded-2xl border border-[var(--sc-border)]/70 bg-[rgba(6,22,18,0.8)] p-4"
+                      className="block p-4"
                     >
                       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                             {match.event?.name || "Match"}
                           </p>
-                          <h3 className="text-lg font-semibold text-[var(--sc-ink)]">{formatMatchup(match)}</h3>
+                          <h3 className="text-lg font-semibold text-ink">{formatMatchup(match)}</h3>
                         </div>
                         <div className="text-right">
-                          <p className="text-2xl font-semibold text-[var(--sc-accent)]">{formatLiveScore(match)}</p>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                          <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                             {match.status || "final"}
                           </p>
                         </div>
                       </div>
-                    </Link>
+                    </Panel>
                   ))}
                 </div>
               )}
-            </div>
+            </Card>
           </div>
 
           <div className="space-y-6">
-            <div className="sc-card-base space-y-3 p-5 sm:p-6">
-              <p className="sc-chip">Streaming</p>
-              <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Featured broadcast</h2>
+            <Card className="space-y-3 p-5 sm:p-6">
+              <SectionHeader eyebrow="Streaming" title="Featured broadcast" />
               {upcomingStreamMatch ? (
                 <>
-                  <p className="text-sm text-[var(--sc-ink)]">{formatMatchup(upcomingStreamMatch)}</p>
-                  <p className="text-xs text-[var(--sc-ink-muted)]">{formatMatchTime(upcomingStreamMatch.start_time)}</p>
-                  <p className="text-xs text-[var(--sc-ink-muted)]">
+                  <p className="text-sm text-ink">{formatMatchup(upcomingStreamMatch)}</p>
+                  <p className="text-xs text-ink-muted">{formatMatchTime(upcomingStreamMatch.start_time)}</p>
+                  <p className="text-xs text-ink-muted">
                     Provider: {formatMediaProvider(upcomingStreamMatch.media_provider)}
                   </p>
                   <a href={resolveStreamUrl(upcomingStreamMatch)} target="_blank" rel="noreferrer" className="sc-button mt-2">
@@ -1097,115 +1014,116 @@ export default function HomePage() {
                   </a>
                 </>
               ) : (
-                <p className="text-sm text-[var(--sc-ink-muted)]">Attach media links to highlight upcoming streams.</p>
+                <p className="text-sm text-ink-muted">Attach media links to highlight upcoming streams.</p>
               )}
-            </div>
-            <div className="sc-card-base space-y-3 p-5 sm:p-6">
-              <p className="sc-chip">Spotlight</p>
-              <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Event focus</h2>
+            </Card>
+            <Card className="space-y-3 p-5 sm:p-6">
+              <SectionHeader eyebrow="Spotlight" title="Event focus" />
               {spotlightEvent ? (
                 <>
-                  <p className="text-lg font-semibold text-[var(--sc-ink)]">{spotlightEvent.name}</p>
-                  <p className="text-sm text-[var(--sc-ink-muted)]">
+                  <p className="text-lg font-semibold text-ink">{spotlightEvent.name}</p>
+                  <p className="text-sm text-ink-muted">
                     {formatDateRange(spotlightEvent.start_date, spotlightEvent.end_date)}
                   </p>
-                  <p className="text-sm text-[var(--sc-ink-muted)]">{spotlightEvent.location || "Location TBC"}</p>
+                  <p className="text-sm text-ink-muted">{spotlightEvent.location || "Location TBC"}</p>
                 </>
               ) : (
-                <p className="text-sm text-[var(--sc-ink-muted)]">Create events to spotlight a league, tournament, or camp.</p>
+                <p className="text-sm text-ink-muted">Create events to spotlight a league, tournament, or camp.</p>
               )}
-            </div>
+            </Card>
           </div>
-        </section>
+        </SectionShell>
 
-        <section className="sc-shell grid gap-6 lg:grid-cols-[1.05fr,0.95fr]">
-          <div className="sc-card-base space-y-4 p-5 sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="sc-chip">Divisions</p>
-                <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Active standings</h2>
-              </div>
-              <Link to="/divisions" className="sc-button">
-                View standings
-              </Link>
-            </div>
+        <SectionShell as="section" className="grid gap-6 lg:grid-cols-[1.05fr,0.95fr]">
+          <Card className="space-y-4 p-5 sm:p-6">
+            <SectionHeader
+              eyebrow="Divisions"
+              title="Active standings"
+              action={
+                <Link to="/divisions" className="sc-button">
+                  View standings
+                </Link>
+              }
+            />
             {loading && safeDivisions.length === 0 ? (
-              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">Loading divisions...</div>
+              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                Loading divisions...
+              </Card>
             ) : safeDivisions.length === 0 ? (
-              <div className="sc-card-muted p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
                 No divisions yet. Add one in the dashboard to see it here.
-              </div>
+              </Card>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 {safeDivisions.map((division) => (
-                  <article key={division.id} className="sc-card-muted p-4">
-                    <h3 className="text-lg font-semibold text-[var(--sc-ink)]">{division.name}</h3>
-                    <p className="text-sm text-[var(--sc-ink-muted)]">
+                  <Card key={division.id} as="article" variant="muted" className="p-4">
+                    <h3 className="text-lg font-semibold text-ink">{division.name}</h3>
+                    <p className="text-sm text-ink-muted">
                       Level: {division.level ? division.level : "Not specified"}
                     </p>
-                  </article>
+                  </Card>
                 ))}
               </div>
             )}
-          </div>
+          </Card>
 
-          <div className="sc-card-base space-y-4 border border-[var(--sc-border-strong)]/70 bg-[radial-gradient(circle_at_12%_20%,rgba(99,255,160,0.12),transparent_50%),radial-gradient(circle_at_82%_0%,rgba(103,233,193,0.18),transparent_40%),linear-gradient(150deg,rgba(12,33,27,0.9),rgba(6,22,18,0.95))] p-5 sm:p-6 lg:p-7">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="sc-chip">Teams</p>
-                <h2 className="text-2xl font-semibold text-[var(--sc-ink)]">Programs to watch</h2>
-                <p className="text-sm text-[var(--sc-ink-muted)]">
-                  Handpicked programs showcasing league talent and operational excellence.
-                </p>
-              </div>
-              <Link to="/teams" className="sc-button">
-                View all
-              </Link>
-            </div>
+          <Card className="space-y-4 p-5 sm:p-6 lg:p-7 sc-feature-panel">
+            <SectionHeader
+              eyebrow="Teams"
+              title="Programs to watch"
+              description="Handpicked programs showcasing league talent and operational excellence."
+              action={
+                <Link to="/teams" className="sc-button">
+                  View all
+                </Link>
+              }
+            />
             {loading && featuredTeams.length === 0 ? (
-              <div className="rounded-2xl border border-[var(--sc-border)] bg-[rgba(6,22,18,0.7)] p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+              <Panel variant="tinted" className="p-5 text-center text-sm text-ink-muted">
                 Loading teams...
-              </div>
+              </Panel>
             ) : featuredTeams.length === 0 ? (
-              <div className="rounded-2xl border border-[var(--sc-border)] bg-[rgba(6,22,18,0.7)] p-5 text-center text-sm text-[var(--sc-ink-muted)]">
+              <Panel variant="tinted" className="p-5 text-center text-sm text-ink-muted">
                 No teams found. Add a team to start the list.
-              </div>
+              </Panel>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
                 {featuredTeams.slice(0, 4).map((team) => (
-                  <Link
+                  <Panel
                     key={team.id}
+                    as={Link}
+                    variant="tintedAlt"
                     to={`/teams/${team.id}`}
-                    className="rounded-2xl border border-[var(--sc-border)]/80 bg-[rgba(10,29,24,0.85)] p-4 shadow-lg"
+                    className="p-4 shadow-lg transition hover:-translate-y-0.5"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-[var(--sc-accent)] shadow-[0_0_0_6px_rgba(198,255,98,0.12)]" />
-                      <h3 className="text-xl font-semibold text-[var(--sc-ink)]">{team.name}</h3>
+                      <span className="h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_0_6px_rgba(198,255,98,0.12)]" />
+                      <h3 className="text-xl font-semibold text-ink">{team.name}</h3>
                     </div>
                     {team.short_name && (
-                      <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">Short name: {team.short_name}</p>
+                      <p className="mt-2 text-sm text-ink-muted">Short name: {team.short_name}</p>
                     )}
-                  </Link>
+                  </Panel>
                 ))}
               </div>
             )}
-          </div>
-        </section>
+          </Card>
+        </SectionShell>
       </main>
 
       <footer className="sc-shell mt-10">
         <div className="sc-card-muted flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
-          <p className="font-semibold text-[var(--sc-ink)]">
+          <p className="font-semibold text-ink">
             &copy; {new Date().getFullYear()} StallCount. Built for Ultimate event control rooms.
           </p>
           <div className="flex flex-wrap items-center gap-3 md:gap-4">
-            <Link to="/matches" className="font-semibold text-[var(--sc-accent)]">
+            <Link to="/matches" className="font-semibold text-accent">
               Matches
             </Link>
-            <Link to="/teams" className="font-semibold text-[var(--sc-accent)]">
+            <Link to="/teams" className="font-semibold text-accent">
               Teams
             </Link>
-            <Link to="/players" className="font-semibold text-[var(--sc-accent)]">
+            <Link to="/players" className="font-semibold text-accent">
               Players
             </Link>
             {session && (
@@ -1434,7 +1352,7 @@ function buildMatchLookup(matches = []) {
   return map;
 }
 
-function describeSubscriptionTarget(sub, teamLookup, matchLookup) {
+function describeSubscriptionTarget(sub, teamLookup, matchLookup, playerLookup, eventLookup) {
   const type = normalizeTargetType(sub.target_type);
   const id = sub.target_id;
   if (type === "team") {
@@ -1445,10 +1363,10 @@ function describeSubscriptionTarget(sub, teamLookup, matchLookup) {
     return match ? formatMatchup(match) : `Match ${id.slice(0, 4)}`;
   }
   if (type === "player") {
-    return `Player ${id.slice(0, 4)}`;
+    return playerLookup?.get(id) || `Player ${id.slice(0, 4)}`;
   }
   if (type === "event") {
-    return `Event ${id.slice(0, 4)}`;
+    return eventLookup?.get(id) || `Event ${id.slice(0, 4)}`;
   }
   if (type === "division") {
     return `Division ${id.slice(0, 4)}`;
@@ -1532,94 +1450,18 @@ function pickSpotlightEvent(filteredEvents, allEvents) {
   return allEvents?.[0] || null;
 }
 
-function deriveTaskList(matches = []) {
-  const tasks = [];
-  const missingScorekeeper = matches.filter((match) => !match?.scorekeeper).length;
-  if (missingScorekeeper > 0) {
-    tasks.push({
-      id: "scorekeeper",
-      label: `${missingScorekeeper} match${missingScorekeeper === 1 ? "" : "es"} missing scorekeeper`,
-      href: "/scorekeeper",
-      cta: "Assign",
-    });
-  }
-  const missingStart = matches.filter((match) => !match?.start_time).length;
-  if (missingStart > 0) {
-    tasks.push({
-      id: "start-time",
-      label: `${missingStart} match${missingStart === 1 ? "" : "es"} missing a start time`,
-      href: "/matches",
-      cta: "Schedule",
-    });
-  }
-  const ready = matches.filter((match) => (match.status || "").toLowerCase() === "ready").length;
-  if (ready > 0) {
-    tasks.push({
-      id: "ready",
-      label: `${ready} match${ready === 1 ? "" : "es"} ready to score`,
-      href: "/scorekeeper",
-      cta: "Open",
-    });
-  }
-  return tasks;
-}
-
-function filterTimelineEvents(events = [], options = {}) {
+function filterTimelineEvents(events = []) {
   const now = Date.now();
   return events
     .filter((event) => {
-      if (options.type && options.type !== "all") {
-        return (event.type || "").toLowerCase() === options.type;
-      }
-      return true;
-    })
-    .filter((event) => matchesScope(event, options.scope || "current", now))
-    .filter((event) => {
-      if (!options.nearMeOnly) return true;
-      if (!options.homeBase) return false;
-      return matchesLocation(event.location, options.homeBase);
+      const startTime = event.start_date ? new Date(event.start_date).getTime() : null;
+      return !startTime || startTime >= now;
     })
     .sort((a, b) => {
       const aTime = a.start_date ? new Date(a.start_date).getTime() : Number.MAX_SAFE_INTEGER;
       const bTime = b.start_date ? new Date(b.start_date).getTime() : Number.MAX_SAFE_INTEGER;
       return aTime - bTime;
     });
-}
-
-function matchesScope(event, scope, now) {
-  const start = event.start_date ? new Date(event.start_date).getTime() : null;
-  const end = event.end_date ? new Date(event.end_date).getTime() : start;
-  if (scope === "current") {
-    if (start && end) return start <= now && now <= end;
-    if (start) return Math.abs(now - start) < 7 * 24 * 60 * 60 * 1000;
-    return true;
-  }
-  if (scope === "upcoming") {
-    return !start || start >= now;
-  }
-  if (scope === "completed") {
-    if (!end) return false;
-    return end < now;
-  }
-  return true;
-}
-
-function matchesLocation(location, homeBase) {
-  if (!location || !homeBase) return false;
-  return location.toLowerCase().includes(homeBase.toLowerCase());
-}
-
-function formatTimelineScopeLabel(scope) {
-  switch (scope) {
-    case "current":
-      return "Current season timeline";
-    case "upcoming":
-      return "Upcoming schedule";
-    case "completed":
-      return "Final results";
-    default:
-      return "All events";
-  }
 }
 
 function formatEventType(type) {
@@ -1638,27 +1480,4 @@ function isMatchLive(status) {
 
 function isMatchFinal(status) {
   return FINISHED_STATUSES.has((status || "").toLowerCase());
-}
-
-function readStoredHomeBase() {
-  if (typeof window === "undefined") return "";
-  try {
-    return window.localStorage.getItem("sc_home_base") || "";
-  } catch (err) {
-    console.warn("[HomePage] Unable to read home base:", err);
-    return "";
-  }
-}
-
-function writeStoredHomeBase(value) {
-  if (typeof window === "undefined") return;
-  try {
-    if (value) {
-      window.localStorage.setItem("sc_home_base", value);
-    } else {
-      window.localStorage.removeItem("sc_home_base");
-    }
-  } catch (err) {
-    console.warn("[HomePage] Unable to persist home base:", err);
-  }
 }

@@ -1530,7 +1530,7 @@ function MatchLogCard({
               <button
                 type="button"
                 onClick={() => openScoreModal(log.team, "edit", editIndex)}
-                className="rounded-full border border-[var(--sc-border)] px-4 py-1 text-xs font-semibold text-[var(--sc-accent)] transition hover:border-[var(--sc-accent)] hover:bg-[#e6fffa]"
+                className="rounded-full border border-border px-4 py-1 text-xs font-semibold text-accent transition hover:border-accent hover:bg-[#e6fffa]"
               >
                 Edit event
               </button>
@@ -1554,7 +1554,7 @@ function MatchLogCard({
             <button
               type="button"
               onClick={() => openSimpleEventModal(log, editIndex)}
-              className="rounded-full border border-[var(--sc-border)] px-3 py-1 text-xs font-semibold text-[var(--sc-accent)] transition hover:border-[var(--sc-accent)] hover:bg-[#e6fffa]"
+              className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-accent transition hover:border-accent hover:bg-[#e6fffa]"
             >
               Edit
             </button>

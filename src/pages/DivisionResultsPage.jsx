@@ -374,12 +374,12 @@ export default function DivisionResultsPage() {
         <div className="sc-card-base dr-header-card">
           <div className="dr-chip-row">
             <span className="sc-chip">Division results</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
               Residence league · Pool play & playoffs
             </span>
           </div>
           <h1 className="text-3xl font-semibold">Residence league results, pool table view.</h1>
-          <p className="text-sm text-[var(--sc-ink-muted)] max-w-3xl">
+          <p className="text-sm text-ink-muted max-w-3xl">
             Weeks 1-9 are pool play. Each line uses the short-name format "Team 15 - 10 Team". Scroll sideways to follow
             weekly matchups, and see outcome, seeding, and bracket details below.
           </p>
@@ -399,8 +399,8 @@ export default function DivisionResultsPage() {
           <div className="dr-section-header">
             <div className="space-y-1">
               <p className="sc-chip">Residence league</p>
-              <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Pool play (Weeks 1-9)</h2>
-              <p className="text-sm text-[var(--sc-ink-muted)]">
+              <h2 className="text-xl font-semibold text-ink">Pool play (Weeks 1-9)</h2>
+              <p className="text-sm text-ink-muted">
                 Side-scroll to view all pool weeks. Scores are shown as "Team 15 - 0 Team" for quick scanning.
               </p>
             </div>
@@ -423,10 +423,10 @@ export default function DivisionResultsPage() {
           <div className="dr-section-header">
             <div>
               <p className="sc-chip">Playoffs board</p>
-              <h2 className="text-lg font-semibold text-[var(--sc-ink)]">Seeds, quarters, semis, and placements</h2>
-              <p className="text-sm text-[var(--sc-ink-muted)]">Structured like the shared sheet ? scroll sideways.</p>
+              <h2 className="text-lg font-semibold text-ink">Seeds, quarters, semis, and placements</h2>
+              <p className="text-sm text-ink-muted">Structured like the shared sheet ? scroll sideways.</p>
             </div>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
               Team column + rounds W10-W12
             </span>
           </div>

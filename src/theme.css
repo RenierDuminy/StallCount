@@ -1,5 +1,6 @@
 :root {
   color-scheme: light;
+  font-size: 16px;
   --sc-font-body: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --sc-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 
@@ -35,6 +36,67 @@
   --sc-page-gradient: radial-gradient(circle at 20% 20%, rgba(79, 255, 187, 0.12), transparent 55%),
     radial-gradient(circle at 80% 10%, rgba(161, 255, 80, 0.08), transparent 50%),
     linear-gradient(165deg, var(--sc-bg), var(--sc-bg-accent));
+
+  /* Component tokens */
+  --sc-card-bg: linear-gradient(160deg, rgba(20, 42, 34, 0.9), rgba(10, 25, 21, 0.95));
+  --sc-card-border: rgba(99, 255, 160, 0.1);
+  --sc-card-muted-bg: linear-gradient(160deg, rgba(21, 52, 43, 0.9), rgba(12, 29, 24, 0.96));
+  --sc-card-muted-border: rgba(99, 255, 160, 0.18);
+  --sc-card-muted-glow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  --sc-button-bg: linear-gradient(120deg, var(--sc-accent), var(--sc-accent-strong));
+  --sc-button-ink: #03140f;
+  --sc-button-focus-ring: rgba(15, 107, 69, 0.35);
+  --sc-button-shadow-hover: 0 20px 48px rgba(96, 255, 140, 0.28);
+  --sc-button-shadow-active: 0 8px 18px rgba(96, 255, 140, 0.18);
+
+  --sc-button-ghost-bg: transparent;
+  --sc-button-ghost-border: rgba(99, 255, 160, 0.2);
+  --sc-button-ghost-border-hover: rgba(99, 255, 160, 0.35);
+
+  --sc-chip-bg: rgba(9, 30, 24, 0.8);
+  --sc-chip-border: rgba(99, 255, 160, 0.35);
+
+  --sc-hero-bg: radial-gradient(circle at 18% 20%, rgba(99, 255, 160, 0.16), transparent 45%),
+    radial-gradient(circle at 80% 15%, rgba(198, 255, 98, 0.18), transparent 40%),
+    linear-gradient(140deg, #0b231b, #0f2f24 48%, #0a1513 100%);
+  --sc-hero-border: rgba(255, 255, 255, 0.04);
+  --sc-hero-overlay: radial-gradient(circle at 50% 0%, rgba(99, 255, 160, 0.1), transparent 50%),
+    radial-gradient(ellipse at 50% 60%, rgba(12, 50, 40, 0.7), transparent 65%);
+
+  --sc-pill-border: rgba(99, 255, 160, 0.22);
+  --sc-pill-bg: rgba(7, 24, 19, 0.5);
+  --sc-field-bg: rgba(6, 22, 18, 0.75);
+  --sc-field-border: rgba(99, 255, 160, 0.28);
+  --sc-field-border-strong: rgba(99, 255, 160, 0.55);
+  --sc-field-placeholder: rgba(232, 244, 237, 0.65);
+  --sc-field-focus-ring: rgba(198, 255, 98, 0.25);
+  --sc-field-disabled: rgba(232, 244, 237, 0.35);
+  --sc-alert-success-bg: rgba(15, 51, 36, 0.8);
+  --sc-alert-success-border: rgba(99, 255, 160, 0.45);
+  --sc-alert-error-bg: rgba(55, 18, 18, 0.8);
+  --sc-alert-error-border: rgba(255, 123, 123, 0.5);
+
+  --sc-surface-light-bg: linear-gradient(180deg, #ffffff, #f6fbf7);
+  --sc-surface-light-border: #e2f5e7;
+  --sc-surface-light-ink: #0b1f19;
+  --sc-surface-light-shadow: 0 25px 60px rgba(0, 0, 0, 0.08);
+
+  --sc-tag-bg: rgba(198, 255, 98, 0.12);
+  --sc-tag-border: rgba(198, 255, 98, 0.6);
+
+  --sc-metric-bg: linear-gradient(120deg, rgba(16, 45, 36, 0.8), rgba(9, 24, 18, 0.95));
+  --sc-metric-border: rgba(99, 255, 160, 0.16);
+
+  --sc-frosted-bg: rgba(11, 26, 20, 0.55);
+  --sc-frosted-border: rgba(99, 255, 160, 0.22);
+  --sc-panel-border: rgba(99, 255, 160, 0.6);
+  --sc-panel-border-strong: rgba(99, 255, 160, 0.8);
+  --sc-panel-bg: rgba(10, 29, 24, 0.8);
+  --sc-panel-bg-alt: rgba(6, 22, 18, 0.8);
+  --sc-feature-panel-bg: radial-gradient(circle at 12% 20%, rgba(99, 255, 160, 0.12), transparent 50%),
+    radial-gradient(circle at 82% 0%, rgba(103, 233, 193, 0.18), transparent 40%),
+    linear-gradient(150deg, rgba(12, 33, 27, 0.9), rgba(6, 22, 18, 0.95));
 }
 
 body {
@@ -52,6 +114,20 @@ body {
 
 #root {
   min-height: 100vh;
+}
+
+.sc-page {
+  position: relative;
+  min-height: 100vh;
+  color: var(--sc-ink);
+}
+
+.sc-page__glow {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 280px;
+  pointer-events: none;
+  background: radial-gradient(circle at top, rgba(209, 250, 229, 0.55), transparent 70%);
 }
 
 .sc-app {
@@ -76,19 +152,57 @@ a:focus-visible {
   border-radius: 6px;
 }
 
-.sc-card-base {
-  background: linear-gradient(160deg, rgba(20, 42, 34, 0.9), rgba(10, 25, 21, 0.95));
-  border: 1px solid rgba(99, 255, 160, 0.1);
+.sc-shell {
+  position: relative;
+  width: 100%;
+  padding: 1rem 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .sc-shell {
+    padding: 2.5rem 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .sc-shell {
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+  }
+}
+
+.matches-compact-shell {
+  width: 100%;
+  padding: 0.75rem 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .matches-compact-shell {
+    padding: 1.5rem 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .matches-compact-shell {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+.sc-card-base,
+.sc-card {
+  background: var(--sc-card-bg);
+  border: 1px solid var(--sc-card-border);
   border-radius: var(--sc-radius-lg);
   box-shadow: var(--sc-shadow-card);
   color: var(--sc-ink);
 }
 
 .sc-card-muted {
-  background: linear-gradient(160deg, rgba(21, 52, 43, 0.9), rgba(12, 29, 24, 0.96));
-  border: 1px solid rgba(99, 255, 160, 0.18);
+  background: var(--sc-card-muted-bg);
+  border: 1px solid var(--sc-card-muted-border);
   border-radius: var(--sc-radius-lg);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: var(--sc-card-muted-glow);
   color: var(--sc-ink);
 }
 
@@ -100,8 +214,8 @@ a:focus-visible {
   padding: 0.65rem 1.2rem;
   border-radius: 999px;
   border: 1px solid transparent;
-  background: linear-gradient(120deg, var(--sc-accent), var(--sc-accent-strong));
-  color: #03140f;
+  background: var(--sc-button-bg);
+  color: var(--sc-button-ink);
   font-weight: 600;
   letter-spacing: 0.01em;
   transition:
@@ -114,30 +228,30 @@ a:focus-visible {
 
 .sc-button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 20px 48px rgba(96, 255, 140, 0.28);
+  box-shadow: var(--sc-button-shadow-hover);
 }
 
 .sc-button:active {
   transform: translateY(0);
-  box-shadow: 0 8px 18px rgba(96, 255, 140, 0.18);
+  box-shadow: var(--sc-button-shadow-active);
 }
 
 .sc-button:focus-visible {
-  outline: 2px solid rgba(15, 107, 69, 0.35);
+  outline: 2px solid var(--sc-button-focus-ring);
   outline-offset: 3px;
 }
 
 .sc-button.is-ghost {
-  background: transparent;
+  background: var(--sc-button-ghost-bg);
   color: var(--sc-ink);
-  border-color: rgba(99, 255, 160, 0.2);
+  border-color: var(--sc-button-ghost-border);
   box-shadow: none;
   backdrop-filter: blur(6px);
 }
 
 .sc-button.is-ghost:hover {
   color: var(--sc-accent);
-  border-color: rgba(99, 255, 160, 0.35);
+  border-color: var(--sc-button-ghost-border-hover);
 }
 
 .sc-chip {
@@ -146,8 +260,8 @@ a:focus-visible {
   gap: 0.4rem;
   padding: 0.35rem 0.75rem;
   border-radius: 999px;
-  border: 1px solid rgba(99, 255, 160, 0.35);
-  background: rgba(9, 30, 24, 0.8);
+  border: 1px solid var(--sc-chip-border);
+  background: var(--sc-chip-bg);
   color: var(--sc-ink);
   font-size: 0.75rem;
   font-weight: 700;
@@ -158,10 +272,8 @@ a:focus-visible {
 .sc-hero {
   position: relative;
   overflow: hidden;
-  background: radial-gradient(circle at 18% 20%, rgba(99, 255, 160, 0.16), transparent 45%),
-    radial-gradient(circle at 80% 15%, rgba(198, 255, 98, 0.18), transparent 40%),
-    linear-gradient(140deg, #0b231b, #0f2f24 48%, #0a1513 100%);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--sc-hero-bg);
+  border: 1px solid var(--sc-hero-border);
   box-shadow: var(--sc-shadow-strong);
 }
 
@@ -170,8 +282,7 @@ a:focus-visible {
   position: absolute;
   inset: 12% 0 auto 0;
   height: 380px;
-  background: radial-gradient(circle at 50% 0%, rgba(99, 255, 160, 0.1), transparent 50%),
-    radial-gradient(ellipse at 50% 60%, rgba(12, 50, 40, 0.7), transparent 65%);
+  background: var(--sc-hero-overlay);
   pointer-events: none;
   mix-blend-mode: screen;
   opacity: 0.7;
@@ -183,19 +294,34 @@ a:focus-visible {
   gap: 0.5rem;
   padding: 0.55rem 1rem;
   border-radius: 999px;
-  border: 1px solid rgba(99, 255, 160, 0.22);
-  background: rgba(7, 24, 19, 0.5);
+  border: 1px solid var(--sc-pill-border);
+  background: var(--sc-pill-bg);
   color: var(--sc-ink);
   font-weight: 700;
   letter-spacing: 0.04em;
 }
 
+.sc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  border: 1px solid var(--sc-pill-border);
+  background: var(--sc-pill-bg);
+  color: var(--sc-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .sc-surface-light {
-  background: linear-gradient(180deg, #ffffff, #f6fbf7);
-  border: 1px solid #e2f5e7;
+  background: var(--sc-surface-light-bg);
+  border: 1px solid var(--sc-surface-light-border);
   border-radius: var(--sc-radius-xl);
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.08);
-  color: #0b1f19;
+  box-shadow: var(--sc-surface-light-shadow);
+  color: var(--sc-surface-light-ink);
 }
 
 .sc-surface-light h2,
@@ -210,9 +336,9 @@ a:focus-visible {
   gap: 0.35rem;
   padding: 0.35rem 0.75rem;
   border-radius: 999px;
-  background: rgba(198, 255, 98, 0.12);
+  background: var(--sc-tag-bg);
   color: var(--sc-ink);
-  border: 1px solid rgba(198, 255, 98, 0.6);
+  border: 1px solid var(--sc-tag-border);
   font-weight: 700;
   font-size: 0.75rem;
 }
@@ -223,8 +349,8 @@ a:focus-visible {
   gap: 0.75rem;
   padding: 0.8rem 1.1rem;
   border-radius: var(--sc-radius-md);
-  background: linear-gradient(120deg, rgba(16, 45, 36, 0.8), rgba(9, 24, 18, 0.95));
-  border: 1px solid rgba(99, 255, 160, 0.16);
+  background: var(--sc-metric-bg);
+  border: 1px solid var(--sc-metric-border);
   color: var(--sc-ink);
   box-shadow: var(--sc-shadow-card);
 }
@@ -235,10 +361,132 @@ a:focus-visible {
 }
 
 .sc-frosted {
-  background: rgba(11, 26, 20, 0.55);
+  background: var(--sc-frosted-bg);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(99, 255, 160, 0.22);
+  border: 1px solid var(--sc-frosted-border);
   box-shadow: var(--sc-shadow-card);
+}
+
+.sc-panel {
+  border: 1px solid var(--sc-panel-border);
+  background: var(--sc-panel-bg);
+}
+
+.sc-panel-alt {
+  border: 1px solid var(--sc-panel-border-strong);
+  background: var(--sc-panel-bg-alt);
+}
+
+.sc-feature-panel {
+  border: 1px solid var(--sc-border-strong);
+  background: var(--sc-feature-panel-bg);
+}
+
+.sc-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--sc-ink);
+}
+
+.sc-field-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sc-ink-muted);
+}
+
+.sc-field-hint {
+  font-size: 0.75rem;
+  color: var(--sc-ink-muted);
+}
+
+.sc-input {
+  width: 100%;
+  border-radius: var(--sc-radius-md);
+  border: 1px solid var(--sc-field-border);
+  background: var(--sc-field-bg);
+  color: var(--sc-ink);
+  padding: 0.65rem 1rem;
+  font-size: 0.95rem;
+  font-family: var(--sc-font-body);
+  transition:
+    border var(--sc-transition-fast),
+    box-shadow var(--sc-transition-fast),
+    background var(--sc-transition-fast);
+}
+
+.sc-input::placeholder {
+  color: var(--sc-field-placeholder);
+}
+
+.sc-input:focus-visible {
+  outline: none;
+  border-color: var(--sc-field-border-strong);
+  box-shadow: 0 0 0 3px var(--sc-field-focus-ring);
+  background: rgba(10, 29, 23, 0.95);
+}
+
+.sc-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  color: var(--sc-field-disabled);
+}
+
+.sc-input.is-compact {
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  border-radius: var(--sc-radius-sm);
+}
+
+select.sc-input {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--sc-accent) 50%),
+    linear-gradient(135deg, var(--sc-accent) 50%, transparent 50%);
+  background-position: calc(100% - 1.3rem) calc(50% - 0.2rem), calc(100% - 1rem) calc(50% - 0.2rem);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 2.5rem;
+}
+
+textarea.sc-input {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.sc-alert {
+  border-radius: var(--sc-radius-md);
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--sc-border);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.sc-alert.is-success {
+  border-color: var(--sc-alert-success-border);
+  background: var(--sc-alert-success-bg);
+  color: var(--sc-ink);
+}
+
+.sc-alert.is-error {
+  border-color: var(--sc-alert-error-border);
+  background: var(--sc-alert-error-bg);
+  color: #ffd5d5;
+}
+
+.sc-button.is-block {
+  width: 100%;
+}
+
+.sc-button.is-option {
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  width: 100%;
+  padding: 1rem 1.25rem;
 }
 
 /* Tournament Director grayscale variant */
@@ -250,13 +498,17 @@ a:focus-visible {
   --td-border: #e2e8f0;
   --td-border-strong: #cbd5e1;
   --td-accent: #1f2937;
+  --td-card-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  --td-chip-bg: rgba(148, 163, 184, 0.2);
+  --td-button-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  --td-button-shadow-hover: 0 14px 30px rgba(15, 23, 42, 0.22);
 }
 
 .td-card-base {
   background: var(--td-surface);
   border: 1px solid var(--td-border);
   border-radius: var(--sc-radius-lg);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--td-card-shadow);
   color: var(--td-ink);
 }
 
@@ -274,7 +526,7 @@ a:focus-visible {
   padding: 0.4rem 0.75rem;
   border-radius: 999px;
   border: 1px solid var(--td-border);
-  background: rgba(148, 163, 184, 0.2);
+  background: var(--td-chip-bg);
   color: var(--td-ink-muted);
   font-size: 0.7rem;
   font-weight: 700;
@@ -295,12 +547,12 @@ a:focus-visible {
   font-weight: 600;
   letter-spacing: 0.01em;
   transition: transform var(--sc-transition-fast), box-shadow var(--sc-transition-fast);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--td-button-shadow);
 }
 
 .td-button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.22);
+  box-shadow: var(--td-button-shadow-hover);
 }
 
 .td-button.is-ghost {
@@ -319,6 +571,12 @@ a:focus-visible {
   --sk-surface: var(--sc-surface);
   --sk-surface-muted: rgba(255, 255, 255, 0.9);
   --sk-pad: 12px;
+  --sk-card-shadow: 0 12px 28px rgba(5, 43, 29, 0.12);
+  --sk-chip-bg: rgba(15, 81, 50, 0.08);
+  --sk-button-shadow: 0 10px 20px rgba(15, 81, 50, 0.18);
+  --sk-button-shadow-hover: 0 12px 24px rgba(15, 81, 50, 0.22);
+  --sk-compact-card-shadow: 0 10px 24px rgba(5, 43, 29, 0.14);
+  --sk-compact-button-shadow: 0 8px 18px rgba(15, 81, 50, 0.16);
 }
 
 .sk-card {
@@ -326,7 +584,7 @@ a:focus-visible {
   border: 1px solid var(--sk-border);
   border-radius: 18px;
   padding: var(--sk-pad);
-  box-shadow: 0 12px 28px rgba(5, 43, 29, 0.12);
+  box-shadow: var(--sk-card-shadow);
   color: var(--sk-ink);
 }
 
@@ -345,7 +603,7 @@ a:focus-visible {
   padding: 0.3rem 0.6rem;
   border-radius: 999px;
   border: 1px solid var(--sk-border);
-  background: rgba(15, 81, 50, 0.08);
+  background: var(--sk-chip-bg);
   color: var(--sk-ink-muted);
   font-size: 0.7rem;
   font-weight: 700;
@@ -366,12 +624,12 @@ a:focus-visible {
   font-weight: 600;
   font-size: 0.9rem;
   transition: transform var(--sc-transition-fast), box-shadow var(--sc-transition-fast);
-  box-shadow: 0 10px 20px rgba(15, 81, 50, 0.18);
+  box-shadow: var(--sk-button-shadow);
 }
 
 .sk-button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(15, 81, 50, 0.22);
+  box-shadow: var(--sk-button-shadow-hover);
 }
 
 .sk-button.is-ghost {
@@ -387,7 +645,7 @@ a:focus-visible {
   border: 1px solid var(--sc-border);
   border-radius: 16px;
   padding: 12px;
-  box-shadow: 0 10px 24px rgba(5, 43, 29, 0.14);
+  box-shadow: var(--sk-compact-card-shadow);
   color: var(--sc-ink);
 }
 
@@ -412,7 +670,7 @@ a:focus-visible {
   font-weight: 600;
   font-size: 0.9rem;
   transition: transform var(--sc-transition-fast), box-shadow var(--sc-transition-fast);
-  box-shadow: 0 8px 18px rgba(15, 81, 50, 0.16);
+  box-shadow: var(--sk-compact-button-shadow);
 }
 
 .compact-button.is-ghost {
@@ -439,4 +697,10 @@ a:focus-visible {
 .scorekeeper-compact .py-6 {
   padding-top: 10px !important;
   padding-bottom: 10px !important;
+}
+
+@media (max-width: 640px) {
+  :root {
+    font-size: 15px;
+  }
 }

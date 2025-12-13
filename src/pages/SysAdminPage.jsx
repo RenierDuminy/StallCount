@@ -70,14 +70,14 @@ export default function SysAdminPage() {
   };
 
   return (
-    <div className="pb-16 text-[var(--sc-ink)]">
+    <div className="pb-16 text-ink">
       <div className="sc-shell space-y-8">
         <header className="sc-card-base p-6 sm:p-7">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="sc-chip">Backend workspace</p>
-              <h1 className="text-3xl font-semibold text-[var(--sc-ink)]">Systems admin tools</h1>
-              <p className="mt-2 text-sm text-[var(--sc-ink-muted)]">
+              <h1 className="text-3xl font-semibold text-ink">Systems admin tools</h1>
+              <p className="mt-2 text-sm text-ink-muted">
                 Configure leagues, manage access policies, and audit StallCount data.
               </p>
             </div>
@@ -90,12 +90,12 @@ export default function SysAdminPage() {
         <section className="sc-card-base p-6 sm:p-7">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Database tables</h2>
-            <p className="text-sm text-[var(--sc-ink-muted)]">
+            <h2 className="text-xl font-semibold text-ink">Database tables</h2>
+            <p className="text-sm text-ink-muted">
               Listed from {SCHEMA_SOURCE_FILE}; reflects every CREATE TABLE statement in the schema dump.
             </p>
           </div>
-          <span className="rounded-full border border-[var(--sc-border)] px-4 py-1 text-sm font-semibold text-[var(--sc-accent)]">
+          <span className="rounded-full border border-border px-4 py-1 text-sm font-semibold text-accent">
             {schemaTables.length} tables
           </span>
         </div>
@@ -111,21 +111,21 @@ export default function SysAdminPage() {
                 onClick={() => loadTableRows(table)}
                 className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-sm shadow-sm transition hover:-translate-y-0.5 ${
                   isActive
-                    ? "border-[var(--sc-accent)] bg-white"
-                    : "border-[var(--sc-border-strong)] bg-[var(--sc-surface-muted)] hover:border-[var(--sc-border)]"
+                    ? "border-accent bg-white"
+                    : "border-border-strong bg-surface-muted hover:border-border"
                 }`}
               >
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                     {schema}
                   </p>
-                  <p className="truncate text-sm font-semibold text-[var(--sc-ink)]">{name}</p>
+                  <p className="truncate text-sm font-semibold text-ink">{name}</p>
                 </div>
                 <span
                   className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
                     isActive
-                      ? "bg-[var(--sc-accent)] text-white"
-                      : "bg-white text-[var(--sc-accent)]"
+                      ? "bg-accent text-white"
+                      : "bg-white text-accent"
                   }`}
                 >
                   Table
@@ -135,20 +135,20 @@ export default function SysAdminPage() {
           })}
         </div>
 
-        <div className="mt-6 rounded-2xl border border-[var(--sc-border)] bg-white/80 p-4 sm:p-6">
+        <div className="mt-6 rounded-2xl border border-border bg-white/80 p-4 sm:p-6">
           {selectedTable ? (
             <>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                     Preview
                   </p>
-                  <h3 className="text-lg font-semibold text-[var(--sc-ink)]">
+                  <h3 className="text-lg font-semibold text-ink">
                     {selectedTable} (latest 20)
                   </h3>
                 </div>
                 {tableLoading && (
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-accent)]">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-accent">
                     Loading...
                   </span>
                 )}
@@ -161,17 +161,17 @@ export default function SysAdminPage() {
               )}
 
               {!tableLoading && !tableError && tableRows.length === 0 && (
-                <p className="mt-4 text-sm text-[var(--sc-ink-muted)]">No rows found.</p>
+                <p className="mt-4 text-sm text-ink-muted">No rows found.</p>
               )}
 
               {!tableLoading && tableRows.length > 0 && (
-                <div className="mt-4 overflow-x-auto rounded-xl border border-[var(--sc-border-strong)]">
+                <div className="mt-4 overflow-x-auto rounded-xl border border-border-strong">
                   <TablePreview rows={tableRows} />
                 </div>
               )}
             </>
           ) : (
-            <p className="text-sm text-[var(--sc-ink-muted)]">
+            <p className="text-sm text-ink-muted">
               Select a table above to view the 20 most recent entries.
             </p>
           )}
@@ -181,15 +181,15 @@ export default function SysAdminPage() {
       <section className="sc-card">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-[var(--sc-ink)]">Audit log</h2>
-            <p className="text-sm text-[var(--sc-ink-muted)]">
+            <h2 className="text-xl font-semibold text-ink">Audit log</h2>
+            <p className="text-sm text-ink-muted">
               Showing the 20 most recent entries from the public.audit_log table.
             </p>
           </div>
           <button
             type="button"
             onClick={refreshAuditLog}
-            className="inline-flex items-center justify-center rounded-full border border-[var(--sc-border)] px-4 py-2 text-sm font-semibold text-[var(--sc-accent)] transition hover:border-[var(--sc-accent)] hover:bg-[#e6fffa]"
+            className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-semibold text-accent transition hover:border-accent hover:bg-[#e6fffa]"
             disabled={loading}
           >
             {loading ? "Refreshing..." : "Refresh"}
@@ -202,16 +202,16 @@ export default function SysAdminPage() {
           </p>
         )}
 
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-[var(--sc-border)]">
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-border">
           {loading ? (
-            <div className="p-6 text-sm text-[var(--sc-ink-muted)]">Loading audit entries...</div>
+            <div className="p-6 text-sm text-ink-muted">Loading audit entries...</div>
           ) : entries.length === 0 ? (
-            <div className="p-6 text-sm text-[var(--sc-ink-muted)]">
+            <div className="p-6 text-sm text-ink-muted">
               No audit entries recorded yet.
             </div>
           ) : (
             <table className="min-w-full divide-y divide-[var(--sc-border-strong)] text-sm">
-              <thead className="bg-[var(--sc-surface-muted)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+              <thead className="bg-surface-muted text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">
                 <tr>
                   <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3">Action</th>
@@ -224,16 +224,16 @@ export default function SysAdminPage() {
               <tbody className="divide-y divide-[var(--sc-border-strong)] bg-white">
                 {entries.map((entry) => (
                   <tr key={entry.id} className="align-top">
-                    <td className="whitespace-nowrap px-4 py-3 text-[var(--sc-ink-muted)]">
+                    <td className="whitespace-nowrap px-4 py-3 text-ink-muted">
                       {formatTimestamp(entry.created_at)}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="sc-pill border-[var(--sc-border-strong)] text-[var(--sc-accent)]">
+                      <span className="sc-pill border-border-strong text-accent">
                         {entry.action}
                       </span>
                     </td>
                     <td className="px-4 py-3 font-semibold">{entry.table_name}</td>
-                    <td className="px-4 py-3 text-xs text-[var(--sc-ink-muted)]">
+                    <td className="px-4 py-3 text-xs text-ink-muted">
                       {entry.record_id || "N/A"}
                     </td>
                     <td className="px-4 py-3">
@@ -241,11 +241,11 @@ export default function SysAdminPage() {
                     </td>
                     <td className="px-4 py-3">
                       {entry.change_data ? (
-                        <pre className="max-h-40 overflow-y-auto rounded-xl bg-[var(--sc-surface-muted)] p-3 text-xs">
+                        <pre className="max-h-40 overflow-y-auto rounded-xl bg-surface-muted p-3 text-xs">
                           {JSON.stringify(entry.change_data, null, 2)}
                         </pre>
                       ) : (
-                        <span className="text-xs text-[var(--sc-ink-muted)]">No diff</span>
+                        <span className="text-xs text-ink-muted">No diff</span>
                       )}
                     </td>
                   </tr>
@@ -264,7 +264,7 @@ function TablePreview({ rows }) {
   const columns = Object.keys(rows[0] ?? {});
 
   if (columns.length === 0) {
-    return <div className="p-4 text-sm text-[var(--sc-ink-muted)]">No columns detected.</div>;
+    return <div className="p-4 text-sm text-ink-muted">No columns detected.</div>;
   }
 
   const renderValue = (value) => {
@@ -275,7 +275,7 @@ function TablePreview({ rows }) {
 
   return (
     <table className="min-w-full divide-y divide-[var(--sc-border-strong)] text-sm">
-      <thead className="bg-[var(--sc-surface-muted)] text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+      <thead className="bg-surface-muted text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">
         <tr>
           {columns.map((col) => (
             <th key={col} className="px-4 py-2">
@@ -288,7 +288,7 @@ function TablePreview({ rows }) {
         {rows.map((row, idx) => (
           <tr key={row.id ?? idx} className="align-top">
             {columns.map((col) => (
-              <td key={col} className="max-w-xs px-4 py-2 text-[var(--sc-ink)]">
+              <td key={col} className="max-w-xs px-4 py-2 text-ink">
                 <div className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words">
                   {renderValue(row[col])}
                 </div>

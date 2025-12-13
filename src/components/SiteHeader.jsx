@@ -158,14 +158,14 @@ export default function SiteHeader() {
       </header>
 
       {showInstallGuide && (
-        <div className="border-b border-[var(--sc-border)]/40 bg-white/95 text-[var(--sc-ink)]">
-          <div className="sc-shell flex flex-col gap-3 py-4 text-sm text-[var(--sc-ink-muted)]">
+        <div className="border-b border-[var(--sc-border)]/40 bg-white/95 text-ink">
+          <div className="sc-shell flex flex-col gap-3 py-4 text-sm text-ink-muted">
             <div className="flex items-start justify-between gap-4">
-              <p className="text-base font-semibold text-[var(--sc-ink)]">Install StallCount</p>
+              <p className="text-base font-semibold text-ink">Install StallCount</p>
               <button
                 type="button"
                 onClick={() => setShowInstallGuide(false)}
-                className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)] hover:text-[var(--sc-ink)]"
+                className="text-xs font-semibold uppercase tracking-wide text-ink-muted hover:text-ink"
               >
                 Close
               </button>
@@ -179,7 +179,7 @@ export default function SiteHeader() {
               <li>Confirm the prompt to pin StallCount to your device.</li>
             </ol>
             {!canInstall && (
-              <p className="text-xs text-[var(--sc-ink-muted)]">
+              <p className="text-xs text-ink-muted">
                 If you do not see the option, make sure you are using the latest version of Chrome, Edge, Safari,
                 or Firefox on a supported device.
               </p>

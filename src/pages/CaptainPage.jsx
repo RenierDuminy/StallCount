@@ -10,6 +10,7 @@ import {
 } from "../services/playerService";
 import { getAllTeams } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
+import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
 
 const EMPTY_PLAYER_FORM = {
   id: "",
@@ -228,189 +229,158 @@ export default function CaptainPage() {
   }
 
   return (
-    <div className="pb-16 text-[var(--sc-ink)]">
-      <header className="sc-shell py-4 sm:py-6">
-        <div className="sc-card-base space-y-3 p-6 sm:p-7">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="sc-chip">Backend workspace</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              Captain workspace
-            </span>
-          </div>
-          <p className="text-sm text-[var(--sc-ink-muted)]">
-            Maintain your player list and control the roster assignments for current events.
-          </p>
-          <Link to="/admin" className="sc-button is-ghost">
-            Back to admin hub
-          </Link>
-        </div>
-      </header>
+    <div className="pb-16 text-ink">
+      <SectionShell as="header" className="py-4 sm:py-6">
+        <Card className="space-y-4 p-6 sm:p-8">
+          <SectionHeader
+            eyebrow="Backend workspace"
+            title="Captain workspace"
+            description="Maintain your player list and control the roster assignments for current events."
+            action={
+              <Link to="/admin" className="sc-button is-ghost">
+                Back to admin hub
+              </Link>
+            }
+          />
+        </Card>
+      </SectionShell>
 
-      <main className="sc-shell space-y-10 py-6">
-        <section className="grid gap-8 sc-card-base p-6 shadow-sm lg:grid-cols-[1.1fr,0.9fr]">
-          <div>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Player directory</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Add new players or update jersey numbers, names, and bios in the `public.player`
-                  table.
-                </p>
-              </div>
-            </div>
+      <SectionShell as="main" className="space-y-10 py-6">
+        <Card as="section" className="grid gap-8 p-6 lg:grid-cols-[1.1fr,0.9fr]">
+          <div className="space-y-6">
+            <SectionHeader
+              eyebrow="Directory"
+              title="Player directory"
+              description="Add new players or update jersey numbers, names, and bios in the public.player table."
+            />
 
-            <form className="mt-6 space-y-4" onSubmit={handlePlayerSubmit}>
+            <form className="space-y-4" onSubmit={handlePlayerSubmit}>
               <div className="grid gap-4 md:grid-cols-2">
-                <label className="text-sm font-medium text-slate-700">
-                  Player name
-                  <input
+                <Field label="Player name" htmlFor="player-name">
+                  <Input
+                    id="player-name"
                     type="text"
-                    className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
                     value={playerForm.name}
                     onChange={(event) => handlePlayerFieldChange("name", event.target.value)}
                     required
                   />
-                </label>
-                <label className="text-sm font-medium text-slate-700">
-                  Jersey #
-                  <input
+                </Field>
+                <Field label="Jersey #" htmlFor="player-jersey">
+                  <Input
+                    id="player-jersey"
                     type="number"
-                    className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
                     value={playerForm.jersey_number}
                     onChange={(event) => handlePlayerFieldChange("jersey_number", event.target.value)}
                     min="0"
                   />
-                </label>
+                </Field>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <label className="text-sm font-medium text-slate-700">
-                  Gender code
-                  <select
-                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+                <Field label="Gender code" htmlFor="player-gender">
+                  <Select
+                    id="player-gender"
                     value={playerForm.gender_code}
                     onChange={(event) => handlePlayerFieldChange("gender_code", event.target.value)}
                   >
                     <option value="">Select</option>
                     <option value="M">M</option>
                     <option value="W">W</option>
-                  </select>
-                </label>
-                <label className="text-sm font-medium text-slate-700">
-                  Birthday
-                  <input
+                  </Select>
+                </Field>
+                <Field label="Birthday" htmlFor="player-birthday">
+                  <Input
+                    id="player-birthday"
                     type="date"
-                    className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
                     value={playerForm.birthday}
                     onChange={(event) => handlePlayerFieldChange("birthday", event.target.value)}
                   />
-                </label>
+                </Field>
               </div>
 
-              <label className="text-sm font-medium text-slate-700">
-                Description / Notes
-                <textarea
-                  className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+              <Field label="Description / Notes" htmlFor="player-description">
+                <Textarea
+                  id="player-description"
                   rows={3}
                   value={playerForm.description}
                   onChange={(event) => handlePlayerFieldChange("description", event.target.value)}
                 />
-              </label>
+              </Field>
 
               {playerAlert && (
-                <p
-                  className={`text-sm ${
-                    playerAlert.tone === "error" ? "text-rose-600" : "text-emerald-600"
-                  }`}
-                >
+                <div className={`sc-alert ${playerAlert.tone === "error" ? "is-error" : "is-success"}`}>
                   {playerAlert.message}
-                </p>
+                </div>
               )}
 
               <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="submit"
-                  disabled={playerSaving}
-                  className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-70"
-                >
+                <button type="submit" disabled={playerSaving} className="sc-button disabled:cursor-not-allowed">
                   {playerSaving ? "Saving..." : playerForm.id ? "Update player" : "Add player"}
                 </button>
-                <button
-                  type="button"
-                  onClick={resetPlayerForm}
-                  className="text-sm font-semibold text-slate-500 transition hover:text-slate-900"
-                >
+                <button type="button" onClick={resetPlayerForm} className="sc-button is-ghost">
                   Clear form
                 </button>
               </div>
             </form>
           </div>
 
-          <div className="flex flex-col">
+          <Panel variant="muted" className="space-y-4 p-4">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Existing players
-              </h3>
-              <span className="text-xs text-slate-400">{playerDirectory.length} total</span>
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Existing players</h3>
+              <span className="text-xs text-ink-muted">{playerDirectory.length} total</span>
             </div>
 
-            <label className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Search roster
-              <input
+            <Field label="Search roster" htmlFor="player-search">
+              <Input
+                id="player-search"
                 type="search"
                 placeholder="Search by name, jersey, or gender"
-                className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none"
                 value={playerFilter}
                 onChange={(event) => setPlayerFilter(event.target.value)}
+                className="is-compact"
               />
-            </label>
+            </Field>
 
-            <div className="mt-4">
-              {filteredPlayers.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
-                  {playerDirectory.length === 0
-                    ? "No players yet. Use the form to add your first athlete."
-                    : "No players match your search."}
-                </div>
-              ) : (
-                <select
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
-                  value={playerForm.id}
-                  onChange={(event) => {
-                    const player = playerDirectory.find((p) => p.id === event.target.value);
-                    if (player) {
-                      handleSelectPlayer(player);
-                    } else {
-                      resetPlayerForm();
-                    }
-                  }}
-                >
-                  <option value="">Select player to edit</option>
-                  {filteredPlayers.map((player) => (
-                    <option key={player.id} value={player.id}>
-                      {player.name} #{player.jersey_number || "—"} ({player.gender_code || "-"})
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </div>
-        </section>
+            {filteredPlayers.length === 0 ? (
+              <Panel variant="muted" className="border border-dashed border-border bg-transparent p-4 text-center text-sm text-ink-muted">
+                {playerDirectory.length === 0
+                  ? "No players yet. Use the form to add your first athlete."
+                  : "No players match your search."}
+              </Panel>
+            ) : (
+              <Select
+                value={playerForm.id}
+                onChange={(event) => {
+                  const player = playerDirectory.find((p) => p.id === event.target.value);
+                  if (player) {
+                    handleSelectPlayer(player);
+                  } else {
+                    resetPlayerForm();
+                  }
+                }}
+              >
+                <option value="">Select player to edit</option>
+                {filteredPlayers.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.name} {player.jersey_number != null ? `#${player.jersey_number}` : ""} ({player.gender_code || "-"})
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Panel>
+        </Card>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">Team roster control</h2>
-            <p className="text-sm text-slate-600">
-              Link players to specific events and teams via `public.team_roster`. Pick the team + event,
-              then add or remove assignments.
-            </p>
-          </div>
+        <Card as="section" className="space-y-6 p-6">
+          <SectionHeader
+            eyebrow="Assignments"
+            title="Team roster control"
+            description="Link players to specific events and teams via public.team_roster. Pick the team and event, then add or remove assignments."
+          />
 
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <label className="text-sm font-medium text-slate-700">
-              Select team
-              <select
-                className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+          <div className="grid gap-4 md:grid-cols-3">
+            <Field label="Select team" htmlFor="roster-team">
+              <Select
+                id="roster-team"
                 value={selectedTeamId}
                 onChange={(event) => setSelectedTeamId(event.target.value)}
               >
@@ -420,13 +390,12 @@ export default function CaptainPage() {
                     {team.name}
                   </option>
                 ))}
-              </select>
-            </label>
+              </Select>
+            </Field>
 
-            <label className="text-sm font-medium text-slate-700">
-              Select event
-              <select
-                className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+            <Field label="Select event" htmlFor="roster-event">
+              <Select
+                id="roster-event"
                 value={selectedEventId}
                 onChange={(event) => setSelectedEventId(event.target.value)}
                 disabled={!selectedTeamId}
@@ -437,13 +406,12 @@ export default function CaptainPage() {
                     {eventItem.name}
                   </option>
                 ))}
-              </select>
-            </label>
+              </Select>
+            </Field>
 
-            <label className="text-sm font-medium text-slate-700">
-              Player to assign
-              <select
-                className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none"
+            <Field label="Player to assign" htmlFor="roster-player">
+              <Select
+                id="roster-player"
                 value={assignPlayerId}
                 onChange={(event) => setAssignPlayerId(event.target.value)}
                 disabled={!selectedTeamId || !selectedEventId}
@@ -451,113 +419,92 @@ export default function CaptainPage() {
                 <option value="">Select player</option>
                 {playerDirectory.map((player) => (
                   <option key={player.id} value={player.id}>
-                    {player.name} #{player.jersey_number || "—"}
+                    {player.name} {player.jersey_number != null ? `#${player.jersey_number}` : ""}
                   </option>
                 ))}
-              </select>
-            </label>
+              </Select>
+            </Field>
           </div>
 
-          <form
-            className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-700"
-            onSubmit={handleAddToRoster}
-          >
-            <label className="text-sm font-medium text-slate-700">
-              Captain role
-              <select
-                className="mt-1 w-48 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none"
+          <form className="flex flex-wrap items-end gap-4 text-sm" onSubmit={handleAddToRoster}>
+            <Field label="Captain role" htmlFor="captain-role">
+              <Select
+                id="captain-role"
                 value={assignCaptainRole}
                 onChange={(event) => setAssignCaptainRole(event.target.value)}
                 disabled={!selectedTeamId || !selectedEventId}
+                className="is-compact"
               >
                 <option value="">None</option>
                 <option value="captain">Captain</option>
-                <option value="spirit">Spirit Captain</option>
-              </select>
-            </label>
+                <option value="spirit">Spirit captain</option>
+              </Select>
+            </Field>
             <button
               type="submit"
               disabled={assigning || !selectedTeamId || !selectedEventId}
-              className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              className="sc-button disabled:cursor-not-allowed"
             >
               {assigning ? "Adding..." : "Add to roster"}
             </button>
           </form>
 
           {rosterAlert && (
-            <p
-              className={`mt-3 text-sm ${
-                rosterAlert.tone === "error" ? "text-rose-600" : "text-emerald-600"
-              }`}
-            >
+            <div className={`sc-alert ${rosterAlert.tone === "error" ? "is-error" : "is-success"}`}>
               {rosterAlert.message}
-            </p>
+            </div>
           )}
 
-          <div className="mt-6 rounded-2xl border border-slate-200">
+          <Panel variant="muted" className="p-0">
             {rosterLoading ? (
-              <div className="p-6 text-center text-sm text-slate-500">Loading roster…</div>
+              <div className="p-6 text-center text-sm text-ink-muted">Loading roster...</div>
             ) : rosterEntries.length === 0 ? (
-              <div className="p-6 text-center text-sm text-slate-500">
-                {selectedTeamId
-                  ? "No roster entries for this filter yet."
-                  : "Select a team to view its roster."}
+              <div className="p-6 text-center text-sm text-ink-muted">
+                {selectedTeamId ? "No roster entries for this filter yet." : "Select a team to view its roster."}
               </div>
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-border">
                 {rosterEntries.map((entry) => (
-                    <li
-                      key={entry.id}
-                      className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 text-sm text-slate-700"
-                    >
-                      <div>
-                        <p className="font-semibold text-slate-900">
-                          {entry.player?.name || "Unnamed player"}{" "}
-                          {entry.player?.jersey_number != null
-                            ? `#${entry.player.jersey_number}`
+                  <li key={entry.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 text-sm">
+                    <div>
+                      <p className="font-semibold text-ink">
+                        {entry.player?.name || "Unnamed player"}
+                        {entry.player?.jersey_number != null ? ` #${entry.player.jersey_number}` : ""}
+                      </p>
+                      <p className="text-xs text-ink-muted">
+                        {(entry.team?.name || "Team")} - {(entry.event?.name || "Event")}
+                        {entry.is_captain
+                          ? " ? Captain"
+                          : entry.is_spirit_captain
+                            ? " ? Spirit captain"
                             : ""}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {entry.team?.name || "Team"} · {entry.event?.name || "Event"}
-                          {entry.is_captain
-                            ? " · Captain"
-                            : entry.is_spirit_captain
-                              ? " · Spirit Captain"
-                              : ""}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3 text-xs">
-                        <label className="flex items-center gap-2 text-slate-500">
-                          Role
-                          <select
-                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-900 focus:border-brand focus:outline-none"
-                            value={
-                              entry.is_captain ? "captain" : entry.is_spirit_captain ? "spirit" : ""
-                            }
-                            onChange={(event) =>
-                              handleUpdateCaptain(entry.id, event.target.value || null)
-                            }
-                          >
-                            <option value="">None</option>
-                            <option value="captain">Captain</option>
-                            <option value="spirit">Spirit Captain</option>
-                          </select>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveRosterEntry(entry.id)}
-                          className="font-semibold uppercase tracking-wide text-rose-500 transition hover:text-rose-700"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </li>
-                  ))}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-xs">
+                      <Select
+                        className="is-compact"
+                        value={entry.is_captain ? "captain" : entry.is_spirit_captain ? "spirit" : ""}
+                        onChange={(event) => handleUpdateCaptain(entry.id, event.target.value || null)}
+                      >
+                        <option value="">None</option>
+                        <option value="captain">Captain</option>
+                        <option value="spirit">Spirit captain</option>
+                      </Select>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRosterEntry(entry.id)}
+                        className="sc-button is-ghost text-xs text-rose-200 hover:text-white"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                ))}
               </ul>
             )}
-          </div>
-        </section>
-      </main>
+          </Panel>
+        </Card>
+      </SectionShell>
     </div>
   );
 }
