@@ -169,16 +169,12 @@ export default function MatchesPage() {
           <div className="flex flex-wrap items-center gap-3">
             <span className="sc-chip">Matches</span>
             <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
-              Broadcast & officiating view
+              Select a Event and Match to view
             </span>
           </div>
-          <p className="text-base text-[var(--sc-ink-muted)]">
-            Audit full-match context: confirm event slates, stream links, scoring tempo, and the official point-by-point
-            chronology from a single console.
-          </p>
-          <div className="grid gap-3 md:grid-cols-[1.1fr_0.9fr] md:items-center">
+          <div className="grid gap-3 md:grid-cols-2 md:gap-4 md:items-start">
             <label className="space-y-1 text-sm font-semibold text-[var(--sc-ink)]">
-              Event
+              <span>Select event</span>
               <div className="sc-card-muted relative flex items-center gap-3 p-3">
                 <div className="text-[var(--sc-ink-muted)]" aria-hidden="true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -224,7 +220,7 @@ export default function MatchesPage() {
               </div>
             </label>
             <label className="space-y-1 text-sm font-semibold text-[var(--sc-ink)]">
-              Select match
+              <span>Select match</span>
               <div className="sc-card-muted relative flex items-center gap-3 p-3">
                 <div className="text-[var(--sc-ink-muted)]" aria-hidden="true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -442,20 +438,19 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
 
   const graphClassName = "mx-auto w-full";
   const width = 900;
-  const baseHeight = 280;
+  const baseHeight = 300;
   const possessionSegments = possessionTimeline?.segments || [];
   const possessionScores = possessionTimeline?.scores || [];
   const possessionBandHeight = possessionSegments.length ? (isMobile ? 18 : 14) : 0;
   const possessionBandGap = possessionSegments.length ? 24 : 0;
   const chartCanvasHeight = isMobile ? baseHeight * 1.35 : baseHeight;
-  const annotationPaddingBottom = 60;
-  const height = chartCanvasHeight + possessionBandHeight + possessionBandGap + annotationPaddingBottom;
-  const padding = { top: 16, right: 44, bottom: 52, left: 50 };
+  const height = chartCanvasHeight + possessionBandHeight + possessionBandGap;
+  const padding = { top: 26, right: 44, bottom: 52, left: 50 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = chartCanvasHeight - padding.top - padding.bottom;
   const yMax = Math.max(10, timeline.maxScore);
-  const legendY = height - 30;
-  const minutesLabelY = legendY - 40;
+  const legendY = height - 35;
+  const minutesLabelY = legendY - 8;
 
   const getX = (time) => {
     const ratio = (time - timeline.minTime) / (timeline.maxTime - timeline.minTime || 1);
@@ -545,7 +540,7 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
         {renderLinePath(timeline.series.teamA, SERIES_COLORS.teamA)}
         {renderLinePath(timeline.series.teamB, SERIES_COLORS.teamB)}
 
-        <text x={width / 2} y={12} textAnchor="middle" fontSize="13.6" fontWeight="600" fill="#0f172a">
+        <text x={width / 2} y={20} textAnchor="middle" fontSize="13.6" fontWeight="600" fill="#0f172a">
           {chartTitle}
         </text>
 
@@ -826,7 +821,7 @@ function TeamOverviewCard({ title, stats }) {
               {connections.slice(0, 6).map((row) => (
                 <tr key={`${row.assist}-${row.scorer}`} className="border-t border-[var(--sc-border)] text-sm">
                   <td className="py-1 pr-2">{row.assist}</td>
-                  <td className="py-1 text-center text-sm font-bold text-[var(--sc-ink-muted)]">-&gt;</td>
+                  <td className="py-1 text-center text-sm font-bold text-[var(--sc-ink-muted)]">→</td>
                   <td className="py-1 pr-2">{row.scorer}</td>
                   <td className="py-1 text-right font-semibold">{row.count}</td>
                 </tr>
@@ -854,7 +849,7 @@ function PointLogTable({ rows, teamAName, teamBName }) {
           <tr className="uppercase tracking-wide text-[11px]">
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Time</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Team</th>
-            <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Assist -&gt; Score</th>
+            <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Assist → Score</th>
             <th className="px-1 py-0.5 text-right sm:px-2 sm:py-1.5">Gap</th>
           </tr>
         </thead>
@@ -864,21 +859,21 @@ function PointLogTable({ rows, teamAName, teamBName }) {
               key={`${row.index}-${row.timestamp}`}
               className={`border-b border-[var(--sc-border)] last:border-none ${
                 row.variant === "timeout"
-                  ? "bg-[#c7e5fb]"
+                  ? "bg-[#95df88]"
                 : row.variant === "stoppage"
-                  ? "bg-[#f4d9dd]"
+                  ? "bg-[#fd5050]"
                 : row.variant === "halftime"
-                  ? "bg-[#c1f0d5]"
+                  ? "bg-[#269828]"
                 : row.variant === "callahan"
                   ? "bg-[#fef9c3]"
                 : row.variant === "goalA"
-                  ? "bg-[#edf2ff]"
+                  ? "bg-[#6591ff]"
                 : row.variant === "goalB"
-                  ? "bg-[#fff3e7]"
+                  ? "bg-[#ffc892]"
                 : row.variant === "turnoverA"
                   ? "bg-[#e0f2fe]"
                 : row.variant === "turnoverB"
-                  ? "bg-[#fce7f3]"
+                  ? "bg-[#e0f2fe]"
                   : ""
               }`}
             >
@@ -901,7 +896,7 @@ function PointLogTable({ rows, teamAName, teamBName }) {
                 ) : (
                   <div className="grid auto-rows-min items-center gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-1.5">
                     <span className="text-black text-[11px] sm:text-sm sm:text-right">{row.assist || "-"}</span>
-                    <span className="text-[10px] font-semibold text-black text-center sm:text-xs">-&gt;</span>
+                    <span className="text-[10px] font-semibold text-black text-center sm:text-xs">→</span>
                     <span className="font-semibold text-black">{row.scorer || "-"}</span>
                   </div>
                 )}
@@ -1180,9 +1175,13 @@ function deriveMatchInsights(match, logs) {
       }
       if (gainingTeamKey) {
         currentPossession = gainingTeamKey;
-        const gainingTeamStats = teamStats[gainingTeamKey];
-        if (gainingTeamStats?.turnoverCounts && actorName) {
-          incrementCount(gainingTeamStats.turnoverCounts, actorName);
+      }
+
+      const creditedTeamKey = isBlockEvent ? gainingTeamKey : losingTeamKey;
+      if (creditedTeamKey) {
+        const creditedStats = teamStats[creditedTeamKey];
+        if (creditedStats?.turnoverCounts && actorName) {
+          incrementCount(creditedStats.turnoverCounts, actorName);
         }
       }
 
@@ -1705,8 +1704,10 @@ function buildMatchInsights({
   const formatMsShort = (ms) => (Number.isFinite(ms) && ms > 0 ? formatGap(ms) : "--");
   const formatRatio = (value, decimals = 2) =>
     Number.isFinite(value) && value >= 0 ? value.toFixed(decimals) : "--";
+  const formatPercent = (value, decimals = 1) =>
+    Number.isFinite(value) && value >= 0 ? `${value.toFixed(decimals)}%` : "--";
 
-  const possessionAverages = (() => {
+  const possessionMetrics = (() => {
     if (!turnoverCount || turnoverCount <= 0) return null;
     const segments = possessionTimeline?.segments || [];
     if (!segments.length) return null;
@@ -1720,11 +1721,16 @@ function buildMatchInsights({
         }
       }
     });
+    const totalDuration = totals.teamA.duration + totals.teamB.duration;
     return {
-      teamA:
-        totals.teamA.count > 0 ? totals.teamA.duration / totals.teamA.count : null,
-      teamB:
-        totals.teamB.count > 0 ? totals.teamB.duration / totals.teamB.count : null,
+      averages: {
+        teamA: totals.teamA.count > 0 ? totals.teamA.duration / totals.teamA.count : null,
+        teamB: totals.teamB.count > 0 ? totals.teamB.duration / totals.teamB.count : null,
+      },
+      shares: {
+        teamA: totalDuration > 0 ? (totals.teamA.duration / totalDuration) * 100 : null,
+        teamB: totalDuration > 0 ? (totals.teamB.duration / totalDuration) * 100 : null,
+      },
     };
   })();
 
@@ -1740,15 +1746,28 @@ function buildMatchInsights({
     { label: `${teamBName} scoring gap`, value: teamBGap ? formatGap(teamBGap) : "--" },
   ];
 
-  if (possessionAverages && turnoverCount > 0) {
+  if (possessionMetrics?.averages) {
     tempoRows.push(
       {
         label: `${teamAName} avg possession`,
-        value: formatMsShort(possessionAverages.teamA),
+        value: formatMsShort(possessionMetrics.averages.teamA),
       },
       {
         label: `${teamBName} avg possession`,
-        value: formatMsShort(possessionAverages.teamB),
+        value: formatMsShort(possessionMetrics.averages.teamB),
+      },
+    );
+  }
+
+  if (possessionMetrics?.shares) {
+    tempoRows.push(
+      {
+        label: `${teamAName} possession %`,
+        value: formatPercent(possessionMetrics.shares.teamA),
+      },
+      {
+        label: `${teamBName} possession %`,
+        value: formatPercent(possessionMetrics.shares.teamB),
       },
     );
   }
