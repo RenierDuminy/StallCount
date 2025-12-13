@@ -386,7 +386,10 @@ export default function MatchesPage() {
 function LegendSwatch({ color, label }) {
   return (
     <span className="inline-flex items-center gap-1 text-xs sm:gap-1.5">
-      <span className="inline-block h-4 w-6 rounded-sm" style={{ backgroundColor: color }} />
+      <span
+        className="inline-block h-4 w-6 rounded-sm border border-black/60"
+        style={{ backgroundColor: color }}
+      />
       {label}
     </span>
   );
@@ -419,14 +422,12 @@ function InsightTable({ title, rows }) {
 
 function TimelineChart({ match, timeline, possessionTimeline }) {
   const [isMobile, setIsMobile] = useState(false);
-  const [graphClassName, setGraphClassName] = useState("mx-auto w-full");
 
   useEffect(() => {
     const handleResize = () => {
       if (typeof window === "undefined") return;
       const small = window.innerWidth <= 640;
       setIsMobile(small);
-      setGraphClassName(small ? "mx-auto w-full" : "mx-auto w-[70%]");
     };
     handleResize();
     window.addEventListener("resize", handleResize);
@@ -439,6 +440,7 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
     );
   }
 
+  const graphClassName = "mx-auto w-full";
   const width = 900;
   const baseHeight = 280;
   const possessionSegments = possessionTimeline?.segments || [];
@@ -446,11 +448,14 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
   const possessionBandHeight = possessionSegments.length ? (isMobile ? 18 : 14) : 0;
   const possessionBandGap = possessionSegments.length ? 24 : 0;
   const chartCanvasHeight = isMobile ? baseHeight * 1.35 : baseHeight;
-  const height = chartCanvasHeight + possessionBandHeight + possessionBandGap;
+  const annotationPaddingBottom = 60;
+  const height = chartCanvasHeight + possessionBandHeight + possessionBandGap + annotationPaddingBottom;
   const padding = { top: 16, right: 44, bottom: 52, left: 50 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = chartCanvasHeight - padding.top - padding.bottom;
   const yMax = Math.max(10, timeline.maxScore);
+  const legendY = height - 30;
+  const minutesLabelY = legendY - 40;
 
   const getX = (time) => {
     const ratio = (time - timeline.minTime) / (timeline.maxTime - timeline.minTime || 1);
@@ -595,18 +600,10 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
                 />
               );
             })}
-            <text
-              x={padding.left}
-              y={padding.top + chartHeight + possessionBandHeight + 30}
-              fontSize="9.35"
-              fill="#000"
-            >
-              Possession (color matches team lines)
-            </text>
           </g>
         )}
 
-        <text x={width / 2} y={height - 20} textAnchor="middle" fontSize="10.2" fill="#000">
+        <text x={width / 2} y={minutesLabelY} textAnchor="middle" fontSize="10.2" fill="#000">
           Minutes
         </text>
         <text
@@ -619,12 +616,12 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
           Score
         </text>
 
-        <foreignObject x={width * 0.15} y={height - 45} width={width * 0.7} height="40">
+        <foreignObject x={width * 0.15} y={legendY} width={width * 0.7} height="40">
           <div
             xmlns="http://www.w3.org/1999/xhtml"
             className="flex flex-wrap items-center justify-center gap-4 text-xs"
           >
-            <span className="flex flex-wrap items-center gap-3 text-sm font-semibold">
+            <span className="flex flex-wrap items-center gap-3 text-sm font-semibold text-black">
               <LegendSwatch color={SERIES_COLORS.teamA} label={teamAName} />
               <LegendSwatch color={SERIES_COLORS.teamB} label={teamBName} />
             </span>
@@ -1157,22 +1154,23 @@ function deriveMatchInsights(match, logs) {
     const eventCodeLower = (code || "").toLowerCase();
 
     if (eventCodeLower === MATCH_LOG_EVENT_CODES.TURNOVER || eventCodeLower === "block") {
-      const gainingTeamId = log.team_id;
-      const gainingTeamLabel =
-        gainingTeamId === teamAId ? teamAName : gainingTeamId === teamBId ? teamBName : "-";
-      const losingTeamLabel =
-        gainingTeamId === teamAId ? teamBName : gainingTeamId === teamBId ? teamAName : "-";
-      const variant =
-        gainingTeamId === teamAId ? "turnoverA" : gainingTeamId === teamBId ? "turnoverB" : "turnover";
-      const possessionTeam =
-        gainingTeamId === teamAId ? "teamA" : gainingTeamId === teamBId ? "teamB" : null;
       const eventLabel = (log.event?.description || "").trim();
       const actorName = log.actor?.name ?? log.scorer_name ?? "";
       const normalizedLabel = eventLabel.toLowerCase();
       const isBlockEvent = eventCodeLower === "block" || normalizedLabel.includes("block");
-      const description = eventLabel || (isBlockEvent ? "Block" : "Turnover");
-      const gainingTeamKey = toTeamKey(gainingTeamId);
-      const losingTeamKey = currentPossession || getOppositeTeam(gainingTeamKey);
+      const reportedTeamKey = toTeamKey(log.team_id);
+      const previouslyHoldingTeam = currentPossession;
+      let gainingTeamKey = reportedTeamKey;
+      if (previouslyHoldingTeam && reportedTeamKey && reportedTeamKey === previouslyHoldingTeam && !isBlockEvent) {
+        gainingTeamKey = getOppositeTeam(reportedTeamKey);
+      }
+      if (!gainingTeamKey && previouslyHoldingTeam) {
+        gainingTeamKey = getOppositeTeam(previouslyHoldingTeam);
+      }
+
+      const losingTeamKey =
+        previouslyHoldingTeam ||
+        (gainingTeamKey ? getOppositeTeam(gainingTeamKey) : null);
       if (losingTeamKey) {
         teamProduction[losingTeamKey].totalTurnovers += 1;
       }
@@ -1187,9 +1185,17 @@ function deriveMatchInsights(match, logs) {
           incrementCount(gainingTeamStats.turnoverCounts, actorName);
         }
       }
+
+      const gainingTeamLabel =
+        gainingTeamKey === "teamA" ? teamAName : gainingTeamKey === "teamB" ? teamBName : "-";
+      const losingTeamLabel =
+        losingTeamKey === "teamA" ? teamAName : losingTeamKey === "teamB" ? teamBName : "-";
+      const variant =
+        gainingTeamKey === "teamA" ? "turnoverA" : gainingTeamKey === "teamB" ? "turnoverB" : "turnover";
+
       turnovers.push({
         time: timestamp,
-        team: possessionTeam,
+        team: gainingTeamKey,
         source: isBlockEvent ? "block" : "turnover",
       });
 
@@ -1207,7 +1213,7 @@ function deriveMatchInsights(match, logs) {
         teamLabel: gainingTeamLabel,
         scorer: "-",
         assist: "-",
-        description,
+        description: eventLabel || (isBlockEvent ? "Block" : "Turnover"),
         metaDetails,
         gap,
         variant,
@@ -1489,8 +1495,6 @@ function buildPossessionTimeline({
     currentTeam = turnover.team || null;
     cursor = turnover.time;
   }
-
-  pushSegment(axisEnd, currentTeam);
 
   const interruptionBands = (bands || []).filter(
     (band) => band.type === "timeout" || band.type === "stoppage" || band.type === "halftime",
