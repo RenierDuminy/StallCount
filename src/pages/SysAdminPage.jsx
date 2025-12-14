@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getRecentAuditLogs, getRecentTableRows } from "../services/adminService";
 import { listSchemaTables, SCHEMA_SOURCE_FILE } from "../services/schemaService";
+import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
 
 export default function SysAdminPage() {
   const [entries, setEntries] = useState([]);
@@ -71,191 +72,135 @@ export default function SysAdminPage() {
 
   return (
     <div className="pb-16 text-ink">
-      <div className="sc-shell space-y-8">
-        <header className="sc-card-base p-6 sm:p-7">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="sc-chip">Backend workspace</p>
-              <h1 className="text-3xl font-semibold text-ink">Systems admin tools</h1>
-              <p className="mt-2 text-sm text-ink-muted">
-                Configure leagues, manage access policies, and audit StallCount data.
-              </p>
-            </div>
-            <Link to="/admin" className="sc-button is-ghost">
-              Back to admin hub
-            </Link>
-          </div>
-        </header>
+      <SectionShell as="header" className="py-6">
+        <Card className="space-y-4 p-6 sm:p-8">
+          <SectionHeader
+            eyebrow="Backend workspace"
+            title="Systems admin tools"
+            description="Configure leagues, manage access policies, and audit StallCount data."
+            action={
+              <Link to="/admin" className="sc-button is-ghost">
+                Back to admin hub
+              </Link>
+            }
+          />
+        </Card>
+      </SectionShell>
 
-        <section className="sc-card-base p-6 sm:p-7">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-ink">Database tables</h2>
-            <p className="text-sm text-ink-muted">
-              Listed from {SCHEMA_SOURCE_FILE}; reflects every CREATE TABLE statement in the schema dump.
-            </p>
-          </div>
-          <span className="rounded-full border border-border px-4 py-1 text-sm font-semibold text-accent">
-            {schemaTables.length} tables
-          </span>
-        </div>
+      <SectionShell as="main" className="space-y-6">
+        <Card as="section" className="space-y-5 p-6 sm:p-7">
+          <SectionHeader
+            eyebrow="Database tables"
+            title="Schema overview"
+            description={`Listed from ${SCHEMA_SOURCE_FILE}; reflects every CREATE TABLE statement in the schema dump.`}
+            action={<Chip variant="ghost">{schemaTables.length} tables</Chip>}
+          />
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {schemaTables.map((table) => {
-            const [schema, name] = table.includes(".") ? table.split(".") : ["public", table];
-            const isActive = selectedTable === table;
-            return (
-              <button
-                key={table}
-                type="button"
-                onClick={() => loadTableRows(table)}
-                className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-sm shadow-sm transition hover:-translate-y-0.5 ${
-                  isActive
-                    ? "border-accent bg-white"
-                    : "border-border-strong bg-surface-muted hover:border-border"
-                }`}
-              >
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                    {schema}
-                  </p>
-                  <p className="truncate text-sm font-semibold text-ink">{name}</p>
-                </div>
-                <span
-                  className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${
-                    isActive
-                      ? "bg-accent text-white"
-                      : "bg-white text-accent"
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {schemaTables.map((table) => {
+              const [schema, name] = table.includes(".") ? table.split(".") : ["public", table];
+              const isActive = selectedTable === table;
+              return (
+                <button
+                  key={table}
+                  type="button"
+                  onClick={() => loadTableRows(table)}
+                  className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-sm transition hover:-translate-y-0.5 ${
+                    isActive ? "border-accent bg-surface" : "border-border bg-surface-muted hover:border-border-strong"
                   }`}
                 >
-                  Table
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-6 rounded-2xl border border-border bg-white/80 p-4 sm:p-6">
-          {selectedTable ? (
-            <>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                    Preview
-                  </p>
-                  <h3 className="text-lg font-semibold text-ink">
-                    {selectedTable} (latest 20)
-                  </h3>
-                </div>
-                {tableLoading && (
-                  <span className="text-xs font-semibold uppercase tracking-wide text-accent">
-                    Loading...
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{schema}</p>
+                    <p className="truncate text-sm font-semibold text-ink">{name}</p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${isActive ? "bg-accent text-[#03140f]" : "bg-surface text-accent"}`}>
+                    Table
                   </span>
-                )}
-              </div>
-
-              {tableError && (
-                <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
-                  {tableError}
-                </p>
-              )}
-
-              {!tableLoading && !tableError && tableRows.length === 0 && (
-                <p className="mt-4 text-sm text-ink-muted">No rows found.</p>
-              )}
-
-              {!tableLoading && tableRows.length > 0 && (
-                <div className="mt-4 overflow-x-auto rounded-xl border border-border-strong">
-                  <TablePreview rows={tableRows} />
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-ink-muted">
-              Select a table above to view the 20 most recent entries.
-            </p>
-          )}
-        </div>
-      </section>
-
-      <section className="sc-card">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-ink">Audit log</h2>
-            <p className="text-sm text-ink-muted">
-              Showing the 20 most recent entries from the public.audit_log table.
-            </p>
+                </button>
+              );
+            })}
           </div>
-          <button
-            type="button"
-            onClick={refreshAuditLog}
-            className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-semibold text-accent transition hover:border-accent hover:bg-[#e6fffa]"
-            disabled={loading}
-          >
-            {loading ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
 
-        {error && (
-          <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
-            {error}
-          </p>
-        )}
+          <Panel variant="muted" className="space-y-3 p-4">
+            {selectedTable ? (
+              <>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Preview</p>
+                    <h3 className="text-lg font-semibold text-ink">{selectedTable} (latest 20)</h3>
+                  </div>
+                  {tableLoading && <span className="text-xs font-semibold uppercase tracking-wide text-accent">Loading...</span>}
+                </div>
+                {tableError && <div className="sc-alert is-error">{tableError}</div>}
+                {!tableLoading && !tableError && tableRows.length === 0 && <p className="text-sm text-ink-muted">No rows found.</p>}
+                {!tableLoading && tableRows.length > 0 && (
+                  <div className="overflow-x-auto rounded-xl border border-border">
+                    <TablePreview rows={tableRows} />
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-ink-muted">Select a table above to view the 20 most recent entries.</p>
+            )}
+          </Panel>
+        </Card>
 
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-border">
-          {loading ? (
-            <div className="p-6 text-sm text-ink-muted">Loading audit entries...</div>
-          ) : entries.length === 0 ? (
-            <div className="p-6 text-sm text-ink-muted">
-              No audit entries recorded yet.
-            </div>
-          ) : (
-            <table className="min-w-full divide-y divide-[var(--sc-border-strong)] text-sm">
-              <thead className="bg-surface-muted text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                <tr>
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Action</th>
-                  <th className="px-4 py-3">Table</th>
-                  <th className="px-4 py-3">Record ID</th>
-                  <th className="px-4 py-3">Actor</th>
-                  <th className="px-4 py-3">Change</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--sc-border-strong)] bg-white">
-                {entries.map((entry) => (
-                  <tr key={entry.id} className="align-top">
-                    <td className="whitespace-nowrap px-4 py-3 text-ink-muted">
-                      {formatTimestamp(entry.created_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="sc-pill border-border-strong text-accent">
-                        {entry.action}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-semibold">{entry.table_name}</td>
-                    <td className="px-4 py-3 text-xs text-ink-muted">
-                      {entry.record_id || "N/A"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {entry.actor?.full_name || entry.actor?.email || entry.actor?.id || "Unknown"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {entry.change_data ? (
-                        <pre className="max-h-40 overflow-y-auto rounded-xl bg-surface-muted p-3 text-xs">
-                          {JSON.stringify(entry.change_data, null, 2)}
-                        </pre>
-                      ) : (
-                        <span className="text-xs text-ink-muted">No diff</span>
-                      )}
-                    </td>
+        <Card as="section" className="space-y-5 p-6 sm:p-7">
+          <SectionHeader
+            eyebrow="Audit log"
+            title="Recent changes"
+            description="Showing the 20 most recent entries from the public.audit_log table."
+            action={
+              <button type="button" onClick={refreshAuditLog} className="sc-button is-ghost" disabled={loading}>
+                {loading ? "Refreshing..." : "Refresh"}
+              </button>
+            }
+          />
+
+          {error && <div className="sc-alert is-error">{error}</div>}
+
+          <Panel variant="muted" className="overflow-x-auto p-0">
+            {loading ? (
+              <div className="p-6 text-sm text-ink-muted">Loading audit entries...</div>
+            ) : entries.length === 0 ? (
+              <div className="p-6 text-sm text-ink-muted">No audit entries recorded yet.</div>
+            ) : (
+              <table className="min-w-full divide-y divide-[var(--sc-border-strong)] text-sm">
+                <thead className="bg-surface text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  <tr>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Action</th>
+                    <th className="px-4 py-3">Table</th>
+                    <th className="px-4 py-3">Record ID</th>
+                    <th className="px-4 py-3">Actor</th>
+                    <th className="px-4 py-3">Change</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </section>
-    </div>
+                </thead>
+                <tbody className="divide-y divide-[var(--sc-border-strong)] bg-surface">
+                  {entries.map((entry) => (
+                    <tr key={entry.id} className="align-top">
+                      <td className="whitespace-nowrap px-4 py-3 text-ink-muted">{formatTimestamp(entry.created_at)}</td>
+                      <td className="px-4 py-3">
+                        <span className="sc-pill border-border-strong text-accent">{entry.action}</span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold">{entry.table_name}</td>
+                      <td className="px-4 py-3 text-xs text-ink-muted">{entry.record_id || "N/A"}</td>
+                      <td className="px-4 py-3">{entry.actor?.full_name || entry.actor?.email || entry.actor?.id || "Unknown"}</td>
+                      <td className="px-4 py-3">
+                        {entry.change_data ? (
+                          <pre className="max-h-40 overflow-y-auto rounded-xl bg-surface-muted p-3 text-xs">{JSON.stringify(entry.change_data, null, 2)}</pre>
+                        ) : (
+                          <span className="text-xs text-ink-muted">No diff</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+        </Card>
+      </SectionShell>
     </div>
   );
 }

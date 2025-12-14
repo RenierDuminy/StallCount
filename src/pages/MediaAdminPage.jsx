@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getEventsList } from "../services/leagueService";
 import { getMatchesByEvent, updateMatchMediaLink } from "../services/matchService";
+import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
 
 const MEDIA_STATUS_OPTIONS = ["scheduled", "ready", "pending", "live", "halftime", "finished", "completed", "canceled"];
 const MEDIA_PROVIDER_PRESETS = ["youtube", "twitch", "ultiworld", "fan_seat", "custom"];
@@ -159,69 +160,56 @@ export default function MediaAdminPage() {
 
   return (
     <div className="pb-16 text-ink">
-      <header className="sc-shell py-6">
-        <div className="sc-card-base space-y-3 p-6 sm:p-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="sc-chip">Admin tools</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Media</span>
-          </div>
-          <h1 className="text-3xl font-semibold">Match media control</h1>
-          <p className="text-sm text-ink-muted">
-            Select any scheduled match and attach or edit its streaming metadata. The database normalizer will tidy the payload automatically.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Link to="/admin" className="sc-button is-ghost">
-              Back to admin hub
-            </Link>
-            <Link to="/tournament-director" className="sc-button is-outline">
-              Tournament director
-            </Link>
-          </div>
-        </div>
-      </header>
+      <SectionShell as="header" className="py-6">
+        <Card className="space-y-4 p-6 sm:p-8">
+          <SectionHeader
+            eyebrow="Admin tools"
+            title="Match media control"
+            description="Select any scheduled match and attach or edit its streaming metadata. The database normalizer will tidy the payload automatically."
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Link to="/admin" className="sc-button is-ghost">
+                  Back to admin hub
+                </Link>
+                <Link to="/tournament-director" className="sc-button is-ghost">
+                  Tournament director
+                </Link>
+              </div>
+            }
+          />
+        </Card>
+      </SectionShell>
 
-      <main className="sc-shell space-y-6 py-6">
-        <section className="sc-card-base space-y-4 p-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Update media</p>
-              <h2 className="text-xl font-semibold text-ink">Attach stream to an existing match</h2>
-              <p className="text-xs text-ink-muted">
-                Pick the event and match, confirm the existing status, then drop in the stream details. Fields mirror the quick-create widget from the Tournament Director.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleClearForm}
-              className="rounded border border-border px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ink-muted hover:border-[var(--sc-ink-muted)]"
-            >
-              Clear fields
-            </button>
-          </div>
+      <SectionShell as="main" className="space-y-6 py-6">
+        <Card as="section" className="space-y-5 p-6">
+          <SectionHeader
+            eyebrow="Update media"
+            title="Attach stream to an existing match"
+            description="Pick the event and match, confirm the existing status, then drop in the stream details."
+            action={
+              <button type="button" onClick={handleClearForm} className="sc-button is-ghost">
+                Clear fields
+              </button>
+            }
+          />
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
-              Event
-              <select
-                value={selectedEventId}
-                onChange={(event) => setSelectedEventId(event.target.value)}
-                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
-              >
+            <Field label="Event" htmlFor="media-event">
+              <Select id="media-event" value={selectedEventId} onChange={(event) => setSelectedEventId(event.target.value)}>
                 <option value="">Select event</option>
                 {events.map((event) => (
                   <option key={event.id} value={event.id}>
                     {event.name}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
-              Match
-              <select
+              </Select>
+            </Field>
+            <Field label="Match" htmlFor="media-match" hint={matchesLoading ? "Loading matches..." : undefined}>
+              <Select
+                id="media-match"
                 value={form.matchId}
                 onChange={(event) => handleSelectMatch(event.target.value)}
                 disabled={!selectedEventId || matchesLoading}
-                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <option value="">{matchesLoading ? "Loading matches..." : "Choose a match"}</option>
                 {matches.map((match) => (
@@ -229,143 +217,95 @@ export default function MediaAdminPage() {
                     {formatMatchLabel(match)}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
-              Provider
-              <select
-                value={form.provider}
-                onChange={handleInput("provider")}
-                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm capitalize focus:border-border-strong focus:outline-none"
-              >
+              </Select>
+            </Field>
+            <Field label="Provider" htmlFor="media-provider">
+              <Select id="media-provider" value={form.provider} onChange={handleInput("provider")}>
                 <option value="">Use auto-detect</option>
                 {MEDIA_PROVIDER_PRESETS.map((provider) => (
                   <option key={provider} value={provider}>
                     {provider}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
-              Media URL
-              <input
+              </Select>
+            </Field>
+            <Field label="Media URL" htmlFor="media-url">
+              <Input
+                id="media-url"
                 type="url"
                 value={form.url}
                 onChange={handleInput("url")}
                 placeholder="https://youtu.be/stream-id"
-                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
               />
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
-              Embed URL (optional)
-              <input
+            </Field>
+            <Field label="Embed URL (optional)" htmlFor="media-embed">
+              <Input
+                id="media-embed"
                 type="url"
                 value={form.embedUrl}
                 onChange={handleInput("embedUrl")}
                 placeholder="https://www.youtube.com/embed/..."
-                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
               />
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
-              Media status
-              <select
-                value={form.mediaStatus}
-                onChange={handleInput("mediaStatus")}
-                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm capitalize focus:border-border-strong focus:outline-none"
-              >
+            </Field>
+            <Field label="Media status" htmlFor="media-status" hint={`Mirror match status (${selectedMatch?.status || "N/A"})`}>
+              <Select id="media-status" value={form.mediaStatus} onChange={handleInput("mediaStatus")}>
                 <option value="">Mirror match status ({selectedMatch?.status || "N/A"})</option>
                 {MEDIA_STATUS_OPTIONS.map((status) => (
                   <option key={status} value={status}>
                     {status}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-semibold text-ink">
-              Stream start time
-              <input
-                type="datetime-local"
-                value={form.startTime}
-                onChange={handleInput("startTime")}
-                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
-              />
+              </Select>
+            </Field>
+            <Field label="Stream start time" htmlFor="media-start">
+              <Input id="media-start" type="datetime-local" value={form.startTime} onChange={handleInput("startTime")} />
               {form.defaultStartTime && (
                 <button
                   type="button"
                   onClick={() => setForm((prev) => ({ ...prev, startTime: prev.defaultStartTime }))}
-                  className="text-xs font-semibold text-ink-muted underline decoration-dotted decoration-[var(--sc-ink-muted)] underline-offset-4"
+                  className="text-xs text-ink-muted underline decoration-dotted underline-offset-4"
                 >
                   Use match start
                 </button>
               )}
-            </label>
-            <label className="md:col-span-2 lg:col-span-3 flex flex-col gap-1 text-sm font-semibold text-ink">
-              Replay / VOD URLs
-              <textarea
-                value={form.vodText}
-                onChange={handleVodChange}
-                rows={3}
-                placeholder="One URL per line"
-                className="rounded-xl border border-border bg-surface-muted px-3 py-2 text-sm focus:border-border-strong focus:outline-none"
-              />
-            </label>
+            </Field>
+            <Field label="Replay / VOD URLs" className="md:col-span-2 lg:col-span-3" htmlFor="media-vod">
+              <Textarea id="media-vod" value={form.vodText} onChange={handleVodChange} rows={3} placeholder="One URL per line" />
+            </Field>
           </div>
 
           {(matchesError || eventError) && (
             <div className="space-y-2">
-              {eventError && (
-                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{eventError}</p>
-              )}
-              {matchesError && (
-                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{matchesError}</p>
-              )}
+              {eventError && <div className="sc-alert is-error">{eventError}</div>}
+              {matchesError && <div className="sc-alert is-error">{matchesError}</div>}
             </div>
           )}
 
           <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[var(--sc-accent)] to-[var(--sc-accent-strong)] px-5 py-2.5 text-sm font-semibold text-[#03140f] shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(198,255,98,0.5)] disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <button type="button" onClick={handleSave} disabled={saving} className="sc-button disabled:cursor-not-allowed">
               {saving ? "Saving..." : "Save media link"}
             </button>
-            <button
-              type="button"
-              onClick={handleClearMedia}
-              disabled={saving || !form.matchId}
-              className="inline-flex items-center justify-center rounded-full border border-rose-400/70 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-400/20 hover:text-rose-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300/60 disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <button type="button" onClick={handleClearMedia} disabled={saving || !form.matchId} className="sc-button is-ghost text-rose-200">
               Remove media
             </button>
-            <button
-              type="button"
-              onClick={handlePopulateFromMatch}
-              disabled={!selectedMatch}
-              className="inline-flex items-center justify-center rounded-full border border-[var(--sc-border-strong)]/70 bg-surface px-4 py-2 text-sm font-semibold text-ink transition hover:border-[var(--sc-accent)]/50 hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--sc-accent)]/40 disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            <button type="button" onClick={handlePopulateFromMatch} disabled={!selectedMatch} className="sc-button is-ghost">
               Load current media
             </button>
           </div>
 
           {(resultMessage || resultError) && (
             <div className="space-y-2">
-              {resultError && (
-                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{resultError}</p>
-              )}
-              {resultMessage && (
-                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">{resultMessage}</p>
-              )}
+              {resultError && <div className="sc-alert is-error">{resultError}</div>}
+              {resultMessage && <div className="sc-alert is-success">{resultMessage}</div>}
             </div>
           )}
-        </section>
+        </Card>
 
-        <section className="sc-card-base space-y-4 p-6">
-          <h3 className="text-lg font-semibold text-ink">Selected match details</h3>
+        <Card as="section" className="space-y-4 p-6">
+          <SectionHeader title="Selected match details" description="Live snapshot of the currently selected match and payload preview." />
           {selectedMatch ? (
             <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border border-border bg-surface-muted px-4 py-3 space-y-1">
+              <Panel variant="muted" className="space-y-1 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Match</p>
                 <p className="text-sm font-semibold text-ink">{formatMatchLabel(selectedMatch)}</p>
                 <p className="text-xs text-ink-muted">
@@ -374,33 +314,33 @@ export default function MediaAdminPage() {
                 <p className="text-xs text-ink-muted">
                   Has media: <span className="font-semibold text-ink">{selectedMatch.has_media ? "Yes" : "No"}</span>
                 </p>
-              </div>
-              <div className="rounded-2xl border border-border bg-surface-muted px-4 py-3 space-y-1">
+              </Panel>
+              <Panel variant="muted" className="space-y-1 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Current media snapshot</p>
                 {selectedMatch.media_url ? (
                   <>
                     <p className="text-sm font-semibold text-ink">{selectedMatch.media_provider || "custom"}</p>
-                    <p className="text-xs text-ink-muted break-all">{selectedMatch.media_url}</p>
-                    {selectedMatch.media_status && (
-                      <p className="text-xs text-ink-muted">Status: {selectedMatch.media_status}</p>
-                    )}
+                    <p className="break-all text-xs text-ink-muted">{selectedMatch.media_url}</p>
+                    {selectedMatch.media_status && <p className="text-xs text-ink-muted">Status: {selectedMatch.media_status}</p>}
                   </>
                 ) : (
                   <p className="text-sm text-ink-muted">No media link stored.</p>
                 )}
-              </div>
-              <div className="md:col-span-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Preview payload</p>
-                <pre className="mt-2 max-h-64 overflow-auto rounded-2xl border border-border bg-surface-muted p-4 text-xs text-ink">
+              </Panel>
+              <Panel variant="muted" className="md:col-span-2 p-0">
+                <div className="p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Preview payload</p>
+                </div>
+                <pre className="max-h-64 overflow-auto border-t border-border p-4 text-xs text-ink">
                   {JSON.stringify(buildMediaPayload(form), null, 2)}
                 </pre>
-              </div>
+              </Panel>
             </div>
           ) : (
             <p className="text-sm text-ink-muted">Select an event and match to view details.</p>
           )}
-        </section>
-      </main>
+        </Card>
+      </SectionShell>
     </div>
   );
 }

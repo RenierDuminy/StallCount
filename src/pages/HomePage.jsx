@@ -525,18 +525,9 @@ export default function HomePage() {
     { label: "Tracked events", value: stats.events },
   ];
 
-  const heroQuestionCards = [
-    {
-      label: "What's live right now?",
-      answer: liveNowMatch ? `${formatMatchup(liveNowMatch)} - ${formatLiveScore(liveNowMatch)}` : "Nothing live",
-    },
-    {
-      label: "What's my next match?",
-      answer: nextMatchCandidate
-        ? `${formatMatchup(nextMatchCandidate)} - ${formatMatchVenue(nextMatchCandidate)}`
-        : "Add your fixtures",
-    },
-  ];
+  const myNextMatchAnswer = nextMatchCandidate
+    ? `${formatMatchup(nextMatchCandidate)} - ${formatMatchVenue(nextMatchCandidate)}`
+    : "Add your fixtures";
 
   async function handleLogout() {
     setSignOutError(null);
@@ -618,7 +609,7 @@ export default function HomePage() {
 
   return (
     <div className="pb-20 text-ink">
-      <SectionShell as="header" className="space-y-6 py-8">
+      <SectionShell as="header" className="space-y-6 pt-8 pb-2">
         <Card className="sc-hero p-6 sm:p-8 lg:p-10">
           <div className="grid gap-8 lg:grid-cols-[1.05fr,0.95fr] lg:items-start">
             <div className="space-y-6">
@@ -633,19 +624,6 @@ export default function HomePage() {
                   This homepage answers four Ultimate operations questions: live scores, the next assignment, how to
                   start scoring, and where to see standings.
                 </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {heroQuestionCards.map((card) => (
-                  <Panel key={card.label} variant="tinted" className="p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{card.label}</p>
-                    <p className="text-sm text-ink">{card.answer}</p>
-                    {card.href && (
-                      <Link to={card.href} className="mt-2 inline-flex text-xs font-semibold text-accent">
-                        Jump in {"->"}
-                      </Link>
-                    )}
-                  </Panel>
-                ))}
               </div>
               <div className="flex flex-wrap gap-3">
                 {heroStats.map((item) => (
@@ -709,6 +687,12 @@ export default function HomePage() {
                   )}
                 </div>
               </Card>
+              <Panel variant="tinted" className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  What's my next match?
+                </p>
+                <p className="text-sm text-ink">{myNextMatchAnswer}</p>
+              </Panel>
               {error && (
                 <p className="rounded-2xl border border-rose-400/30 bg-rose-950/50 p-4 text-sm font-semibold text-rose-100">
                   {error}

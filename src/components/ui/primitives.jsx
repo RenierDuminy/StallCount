@@ -18,6 +18,7 @@ const panelVariants = {
   tinted: "rounded-2xl sc-panel",
   tintedAlt: "rounded-2xl sc-panel-alt",
   featured: "rounded-2xl sc-feature-panel",
+  light: "rounded-2xl sc-surface-light border border-[#0b1f19]/20 text-[var(--sc-surface-light-ink)]",
 };
 
 const chipVariants = {

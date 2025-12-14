@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getRecentMatches, getMatchById, updateMatchStatus } from "../services/matchService";
 import { submitSpiritScores } from "../services/spiritScoreService";
+import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
 
 const SPIRIT_CATEGORIES = [
   { key: "rulesKnowledge", label: "Rules knowledge & use" },
@@ -115,27 +116,24 @@ export default function SpiritScoresPage() {
   };
 
   return (
-    <div className="pb-16 text-ink">
-      <header className="sc-shell py-4 sm:py-6">
-        <div className="sc-card-base space-y-3 p-6 sm:p-7">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="sc-chip">Spirit entry</span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Submit post-match scores
-            </span>
-          </div>
-          <h1 className="text-3xl font-semibold text-ink">Spirit scores</h1>
-          <p className="text-sm text-ink-muted">
-            Capture spirit scores for both teams after the final whistle and submit them directly to the event database.
-          </p>
-          <Link to="/score-keeper" className="sc-button is-ghost">
-            Back to score keeper
-          </Link>
-        </div>
-      </header>
+    <div className="pb-16 text-[var(--sc-surface-dark-ink)]" style={{ background: "var(--sc-surface-light-bg)" }}>
+      <SectionShell as="header" className="py-4 sm:py-6">
+        <Card variant="light" className="space-y-4 border border-[#041311] p-6 sm:p-7">
+          <SectionHeader
+            eyebrow="Spirit entry"
+            title="Spirit scores"
+            description="Capture spirit scores for both teams after the final whistle and submit them directly to the event database."
+            action={
+              <Link to="/score-keeper" className="sc-button is-dark">
+                Back to score keeper
+              </Link>
+            }
+          />
+        </Card>
+      </SectionShell>
 
-      <main className="sc-shell">
-        <section className="space-y-6 sc-card-base p-6 shadow-sm">
+      <SectionShell as="main" className="space-y-6">
+        <Card as="section" variant="light" className="space-y-6 border border-[#041311] p-6 shadow-lg">
           <form
             className="space-y-8"
             onSubmit={async (event) => {
@@ -172,7 +170,7 @@ export default function SpiritScoresPage() {
                     buildEntry("teamA", selectedMatch.team_a.id),
                     buildEntry("teamB", selectedMatch.team_b.id),
                   ],
-                  { submittedBy: userId ?? undefined }
+                  { submittedBy: userId ?? undefined },
                 );
 
                 await updateMatchStatus(selectedMatchId, "completed");
@@ -191,62 +189,62 @@ export default function SpiritScoresPage() {
               }
             }}
           >
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="block text-sm font-semibold text-slate-700">
-                Match
-                {matchLoading ? (
-                  <p className="mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                    Loading matches...
-                  </p>
-                ) : matchError ? (
-                  <p className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
-                    {matchError}
-                  </p>
-                ) : (
-                  <select
+            <Card variant="light" className="space-y-4 border border-[#041311] p-5 text-[var(--sc-surface-light-ink)]">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Match</p>
+                <h2 className="text-2xl font-semibold">Select the match to score</h2>
+                <p className="text-sm text-[var(--sc-surface-light-ink)]/80">Built for direct sunlight: higher contrast and neutral background.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Match" className="is-light">
+                  {matchLoading ? (
+                    <div className="rounded-xl border border-[var(--sc-surface-light-border)] bg-white/80 px-3 py-2 text-xs text-[var(--sc-surface-light-ink)]">
+                      Loading matches...
+                    </div>
+                  ) : matchError ? (
+                    <div className="sc-alert is-error">{matchError}</div>
+                  ) : (
+                    <Select className="is-light" value={selectedMatchId} onChange={(event) => setSelectedMatchId(event.target.value)}>
+                      <option value="">Select a match...</option>
+                      {matches.map((match) => (
+                        <option key={match.id} value={match.id}>
+                          {formatMatchLabel(match)}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+                <Field label="Match ID" htmlFor="spirit-match-id" className="is-light">
+                  <Input
+                    className="is-light"
+                    id="spirit-match-id"
                     value={selectedMatchId}
                     onChange={(event) => setSelectedMatchId(event.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:border-brand focus:outline-none"
-                  >
-                    <option value="">Select a match…</option>
-                    {matches.map((match) => (
-                      <option key={match.id} value={match.id}>
-                        {formatMatchLabel(match)}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </label>
-              <label className="block text-sm font-semibold text-slate-700">
-                Match ID
-                <input
-                  value={selectedMatchId}
-                  onChange={(event) => setSelectedMatchId(event.target.value)}
-                  placeholder="Enter match ID"
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm focus:border-brand focus:outline-none"
-                />
-              </label>
-            </div>
+                    placeholder="Enter match ID"
+                  />
+                </Field>
+              </div>
+            </Card>
 
             <div className="grid gap-6 md:grid-cols-2">
               {["teamA", "teamB"].map((teamKey) => (
-                <div
-                  key={teamKey}
-                  className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                >
+                <Panel key={teamKey} variant="light" className="space-y-4 border border-[#041311] p-4 shadow-md">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Spirit scores for
-                    </p>
-                    <h3 className="text-lg font-semibold text-slate-900">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Spirit scores for</p>
+                    <h3 className="text-lg font-semibold text-[var(--sc-surface-light-ink)]">
                       {teamKey === "teamA" ? teamLabels.teamA : teamLabels.teamB}
                     </h3>
                   </div>
                   {SPIRIT_CATEGORIES.map((category) => (
-                    <label key={`${teamKey}-${category.key}`} className="block text-sm font-semibold text-slate-700">
+                    <label
+                      key={`${teamKey}-${category.key}`}
+                      className="block text-sm font-semibold text-[var(--sc-surface-light-ink)]"
+                    >
                       <div className="flex items-center justify-between">
                         <span>{category.label}</span>
-                        <span className="text-xs text-slate-500">{teamScores[teamKey][category.key]}</span>
+                        <span className="text-xs text-[var(--sc-surface-light-ink)]/70">
+                          {teamScores[teamKey][category.key]}
+                        </span>
                       </div>
                       <input
                         type="range"
@@ -255,9 +253,10 @@ export default function SpiritScoresPage() {
                         step="1"
                         value={teamScores[teamKey][category.key]}
                         onChange={(event) => updateScore(teamKey, category.key, event.target.value)}
-                        className="mt-1 w-full accent-brand"
+                        className="mt-1 w-full"
+                        style={{ accentColor: "#01611b" }}
                       />
-                      <div className="flex justify-between text-[10px] text-slate-500">
+                      <div className="flex justify-between text-[15px] text-[var(--sc-surface-light-ink)]/60">
                         <span>0</span>
                         <span>1</span>
                         <span>2</span>
@@ -266,49 +265,32 @@ export default function SpiritScoresPage() {
                       </div>
                     </label>
                   ))}
-                  <label className="text-sm font-semibold text-slate-700">
-                    Notes
-                    <textarea
+                  <Field label="Notes" htmlFor={`${teamKey}-notes`} className="is-light">
+                    <Textarea
+                      className="is-light"
+                      id={`${teamKey}-notes`}
                       rows={3}
                       value={teamScores[teamKey].notes}
                       onChange={(event) => updateNotes(teamKey, event.target.value)}
-                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-brand focus:outline-none"
                     />
-                  </label>
-                </div>
+                  </Field>
+                </Panel>
               ))}
             </div>
 
-            {submitState.message && (
-              <p
-                className={`rounded-2xl px-3 py-2 text-sm ${
-                  submitState.variant === "success"
-                    ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
-                    : "border border-rose-200 bg-rose-50 text-rose-700"
-                }`}
-              >
-                {submitState.message}
-              </p>
-            )}
+            {submitState.message && <div className={`sc-alert ${submitState.variant === "success" ? "is-success" : "is-error"}`}>{submitState.message}</div>}
 
             <div className="flex flex-wrap gap-3">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
-              >
+              <button type="submit" disabled={submitting} className="sc-button is-dark disabled:cursor-not-allowed">
                 {submitting ? "Submitting..." : "Submit spirit scores"}
               </button>
-              <Link
-                to="/score-keeper"
-                className="inline-flex items-center justify-center rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
-              >
+              <Link to="/score-keeper" className="sc-button is-dark">
                 Cancel
               </Link>
             </div>
           </form>
-        </section>
-      </main>
+        </Card>
+      </SectionShell>
     </div>
   );
 }
