@@ -153,8 +153,6 @@ export default function ScoreKeeperView() {
   const [possessionModalOpen, setPossessionModalOpen] = useState(false);
   const [pendingPossessionTeam, setPendingPossessionTeam] = useState(null);
   const [possessionPreviewTeam, setPossessionPreviewTeam] = useState(null);
-  const [scorePopupOpen, setScorePopupOpen] = useState(false);
-
   const updatePossessionFromCoordinate = (clientX) => {
     const track = possessionPadRef.current;
     if (!track || !Number.isFinite(clientX)) {
@@ -347,7 +345,6 @@ export default function ScoreKeeperView() {
   };
 
   const handleScorePopupSelection = (teamKey) => {
-    setScorePopupOpen(false);
     openScoreModal(teamKey);
   };
 
@@ -573,13 +570,6 @@ export default function ScoreKeeperView() {
                           Add score - {displayTeamBShort}
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setScorePopupOpen(true)}
-                        className="w-full rounded-full border border-[#0f5132]/40 bg-white px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#ecfdf3]"
-                      >
-                        Open score popup
-                      </button>
                     </div>
                   )}
                 </div>
@@ -1159,45 +1149,6 @@ export default function ScoreKeeperView() {
       </div>
     </ActionModal>
   )}
-
-
-      {scorePopupOpen && (
-        <ActionModal title="Log a score" onClose={() => setScorePopupOpen(false)}>
-          <div className="space-y-3 text-[#0f5132]">
-            <div className="text-center">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
-                Current score
-              </p>
-              <p className="text-4xl font-bold text-[#0f5132]">
-                {score.a} - {score.b}
-              </p>
-              <p className="text-sm text-[#0f5132]/80">
-                {safeTeamAName} vs {safeTeamBName}
-              </p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => handleScorePopupSelection("A")}
-                className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-              >
-                Log {displayTeamAShort || safeTeamAName}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleScorePopupSelection("B")}
-                className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-              >
-                Log {displayTeamBShort || safeTeamBName}
-              </button>
-            </div>
-            <p className="text-center text-[11px] uppercase tracking-wide text-[#0f5132]/70">
-              Choose a team to open the detailed score form.
-            </p>
-          </div>
-        </ActionModal>
-      )}
-
 
       {scoreModalState.open && (
         <ActionModal
