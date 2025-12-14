@@ -64,12 +64,6 @@ export default function AdminPage() {
       </SectionShell>
 
       <SectionShell as="main" className="space-y-6 py-6">
-        <Card as="section" className="space-y-2 p-5 sm:p-6">
-          <SectionHeader
-            title="Backend workspaces"
-            description="Each module routes to its dedicated screens. Use the cards below to jump straight into your tools."
-          />
-        </Card>
         <div className="grid gap-6 md:grid-cols-3">
           {ADMIN_MODULES.map((module) => (
             <Panel

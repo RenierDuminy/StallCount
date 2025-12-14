@@ -524,9 +524,6 @@ export default function ScoreKeeperView() {
                       </span>
                     </p>
                   </div>
-                  <p className="text-center text-[11px] uppercase tracking-wide text-slate-500">
-                    Drag across to update possession
-                  </p>
                 </div>
               </div>
             )}
@@ -552,7 +549,7 @@ export default function ScoreKeeperView() {
                         <button
                           type="button"
                           onClick={() => openScoreModal("A")}
-                        className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                        className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
                         >
                           Add score - {displayTeamAShort}
                         </button>
@@ -565,7 +562,7 @@ export default function ScoreKeeperView() {
                         <button
                           type="button"
                           onClick={() => openScoreModal("B")}
-                        className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                        className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
                         >
                           Add score - {displayTeamBShort}
                         </button>

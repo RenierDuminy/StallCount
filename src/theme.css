@@ -160,7 +160,7 @@ a:focus-visible {
 
 @media (min-width: 640px) {
   .sc-shell {
-    padding: 2.5rem 1.5rem;
+    padding: 1rem 1.5rem;
   }
 }
 
@@ -252,6 +252,12 @@ a:focus-visible {
 .sc-button.is-ghost:hover {
   color: var(--sc-accent);
   border-color: var(--sc-button-ghost-border-hover);
+}
+
+.sc-button.is-square {
+  border-radius: var(--sc-radius-md);
+  padding-top: 0.7rem;
+  padding-bottom: 0.7rem;
 }
 
 .sc-chip {

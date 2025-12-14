@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getPlayerMatchStats } from "../services/teamService";
+import { Card, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
 
 export default function PlayerProfilePage() {
   const { playerId } = useParams();
@@ -68,43 +69,59 @@ export default function PlayerProfilePage() {
     };
   }, [rows]);
 
+  const sortedRows = useMemo(() => {
+    return [...rows].sort((a, b) => {
+      const aTime = a.match?.start_time ? new Date(a.match.start_time).getTime() : 0;
+      const bTime = b.match?.start_time ? new Date(b.match.start_time).getTime() : 0;
+      if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+      if (Number.isNaN(aTime)) return 1;
+      if (Number.isNaN(bTime)) return -1;
+      return bTime - aTime;
+    });
+  }, [rows]);
+
   return (
-    <div className="min-h-screen bg-slate-50 pb-16">
-      <header className="border-b border-slate-200 bg-white py-3 text-slate-800 sm:py-5">
-        <div className="sc-shell matches-compact-shell flex items-center gap-3">
-          <Link
-            to="/players"
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+    <div className="pb-16 text-ink">
+      <SectionShell as="header" className="pt-6">
+        <Card className="space-y-4 p-5 sm:p-6">
+          <SectionHeader
+            eyebrow="Player profile"
+            title={`${profile?.name || "Player"}${profile?.jersey ? ` (#${profile.jersey})` : ""}`}
+            description={`Per-match contributions across recorded games (${profile?.games || 0} total).`}
+            action={
+              <Link to="/players" className="sc-button is-ghost">
+                Back to players
+              </Link>
+            }
           >
-            Back
-          </Link>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Player</p>
-            <p className="text-lg font-semibold text-slate-900">
-              {profile?.name || "Player"} {profile?.jersey ? `(#${profile.jersey})` : ""}
+            <p className="text-xs text-ink-muted">
+              Keep tabs on consistency, high-leverage playmaking, and areas to coach.
             </p>
-            <p className="text-sm text-slate-600">
-              Per-match contributions across recorded games ({profile?.games || 0} total)
-            </p>
-          </div>
-        </div>
-      </header>
+          </SectionHeader>
+        </Card>
+      </SectionShell>
 
-      <main className="sc-shell matches-compact-shell py-4 sm:py-6 space-y-3">
-        {error && (
-          <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error}
-          </p>
-        )}
+      <SectionShell as="main" className="space-y-4 sm:space-y-6">
+        {error && <div className="sc-alert is-error">{error}</div>}
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <Card className="space-y-5 p-5 sm:p-6">
+          <SectionHeader
+            eyebrow="Performance summary"
+            title="Match impact ledger"
+            description="Totals and per-game rhythm derived from the latest recorded fixtures."
+          />
+
           {loading ? (
-            <p className="text-sm text-slate-600">Loading player stats...</p>
+            <Panel variant="muted" className="p-4 text-sm text-ink-muted">
+              Loading player stats...
+            </Panel>
           ) : !rows.length ? (
-            <p className="text-sm text-slate-600">No stats recorded for this player yet.</p>
+            <Panel variant="muted" className="p-4 text-sm text-ink-muted">
+              No stats recorded for this player yet.
+            </Panel>
           ) : (
             <>
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <SummaryTile label="Total points" value={profile.totalPoints} helper="Goals + assists" />
                 <SummaryTile label="Goals" value={profile.totals.goals} helper={`${profile.goalsPerGame.toFixed(1)} per game`} />
                 <SummaryTile label="Assists" value={profile.totals.assists} helper={`${profile.assistPerGame.toFixed(1)} per game`} />
@@ -113,53 +130,59 @@ export default function PlayerProfilePage() {
                 <SummaryTile label="Games played" value={profile.games} helper="Matches with stats" />
               </div>
 
-              <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="min-w-full text-left text-sm text-slate-800">
-                  <thead>
-                    <tr className="uppercase tracking-wide text-[11px] text-slate-500">
-                      <th className="px-3 py-2">Match</th>
-                      <th className="px-3 py-2 text-center">Goals</th>
-                      <th className="px-3 py-2 text-center">Assists</th>
-                      <th className="px-3 py-2 text-center">Blocks</th>
-                      <th className="px-3 py-2 text-center">Turnovers</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row) => {
-                      const matchLabel = buildMatchLabel(row);
-                      return (
-                        <tr key={row.match_id} className="border-t border-slate-100">
-                          <td className="px-3 py-2">
-                            <p className="font-semibold text-slate-900">{matchLabel}</p>
-                            <p className="text-xs text-slate-500">
-                              {(row.match?.event?.name || "Event") + " - " + (row.match?.start_time || "TBD")}
-                            </p>
-                          </td>
-                          <td className="px-3 py-2 text-center font-semibold">{row.goals ?? 0}</td>
-                          <td className="px-3 py-2 text-center font-semibold">{row.assists ?? 0}</td>
-                          <td className="px-3 py-2 text-center font-semibold">{row.blocks ?? 0}</td>
-                          <td className="px-3 py-2 text-center font-semibold">{row.turnovers ?? 0}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <Panel variant="blank" className="overflow-hidden p-0">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="bg-surface-muted/40 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                      <tr>
+                        <th className="px-4 py-3">Match</th>
+                        <th className="px-4 py-3 text-center">Goals</th>
+                        <th className="px-4 py-3 text-center">Assists</th>
+                        <th className="px-4 py-3 text-center">Blocks</th>
+                        <th className="px-4 py-3 text-center">Turnovers</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedRows.map((row) => {
+                        const matchHref = row.match_id
+                          ? `/matches?matchId=${encodeURIComponent(row.match_id)}`
+                          : "/matches";
+                        return (
+                          <tr key={row.match_id} className="border-t border-border/60">
+                            <td className="px-4 py-3">
+                              <Link
+                                to={matchHref}
+                                className="font-semibold text-ink transition hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                              >
+                                {buildMatchLabel(row)}
+                              </Link>
+                            </td>
+                            <td className="px-4 py-3 text-center font-semibold">{row.goals ?? 0}</td>
+                            <td className="px-4 py-3 text-center font-semibold">{row.assists ?? 0}</td>
+                            <td className="px-4 py-3 text-center font-semibold">{row.blocks ?? 0}</td>
+                            <td className="px-4 py-3 text-center font-semibold">{row.turnovers ?? 0}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
             </>
           )}
-        </section>
-      </main>
+        </Card>
+      </SectionShell>
     </div>
   );
 }
 
 function SummaryTile({ label, value, helper }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="text-2xl font-semibold text-slate-900">{value}</p>
-      {helper ? <p className="text-xs text-slate-500">{helper}</p> : null}
-    </div>
+    <Panel variant="tinted" className="space-y-1.5 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{label}</p>
+      <p className="text-2xl font-semibold text-ink">{value ?? 0}</p>
+      {helper ? <p className="text-xs text-ink-muted">{helper}</p> : null}
+    </Panel>
   );
 }
 
@@ -167,4 +190,11 @@ function buildMatchLabel(row) {
   const teamA = row.match?.team_a?.short_name || row.match?.team_a?.name || "Team A";
   const teamB = row.match?.team_b?.short_name || row.match?.team_b?.name || "Team B";
   return `${teamA} vs ${teamB}`;
+}
+
+function formatMatchTime(value) {
+  if (!value) return "TBD time";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "TBD time";
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }

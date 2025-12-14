@@ -15,7 +15,7 @@ export default function DivisionsPage() {
   const [matches, setMatches] = useState([]);
   const [matchesLoading, setMatchesLoading] = useState(false);
   const [matchesError, setMatchesError] = useState(null);
-  const [matchTab, setMatchTab] = useState("upcoming");
+  const [matchTab, setMatchTab] = useState("current");
   const [venueLookup, setVenueLookup] = useState({});
 
   useEffect(() => {
@@ -167,7 +167,22 @@ export default function DivisionsPage() {
     return buckets;
   }, [matches]);
 
-  const activeMatches = matchBuckets[matchTab] || [];
+  const activeMatches = (() => {
+    const current = matchBuckets[matchTab] || [];
+    if (current.length > 0 || matchTab === "current") {
+      if (current.length === 0 && matchTab === "current") {
+        if (matchBuckets.upcoming.length > 0) {
+          return matchBuckets.upcoming;
+        }
+        if (matchBuckets.past.length > 0) {
+          return matchBuckets.past;
+        }
+        return [];
+      }
+      return current;
+    }
+    return current;
+  })();
 
   const resolveVenueName = (match) =>
     match.venue?.name || (match.venue_id && venueLookup[match.venue_id]) || "Venue TBD";
@@ -210,14 +225,13 @@ export default function DivisionsPage() {
           <SectionHeader
             eyebrow="Divisions"
             title="Division control center"
-            description="Select a tournament to view its calendar, venue posture, rule set, and live fixtures. Everything organizers need to keep divisions moving on time."
+            description="Select a tournament to view its calendar, venue posture, rule set, and live fixtures."
             action={
               <Link to="/division-results" className="sc-button is-ghost">
                 Division results
               </Link>
             }
           >
-            <p className="text-xs text-ink-muted">View consolidated standings and scoring ladders.</p>
           </SectionHeader>
         </Card>
       </SectionShell>
@@ -253,7 +267,7 @@ export default function DivisionsPage() {
                       key={event.id}
                       type="button"
                       onClick={() => handleSelectEvent(event.id)}
-                      className={`${isActive ? "sc-button" : "sc-button is-ghost"} is-option transition hover:-translate-y-0.5`}
+                      className={`${isActive ? "sc-button is-square" : "sc-button is-ghost is-square"} is-option transition hover:-translate-y-0.5`}
                     >
                       <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{event.type || "Event"}</p>
                       <p className="text-base font-semibold leading-tight">{event.name}</p>
@@ -323,9 +337,6 @@ export default function DivisionsPage() {
                     </div>
                   </Panel>
                 )}
-                <p className="text-xs text-ink-muted">
-                  Lock an event here and transition to Matches for deeper analytics or officiating detail.
-                </p>
               </div>
             )}
           </Card>
@@ -334,7 +345,7 @@ export default function DivisionsPage() {
         <Card className="space-y-4 p-6">
           <SectionHeader
             eyebrow="Scoreboard"
-            description="Monitor streaming assignments and results for the selected event, filtered by competitive state."
+            description="Monitor matches and their state"
             action={
               <div className="inline-flex flex-wrap items-center gap-2">
                 {[
