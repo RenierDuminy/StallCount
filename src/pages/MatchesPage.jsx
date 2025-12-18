@@ -998,6 +998,7 @@ function deriveMatchInsights(match, logs) {
   let matchStartLogged = false;
   let previousTime = null;
   let pointIndex = 1;
+  const halftimeEvents = [];
 
   const toClockMs = (value) => {
     const parts = parseTimeParts(value);
@@ -1283,6 +1284,10 @@ function deriveMatchInsights(match, logs) {
     }
     if (code === MATCH_LOG_EVENT_CODES.HALFTIME_START) {
       pendingBands.halftime = timestamp;
+      const halftimeReason = scoringPoints.some((point) => point.time === timestamp)
+        ? "point"
+        : "time";
+      halftimeEvents.push({ time: timestamp, reason: halftimeReason });
       pushSnapshot(timestamp);
       logRows.push({
         label: "HT",
@@ -1426,6 +1431,7 @@ function deriveMatchInsights(match, logs) {
     possessionTimeline,
     turnoverCount: turnovers.length,
     matchStartEventTime,
+    halftimeEvents,
   });
 
   const summaries = {
@@ -1591,15 +1597,19 @@ function formatMatchLabel(match) {
   const teamA = match.team_a?.short_name || match.team_a?.name || "Team A";
   const teamB = match.team_b?.short_name || match.team_b?.name || "Team B";
   const kickoff = formatKickoff(match.start_time);
-  return `${kickoff} – ${teamA} vs ${teamB}`;
+  return `${kickoff} - ${teamA} vs ${teamB}`;
 }
 
 function formatKickoff(timestamp) {
   if (!timestamp) return "TBD";
-  return new Date(timestamp).toLocaleString([], {
+  const date = new Date(timestamp);
+  return date.toLocaleString([], {
     weekday: "short",
+    day: "numeric",
+    month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -1666,6 +1676,7 @@ function buildMatchInsights({
   possessionTimeline,
   turnoverCount,
   matchStartEventTime,
+  halftimeEvents,
 }) {
   if (!match) return null;
   const sortedPoints = [...scoringPoints].sort((a, b) => a.time - b.time);
@@ -1685,6 +1696,26 @@ function buildMatchInsights({
   const matchRows = [
     { label: "Match date", value: formatMatchDate(match.start_time) },
     { label: "Match start", value: matchStartLabel },
+  ];
+
+  if (Array.isArray(halftimeEvents) && halftimeEvents.length) {
+    halftimeEvents.forEach((half, index) => {
+      const elapsedMs =
+        Number.isFinite(half.time) && Number.isFinite(matchStartEventTime)
+          ? half.time - matchStartEventTime
+          : null;
+      const elapsedMinutes =
+        Number.isFinite(elapsedMs) && elapsedMs >= 0 ? Math.round(elapsedMs / 60000) : null;
+      const elapsedLabel = Number.isFinite(elapsedMinutes) ? `${elapsedMinutes} min` : "--";
+      const label = halftimeEvents.length > 1 ? `Halftime ${index + 1}` : "Halftime";
+      matchRows.push({
+        label,
+        value: elapsedLabel,
+      });
+    });
+  }
+
+  matchRows.push(
     { label: "First point", value: formatTimeLabel(firstPoint, true) },
     { label: "Last point", value: formatTimeLabel(lastPoint, true) },
     {
@@ -1695,7 +1726,7 @@ function buildMatchInsights({
         return Number.isFinite(minutes) ? `${base} (${minutes} min)` : base;
       })(),
     },
-  ];
+  );
 
   const averageTempo = (() => {
     if (sortedPoints.length < 2 || !Number.isFinite(firstPoint) || !Number.isFinite(lastPoint)) return null;
