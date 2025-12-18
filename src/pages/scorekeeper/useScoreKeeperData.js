@@ -1357,6 +1357,18 @@ useEffect(() => {
       window.removeEventListener("beforeunload", persistNow);
     };
   }, [buildSessionSnapshot, resumeHandled, userId]);
+const cleanupOptimisticLog = useCallback(
+  (optimisticId) => {
+    if (!optimisticId) return;
+    setLogs((prev) =>
+      prev.filter(
+        (entry) => !(entry.isOptimistic && entry.optimisticId && entry.optimisticId === optimisticId)
+      )
+    );
+  },
+  [setLogs]
+);
+
 const recordPendingEntry = useCallback(
   (entry) => {
     const matchId = entry?.matchId;
@@ -1423,7 +1435,9 @@ const recordPendingEntry = useCallback(
 
     void (async () => {
       try {
-        await createMatchLogEntry(dbPayload);
+        const created = await createMatchLogEntry(dbPayload);
+        // Replace any optimistic placeholder with the confirmed DB row once the server echoes the optimistic_id.
+        cleanupOptimisticLog(created?.optimistic_id || optimisticId);
         setPendingEntries((prev) => prev.filter((item) => item !== supabasePayload));
         void refreshMatchLogs(matchId, currentMatchScoreRef.current);
       } catch (err) {
@@ -1434,7 +1448,7 @@ const recordPendingEntry = useCallback(
       }
     })();
   },
-  [setPendingEntries, setConsoleError, normalizeAbbaLine]
+  [setPendingEntries, setConsoleError, normalizeAbbaLine, cleanupOptimisticLog]
 );
 const normalizedSecondaryLabel =
   typeof secondaryLabel === "string" ? secondaryLabel.toLowerCase() : "";

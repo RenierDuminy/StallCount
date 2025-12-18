@@ -1040,36 +1040,46 @@ function deriveMatchInsights(match, logs) {
       code === MATCH_LOG_EVENT_CODES.MATCH_END || typeId === MATCH_EVENT_ID_HINTS.MATCH_END;
 
     if (isMatchStart) {
-      if (!matchStartEventTime || timestamp < matchStartEventTime) {
-        matchStartEventTime = timestamp;
+      const allowStartEvent =
+        !matchStartEventTime || timestamp <= matchStartEventTime + 60 * 1000;
+      if (allowStartEvent) {
+        if (!matchStartEventTime || timestamp < matchStartEventTime) {
+          matchStartEventTime = timestamp;
+        }
+        timelineStart = matchStartEventTime;
+        snapshots.unshift({ time: matchStartEventTime, scoreA: 0, scoreB: 0 });
+        timestamps.push(matchStartEventTime);
+        if (!matchStartLogged) {
+          logRows.unshift({
+            label: "Start",
+            index: 0,
+            timestamp,
+            formattedTime,
+            teamLabel: "-",
+            scorer: "-",
+            assist: "-",
+            description: "Match start",
+            gap: "-",
+            variant: "halftime",
+          });
+          matchStartLogged = true;
+        }
+        previousTime = matchStartEventTime;
       }
-      timelineStart = matchStartEventTime;
-      snapshots.unshift({ time: matchStartEventTime, scoreA: 0, scoreB: 0 });
-      timestamps.push(matchStartEventTime);
-      if (!matchStartLogged) {
-        logRows.unshift({
-          label: "Start",
-          index: 0,
-          timestamp,
-          formattedTime,
-          teamLabel: "-",
-          scorer: "-",
-          assist: "-",
-          description: "Match start",
-          gap: "-",
-          variant: "halftime",
-        });
-        matchStartLogged = true;
-      }
-      previousTime = matchStartEventTime;
       continue;
     }
     if (isMatchEnd) {
       if (!matchEndEventTime || timestamp > matchEndEventTime) {
         matchEndEventTime = timestamp;
       }
-      timelineEnd = matchEndEventTime;
-      pushSnapshot(matchEndEventTime);
+      const lastEventTime =
+        previousTime ??
+        snapshots[snapshots.length - 1]?.time ??
+        timelineStart ??
+        timestamp;
+      if (Number.isFinite(lastEventTime)) {
+        timelineEnd = lastEventTime;
+      }
       logRows.push({
         label: "End",
         index: 0,
@@ -1082,7 +1092,7 @@ function deriveMatchInsights(match, logs) {
         gap: "-",
         variant: "halftime",
       });
-      previousTime = matchEndEventTime;
+      previousTime = timestamp;
       continue;
     }
 
@@ -1325,7 +1335,11 @@ function deriveMatchInsights(match, logs) {
   }
 
   const axisStart = Number.isFinite(matchStartEventTime) ? matchStartEventTime : defaultStart;
-  let axisEnd = Number.isFinite(matchEndEventTime) ? matchEndEventTime : defaultEnd;
+  let axisEnd = Number.isFinite(timelineEnd)
+    ? timelineEnd
+    : Number.isFinite(matchEndEventTime)
+      ? matchEndEventTime
+      : defaultEnd;
   if (axisEnd <= axisStart) {
     axisEnd = axisStart + 5 * 60_000;
   }

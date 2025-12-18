@@ -17,6 +17,17 @@ function parseMediaLink(mediaLink) {
   return null;
 }
 
+const HOST_PROVIDER_MAP = [
+  { tokens: ["youtube", "youtu.be"], label: "YouTube" },
+  { tokens: ["twitch"], label: "Twitch" },
+  { tokens: ["vimeo"], label: "Vimeo" },
+  { tokens: ["facebook", "fb.watch"], label: "Facebook" },
+  { tokens: ["instagram"], label: "Instagram" },
+  { tokens: ["twitter", "x.com"], label: "Twitter" },
+  { tokens: ["espn"], label: "ESPN" },
+  { tokens: ["ultiworld"], label: "Ultiworld" },
+];
+
 function formatMediaProviderLabel(provider) {
   const normalized = typeof provider === "string" ? provider.replace(/_/g, " ").trim() : "";
   if (!normalized) return "Stream";
@@ -25,6 +36,40 @@ function formatMediaProviderLabel(provider) {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function inferProviderFromUrl(url) {
+  if (!url) return null;
+  try {
+    const { hostname } = new URL(url);
+    const host = hostname.toLowerCase();
+    const mapped = HOST_PROVIDER_MAP.find((entry) =>
+      entry.tokens.some((token) => host.includes(token))
+    );
+    if (mapped) return mapped.label;
+    const cleanHost = host.replace(/^www\./, "");
+    const segments = cleanHost.split(".");
+    const tld = segments[segments.length - 1] || "";
+    let baseSegment = segments.length > 1 ? segments[segments.length - 2] : segments[0];
+    if (tld.length === 2 && segments.length > 2) {
+      baseSegment = segments[segments.length - 3];
+    }
+    if (!baseSegment) return null;
+    return baseSegment.charAt(0).toUpperCase() + baseSegment.slice(1);
+  } catch {
+    return null;
+  }
+}
+
+export function resolveMediaProviderLabel(provider, url) {
+  const baseLabel = formatMediaProviderLabel(provider);
+  const normalized = baseLabel.toLowerCase();
+  if (normalized !== "stream" && normalized !== "custom") {
+    return baseLabel;
+  }
+  const inferred = inferProviderFromUrl(url);
+  if (inferred) return inferred;
+  return baseLabel;
 }
 
 export function getMatchMediaDetails(match) {
@@ -51,7 +96,7 @@ export function getMatchMediaDetails(match) {
 
   return {
     url,
-    providerLabel: formatMediaProviderLabel(provider),
+    providerLabel: resolveMediaProviderLabel(provider, url),
     status: match.media_status || primary.status || "",
   };
 }

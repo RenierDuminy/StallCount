@@ -431,7 +431,7 @@ export default function ScoreKeeperView() {
                   onTouchCancel={cancelSecondaryHoldReset}
                   className="rounded-md bg-[#dc2626] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#b91c1c]"
                 >
-                  Discussion
+                  START-END-DISCUSSION
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-2 text-center text-sm font-semibold text-slate-800">
@@ -1193,25 +1193,6 @@ export default function ScoreKeeperView() {
                   </option>
                 ))}
                 <option value={CALAHAN_ASSIST_VALUE}>CALLAHAN!!</option>
-              </select>
-            </label>
-            <label className="block text-base font-semibold text-[#0f5132]">
-              Scorer:
-              <select
-                value={scoreForm.scorerId}
-                onChange={(event) =>
-                  setScoreForm((prev) => ({ ...prev, scorerId: event.target.value }))
-                }
-                required
-                className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
-              >
-                <option value="">Select Scorer</option>
-                <option value={SCORE_NA_PLAYER_VALUE}>N/A</option>
-                {rosterOptionsForModal.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {formatPlayerSelectLabel(player)}
-                  </option>
-                ))}
               </select>
             </label>
             <div className="space-y-1.5">

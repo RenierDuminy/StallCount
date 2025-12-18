@@ -231,7 +231,7 @@ export default function TournamentDirectorPage() {
             description="Desktop control room for reading, creating, and editing any tournament data in Supabase."
             action={
               <div className="flex flex-wrap gap-2">
-                <Link to="/admin" className="sc-button is-ghost text-[var(--sc-surface-light-ink)]">
+                <Link to="/admin" className="sc-button">
                   Back to admin hub
                 </Link>
                 <button type="button" onClick={loadRows} className="sc-button">
@@ -329,7 +329,7 @@ export default function TournamentDirectorPage() {
                         status: "scheduled",
                       })
                     }
-                    className="sc-button is-ghost text-[var(--sc-surface-light-ink)]"
+                    className="sc-button"
                   >
                     Reset form
                   </button>
@@ -453,7 +453,7 @@ export default function TournamentDirectorPage() {
                 >
                   {matchSaving ? "Creating..." : "Create match"}
                 </button>
-                <Link to="/score-keeper" className="sc-button is-ghost text-[var(--sc-surface-light-ink)]">
+                <Link to="/score-keeper" className="sc-button">
                   Go to score keeper
                 </Link>
               </div>
@@ -541,7 +541,7 @@ export default function TournamentDirectorPage() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-3">
-                <button type="button" onClick={loadRows} className="sc-button is-ghost text-[var(--sc-surface-light-ink)]">
+                <button type="button" onClick={loadRows} className="sc-button">
                   Reload data
                 </button>
                 <Chip variant="ghost" className="text-xs capitalize text-[var(--sc-surface-light-ink)]/80">
@@ -627,7 +627,7 @@ export default function TournamentDirectorPage() {
               </div>
             </Card>
 
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-6">
               <Card variant="light" className="space-y-4 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
                 <SectionHeader
                   eyebrow="Create record"
@@ -635,7 +635,7 @@ export default function TournamentDirectorPage() {
                   title="Insert JSON payload"
                   description={`Target: ${getBaseTableName(selectedTable) || "none"}`}
                   action={
-                    <button type="button" onClick={() => setDraftPayload(buildTemplate(selectedTable))} className="sc-button is-ghost text-[var(--sc-surface-light-ink)]">
+                    <button type="button" onClick={() => setDraftPayload(buildTemplate(selectedTable))} className="sc-button">
                       Reset template
                     </button>
                   }
@@ -644,7 +644,7 @@ export default function TournamentDirectorPage() {
                   value={draftPayload}
                   onChange={(event) => setDraftPayload(event.target.value)}
                   rows={12}
-                  className={`${LIGHT_INPUT_CLASS} font-mono text-xs`}
+                className={`${LIGHT_INPUT_CLASS} w-full font-mono text-xs`}
                   spellCheck={false}
                 />
                 <button type="button" onClick={handleInsert} className="sc-button">
@@ -665,7 +665,7 @@ export default function TournamentDirectorPage() {
                         setSelectedRow(null);
                         setEditPayload("");
                       }}
-                      className="sc-button is-ghost text-[var(--sc-surface-light-ink)]"
+                      className="sc-button"
                     >
                       Clear selection
                     </button>
@@ -675,11 +675,11 @@ export default function TournamentDirectorPage() {
                   value={editPayload}
                   onChange={(event) => setEditPayload(event.target.value)}
                   rows={12}
-                  className={`${LIGHT_INPUT_CLASS} font-mono text-xs`}
+                className={`${LIGHT_INPUT_CLASS} w-full font-mono text-xs`}
                   placeholder="Select a row to edit"
                   spellCheck={false}
                 />
-                <button type="button" onClick={handleUpdate} className="sc-button is-ghost text-[var(--sc-surface-light-ink)]">
+                <button type="button" onClick={handleUpdate} className="sc-button">
                   Save changes
                 </button>
               </Card>

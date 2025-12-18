@@ -11,6 +11,7 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabaseClient";
 import { getPlayersByIds } from "../services/playerService";
 import { Card, Chip, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
+import { resolveMediaProviderLabel } from "../utils/matchMedia";
 
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
@@ -991,7 +992,7 @@ export default function HomePage() {
                   <p className="text-sm text-ink">{formatMatchup(upcomingStreamMatch)}</p>
                   <p className="text-xs text-ink-muted">{formatMatchTime(upcomingStreamMatch.start_time)}</p>
                   <p className="text-xs text-ink-muted">
-                    Provider: {formatMediaProvider(upcomingStreamMatch.media_provider)}
+                    Provider: {formatMediaProvider(upcomingStreamMatch)}
                   </p>
                   <a href={resolveStreamUrl(upcomingStreamMatch)} target="_blank" rel="noreferrer" className="sc-button mt-2">
                     Watch stream
@@ -1158,14 +1159,10 @@ function matchHasStream(match) {
   return typeof primaryUrl === "string" && primaryUrl.trim().length > 0;
 }
 
-function formatMediaProvider(provider) {
-  const normalized = typeof provider === "string" ? provider.replace(/_/g, " ").trim() : "";
-  if (!normalized) return "Custom";
-  return normalized
-    .split(" ")
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+function formatMediaProvider(match) {
+  const provider = match?.media_provider;
+  const url = resolveStreamUrl(match);
+  return resolveMediaProviderLabel(provider, url);
 }
 
 function formatLiveScore(match) {

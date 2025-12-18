@@ -4,6 +4,7 @@ import { getEventsList } from "../services/leagueService";
 import { getMatchesByEvent } from "../services/matchService";
 import { hydrateVenueLookup } from "../services/venueService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
+import { resolveMediaProviderLabel } from "../utils/matchMedia";
 
 export default function DivisionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -386,15 +387,7 @@ export default function DivisionsPage() {
                   match.status === "completed";
                 const rawMediaUrl = typeof match.media_url === "string" ? match.media_url.trim() : "";
                 const mediaUrl = rawMediaUrl && /^https?:\/\//i.test(rawMediaUrl) ? rawMediaUrl : null;
-                const mediaProviderLabel = (() => {
-                  const raw = (match.media_provider || "stream").replace(/_/g, " ").trim();
-                  if (!raw) return "Stream";
-                  return raw
-                    .split(" ")
-                    .filter(Boolean)
-                    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                    .join(" ");
-                })();
+                const mediaProviderLabel = resolveMediaProviderLabel(match.media_provider, mediaUrl);
                 const handleMediaClick = (event) => {
                   event.stopPropagation();
                   if (isNavigable) {
