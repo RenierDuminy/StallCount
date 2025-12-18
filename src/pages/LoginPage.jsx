@@ -3,6 +3,7 @@ import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabaseClient";
+import { Card, Chip, Panel, SectionShell, SectionHeader } from "../components/ui/primitives";
 
 const ADMIN_MODULES = [
   {
@@ -33,65 +34,53 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="flex min-h-screen w-full items-center justify-center px-6 py-12">
-        <div className="grid w-full gap-10 rounded-3xl bg-white shadow-xl ring-1 ring-slate-100 md:grid-cols-[1.2fr,1fr] md:gap-12">
-          <div className="flex flex-col justify-between rounded-3xl bg-slate-900 px-8 py-10 text-slate-100">
-            <div className="space-y-6">
-              <span className="inline-flex items-center rounded-full bg-slate-800/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-300">
-                Backend access
-              </span>
-              <div className="space-y-3">
-                <h1 className="text-3xl font-semibold tracking-tight">
-                  Admin log in
-                </h1>
-                <p className="text-sm leading-relaxed text-slate-300">
-                  Secure tools for StallCount crews. Sign in to reach the control
-                  surfaces used by your tournament staff.
-                </p>
-              </div>
-              <dl className="space-y-5 text-sm">
-                {ADMIN_MODULES.map((module) => (
-                  <div key={module.label}>
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-brand-light">
-                      {module.label}
-                    </dt>
-                    <dd className="mt-1 text-slate-200">{module.description}</dd>
-                  </div>
-                ))}
-              </dl>
+    <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
+      <SectionShell className="flex min-h-screen items-center justify-center py-12">
+        <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[1.1fr,0.9fr]">
+          <Card variant="light" className="space-y-8 p-8 shadow-xl shadow-[rgba(15,31,25,0.08)]">
+            <SectionHeader
+              eyebrow="Backend access"
+              title="Admin log in"
+              description="Secure tools for StallCount crews. Sign in to reach the control surfaces used by your tournament staff."
+              eyebrowVariant="tag"
+            />
+            <div className="grid gap-4 text-sm">
+              {ADMIN_MODULES.map((module) => (
+                <Panel key={module.label} variant="light" className="p-4 shadow-sm shadow-[rgba(9,31,24,0.05)]">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-ink-muted)]">
+                    {module.label}
+                  </p>
+                  <p className="mt-1 text-[var(--sc-surface-light-ink)] opacity-80">{module.description}</p>
+                </Panel>
+              ))}
             </div>
-            <p className="mt-10 text-xs text-slate-500">
+            <Panel variant="light" className="p-4 text-xs text-[var(--sc-surface-light-ink)] opacity-70">
               Need help? Contact ops@stallcount.io to request or adjust access.
-            </p>
-          </div>
-          <div className="flex items-center justify-center px-6 py-10">
-            <div className="w-full max-w-sm space-y-5">
-              <div className="text-center md:text-left">
-                <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                  Staff workspace
-                </p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-900">
-                  Sign in to continue
-                </h2>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <Auth
-                  supabaseClient={supabase}
-                  appearance={{ theme: ThemeSupa }}
-                  theme="default"
-                  providers={["google"]}
-                  redirectTo={authRedirectTo}
-                />
-              </div>
-              <p className="text-xs text-slate-500">
-                By signing in you acknowledge StallCount's officiating handbook and data
-                handling policies.
-              </p>
-            </div>
-          </div>
+            </Panel>
+          </Card>
+
+          <Card variant="light" className="space-y-6 p-8 shadow-xl shadow-[rgba(15,31,25,0.08)]">
+            <SectionHeader
+              eyebrow="Staff workspace"
+              title="Sign in to continue"
+              description="Use your verified StallCount or Google credentials."
+              eyebrowVariant="tag"
+            />
+            <Panel variant="light" className="p-6 shadow-inner shadow-[rgba(9,31,24,0.04)]">
+              <Auth
+                supabaseClient={supabase}
+                appearance={{ theme: ThemeSupa }}
+                theme="default"
+                providers={["google"]}
+                redirectTo={authRedirectTo}
+              />
+            </Panel>
+            <Chip variant="ghost" className="text-xs text-[var(--sc-surface-light-ink)] opacity-80">
+              By signing in you accept StallCount policies.
+            </Chip>
+          </Card>
         </div>
-      </div>
+      </SectionShell>
     </div>
   );
 }

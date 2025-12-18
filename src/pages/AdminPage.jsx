@@ -54,11 +54,6 @@ export default function AdminPage() {
             eyebrow="Admin"
             title="Admin tools"
             description="Choose your workspace to access the specialised controls you need."
-            action={
-              <Link to="/dashboard" className="sc-button is-ghost">
-                View dashboard overview
-              </Link>
-            }
           />
         </Card>
       </SectionShell>

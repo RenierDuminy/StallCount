@@ -20,10 +20,10 @@
   --sc-accent-strong: #a8ff33;
   --sc-accent-alt: #67e9c1;
 
-  --sc-radius-sm: 12px;
-  --sc-radius-md: 18px;
-  --sc-radius-lg: 28px;
-  --sc-radius-xl: 36px;
+  --sc-radius-sm: 7px;
+  --sc-radius-md: 11px;
+  --sc-radius-lg: 18px;
+  --sc-radius-xl: 24px;
 
   --sc-shadow-card: 0 18px 40px rgba(2, 8, 6, 0.45), 0 2px 0 rgba(255, 255, 255, 0.05);
   --sc-shadow-strong: 0 40px 120px rgba(0, 0, 0, 0.55);
@@ -78,7 +78,7 @@
   --sc-alert-error-border: rgba(255, 123, 123, 0.5);
 
   --sc-surface-light-bg: linear-gradient(180deg, #ffffff, #f6fbf7);
-  --sc-surface-light-border: #e2f5e7;
+  --sc-surface-light-border: #0b3a24;
   --sc-surface-light-ink: #0b1f19;
   --sc-surface-light-shadow: 0 25px 60px rgba(0, 0, 0, 0.08);
 
@@ -346,6 +346,13 @@ a:focus-visible {
   border: 1px solid var(--sc-tag-border);
   font-weight: 700;
   font-size: 0.75rem;
+}
+
+.sc-surface-light .sc-tag {
+  background: var(--sc-bg);
+  border-color: var(--sc-bg);
+  color: var(--sc-ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .sc-metric {
