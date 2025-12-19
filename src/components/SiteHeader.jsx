@@ -96,7 +96,7 @@ export default function SiteHeader() {
           <button
             type="button"
             onClick={handleInstallClick}
-            className="hidden rounded-full border border-emerald-300/50 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 lg:inline-flex"
+            className="hidden rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 lg:inline-flex"
           >
             Install app
           </button>
@@ -142,7 +142,7 @@ export default function SiteHeader() {
               <button
                 type="button"
                 onClick={handleInstallClick}
-                className="rounded-full border border-emerald-300/50 px-4 py-2 text-center text-sm font-semibold text-emerald-50 transition hover:bg-white/10"
+                className="rounded-full border border-white/20 px-4 py-2 text-center text-sm font-semibold text-emerald-50 transition hover:bg-white/10"
               >
                 Install app
               </button>

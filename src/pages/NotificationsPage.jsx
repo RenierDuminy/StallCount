@@ -938,7 +938,7 @@ export default function NotificationsPage() {
               No recent notifications match your current follows.
             </Panel>
           ) : (
-            <ul className="space-y-3">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {recentNotifications.map((event) => {
                 const data = (event.data && typeof event.data === "object" ? event.data : {}) ?? {};
                 const matchLabel =
@@ -955,31 +955,31 @@ export default function NotificationsPage() {
                   (matchLabel ? `New activity for ${matchLabel}` : "");
                 const createdAt = event.created_at ? new Date(event.created_at).toLocaleString() : "";
                 return (
-                  <li key={event.id}>
-                    <Panel variant="tinted" className="space-y-2 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-accent">
-                            {event.event_type}
-                          </p>
-                          <p className="text-base font-semibold text-ink">{title}</p>
-                        </div>
-                        <p className="text-xs text-ink-muted">{createdAt}</p>
+                  <Panel key={event.id} variant="tinted" className="flex h-full flex-col gap-3 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <Chip variant="tag">{event.event_type.replace(/_/g, " ")}</Chip>
+                        <p className="text-base font-semibold text-ink">{title}</p>
                       </div>
-                      {body && <p className="text-sm text-ink-muted">{body}</p>}
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-muted">
-                        <span>Match: {matchLabel}</span>
-                        {event.match_id && (
-                          <a href={`/matches/${event.match_id}`} className="font-semibold text-accent hover:underline">
-                            View match
-                          </a>
-                        )}
+                      <p className="text-xs text-ink-muted">{createdAt}</p>
+                    </div>
+                    {body && <p className="text-sm text-ink-muted">{body}</p>}
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-muted">
+                      <span className="font-semibold text-ink">Match</span>
+                      <span className="text-right text-ink-muted">{matchLabel || "Unknown match"}</span>
+                    </div>
+                    {event.match_id && (
+                      <div className="flex items-center justify-between gap-2 border-t border-border pt-3 text-xs">
+                        <span className="text-ink-muted">Jump into the tracker</span>
+                        <a href={`/matches/${event.match_id}`} className="sc-button is-ghost text-xs">
+                          View match
+                        </a>
                       </div>
-                    </Panel>
-                  </li>
+                    )}
+                  </Panel>
                 );
               })}
-            </ul>
+            </div>
           )}
         </Card>
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getAllPlayerMatchStats } from "../services/teamService";
-import { Card, SectionHeader, SectionShell, Field, Input } from "../components/ui/primitives";
+import { Card, SectionHeader, SectionShell, Field, Input, Select } from "../components/ui/primitives";
 
 export default function PlayersPage() {
   const [rows, setRows] = useState([]);
@@ -10,6 +10,7 @@ export default function PlayersPage() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("total");
   const [sortDirection, setSortDirection] = useState("desc");
+  const [eventFilter, setEventFilter] = useState("all");
 
   useEffect(() => {
     let ignore = false;
@@ -44,10 +45,30 @@ export default function PlayersPage() {
     [search],
   );
 
+  const eventOptions = useMemo(() => {
+    const map = new Map();
+    rows.forEach((row) => {
+      const event = row.match?.event;
+      if (event?.id && !map.has(event.id)) {
+        map.set(event.id, event.name || "Event");
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+
+  const filteredRowsByEvent = useMemo(() => {
+    if (eventFilter === "all") {
+      return rows;
+    }
+    return rows.filter((row) => row.match?.event?.id === eventFilter);
+  }, [rows, eventFilter]);
+
   const aggregatedRows = useMemo(() => {
     const map = new Map();
 
-    rows.forEach((row) => {
+    filteredRowsByEvent.forEach((row) => {
       const playerId = row.player?.id;
       if (!playerId) return;
 
@@ -86,7 +107,7 @@ export default function PlayersPage() {
         goalsPerGame: games ? entry.goals / games : 0,
       };
     });
-  }, [rows]);
+  }, [filteredRowsByEvent]);
 
   const filteredAggregated = useMemo(() => {
     return aggregatedRows.filter((row) => {
@@ -188,17 +209,35 @@ export default function PlayersPage() {
         <Card className="space-y-4 p-4 sm:p-6">
           <SectionHeader
             eyebrow="Player stats"
-            description={`Showing ${sortedRows.length} of ${rows.length || 0} players`}
+            description={`Showing ${sortedRows.length} of ${aggregatedRows.length} players${
+              eventFilter !== "all" ? " (event filter applied)" : ""
+            }`}
             action={
-              <Field className="w-full max-w-sm" label="Search player" htmlFor="player-search">
-                <Input
-                  id="player-search"
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Name or jersey #"
-                />
-              </Field>
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end sm:justify-end">
+                <Field className="w-full max-w-sm" label="Search player" htmlFor="player-search">
+                  <Input
+                    id="player-search"
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Name or jersey #"
+                  />
+                </Field>
+                <Field className="w-full max-w-xs" label="Event" htmlFor="player-event-filter">
+                  <Select
+                    id="player-event-filter"
+                    value={eventFilter}
+                    onChange={(e) => setEventFilter(e.target.value)}
+                  >
+                    <option value="all">All events</option>
+                    {eventOptions.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {event.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
             }
           />
 

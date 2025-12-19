@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   getBaseTableName,
@@ -12,6 +12,28 @@ import { listSchemaTables, listTableColumns, pickRecencyColumn } from "../servic
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
 
 const LIMIT_OPTIONS = [20, 50, 100, 200];
+const VIEW_ONLY_TABLES = [
+  "public.audit_log",
+  "public.match_events",
+  "public.match_logs",
+];
+const EDITABLE_TABLES = [
+  "public.bracket_nodes",
+  "public.brackets",
+  "public.division_teams",
+  "public.divisions",
+  "public.events",
+  "public.matches",
+  "public.player",
+  "public.pool_teams",
+  "public.pools",
+  "public.spirit_scores",
+  "public.team_roster",
+  "public.teams",
+  "public.venues",
+];
+const ALLOWED_TABLE_SET = new Set([...VIEW_ONLY_TABLES, ...EDITABLE_TABLES]);
+const EDITABLE_TABLE_SET = new Set(EDITABLE_TABLES);
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-2 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
 
@@ -42,7 +64,10 @@ function parseJsonPayload(raw, onError) {
 }
 
 export default function TournamentDirectorPage() {
-  const tables = listSchemaTables();
+  const tables = useMemo(
+    () => listSchemaTables().filter((table) => ALLOWED_TABLE_SET.has(table)),
+    []
+  );
   const [tableSearch, setTableSearch] = useState("");
   const [selectedTable, setSelectedTable] = useState(() => tables[0] || "");
   const [orderBy, setOrderBy] = useState(() => pickRecencyColumn(tables[0] || "") || null);
@@ -76,6 +101,8 @@ export default function TournamentDirectorPage() {
   const [matchMessage, setMatchMessage] = useState("");
   const [matchError, setMatchError] = useState("");
   const [matchSaving, setMatchSaving] = useState(false);
+  const editTextareaRef = useRef(null);
+  const isEditableTable = EDITABLE_TABLE_SET.has(selectedTable);
 
   const columns = useMemo(() => listTableColumns(selectedTable), [selectedTable]);
 
@@ -142,7 +169,18 @@ export default function TournamentDirectorPage() {
     loadRows();
   }, [loadRows]);
 
+  useEffect(() => {
+    if (!editTextareaRef.current) return;
+    const textarea = editTextareaRef.current;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [editPayload]);
+
   const handleInsert = async () => {
+    if (!isEditableTable) {
+      setDraftError("This table is view-only and cannot be edited.");
+      return;
+    }
     setDraftError("");
     setActionMessage("");
     const payload = parseJsonPayload(draftPayload, setDraftError);
@@ -158,6 +196,10 @@ export default function TournamentDirectorPage() {
   };
 
   const handleUpdate = async () => {
+    if (!isEditableTable) {
+      setDraftError("This table is view-only and cannot be edited.");
+      return;
+    }
     setDraftError("");
     setActionMessage("");
     if (!selectedRow) {
@@ -281,6 +323,7 @@ export default function TournamentDirectorPage() {
             <Panel variant="light" className="max-h-[60vh] space-y-1 overflow-y-auto p-2 shadow-inner shadow-[rgba(8,25,21,0.04)]">
               {filteredTables.map((table) => {
                 const isActive = table === selectedTable;
+                const editable = EDITABLE_TABLE_SET.has(table);
                 const cols = listTableColumns(table);
                 return (
                   <button
@@ -292,10 +335,12 @@ export default function TournamentDirectorPage() {
                     }`}
                   >
                     <span className="truncate">{table}</span>
-                    <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide ${
-                      isActive ? "bg-white/20" : "bg-[#e7f6ed] text-[var(--sc-surface-light-ink)]/70"
-                    }`}>
-                      {cols.length} cols
+                    <span
+                      className={`ml-2 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide ${
+                        isActive ? "bg-white/20" : "bg-[#e7f6ed] text-[var(--sc-surface-light-ink)]/70"
+                      }`}
+                    >
+                      {editable ? "Edit" : "View"} • {cols.length} cols
                     </span>
                   </button>
                 );
@@ -310,7 +355,8 @@ export default function TournamentDirectorPage() {
           </Card>
 
           <div className="space-y-6">
-            <Card variant="light" className="space-y-5 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card variant="light" className="space-y-5 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
               <SectionHeader
                 eyebrow="Quick create"
                 eyebrowVariant="tag"
@@ -335,8 +381,8 @@ export default function TournamentDirectorPage() {
                   </button>
                 }
               />
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                <div>
+              <div className="grid gap-4 lg:grid-cols-12">
+                <div className="lg:col-span-6">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Event</p>
                   <select
                     value={matchForm.eventId}
@@ -351,7 +397,7 @@ export default function TournamentDirectorPage() {
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="lg:col-span-6">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Team A</p>
                   <select
                     value={matchForm.teamAId}
@@ -366,7 +412,7 @@ export default function TournamentDirectorPage() {
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="lg:col-span-6">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Team B</p>
                   <select
                     value={matchForm.teamBId}
@@ -381,7 +427,7 @@ export default function TournamentDirectorPage() {
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="lg:col-span-6">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Venue</p>
                   <select
                     value={matchForm.venueId}
@@ -396,7 +442,7 @@ export default function TournamentDirectorPage() {
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="lg:col-span-6">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Start time</p>
                   <input
                     type="datetime-local"
@@ -405,7 +451,7 @@ export default function TournamentDirectorPage() {
                     className={LIGHT_INPUT_CLASS}
                   />
                 </div>
-                <div>
+                <div className="lg:col-span-6">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Status</p>
                   <select
                     value={matchForm.status}
@@ -431,7 +477,7 @@ export default function TournamentDirectorPage() {
                 </div>
               </div>
               {(matchError || matchMessage) && (
-                <div className="space-y-2">
+                <div className="grid gap-3 lg:grid-cols-2">
                   {matchError && (
                     <Panel variant="light" className="border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
                       {matchError}
@@ -444,7 +490,7 @@ export default function TournamentDirectorPage() {
                   )}
                 </div>
               )}
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={handleCreateMatch}
@@ -465,16 +511,21 @@ export default function TournamentDirectorPage() {
                 eyebrowVariant="tag"
                 title={selectedTable || "Select a table"}
                 description={`Base name: ${getBaseTableName(selectedTable) || "none"}`}
+                action={
+                  <Chip variant="ghost" className="text-xs uppercase tracking-wide text-[var(--sc-surface-light-ink)]/80">
+                    {isEditableTable ? "Edit access" : "View only"}
+                  </Chip>
+                }
               />
-              <div className="grid gap-3 lg:grid-cols-3">
-                <div>
+              <div className="grid gap-4 lg:grid-cols-12">
+                <div className="lg:col-span-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Rows</p>
                   <Panel variant="light" className="p-3 shadow-sm shadow-[rgba(8,25,21,0.04)]">
                     <p className="text-2xl font-semibold">{rows.length}</p>
                     <p className="text-xs text-[var(--sc-surface-light-ink)]/70">Loaded records</p>
                   </Panel>
                 </div>
-                <div>
+                <div className="lg:col-span-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Primary key</p>
                   <input
                     type="text"
@@ -483,7 +534,7 @@ export default function TournamentDirectorPage() {
                     className={LIGHT_INPUT_CLASS}
                   />
                 </div>
-                <div>
+                <div className="lg:col-span-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Limit</p>
                   <select
                     value={limit}
@@ -498,8 +549,8 @@ export default function TournamentDirectorPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid gap-3 lg:grid-cols-3">
-                <div>
+              <div className="grid gap-4 lg:grid-cols-12">
+                <div className="lg:col-span-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Sort</p>
                   <select
                     value={orderBy || ""}
@@ -514,7 +565,7 @@ export default function TournamentDirectorPage() {
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="lg:col-span-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Filter column</p>
                   <select
                     value={filterColumn}
@@ -529,7 +580,7 @@ export default function TournamentDirectorPage() {
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="lg:col-span-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Filter value</p>
                   <input
                     type="text"
@@ -563,6 +614,7 @@ export default function TournamentDirectorPage() {
                 )}
               </Panel>
             </Card>
+            </div>
 
             <Card variant="light" className="space-y-4 p-0 shadow-md shadow-[rgba(8,25,21,0.06)]">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--sc-surface-light-border)] px-6 py-4">
@@ -627,13 +679,17 @@ export default function TournamentDirectorPage() {
               </div>
             </Card>
 
-            <div className="grid gap-6">
+            <div className="grid gap-6 lg:grid-cols-2">
               <Card variant="light" className="space-y-4 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
                 <SectionHeader
                   eyebrow="Create record"
                   eyebrowVariant="tag"
                   title="Insert JSON payload"
-                  description={`Target: ${getBaseTableName(selectedTable) || "none"}`}
+                  description={
+                    isEditableTable
+                      ? `Target: ${getBaseTableName(selectedTable) || "none"}`
+                      : "This table is view-only; inserts are disabled."
+                  }
                   action={
                     <button type="button" onClick={() => setDraftPayload(buildTemplate(selectedTable))} className="sc-button">
                       Reset template
@@ -644,10 +700,16 @@ export default function TournamentDirectorPage() {
                   value={draftPayload}
                   onChange={(event) => setDraftPayload(event.target.value)}
                   rows={12}
-                className={`${LIGHT_INPUT_CLASS} w-full font-mono text-xs`}
+                  className={`${LIGHT_INPUT_CLASS} w-full font-mono text-xs`}
                   spellCheck={false}
+                  readOnly={!isEditableTable}
                 />
-                <button type="button" onClick={handleInsert} className="sc-button">
+                <button
+                  type="button"
+                  onClick={handleInsert}
+                  className="sc-button"
+                  disabled={!isEditableTable}
+                >
                   Insert row
                 </button>
               </Card>
@@ -657,7 +719,11 @@ export default function TournamentDirectorPage() {
                   eyebrow="Edit selection"
                   eyebrowVariant="tag"
                   title="Update selected row"
-                  description="Row loads when you click it in the grid."
+                  description={
+                    isEditableTable
+                      ? "Row loads when you click it in the grid."
+                      : "This table is view-only; editing is disabled."
+                  }
                   action={
                     <button
                       type="button"
@@ -672,14 +738,21 @@ export default function TournamentDirectorPage() {
                   }
                 />
                 <textarea
+                  ref={editTextareaRef}
                   value={editPayload}
                   onChange={(event) => setEditPayload(event.target.value)}
                   rows={12}
-                className={`${LIGHT_INPUT_CLASS} w-full font-mono text-xs`}
+                  className={`${LIGHT_INPUT_CLASS} w-full font-mono text-xs`}
                   placeholder="Select a row to edit"
                   spellCheck={false}
+                  readOnly={!isEditableTable}
                 />
-                <button type="button" onClick={handleUpdate} className="sc-button">
+                <button
+                  type="button"
+                  onClick={handleUpdate}
+                  className="sc-button"
+                  disabled={!isEditableTable}
+                >
                   Save changes
                 </button>
               </Card>

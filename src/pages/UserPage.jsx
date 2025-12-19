@@ -179,9 +179,7 @@ export default function UserPage() {
       },
       { label: "Email", value: profile?.email || user.email || "Unknown" },
       { label: "Access level", value: `${accessInfo.role} - ${accessInfo.level}` },
-      { label: "User ID", value: user.id || "-" },
       { label: "Created", value: formatDate(user.created_at) },
-      { label: "Last sign-in", value: formatDate(user.last_sign_in_at) },
     ];
   }, [user, accessInfo, profile]);
 
@@ -233,7 +231,6 @@ export default function UserPage() {
             <Card className="space-y-5 p-6">
               <SectionHeader
                 eyebrow="Your access"
-                title="Permissions overview"
                 description="The roles below determine which workflows you can launch within StallCount."
               />
               <div className="flex flex-wrap gap-2">
@@ -290,10 +287,6 @@ export default function UserPage() {
                 <Panel variant="muted" className="p-4 text-sm text-ink">
                   <p className="font-semibold text-ink">Operations Desk</p>
                   <p className="mt-1 text-xs text-ink-muted">ops@stallcount.io / +1 (555) 010 2234</p>
-                </Panel>
-                <Panel variant="muted" className="p-4 text-sm text-ink">
-                  <p className="font-semibold text-ink">Documentation</p>
-                  <p className="mt-1 text-xs text-ink-muted">Review the deployment handbook for process details.</p>
                 </Panel>
               </div>
             </Card>
