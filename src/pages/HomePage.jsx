@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getAllTeams, getTeamsByIds, getTeamMatches } from "../services/teamService";
-import { getDivisions, getEventsList } from "../services/leagueService";
+import { getEventsList } from "../services/leagueService";
 import { getTableCount } from "../services/statsService";
 import { getRecentMatches, getOpenMatches, getMatchesByIds } from "../services/matchService";
 import { getRecentLiveEvents } from "../services/liveEventService";
@@ -18,10 +18,11 @@ const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const MAX_MY_TEAMS = 2;
 const MAX_MY_MATCHES = 3;
 const MAX_SUBSCRIPTIONS_PREVIEW = 4;
+const MAX_FINALS_RESULTS = 16;
+const MAX_UPCOMING_MATCHES = 16;
 
 export default function HomePage() {
   const [featuredTeams, setFeaturedTeams] = useState([]);
-  const [divisions, setDivisions] = useState([]);
   const [events, setEvents] = useState([]);
   const [latestMatches, setLatestMatches] = useState([]);
   const [openMatches, setOpenMatches] = useState([]);
@@ -67,9 +68,8 @@ export default function HomePage() {
       try {
         const results = await Promise.all([
           toSettled(getAllTeams(8)),
-          toSettled(getDivisions(6)),
           toSettled(getEventsList(40)),
-          toSettled(getRecentMatches(6)),
+          toSettled(getRecentMatches(50)),
           toSettled(getOpenMatches(20)),
           toSettled(getRecentLiveEvents(50)),
           toSettled(getTableCount("player")),
@@ -81,7 +81,6 @@ export default function HomePage() {
 
         const [
           teamsResult,
-          divisionsResult,
           eventsResult,
           latestMatchesResult,
           openMatchesResult,
@@ -98,13 +97,6 @@ export default function HomePage() {
         } else {
           failures.push("teams");
           console.error("[HomePage] Failed to load teams:", teamsResult.reason);
-        }
-
-        if (divisionsResult.status === "fulfilled") {
-          setDivisions(divisionsResult.value);
-        } else {
-          failures.push("divisions");
-          console.error("[HomePage] Failed to load divisions:", divisionsResult.reason);
         }
 
         if (eventsResult.status === "fulfilled") {
@@ -376,7 +368,6 @@ export default function HomePage() {
     };
   }, [followedPlayerIds]);
 
-  const safeDivisions = useMemo(() => divisions ?? [], [divisions]);
   const safeEvents = useMemo(() => events ?? [], [events]);
   const safeLatestMatches = useMemo(() => latestMatches ?? [], [latestMatches]);
   const safeOpenMatches = useMemo(() => openMatches ?? [], [openMatches]);
@@ -514,10 +505,27 @@ export default function HomePage() {
 
   const forYouLoading = personalizedLoading || myTeamsLoading || myMatchesLoading;
   const liveAndUpcomingMatches = useMemo(() => {
-    return safeOpenMatches.filter((match) => match?.id !== heroCardMatchId).slice(0, 5);
+    const filtered = safeOpenMatches.filter((match) => match?.id !== heroCardMatchId);
+    const sortByStartTime = (list) =>
+      list.sort((a, b) => {
+        const aTime = a?.start_time ? new Date(a.start_time).getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b?.start_time ? new Date(b.start_time).getTime() : Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      });
+    const liveMatches = sortByStartTime(filtered.filter((match) => isMatchLive(match.status)));
+    const upcomingMatches = sortByStartTime(filtered.filter((match) => !isMatchLive(match.status)));
+    return [...liveMatches, ...upcomingMatches].slice(0, MAX_UPCOMING_MATCHES);
   }, [safeOpenMatches, heroCardMatchId]);
   const latestResults = useMemo(() => {
-    return safeLatestMatches.filter((match) => isMatchFinal(match.status) && match?.id !== heroCardMatchId).slice(0, 4);
+    return safeLatestMatches
+      .map((match) => ({ match, completedTime: getMatchCompletionTime(match) }))
+      .filter(
+        ({ match, completedTime }) =>
+          Boolean(match?.id) && match.id !== heroCardMatchId && isMatchFinal(match?.status) && completedTime !== null,
+      )
+      .sort((a, b) => (b.completedTime ?? 0) - (a.completedTime ?? 0))
+      .slice(0, MAX_FINALS_RESULTS)
+      .map(({ match }) => match);
   }, [safeLatestMatches, heroCardMatchId]);
 
   const heroStats = [
@@ -782,9 +790,6 @@ export default function HomePage() {
                             <Link to={`/matches?matchId=${match.id}`} className="sc-button is-ghost text-xs">
                               Open
                             </Link>
-                            <Link to="/scorekeeper" className="sc-button is-ghost text-xs">
-                              Score
-                            </Link>
                           </div>
                         </Card>
                       ))}
@@ -805,13 +810,6 @@ export default function HomePage() {
                             <p className="text-sm font-semibold text-ink">{sub.label}</p>
                             <p className="text-xs uppercase tracking-wide text-ink-muted">{sub.normalizedType}</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => void handleUnfollowSubscriptionRow(sub)}
-                            className="sc-button is-ghost text-xs"
-                          >
-                            Unfollow
-                          </button>
                         </Card>
                       ))}
                     </div>
@@ -855,7 +853,7 @@ export default function HomePage() {
                         <p className="text-sm text-ink-muted">
                           {formatDateRange(event.start_date, event.end_date)}
                         </p>
-                        <Link to={`/divisions?eventId=${event.id}`} className="sc-button is-ghost mt-2 inline-flex text-xs">
+                        <Link to={`/events?eventId=${event.id}`} className="sc-button is-ghost mt-2 inline-flex text-xs">
                           View matches
                         </Link>
                       </div>
@@ -867,58 +865,92 @@ export default function HomePage() {
           </Card>
         </SectionShell>
 
-        <SectionShell as="section" className="grid gap-6 lg:grid-cols-[1.05fr,0.95fr]">
-          <div className="space-y-6">
-            <Card className="space-y-4 p-5 sm:p-6">
-              <SectionHeader
-                eyebrow="Matches"
-                title="Live & upcoming"
-                action={
-                  <Link to="/matches" className="sc-button is-ghost">
-                    All matches
-                  </Link>
-                }
-              />
-              {loading && liveAndUpcomingMatches.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                  Loading matches...
-                </Card>
-              ) : liveAndUpcomingMatches.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                  No open matches right now.
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {liveAndUpcomingMatches.map((match) => {
-                    const live = isMatchLive(match.status);
-                    const final = isMatchFinal(match.status);
-                    const showScore = live || final;
-                    return (
-                      <Panel key={match.id} as="article" variant="tintedAlt" className="p-4">
-                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                              {match.event?.name || match.venue?.name || "Match"}
-                            </p>
-                            <h3 className="text-lg font-semibold text-ink">{formatMatchup(match)}</h3>
-                            <p className="text-xs text-ink-muted">{formatMatchMeta(match)}</p>
-                          </div>
-                          <div className="text-right">
-                            {showScore ? (
-                              <>
-                                <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                                  {formatMatchStatus(match.status) || (live ? "Live" : "Final")}
-                                </p>
-                              </>
-                            ) : (
-                              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                                {formatMatchStatus(match.status) || "Scheduled"}
-                              </p>
-                            )}
-                          </div>
+        <SectionShell as="section" className="grid gap-6 lg:grid-cols-2">
+          <Card className="space-y-3 p-5 sm:p-6">
+            <SectionHeader eyebrow="Streaming" title="Featured broadcast" />
+            {upcomingStreamMatch ? (
+              <>
+                <p className="text-sm text-ink">{formatMatchup(upcomingStreamMatch)}</p>
+                <p className="text-xs text-ink-muted">{formatMatchTime(upcomingStreamMatch.start_time)}</p>
+                <p className="text-xs text-ink-muted">
+                  Provider: {formatMediaProvider(upcomingStreamMatch)}
+                </p>
+                <a href={resolveStreamUrl(upcomingStreamMatch)} target="_blank" rel="noreferrer" className="sc-button mt-2">
+                  Watch stream
+                </a>
+              </>
+            ) : (
+              <p className="text-sm text-ink-muted">Attach media links to highlight upcoming streams.</p>
+            )}
+          </Card>
+          <Card className="space-y-3 p-5 sm:p-6">
+            <SectionHeader eyebrow="Spotlight" title="Event focus" />
+            {spotlightEvent ? (
+              <>
+                <p className="text-lg font-semibold text-ink">{spotlightEvent.name}</p>
+                <p className="text-sm text-ink-muted">
+                  {formatDateRange(spotlightEvent.start_date, spotlightEvent.end_date)}
+                </p>
+                <p className="text-sm text-ink-muted">{spotlightEvent.location || "Location TBC"}</p>
+              </>
+            ) : (
+              <p className="text-sm text-ink-muted">Create events to spotlight a league, tournament, or camp.</p>
+            )}
+          </Card>
+        </SectionShell>
+
+        <SectionShell as="section">
+          <Card className="space-y-4 p-5 sm:p-6">
+            <SectionHeader
+              eyebrow="Matches"
+              title="Live & upcoming"
+              action={
+                <Link to="/matches" className="sc-button is-ghost">
+                  All matches
+                </Link>
+              }
+            />
+            {loading && liveAndUpcomingMatches.length === 0 ? (
+              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                Loading matches...
+              </Card>
+            ) : liveAndUpcomingMatches.length === 0 ? (
+              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                No open matches right now.
+              </Card>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {liveAndUpcomingMatches.map((match) => {
+                  const live = isMatchLive(match.status);
+                  const final = isMatchFinal(match.status);
+                  const showScore = live || final;
+                  return (
+                    <Panel key={match.id} as="article" variant="tintedAlt" className="flex flex-col gap-3 p-4">
+                      <div className="flex flex-col gap-2">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                            {match.event?.name || match.venue?.name || "Match"}
+                          </p>
+                          <h3 className="text-lg font-semibold text-ink">{formatMatchup(match)}</h3>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
+                        <p className="text-xs text-ink-muted">{formatMatchMeta(match)}</p>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-left">
+                          {showScore ? (
+                            <>
+                              <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                                {formatMatchStatus(match.status) || (live ? "Live" : "Final")}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                              {formatMatchStatus(match.status) || "Scheduled"}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-2">
                           <Link to={`/matches?matchId=${match.id}`} className="sc-button is-ghost text-xs">
                             {live ? "Live tracker" : "Details"}
                           </Link>
@@ -928,172 +960,65 @@ export default function HomePage() {
                             </a>
                           )}
                         </div>
-                      </Panel>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
-
-            <Card className="space-y-4 p-5 sm:p-6">
-              <SectionHeader
-                eyebrow="Finals"
-                title="Latest results"
-                action={
-                  <Link to="/matches" className="sc-button is-ghost">
-                    Match archive
-                  </Link>
-                }
-              />
-              {loading && latestResults.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                  Loading results...
-                </Card>
-              ) : latestResults.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                  No finals saved yet.
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {latestResults.map((match) => (
-                    <Panel
-                      key={match.id}
-                      as={Link}
-                      variant="tinted"
-                      to={`/matches?matchId=${match.id}`}
-                      className="block p-4"
-                    >
-                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                            {match.event?.name || "Match"}
-                          </p>
-                          <h3 className="text-lg font-semibold text-ink">{formatMatchup(match)}</h3>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                            {match.status || "final"}
-                          </p>
-                        </div>
                       </div>
                     </Panel>
-                  ))}
-                </div>
-              )}
-            </Card>
-          </div>
-
-          <div className="space-y-6">
-            <Card className="space-y-3 p-5 sm:p-6">
-              <SectionHeader eyebrow="Streaming" title="Featured broadcast" />
-              {upcomingStreamMatch ? (
-                <>
-                  <p className="text-sm text-ink">{formatMatchup(upcomingStreamMatch)}</p>
-                  <p className="text-xs text-ink-muted">{formatMatchTime(upcomingStreamMatch.start_time)}</p>
-                  <p className="text-xs text-ink-muted">
-                    Provider: {formatMediaProvider(upcomingStreamMatch)}
-                  </p>
-                  <a href={resolveStreamUrl(upcomingStreamMatch)} target="_blank" rel="noreferrer" className="sc-button mt-2">
-                    Watch stream
-                  </a>
-                </>
-              ) : (
-                <p className="text-sm text-ink-muted">Attach media links to highlight upcoming streams.</p>
-              )}
-            </Card>
-            <Card className="space-y-3 p-5 sm:p-6">
-              <SectionHeader eyebrow="Spotlight" title="Event focus" />
-              {spotlightEvent ? (
-                <>
-                  <p className="text-lg font-semibold text-ink">{spotlightEvent.name}</p>
-                  <p className="text-sm text-ink-muted">
-                    {formatDateRange(spotlightEvent.start_date, spotlightEvent.end_date)}
-                  </p>
-                  <p className="text-sm text-ink-muted">{spotlightEvent.location || "Location TBC"}</p>
-                </>
-              ) : (
-                <p className="text-sm text-ink-muted">Create events to spotlight a league, tournament, or camp.</p>
-              )}
-            </Card>
-          </div>
-        </SectionShell>
-
-        <SectionShell as="section" className="grid gap-6 lg:grid-cols-[1.05fr,0.95fr]">
-          <Card className="space-y-4 p-5 sm:p-6">
-            <SectionHeader
-              eyebrow="Divisions"
-              title="Active standings"
-              action={
-                <Link to="/divisions" className="sc-button">
-                  View standings
-                </Link>
-              }
-            />
-            {loading && safeDivisions.length === 0 ? (
-              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                Loading divisions...
-              </Card>
-            ) : safeDivisions.length === 0 ? (
-              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                No divisions yet. Add one in the dashboard to see it here.
-              </Card>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                {safeDivisions.map((division) => (
-                  <Card key={division.id} as="article" variant="muted" className="p-4">
-                    <h3 className="text-lg font-semibold text-ink">{division.name}</h3>
-                    <p className="text-sm text-ink-muted">
-                      Level: {division.level ? division.level : "Not specified"}
-                    </p>
-                  </Card>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>
+        </SectionShell>
 
-          <Card className="space-y-4 p-5 sm:p-6 lg:p-7 sc-feature-panel">
+        <SectionShell as="section">
+          <Card className="space-y-4 p-5 sm:p-6">
             <SectionHeader
-              eyebrow="Teams"
-              title="Programs to watch"
-              description="Handpicked programs showcasing league talent and operational excellence."
+              eyebrow="Finals"
+              title="Latest results"
               action={
-                <Link to="/teams" className="sc-button">
-                  View all
+                <Link to="/events" className="sc-button is-ghost">
+                  Match archive
                 </Link>
               }
             />
-            {loading && featuredTeams.length === 0 ? (
-              <Panel variant="tinted" className="p-5 text-center text-sm text-ink-muted">
-                Loading teams...
-              </Panel>
-            ) : featuredTeams.length === 0 ? (
-              <Panel variant="tinted" className="p-5 text-center text-sm text-ink-muted">
-                No teams found. Add a team to start the list.
-              </Panel>
+            {loading && latestResults.length === 0 ? (
+              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                Loading results...
+              </Card>
+            ) : latestResults.length === 0 ? (
+              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                No finals saved yet.
+              </Card>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {featuredTeams.slice(0, 4).map((team) => (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {latestResults.map((match) => (
                   <Panel
-                    key={team.id}
+                    key={match.id}
                     as={Link}
-                    variant="tintedAlt"
-                    to={`/teams/${team.id}`}
-                    className="p-4 shadow-lg transition hover:-translate-y-0.5"
+                    variant="tinted"
+                    to={`/matches?matchId=${match.id}`}
+                    className="block p-4"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_0_6px_rgba(198,255,98,0.12)]" />
-                      <h3 className="text-xl font-semibold text-ink">{team.name}</h3>
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                          {match.event?.name || "Match"}
+                        </p>
+                        <h3 className="text-lg font-semibold text-ink">{formatMatchup(match)}</h3>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                          {match.status || "final"}
+                        </p>
+                      </div>
                     </div>
-                    {team.short_name && (
-                      <p className="mt-2 text-sm text-ink-muted">Short name: {team.short_name}</p>
-                    )}
                   </Panel>
                 ))}
               </div>
             )}
           </Card>
         </SectionShell>
+
       </main>
 
       <footer className="sc-shell mt-10">
@@ -1362,7 +1287,7 @@ function buildSubscriptionLink(sub) {
   if (type === "match") return `/matches?matchId=${id}`;
   if (type === "player") return `/players/${id}`;
   if (type === "event") return `/matches?eventId=${id}`;
-  if (type === "division") return "/divisions";
+  if (type === "division") return "/events";
   return "/notifications";
 }
 function deriveClockLabel(match, liveEvent) {
@@ -1448,6 +1373,14 @@ function filterTimelineEvents(events = []) {
 function formatEventType(type) {
   if (!type) return "Event";
   return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+function getMatchCompletionTime(match) {
+  if (!match) return null;
+  const timestamp = match.confirmed_at || match.start_time;
+  if (!timestamp) return null;
+  const ms = new Date(timestamp).getTime();
+  return Number.isNaN(ms) ? null : ms;
 }
 function upsertSubscriptionState(list = [], row) {
   const next = list.filter((item) => item.id !== row.id);

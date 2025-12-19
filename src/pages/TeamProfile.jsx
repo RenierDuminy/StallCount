@@ -227,7 +227,9 @@ export default function TeamProfilePage() {
       }`
     : "Division assignment pending";
   const locationLabel = state.team?.division?.event?.location || "";
-  const shortNameLabel = state.team?.short_name ? `Short name: ${state.team.short_name}` : "";
+  const displayName = state.team?.name
+    ? `${state.team.name}${state.team.short_name ? ` (${state.team.short_name})` : ""}`
+    : "Loading team...";
 
   return (
     <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
@@ -236,24 +238,20 @@ export default function TeamProfilePage() {
           <SectionHeader
             eyebrow="Team profile"
             eyebrowVariant="tag"
-            title={state.team?.name || "Loading team..."}
+            title={displayName}
             description={divisionSummary}
             action={
               <div className="flex flex-wrap gap-2">
-                <Link to="/teams" className="sc-button is-ghost text-sm">
+                <Link to="/teams" className="sc-button is-light text-sm">
                   All teams
-                </Link>
-                <Link to="/" className="sc-button is-ghost text-sm">
-                  Home
                 </Link>
               </div>
             }
-          >
-            <div className="flex flex-wrap gap-2">
-              {shortNameLabel && <Chip variant="tag">{shortNameLabel}</Chip>}
-              {locationLabel && <Chip variant="ghost">{`Location: ${locationLabel}`}</Chip>}
-            </div>
-          </SectionHeader>
+            >
+              <div className="flex flex-wrap gap-2">
+                {locationLabel && <Chip variant="ghost">{`Location: ${locationLabel}`}</Chip>}
+              </div>
+            </SectionHeader>
         </Card>
 
         {state.error ? (
@@ -283,10 +281,6 @@ export default function TeamProfilePage() {
                 <SummaryStat label="Goal diff" value={ready ? metrics.goalDiff : "—"} />
                 <SummaryStat label="Spirit average" value={spiritAverageLabel} />
                 <SummaryStat label="Active players" value={metrics.activePlayers} />
-                <SummaryStat
-                  label="Last updated"
-                  value={state.team ? formatFullDate(state.team.created_at) : "—"}
-                />
               </div>
             </Card>
 
@@ -597,16 +591,16 @@ function SpiritTable({ entries, emptyLabel, teamId, variant = "received" }) {
       <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
         <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
           <tr>
-            <th className="px-4 py-3">Score</th>
-            <th className="px-4 py-3">
+            <th className="px-3 py-2">Score</th>
+            <th className="px-3 py-2">
               {variant === "received" ? "Given by" : "Given to"}
             </th>
-            <th className="px-4 py-3 text-right">Total</th>
-            <th className="px-4 py-3 text-right">Rules</th>
-            <th className="px-4 py-3 text-right">Contact</th>
-            <th className="px-4 py-3 text-right">Fair</th>
-            <th className="px-4 py-3 text-right">Attitude</th>
-            <th className="px-4 py-3 text-right">Communication</th>
+            <th className="px-2 py-2 text-center">Total</th>
+            <th className="px-2 py-2 text-center">Rules</th>
+            <th className="px-2 py-2 text-center">Contact</th>
+            <th className="px-2 py-2 text-center">Fair</th>
+            <th className="px-2 py-2 text-center">Attitude</th>
+            <th className="px-2 py-2 text-center">Communication</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
@@ -620,12 +614,12 @@ function SpiritTable({ entries, emptyLabel, teamId, variant = "received" }) {
                 : resolveRatedTeam(entry);
             return (
               <tr key={entry.id}>
-                <td className="px-4 py-2 font-semibold text-[var(--sc-surface-light-ink)]">
+                <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)]">
                   {Number.isFinite(goalsFor) && Number.isFinite(goalsAgainst)
                     ? `${goalsFor} - ${goalsAgainst}`
                     : "TBD"}
                 </td>
-                <td className="px-4 py-2 text-[var(--sc-surface-light-ink)]/80">
+                <td className="px-3 py-2 text-[var(--sc-surface-light-ink)]/80">
                   {opponent ? (
                     <Link
                       to={`/teams/${opponent.id}`}
@@ -637,14 +631,14 @@ function SpiritTable({ entries, emptyLabel, teamId, variant = "received" }) {
                     "TBD"
                   )}
                 </td>
-                <td className="px-4 py-2 text-right font-semibold text-[var(--sc-surface-light-ink)]">
+                <td className="px-2 py-2 text-center font-semibold text-[var(--sc-surface-light-ink)]">
                   {entry.total ?? "—"}
                 </td>
-                <td className="px-4 py-2 text-right">{entry.rules_knowledge ?? "—"}</td>
-                <td className="px-4 py-2 text-right">{entry.fouls_contact ?? "—"}</td>
-                <td className="px-4 py-2 text-right">{entry.self_control ?? "—"}</td>
-                <td className="px-4 py-2 text-right">{entry.positive_attitude ?? "—"}</td>
-                <td className="px-4 py-2 text-right">{entry.communication ?? "—"}</td>
+                <td className="px-2 py-2 text-center">{entry.rules_knowledge ?? "—"}</td>
+                <td className="px-2 py-2 text-center">{entry.fouls_contact ?? "—"}</td>
+                <td className="px-2 py-2 text-center">{entry.self_control ?? "—"}</td>
+                <td className="px-2 py-2 text-center">{entry.positive_attitude ?? "—"}</td>
+                <td className="px-2 py-2 text-center">{entry.communication ?? "—"}</td>
               </tr>
             );
           })}

@@ -4,6 +4,7 @@ const MATCH_FIELDS = `
   id,
   event_id,
   start_time,
+  confirmed_at,
   status,
   score_a,
   score_b,

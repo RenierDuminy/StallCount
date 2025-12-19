@@ -384,8 +384,8 @@ export default function DivisionResultsPage() {
             weekly matchups, and see outcome, seeding, and bracket details below.
           </p>
           <div className="dr-chip-row">
-            <Link to="/divisions" className="sc-button is-ghost">
-              Back to divisions
+            <Link to="/events" className="sc-button is-ghost">
+              Back to events
             </Link>
             <Link to="/matches" className="sc-button">
               View all matches

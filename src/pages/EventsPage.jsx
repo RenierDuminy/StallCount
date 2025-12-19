@@ -6,7 +6,7 @@ import { hydrateVenueLookup } from "../services/venueService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
 import { resolveMediaProviderLabel } from "../utils/matchMedia";
 
-export default function DivisionsPage() {
+export default function EventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialEventId = searchParams.get("eventId") || null;
   const [events, setEvents] = useState([]);
@@ -160,30 +160,31 @@ export default function DivisionsPage() {
         return;
       }
       if (startMs && startMs < now - 60 * 60 * 1000) {
-        buckets.past.push(match);
         return;
       }
-      buckets.upcoming.push(match);
+      if (status === "scheduled") {
+        buckets.upcoming.push(match);
+        return;
+      }
     });
     return buckets;
   }, [matches]);
 
-  const activeMatches = (() => {
-    const current = matchBuckets[matchTab] || [];
-    if (current.length > 0 || matchTab === "current") {
-      if (current.length === 0 && matchTab === "current") {
-        if (matchBuckets.upcoming.length > 0) {
-          return matchBuckets.upcoming;
-        }
-        if (matchBuckets.past.length > 0) {
-          return matchBuckets.past;
-        }
-        return [];
-      }
-      return current;
+  const activeMatches = useMemo(() => {
+    const bucket = matchBuckets[matchTab] || [];
+    if (matchTab === "current") {
+      return bucket.filter((match) => (match.status || "").toLowerCase() === "live");
     }
-    return current;
-  })();
+    if (bucket.length === 0) {
+      if (matchTab === "upcoming" && matchBuckets.current.length > 0) {
+        return matchBuckets.current;
+      }
+      if (matchTab === "past" && matchBuckets.upcoming.length > 0) {
+        return matchBuckets.upcoming;
+      }
+    }
+    return bucket;
+  }, [matchBuckets, matchTab]);
 
   const resolveVenueName = (match) =>
     match.venue?.name || (match.venue_id && venueLookup[match.venue_id]) || "Venue TBD";
