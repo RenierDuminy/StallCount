@@ -1,0 +1,101 @@
+Below is a structured “data dictionary” in paragraph form. I will go through each field, list its possible values, and explain what they imply in your app.
+
+---
+
+### General fields
+
+The `division` field is a string and can take the values `"open"`, `"women"`, or `"mixed"`. It indicates which competition division the game belongs to. If it is `"mixed"`, then the mixed-gender ratio rules (the `mixedRatio` block) should be applied. If it is `"open"` or `"women"`, the game is single-division and no mixed-ratio logic is needed.
+
+The `format` field is a string describing the ruleset profile. Typical options are `"wfdfChampionship"` and `"localSimple"`. `"wfdfChampionship"` implies you are using the full WFDF-style timing, caps, and mixed-ratio behaviour, including running clock and official inter-point timing. `"localSimple"` can be used for league or casual formats where you may ignore some of the more complex timing or ratio rules and mostly care about a simple “game to X” configuration.
+
+---
+
+### Game block
+
+The `game.pointTarget` field is an integer, typically values like 15, 13, or 11. It represents the score a team must reach to win under normal conditions if caps do not interfere. For example, in a standard WFDF game you would set this to 15.
+
+The `game.softCapMinutes` field is an integer in minutes or `null`. If it is a number (for example 90), that minute of game time is when the soft cap is applied. If it is `null`, there is no soft cap in this game. The soft cap only defines a moment to change the target; it does not end the game by itself.
+
+The `game.softCapMode` field is a string and typically one of `"addOneToHighest"`, `"addTwoToHighest"`, or `"none"`. If it is `"addOneToHighest"`, when the soft cap time is reached and the current point is completed, the new game target becomes the highest current score plus one. If it is `"addTwoToHighest"`, the new target becomes the highest score plus two. If it is `"none"`, the soft cap horn is informational only and the point target does not change, even though the time has been reached.
+
+The `game.hardCapMinutes` field is an integer in minutes or `null`. If it is a number (for example 100), that minute of game time is when the hard cap is enforced. If it is `null`, there is no hard time cap and the game only ends when a team reaches the point target or some other condition. The hard cap generally defines a real end-of-game limit.
+
+The `game.hardCapEndMode` field is a string, usually `"afterPoint"` or `"immediate"`. When set to `"afterPoint"`, once the hard cap time is reached, you finish the current point and then the game ends, regardless of the score. When set to `"immediate"`, the game ends immediately when the horn goes at the hard cap, and whatever the score is at that moment is final.
+
+---
+
+### Half block
+
+The `half.pointTarget` field is an integer or `null`. When it is an integer, for example 8, half-time begins when the first team reaches that score. If it is `null`, there is no score-based half; the half will either not be used or will be triggered only by a time cap if configured.
+
+The `half.timeCapMinutes` field is an integer in minutes or `null`. If it has a value (for example 55), and no team has yet reached `half.pointTarget`, then half-time is triggered when that minute is reached. If it is `null`, there is no time-based half and only the score trigger (if any) will start half-time.
+
+The `half.breakMinutes` field is an integer, such as 7, 5, or 3. It is simply the length of the half-time break in minutes. Your app should use this to display and count down the half-time interval before restarting play.
+
+---
+
+### Clock block
+
+The `clock.isRunningClockEnabled` field is a boolean that controls the overall time behaviour. If it is `true`, you are in a running-clock mode where the game clock continues during points, between points, during timeouts, and during half-time, and only special tournament stoppages (defined by your format) pause the clock. If it is `false`, you are in a stopped-clock or simplified mode. In that case you may only count active point time, or even ignore time entirely and treat the game as purely “first to X points” with an optional informational clock.
+
+---
+
+### Inter-point block (after goal until next pull)
+
+The `interPoint.offenceOnLineSeconds` field is an integer, typically around 45. It represents the number of seconds after a goal by which the offensive team must have all seven players on the goal line, each with at least one foot on the line, ready to start the next point.
+
+The `interPoint.offenceReadySeconds` field is an integer, such as 60. It gives the time after a goal by which the offence must have signaled readiness (for example by raising a hand) and had all non-players and extra personnel leave the field. At this time the offence is fully set.
+
+The `interPoint.pullDeadlineSeconds` field is an integer, such as 75. It is the maximum amount of time after a goal in which the defence must pull the disc to start the next point. In practice, you may also enforce the rule “or 15 seconds after the offence is ready, whichever is later” in your logic, even though the configuration holds only a single deadline value.
+
+The `interPoint.timeoutAddsSeconds` field is an integer, for example 75. It states how many seconds are added to the inter-point time if a timeout is taken between a goal and the next pull. This effectively extends the count-up or count-down by that amount for each such timeout, depending on how your timer is implemented.
+
+The `interPoint.areTimeoutsStacked` field is a boolean that defines how multiple timeouts between points interact with the inter-point clock. If it is `true`, each timeout adds another `timeoutAddsSeconds` to the total time (they stack cumulatively). If it is `false`, taking more than one timeout between points does not extend the inter-point time cumulatively; you might cap the extension at a single block or ignore additional timeouts for timing purposes.
+
+---
+
+### Timeouts block (general game timeouts)
+
+The `timeouts.perTeamPerGame` field is an integer that defines how many timeouts each team is allowed to take across the entire game, in any context (during points or between points). Typical values are 2 or 3. Once a team uses this many timeouts, they cannot call any more.
+
+The `timeouts.durationSeconds` field is an integer defining the duration of each timeout in seconds, for example 75 or 60. This tells your app how long to run the timeout countdown. Whether the game clock continues during this timeout or pauses is determined by the `format` and `clock` behaviour rather than this field.
+
+---
+
+### In-point timeout block (timeouts during a point, after pull)
+
+The `inPointTimeout.offenceSetSeconds` field is an integer, typically around 75. It gives the number of seconds after an in-point timeout is called (usually by the offence) for the offence to be fully set and ready to resume play. If they are not set by this time, enforcement or violation logic could apply, depending on your implementation.
+
+The `inPointTimeout.defenceCheckMaxSeconds` field is another integer, often around 90. It defines the latest time after an in-point timeout by which the defence must check the disc in and resume play. In the rules, this is often effectively “90 seconds after the timeout starts or 15 seconds after the offence is ready, whichever is later”. Your app can implement that logic using this value as the global outer limit.
+
+---
+
+### Discussions block (call resolution timing)
+
+The `discussions.captainInterventionSeconds` field is an integer, such as 15. It sets the point in time after a rules call (foul, travel, etc.) at which captains are expected to step in and help manage or guide the discussion if it has not yet been resolved. Your app can show prompts or indicators to that effect.
+
+The `discussions.autoContestSeconds` field is an integer, often 45. If the call is still unresolved when this time has passed, the call is treated as contested by default. In that case, the disc returns to the appropriate player according to the rules, typically the last non-contested thrower or previous position. This is a rule-enforcement time limit to avoid endless discussions.
+
+The `discussions.restartPlayMaxSeconds` field is an integer, commonly 60. It is a hard upper limit on how long play can be stopped due to a call. By this time, play must restart, either because the call has been resolved or because the rules force a contest situation. Your UI can use this as a countdown to force play to resume.
+
+---
+
+### Disc-in-play block (turnovers and pulls)
+
+The `discInPlay.pivotCentralZoneMaxSeconds` field is an integer, such as 10. It defines the maximum number of seconds a player has to walk to the disc and establish a pivot after the disc has come to rest in the central zone following a turnover. This prevents excessive delay in bringing the disc into play.
+
+The `discInPlay.pivotEndZoneMaxSeconds` field is an integer, such as 20. It is the equivalent pivot-time limit when the disc has come to rest in an end zone instead of the central zone. The longer time reflects the extra distance and logistics that often occur in the end zone.
+
+The `discInPlay.newDiscRetrievalMaxSeconds` field is an integer, for example 20. After a pull or an out-of-bounds turnover, players have this amount of time to retrieve the disc. If it is not reasonably retrievable within this window, a replacement disc can be requested according to the rules, and your app may prompt for or record that.
+
+---
+
+### Mixed ratio block
+
+The `mixedRatio.isEnabled` field is a boolean. When it is `true`, the game should apply mixed-gender personnel ratio rules (for example Ratio Rule A with an ABBA pattern). When it is `false`, mixed ratio logic is completely bypassed, which is appropriate for Open or Women’s divisions or for leagues that do not use formal ratio rules.
+
+The `mixedRatio.ratioRule` field is a string or `null`. It can be `"A"`, `"B"`, or `null`. If it is `"A"`, you are using WFDF Ratio Rule A, which typically uses an ABBA pattern for which team chooses the personnel ratio across points and does not reset at half. If it is `"B"`, you are using Ratio Rule B, which usually ties the chooser or pattern to the score or some other metric (you can define this later). If it is `null`, no special ratio algorithm is applied and the league may use a fixed or ad hoc ratio policy.
+
+Finally, the `mixedRatio.initialRatioChoosingTeam` field is a string or `null`, with typical values `"home"`, `"away"`, or `null`. `"home"` means the home team is the one that chooses the personnel ratio (for example, 4 women and 3 men versus 3 women and 4 men) for the first relevant point. `"away"` means the away team makes that first choice. `null` means that the ratio-choosing team has not been set yet or is not applicable, for example in divisions where mixed ratio is disabled.
+
+This set of paragraphs gives you a complete, formal description of every field, the options they can take, and how those options affect game logic in your app.

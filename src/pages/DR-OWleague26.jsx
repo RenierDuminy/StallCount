@@ -33,6 +33,26 @@ const formatDateTime = (value) => {
     minute: "2-digit",
   });
 };
+
+const formatCoordinate = (value) => {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return null;
+  }
+  return value.toFixed(4);
+};
+
+const copyToClipboard = async (text, onSuccess, onError) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    if (onSuccess) {
+      onSuccess();
+    }
+  } catch (err) {
+    if (onError) {
+      onError(err);
+    }
+  }
+};
 const buildPoolMatchBuckets = (matches = []) => {
   const buckets = {};
   matches.forEach((match) => {
@@ -174,6 +194,7 @@ export default function DROwLeague26Page() {
   const [error, setError] = useState(null);
   const [eventData, setEventData] = useState(null);
   const [matchesByPool, setMatchesByPool] = useState({});
+  const [copyToast, setCopyToast] = useState(null);
   useEffect(() => {
     let ignore = false;
     async function load() {
@@ -204,6 +225,18 @@ export default function DROwLeague26Page() {
   }, []);
   return (
     <div className="pb-16 text-ink">
+      {copyToast && (
+        <div className="fixed bottom-4 left-1/2 z-50 w-full max-w-sm -translate-x-1/2 px-4">
+          <div
+            className="sc-alert is-success text-center text-sm"
+            onAnimationEnd={() => {
+              setTimeout(() => setCopyToast(null), 2000);
+            }}
+          >
+            {copyToast}
+          </div>
+        </div>
+      )}
       <SectionShell as="main" className="space-y-6 py-8">
         <Card className="space-y-4 p-6 sm:p-8">
           <SectionHeader
@@ -272,6 +305,78 @@ export default function DROwLeague26Page() {
                   </p>
                 </Panel>
               </div>
+              <Panel variant="muted" className="space-y-3 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">
+                      Venues
+                    </p>
+                    <p className="text-sm text-ink-muted">
+                      Linked via the event setup wizard
+                    </p>
+                  </div>
+                  <Chip>{eventData.venues?.length || 0}</Chip>
+                </div>
+                {eventData.venues?.length ? (
+                  <ul className="grid gap-2 md:grid-cols-2">
+                    {eventData.venues.map((venue) => {
+                      const lat = formatCoordinate(venue.latitude);
+                      const lon = formatCoordinate(venue.longitude);
+                      const locationLabel = venue.location || "Location TBD";
+                      const nameLabel = venue.name || "Venue";
+                      const compositeLabel = `${locationLabel} (${nameLabel})`;
+                      const coordText =
+                        lat && lon ? `${lat}, ${lon}` : null;
+                      return (
+                        <li
+                          key={venue.id}
+                          className="rounded border border-border p-3 text-sm"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-1 text-left">
+                              <p className="font-semibold text-ink">
+                                {locationLabel}
+                              </p>
+                              <p className="text-xs text-ink-muted">
+                                ({nameLabel})
+                              </p>
+                              {venue.notes && (
+                                <p className="text-xs text-ink-muted">
+                                  {venue.notes}
+                                </p>
+                              )}
+                              {(lat || lon) && (
+                                <p className="text-xs text-ink-muted">
+                                  Coords: {lat || "--"}, {lon || "--"}
+                                </p>
+                              )}
+                            </div>
+                            {coordText && (
+                              <button
+                                type="button"
+                                className="sc-button is-ghost text-[11px] uppercase tracking-wide"
+                                onClick={() =>
+                                  copyToClipboard(coordText, () =>
+                                    setCopyToast(
+                                      `Copied ${compositeLabel} coordinates`,
+                                    ),
+                                  )
+                                }
+                              >
+                                Copy coords
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-ink-muted">
+                    No venues linked to this event yet.
+                  </p>
+                )}
+              </Panel>
             </Card>
             {eventData.divisions.length === 0 ? (
               <Card
@@ -343,7 +448,7 @@ export default function DROwLeague26Page() {
                           No pools are registered for this division.
                         </Panel>
                       ) : (
-                        <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="space-y-4">
                           {division.pools.map((pool) => {
                             const poolMatches = matchesByPool[pool.id] || {
                               current: [],

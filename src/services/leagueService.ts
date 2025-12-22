@@ -33,6 +33,15 @@ export type EventPoolRow = {
   teams: EventPoolTeam[];
 };
 
+export type EventVenueRow = {
+  id: string;
+  name: string;
+  location: string | null;
+  notes: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
 export type EventDivisionRow = {
   id: string;
   name: string;
@@ -42,6 +51,7 @@ export type EventDivisionRow = {
 
 export type EventHierarchyRow = EventRow & {
   divisions: EventDivisionRow[];
+  venues: EventVenueRow[];
 };
 
 export async function getDivisions(limit = 6): Promise<DivisionRow[]> {
@@ -125,8 +135,21 @@ type RawDivision = {
   pools?: RawPool[] | null;
 };
 
+type RawVenue = {
+  venue_id: string | null;
+  venue?: {
+    id: string;
+    name: string | null;
+    location: string | null;
+    notes: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  } | null;
+};
+
 type RawEventHierarchy = EventRow & {
   divisions?: RawDivision[] | null;
+  event_venues?: RawVenue[] | null;
 };
 
 const EVENT_HIERARCHY_SELECT = `
@@ -153,6 +176,17 @@ const EVENT_HIERARCHY_SELECT = `
           short_name
         )
       )
+    )
+  ),
+  event_venues:event_venues (
+    venue_id,
+    venue:venues (
+      id,
+      name,
+      location,
+      notes,
+      latitude,
+      longitude
     )
   )
 `;
@@ -212,6 +246,30 @@ export async function getEventHierarchy(eventId: string): Promise<EventHierarchy
       }))
     : [];
 
+  const venues: EventVenueRow[] = Array.isArray(typedData.event_venues)
+    ? typedData.event_venues
+        .map((entry) => {
+          if (!entry?.venue?.id) {
+            return null;
+          }
+          return {
+            id: entry.venue.id,
+            name: entry.venue.name ?? "Venue",
+            location: entry.venue.location ?? null,
+            notes: entry.venue.notes ?? null,
+            latitude:
+              typeof entry.venue.latitude === "number"
+                ? entry.venue.latitude
+                : null,
+            longitude:
+              typeof entry.venue.longitude === "number"
+                ? entry.venue.longitude
+                : null,
+          };
+        })
+        .filter((entry): entry is EventVenueRow => Boolean(entry))
+    : [];
+
   return {
     id: typedData.id,
     name: typedData.name,
@@ -222,5 +280,6 @@ export async function getEventHierarchy(eventId: string): Promise<EventHierarchy
     created_at: typedData.created_at,
     rules: typedData.rules ?? null,
     divisions,
+    venues,
   };
 }
