@@ -38,6 +38,13 @@ const ADMIN_MODULES = [
     accent: "bg-rose-100 text-rose-700",
   },
   {
+    label: "Event setup",
+    description:
+      "Step-by-step flow to create events, their divisions, pools, and seeded matches before publishing.",
+    to: "/admin/event-setup",
+    accent: "bg-lime-100 text-lime-700",
+  },
+  {
     label: "Spirit scores",
     description: "Capture and review spirit scores for completed matches.",
     to: "/spirit-scores",

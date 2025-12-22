@@ -12,7 +12,10 @@ import Players from "./pages/PlayersPage";
 import PlayerProfilePage from "./pages/PlayerProfilePage";
 import MatchesPage from "./pages/MatchesPage";
 import EventsPage from "./pages/EventsPage";
-import DivisionResultsPage from "./pages/DivisionResultsPage";
+import DRTestingPage from "./pages/DR-testing";
+import DROwLeague26Page from "./pages/DR-OWleague26";
+import EventSetupWizardPage from "./pages/EventSetupWizard";
+import DRRL26Page from "./pages/DR-RL26";
 import TeamProfilePage from "./pages/TeamProfile";
 import SpiritScoresPage from "./pages/SpiritScoresPage";
 import UserPage from "./pages/UserPage";
@@ -34,7 +37,9 @@ export default function AppRoutes() {
           <Route path="/teams/:teamId" element={<TeamProfilePage />} />
           <Route path="/matches" element={<MatchesPage />} />
           <Route path="/events" element={<EventsPage />} />
-          <Route path="/division-results" element={<DivisionResultsPage />} />
+          <Route path="/events/dr-testing" element={<DRTestingPage />} />
+          <Route path="/events/dr-owleague26" element={<DROwLeague26Page />} />
+          <Route path="/events/dr-rl26" element={<DRRL26Page />} />
           <Route
             path="/notifications"
             element={
@@ -73,6 +78,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute>
                 <MediaAdminPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/event-setup"
+            element={
+              <ProtectedRoute>
+                <EventSetupWizardPage />
               </ProtectedRoute>
             }
           />

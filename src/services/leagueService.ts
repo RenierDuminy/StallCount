@@ -18,6 +18,32 @@ export type EventRow = {
   rules?: Record<string, unknown> | null;
 };
 
+export type EventPoolTeam = {
+  seed: number | null;
+  team: {
+    id: string;
+    name: string;
+    short_name: string | null;
+  };
+};
+
+export type EventPoolRow = {
+  id: string;
+  name: string;
+  teams: EventPoolTeam[];
+};
+
+export type EventDivisionRow = {
+  id: string;
+  name: string;
+  level: string | null;
+  pools: EventPoolRow[];
+};
+
+export type EventHierarchyRow = EventRow & {
+  divisions: EventDivisionRow[];
+};
+
 export async function getDivisions(limit = 6): Promise<DivisionRow[]> {
   const { data, error } = await supabase
     .from("divisions")
@@ -75,4 +101,126 @@ export async function getEventsByIds(ids: string[]): Promise<EventRow[]> {
   }
 
   return (data ?? []) as EventRow[];
+}
+
+type RawPoolTeam = {
+  seed: number | null;
+  team: {
+    id: string;
+    name: string;
+    short_name: string | null;
+  } | null;
+};
+
+type RawPool = {
+  id: string;
+  name: string;
+  teams?: RawPoolTeam[] | null;
+};
+
+type RawDivision = {
+  id: string;
+  name: string;
+  level: string | null;
+  pools?: RawPool[] | null;
+};
+
+type RawEventHierarchy = EventRow & {
+  divisions?: RawDivision[] | null;
+};
+
+const EVENT_HIERARCHY_SELECT = `
+  id,
+  name,
+  type,
+  start_date,
+  end_date,
+  location,
+  created_at,
+  rules,
+  divisions:divisions (
+    id,
+    name,
+    level,
+    pools:pools (
+      id,
+      name,
+      teams:pool_teams (
+        seed,
+        team:teams (
+          id,
+          name,
+          short_name
+        )
+      )
+    )
+  )
+`;
+
+export async function getEventHierarchy(eventId: string): Promise<EventHierarchyRow | null> {
+  if (!eventId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("events")
+    .select(EVENT_HIERARCHY_SELECT)
+    .eq("id", eventId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to load event hierarchy");
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const typedData = data as RawEventHierarchy;
+
+  const divisions: EventDivisionRow[] = Array.isArray(typedData.divisions)
+    ? typedData.divisions.map((division) => ({
+        id: division.id,
+        name: division.name,
+        level: division.level ?? null,
+        pools: Array.isArray(division.pools)
+          ? division.pools.map((pool) => ({
+              id: pool.id,
+              name: pool.name,
+              teams: Array.isArray(pool.teams)
+                ? pool.teams
+                    .map((entry): EventPoolTeam | null => {
+                      if (!entry?.team?.id) {
+                        return null;
+                      }
+                      const rawSeed = entry.seed;
+                      const seedValue =
+                        typeof rawSeed === "number" && !Number.isNaN(rawSeed) ? rawSeed : null;
+                      return {
+                        seed: seedValue,
+                        team: {
+                          id: entry.team.id,
+                          name: entry.team.name,
+                          short_name: entry.team.short_name ?? null,
+                        },
+                      };
+                    })
+                    .filter((entry): entry is EventPoolTeam => Boolean(entry))
+                : [],
+            }))
+          : [],
+      }))
+    : [];
+
+  return {
+    id: typedData.id,
+    name: typedData.name,
+    type: typedData.type,
+    start_date: typedData.start_date ?? null,
+    end_date: typedData.end_date ?? null,
+    location: typedData.location ?? null,
+    created_at: typedData.created_at,
+    rules: typedData.rules ?? null,
+    divisions,
+  };
 }

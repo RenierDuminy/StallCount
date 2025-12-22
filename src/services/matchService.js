@@ -3,6 +3,8 @@ import { supabase } from "./supabaseClient";
 const MATCH_FIELDS = `
   id,
   event_id,
+  division_id,
+  pool_id,
   start_time,
   confirmed_at,
   status,

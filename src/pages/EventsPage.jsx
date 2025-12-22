@@ -6,6 +6,21 @@ import { hydrateVenueLookup } from "../services/venueService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
 import { resolveMediaProviderLabel } from "../utils/matchMedia";
 
+const EVENT_DETAIL_ROUTES = {
+  "4473483d-bc4d-443b-b93e-65375c35a8b4": {
+    path: "/events/dr-testing",
+    label: "Open event workspace",
+  },
+  "0d3369f9-8461-4f02-b343-5679bb17d644": {
+    path: "/events/dr-owleague26",
+    label: "Open event workspace",
+  },
+  "b0598bc7-fdd2-498c-ab8c-e5f4904ed03d": {
+    path: "/events/dr-rl26",
+    label: "Open event workspace",
+  },
+};
+
 export default function EventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialEventId = searchParams.get("eventId") || null;
@@ -228,11 +243,6 @@ export default function EventsPage() {
             eyebrow="Divisions"
             title="Division control center"
             description="Select a tournament to view its calendar, venue posture, rule set, and live fixtures."
-            action={
-              <Link to="/division-results" className="sc-button is-ghost">
-                Division results
-              </Link>
-            }
           >
           </SectionHeader>
         </Card>
@@ -314,18 +324,6 @@ export default function EventsPage() {
                   <p className="text-xs uppercase tracking-wide text-ink-muted">Location</p>
                   <p className="font-semibold text-ink">{selectedEvent.location || "TBD"}</p>
                 </Panel>
-                <Panel variant="muted" className="p-3">
-                  <p className="text-xs uppercase tracking-wide text-ink-muted">Created</p>
-                  <p className="font-semibold text-ink">
-                    {formatDate(selectedEvent.created_at)} at{" "}
-                    {selectedEvent.created_at
-                      ? new Date(selectedEvent.created_at).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "--"}
-                  </p>
-                </Panel>
                 {rulesSummary && (
                   <Panel variant="muted" className="space-y-2 p-3">
                     <p className="text-xs uppercase tracking-wide text-ink-muted">Rules snapshot</p>
@@ -338,6 +336,14 @@ export default function EventsPage() {
                       ))}
                     </div>
                   </Panel>
+                )}
+                {selectedEvent && EVENT_DETAIL_ROUTES[selectedEvent.id] && (
+                  <Link
+                    to={EVENT_DETAIL_ROUTES[selectedEvent.id].path}
+                    className="sc-button justify-center"
+                  >
+                    {EVENT_DETAIL_ROUTES[selectedEvent.id].label}
+                  </Link>
                 )}
               </div>
             )}

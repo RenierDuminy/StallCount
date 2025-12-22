@@ -367,7 +367,7 @@ function FinalResultsColumn({ rows }) {
   );
 }
 
-export default function DivisionResultsPage() {
+export default function DRRL26Page() {
   return (
     <div className="division-results-page">
       <header className="sc-shell dr-shell-full dr-shell-padding">
@@ -375,7 +375,7 @@ export default function DivisionResultsPage() {
           <div className="dr-chip-row">
             <span className="sc-chip">Division results</span>
             <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Residence league · Pool play & playoffs
+              Residence league ┬╖ Pool play & playoffs
             </span>
           </div>
           <h1 className="text-3xl font-semibold">Residence league results, pool table view.</h1>
