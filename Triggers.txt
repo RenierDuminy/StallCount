@@ -1,1208 +1,242 @@
-| trigger_name                      | schema_name | table_name         | trigger_definition                                                                                                                                         | function_name                    | function_definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
-| trg_audit_bracket_nodes           | public      | bracket_nodes      | CREATE TRIGGER trg_audit_bracket_nodes AFTER INSERT OR DELETE OR UPDATE ON bracket_nodes FOR EACH ROW EXECUTE FUNCTION audit_row()                         | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_brackets                | public      | brackets           | CREATE TRIGGER trg_audit_brackets AFTER INSERT OR DELETE OR UPDATE ON brackets FOR EACH ROW EXECUTE FUNCTION audit_row()                                   | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_division_teams          | public      | division_teams     | CREATE TRIGGER trg_audit_division_teams AFTER INSERT OR DELETE OR UPDATE ON division_teams FOR EACH ROW EXECUTE FUNCTION audit_row()                       | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_divisions               | public      | divisions          | CREATE TRIGGER trg_audit_divisions AFTER INSERT OR DELETE OR UPDATE ON divisions FOR EACH ROW EXECUTE FUNCTION audit_row()                                 | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_events                  | public      | events             | CREATE TRIGGER trg_audit_events AFTER INSERT OR DELETE OR UPDATE ON events FOR EACH ROW EXECUTE FUNCTION audit_row()                                       | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_live_events             | public      | live_events        | CREATE TRIGGER trg_audit_live_events AFTER INSERT OR DELETE OR UPDATE ON live_events FOR EACH ROW EXECUTE FUNCTION audit_row()                             | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_match_events            | public      | match_events       | CREATE TRIGGER trg_audit_match_events AFTER INSERT OR DELETE OR UPDATE ON match_events FOR EACH ROW EXECUTE FUNCTION audit_row()                           | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_match_logs              | public      | match_logs         | CREATE TRIGGER trg_audit_match_logs AFTER INSERT OR DELETE OR UPDATE ON match_logs FOR EACH ROW EXECUTE FUNCTION audit_row()                               | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_match_logs_enqueue_live_event | public      | match_logs         | CREATE TRIGGER trg_match_logs_enqueue_live_event AFTER INSERT ON match_logs FOR EACH ROW EXECUTE FUNCTION enqueue_live_event_from_log()                    | enqueue_live_event_from_log      | CREATE OR REPLACE FUNCTION public.enqueue_live_event_from_log()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  event_code text;
-  payload jsonb;
-  match_rec record;
-  match_label text;
-  team_label text;
-  human_event text;
-begin
-  select code into event_code
-  from public.match_events
-  where id = new.event_type_id;
-
-  if event_code is null then
-    return new;
-  end if;
-
-  select
-    m.id,
-    m.event_id,
-    m.division_id,
-    m.team_a,
-    m.team_b,
-    m.start_time,
-    ta.name as team_a_name,
-    tb.name as team_b_name,
-    ev.name as event_name,
-    d.name as division_name
-  into match_rec
-  from public.matches m
-  left join public.teams ta on ta.id = m.team_a
-  left join public.teams tb on tb.id = m.team_b
-  left join public.events ev on ev.id = m.event_id
-  left join public.divisions d on d.id = m.division_id
-  where m.id = new.match_id;
-
-  match_label := coalesce(nullif(match_rec.team_a_name, ''), 'Team A')
-    || ' vs '
-    || coalesce(nullif(match_rec.team_b_name, ''), 'Team B');
-
-  if match_label is null or match_label = ' vs ' then
-    match_label := coalesce(new.match_id::text, 'Match');
-  end if;
-
-  if new.team_id is not null then
-    if new.team_id = match_rec.team_a then
-      team_label := coalesce(nullif(match_rec.team_a_name, ''), 'Team A');
-    elsif new.team_id = match_rec.team_b then
-      team_label := coalesce(nullif(match_rec.team_b_name, ''), 'Team B');
-    else
-      select name into team_label
-      from public.teams
-      where id = new.team_id;
-    end if;
-  end if;
-
-  human_event := initcap(replace(event_code, '_', ' '));
-
-  payload := jsonb_build_object(
-    'log_id', new.id,
-    'match_id', new.match_id,
-    'event_id', match_rec.event_id,
-    'division_id', match_rec.division_id,
-    'team_id', new.team_id,
-    'player_id', new.actor_id,
-    'secondary_player_id', new.secondary_actor_id,
-    'abba_line', new.abba_line,
-    'match_start_time', match_rec.start_time,
-    'match_name', match_label,
-    'division_name', match_rec.division_name,
-    'team_name', team_label,
-    'target_name', coalesce(team_label, match_label),
-    'title', human_event || ' · ' || coalesce(team_label, match_label),
-    'body', format('New %s event for %s', human_event, coalesce(team_label, match_label)),
-    'url', format('/matches/%s', new.match_id)
-  );
-
-  insert into public.live_events (match_id, event_type, data)
-  values (new.match_id, event_code, payload);
-
-  return new;
-end;
-$function$
- |
-| trg_match_logs_player_stats       | public      | match_logs         | CREATE TRIGGER trg_match_logs_player_stats AFTER INSERT OR DELETE OR UPDATE ON match_logs FOR EACH ROW EXECUTE FUNCTION trg_player_stats_from_match_logs() | trg_player_stats_from_match_logs | CREATE OR REPLACE FUNCTION public.trg_player_stats_from_match_logs()
- RETURNS trigger
- LANGUAGE plpgsql
-AS $function$
-begin
-  if TG_OP = 'INSERT' then
-    perform public.apply_match_log_delta(
-      NEW.match_id,
-      NEW.team_id,
-      NEW.actor_id,
-      NEW.secondary_actor_id,
-      NEW.event_type_id,
-      1
-    );
-    return NEW;
-  elsif TG_OP = 'DELETE' then
-    perform public.apply_match_log_delta(
-      OLD.match_id,
-      OLD.team_id,
-      OLD.actor_id,
-      OLD.secondary_actor_id,
-      OLD.event_type_id,
-      -1
-    );
-    return OLD;
-  elsif TG_OP = 'UPDATE' then
-    perform public.apply_match_log_delta(
-      OLD.match_id,
-      OLD.team_id,
-      OLD.actor_id,
-      OLD.secondary_actor_id,
-      OLD.event_type_id,
-      -1
-    );
-    perform public.apply_match_log_delta(
-      NEW.match_id,
-      NEW.team_id,
-      NEW.actor_id,
-      NEW.secondary_actor_id,
-      NEW.event_type_id,
-      1
-    );
-    return NEW;
-  end if;
-
-  return null;
-end;
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| trg_audit_match_status            | public      | match_status       | CREATE TRIGGER trg_audit_match_status AFTER INSERT OR DELETE OR UPDATE ON match_status FOR EACH ROW EXECUTE FUNCTION audit_row()                           | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_matches                 | public      | matches            | CREATE TRIGGER trg_audit_matches AFTER INSERT OR DELETE OR UPDATE ON matches FOR EACH ROW EXECUTE FUNCTION audit_row()                                     | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_matches_media_normalize       | public      | matches            | CREATE TRIGGER trg_matches_media_normalize BEFORE INSERT OR UPDATE OF media_link ON matches FOR EACH ROW EXECUTE FUNCTION normalize_media_link()           | normalize_media_link             | CREATE OR REPLACE FUNCTION public.normalize_media_link()
- RETURNS trigger
- LANGUAGE plpgsql
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  j   jsonb := NEW.media_link;
-  p   jsonb;
-  prov text;
-  url  text;
-  st   text;
-BEGIN
-  IF j IS NULL THEN
-    RETURN NEW;
-  END IF;
-
-  -- Allow raw string -> wrap as primary.url
-  IF jsonb_typeof(j) = 'string' THEN
-    j := jsonb_build_object('primary', jsonb_build_object('provider','custom','url', j::text));
-  END IF;
-
-  p    := j->'primary';
-  prov := lower(COALESCE(p->>'provider','custom'));
-  url  := btrim(p->>'url');
-
-  -- If primary.status missing, mirror matches.status (TEXT lookup)
-  st := COALESCE(p->>'status', NEW.status);
-
-  -- Derive embed for YouTube if absent
-  IF prov = 'youtube' AND (p ? 'embed_url') IS FALSE THEN
-    j := jsonb_set(
-          j, '{primary,embed_url}',
-          to_jsonb(
-            CASE
-              WHEN url ~* 'youtu\.be/([A-Za-z0-9_-]{6,})'
-                THEN 'https://www.youtube.com/embed/' || regexp_replace(url, '.*youtu\.be/([^?&/]+).*', '\1')
-              WHEN url ~* 'v=([A-Za-z0-9_-]{6,})'
-                THEN 'https://www.youtube.com/embed/' || regexp_replace(url, '.*[?&]v=([^?&/]+).*', '\1')
-              ELSE NULL
-            END
-          ),
-          true
-        );
-  END IF;
-
-  j := jsonb_set(j,'{primary,provider}', to_jsonb(prov), true);
-  j := jsonb_set(j,'{primary,status}',   to_jsonb(st),   true);
-
-  -- Fill start_time if missing
-  IF (p ? 'start_time') IS FALSE AND NEW.start_time IS NOT NULL THEN
-    j := jsonb_set(j,'{primary,start_time}', to_jsonb(NEW.start_time), true);
-  END IF;
-
-  NEW.media_link := j;
-  RETURN NEW;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| trg_audit_players                 | public      | player             | CREATE TRIGGER trg_audit_players AFTER INSERT OR DELETE OR UPDATE ON player FOR EACH ROW EXECUTE FUNCTION audit_row()                                      | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_players_touch                 | public      | player             | CREATE TRIGGER trg_players_touch BEFORE UPDATE ON player FOR EACH ROW EXECUTE FUNCTION touch_updated_at()                                                  | touch_updated_at                 | CREATE OR REPLACE FUNCTION public.touch_updated_at()
- RETURNS trigger
- LANGUAGE plpgsql
-AS $function$
-BEGIN NEW.updated_at := now(); RETURN NEW; END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| trg_players_tsv                   | public      | player             | CREATE TRIGGER trg_players_tsv BEFORE INSERT OR UPDATE OF name, gender_code ON player FOR EACH ROW EXECUTE FUNCTION players_tsv_trigger()                  | players_tsv_trigger              | CREATE OR REPLACE FUNCTION public.players_tsv_trigger()
- RETURNS trigger
- LANGUAGE plpgsql
-AS $function$
-BEGIN
-  NEW.search :=
-    to_tsvector('simple',
-      coalesce(NEW.name,'') || ' ' || coalesce(NEW.gender_code,'')
-    );
-  RETURN NEW;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| trg_audit_pool_teams              | public      | pool_teams         | CREATE TRIGGER trg_audit_pool_teams AFTER INSERT OR DELETE OR UPDATE ON pool_teams FOR EACH ROW EXECUTE FUNCTION audit_row()                               | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_pools                   | public      | pools              | CREATE TRIGGER trg_audit_pools AFTER INSERT OR DELETE OR UPDATE ON pools FOR EACH ROW EXECUTE FUNCTION audit_row()                                         | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_spirit_scores           | public      | spirit_scores      | CREATE TRIGGER trg_audit_spirit_scores AFTER INSERT OR DELETE OR UPDATE ON spirit_scores FOR EACH ROW EXECUTE FUNCTION audit_row()                         | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_team_roster             | public      | team_roster        | CREATE TRIGGER trg_audit_team_roster AFTER INSERT OR DELETE OR UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION audit_row()                             | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_roster_touch                  | public      | team_roster        | CREATE TRIGGER trg_roster_touch BEFORE UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION touch_updated_at()                                              | touch_updated_at                 | CREATE OR REPLACE FUNCTION public.touch_updated_at()
- RETURNS trigger
- LANGUAGE plpgsql
-AS $function$
-BEGIN NEW.updated_at := now(); RETURN NEW; END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| trg_team_roster_gender            | public      | team_roster        | CREATE TRIGGER trg_team_roster_gender AFTER INSERT OR DELETE OR UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION trg_roster_gender_sync()               | trg_roster_gender_sync           | CREATE OR REPLACE FUNCTION public.trg_roster_gender_sync()
- RETURNS trigger
- LANGUAGE plpgsql
-AS $function$
-BEGIN
-  PERFORM public.recompute_player_gender(
-    COALESCE(NEW.player_id, OLD.player_id)
-  );
-  RETURN COALESCE(NEW, OLD);
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| trg_audit_teams                   | public      | teams              | CREATE TRIGGER trg_audit_teams AFTER INSERT OR DELETE OR UPDATE ON teams FOR EACH ROW EXECUTE FUNCTION audit_row()                                         | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_webhook_deliveries      | public      | webhook_deliveries | CREATE TRIGGER trg_audit_webhook_deliveries AFTER INSERT OR DELETE OR UPDATE ON webhook_deliveries FOR EACH ROW EXECUTE FUNCTION audit_row()               | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| trg_audit_webhook_endpoints       | public      | webhook_endpoints  | CREATE TRIGGER trg_audit_webhook_endpoints AFTER INSERT OR DELETE OR UPDATE ON webhook_endpoints FOR EACH ROW EXECUTE FUNCTION audit_row()                 | audit_row                        | CREATE OR REPLACE FUNCTION public.audit_row()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_pk uuid;
-  v_actor uuid;
-  v_changed text[];
-BEGIN
-  BEGIN
-    SELECT id INTO v_actor
-    FROM public."user"
-    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;
-  EXCEPTION WHEN others THEN
-    v_actor := NULL;
-  END;
-
-  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;
-
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));
-    RETURN OLD;
-  ELSIF TG_OP = 'UPDATE' THEN
-    SELECT array_agg(k)::text[] INTO v_changed
-    FROM (
-      SELECT n.key AS k
-      FROM jsonb_each(to_jsonb(NEW)) n
-      WHERE n.key NOT IN ('updated_at','created_at')
-        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)
-    ) s;
-
-    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN
-      RETURN NEW;
-    END IF;
-
-    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)
-    VALUES (
-      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,
-      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)
-    );
-    RETURN NEW;
-  END IF;
-
-  RETURN NULL;
-END
-$function$
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+[
+  {
+    "trigger_name": "trg_audit_bracket_nodes",
+    "schema_name": "public",
+    "table_name": "bracket_nodes",
+    "trigger_definition": "CREATE TRIGGER trg_audit_bracket_nodes AFTER INSERT OR DELETE OR UPDATE ON bracket_nodes FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_brackets",
+    "schema_name": "public",
+    "table_name": "brackets",
+    "trigger_definition": "CREATE TRIGGER trg_audit_brackets AFTER INSERT OR DELETE OR UPDATE ON brackets FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_division_teams",
+    "schema_name": "public",
+    "table_name": "division_teams",
+    "trigger_definition": "CREATE TRIGGER trg_audit_division_teams AFTER INSERT OR DELETE OR UPDATE ON division_teams FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_divisions",
+    "schema_name": "public",
+    "table_name": "divisions",
+    "trigger_definition": "CREATE TRIGGER trg_audit_divisions AFTER INSERT OR DELETE OR UPDATE ON divisions FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_events",
+    "schema_name": "public",
+    "table_name": "events",
+    "trigger_definition": "CREATE TRIGGER trg_audit_events AFTER INSERT OR DELETE OR UPDATE ON events FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_live_events",
+    "schema_name": "public",
+    "table_name": "live_events",
+    "trigger_definition": "CREATE TRIGGER trg_audit_live_events AFTER INSERT OR DELETE OR UPDATE ON live_events FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_match_events",
+    "schema_name": "public",
+    "table_name": "match_events",
+    "trigger_definition": "CREATE TRIGGER trg_audit_match_events AFTER INSERT OR DELETE OR UPDATE ON match_events FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_match_logs",
+    "schema_name": "public",
+    "table_name": "match_logs",
+    "trigger_definition": "CREATE TRIGGER trg_audit_match_logs AFTER INSERT OR DELETE OR UPDATE ON match_logs FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_match_logs_enqueue_live_event",
+    "schema_name": "public",
+    "table_name": "match_logs",
+    "trigger_definition": "CREATE TRIGGER trg_match_logs_enqueue_live_event AFTER INSERT ON match_logs FOR EACH ROW EXECUTE FUNCTION enqueue_live_event_from_log()",
+    "function_name": "enqueue_live_event_from_log",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.enqueue_live_event_from_log()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\ndeclare\r\n  event_code text;\r\n  payload jsonb;\r\n  match_rec record;\r\n  match_label text;\r\n  team_label text;\r\n  player_label text;\r\n  secondary_player_label text;\r\n  human_event text;\r\nbegin\r\n  select code into event_code\r\n  from public.match_events\r\n  where id = new.event_type_id;\r\n\r\n  if event_code is null then\r\n    return new;\r\n  end if;\r\n\r\n  select\r\n    m.id,\r\n    m.event_id,\r\n    m.division_id,\r\n    m.team_a,\r\n    m.team_b,\r\n    m.start_time,\r\n    ta.name as team_a_name,\r\n    tb.name as team_b_name,\r\n    ev.name as event_name,\r\n    d.name as division_name\r\n  into match_rec\r\n  from public.matches m\r\n  left join public.teams ta on ta.id = m.team_a\r\n  left join public.teams tb on tb.id = m.team_b\r\n  left join public.events ev on ev.id = m.event_id\r\n  left join public.divisions d on d.id = m.division_id\r\n  where m.id = new.match_id;\r\n\r\n  match_label := coalesce(nullif(match_rec.team_a_name, ''), 'Team A')\r\n    || ' vs '\r\n    || coalesce(nullif(match_rec.team_b_name, ''), 'Team B');\r\n\r\n  if match_label is null or match_label = ' vs ' then\r\n    match_label := coalesce(new.match_id::text, 'Match');\r\n  end if;\r\n\r\n  if new.team_id is not null then\r\n    if new.team_id = match_rec.team_a then\r\n      team_label := coalesce(nullif(match_rec.team_a_name, ''), 'Team A');\r\n    elsif new.team_id = match_rec.team_b then\r\n      team_label := coalesce(nullif(match_rec.team_b_name, ''), 'Team B');\r\n    else\r\n      select name into team_label\r\n      from public.teams\r\n      where id = new.team_id;\r\n    end if;\r\n  end if;\r\n\r\n  if new.actor_id is not null then\r\n    select name into player_label\r\n    from public.player\r\n    where id = new.actor_id;\r\n  end if;\r\n\r\n  if new.secondary_actor_id is not null then\r\n    select name into secondary_player_label\r\n    from public.player\r\n    where id = new.secondary_actor_id;\r\n  end if;\r\n\r\n  human_event := initcap(replace(event_code, '_', ' '));\r\n\r\n  payload := jsonb_build_object(\r\n    'log_id', new.id,\r\n    'match_id', new.match_id,\r\n    'event_id', match_rec.event_id,\r\n    'division_id', match_rec.division_id,\r\n    'team_id', new.team_id,\r\n    'team_name', team_label,\r\n    'player_id', new.actor_id,\r\n    'player_name', player_label,\r\n    'secondary_player_id', new.secondary_actor_id,\r\n    'secondary_player_name', secondary_player_label,\r\n    'abba_line', new.abba_line,\r\n    'match_start_time', match_rec.start_time,\r\n    'match_name', match_label,\r\n    'division_name', match_rec.division_name,\r\n    'target_name', coalesce(team_label, match_label),\r\n    'title', human_event || ' · ' || coalesce(team_label, match_label),\r\n    'body', format('New %s event for %s', human_event, coalesce(team_label, match_label)),\r\n    'url', format('/matches/%s', new.match_id)\r\n  );\r\n\r\n  insert into public.live_events (match_id, event_type, data)\r\n  values (new.match_id, event_code, payload);\r\n\r\n  return new;\r\nend;\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_match_logs_player_stats",
+    "schema_name": "public",
+    "table_name": "match_logs",
+    "trigger_definition": "CREATE TRIGGER trg_match_logs_player_stats AFTER INSERT OR DELETE OR UPDATE ON match_logs FOR EACH ROW EXECUTE FUNCTION trg_player_stats_from_match_logs()",
+    "function_name": "trg_player_stats_from_match_logs",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.trg_player_stats_from_match_logs()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nbegin\r\n  if TG_OP = 'INSERT' then\r\n    perform public.apply_match_log_delta(\r\n      NEW.match_id,\r\n      NEW.team_id,\r\n      NEW.actor_id,\r\n      NEW.secondary_actor_id,\r\n      NEW.event_type_id,\r\n      1\r\n    );\r\n    return NEW;\r\n  elsif TG_OP = 'DELETE' then\r\n    perform public.apply_match_log_delta(\r\n      OLD.match_id,\r\n      OLD.team_id,\r\n      OLD.actor_id,\r\n      OLD.secondary_actor_id,\r\n      OLD.event_type_id,\r\n      -1\r\n    );\r\n    return OLD;\r\n  elsif TG_OP = 'UPDATE' then\r\n    perform public.apply_match_log_delta(\r\n      OLD.match_id,\r\n      OLD.team_id,\r\n      OLD.actor_id,\r\n      OLD.secondary_actor_id,\r\n      OLD.event_type_id,\r\n      -1\r\n    );\r\n    perform public.apply_match_log_delta(\r\n      NEW.match_id,\r\n      NEW.team_id,\r\n      NEW.actor_id,\r\n      NEW.secondary_actor_id,\r\n      NEW.event_type_id,\r\n      1\r\n    );\r\n    return NEW;\r\n  end if;\r\n\r\n  return null;\r\nend;\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_match_status",
+    "schema_name": "public",
+    "table_name": "match_status",
+    "trigger_definition": "CREATE TRIGGER trg_audit_match_status AFTER INSERT OR DELETE OR UPDATE ON match_status FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_matches",
+    "schema_name": "public",
+    "table_name": "matches",
+    "trigger_definition": "CREATE TRIGGER trg_audit_matches AFTER INSERT OR DELETE OR UPDATE ON matches FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_matches_media_normalize",
+    "schema_name": "public",
+    "table_name": "matches",
+    "trigger_definition": "CREATE TRIGGER trg_matches_media_normalize BEFORE INSERT OR UPDATE OF media_link ON matches FOR EACH ROW EXECUTE FUNCTION normalize_media_link()",
+    "function_name": "normalize_media_link",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.normalize_media_link()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  j   jsonb := NEW.media_link;\r\n  p   jsonb;\r\n  prov text;\r\n  url  text;\r\n  st   text;\r\nBEGIN\r\n  IF j IS NULL THEN\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  -- Allow raw string -> wrap as primary.url\r\n  IF jsonb_typeof(j) = 'string' THEN\r\n    j := jsonb_build_object('primary', jsonb_build_object('provider','custom','url', j::text));\r\n  END IF;\r\n\r\n  p    := j->'primary';\r\n  prov := lower(COALESCE(p->>'provider','custom'));\r\n  url  := btrim(p->>'url');\r\n\r\n  -- If primary.status missing, mirror matches.status (TEXT lookup)\r\n  st := COALESCE(p->>'status', NEW.status);\r\n\r\n  -- Derive embed for YouTube if absent\r\n  IF prov = 'youtube' AND (p ? 'embed_url') IS FALSE THEN\r\n    j := jsonb_set(\r\n          j, '{primary,embed_url}',\r\n          to_jsonb(\r\n            CASE\r\n              WHEN url ~* 'youtu\\.be/([A-Za-z0-9_-]{6,})'\r\n                THEN 'https://www.youtube.com/embed/' || regexp_replace(url, '.*youtu\\.be/([^?&/]+).*', '\\1')\r\n              WHEN url ~* 'v=([A-Za-z0-9_-]{6,})'\r\n                THEN 'https://www.youtube.com/embed/' || regexp_replace(url, '.*[?&]v=([^?&/]+).*', '\\1')\r\n              ELSE NULL\r\n            END\r\n          ),\r\n          true\r\n        );\r\n  END IF;\r\n\r\n  j := jsonb_set(j,'{primary,provider}', to_jsonb(prov), true);\r\n  j := jsonb_set(j,'{primary,status}',   to_jsonb(st),   true);\r\n\r\n  -- Fill start_time if missing\r\n  IF (p ? 'start_time') IS FALSE AND NEW.start_time IS NOT NULL THEN\r\n    j := jsonb_set(j,'{primary,start_time}', to_jsonb(NEW.start_time), true);\r\n  END IF;\r\n\r\n  NEW.media_link := j;\r\n  RETURN NEW;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_players",
+    "schema_name": "public",
+    "table_name": "player",
+    "trigger_definition": "CREATE TRIGGER trg_audit_players AFTER INSERT OR DELETE OR UPDATE ON player FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_players_touch",
+    "schema_name": "public",
+    "table_name": "player",
+    "trigger_definition": "CREATE TRIGGER trg_players_touch BEFORE UPDATE ON player FOR EACH ROW EXECUTE FUNCTION touch_updated_at()",
+    "function_name": "touch_updated_at",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.touch_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nbegin\r\n  new.updated_at = now();\r\n  return new;\r\nend;\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_players_tsv",
+    "schema_name": "public",
+    "table_name": "player",
+    "trigger_definition": "CREATE TRIGGER trg_players_tsv BEFORE INSERT OR UPDATE OF name, gender_code ON player FOR EACH ROW EXECUTE FUNCTION players_tsv_trigger()",
+    "function_name": "players_tsv_trigger",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.players_tsv_trigger()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n  NEW.search :=\r\n    to_tsvector('simple',\r\n      coalesce(NEW.name,'') || ' ' || coalesce(NEW.gender_code,'')\r\n    );\r\n  RETURN NEW;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_pool_teams",
+    "schema_name": "public",
+    "table_name": "pool_teams",
+    "trigger_definition": "CREATE TRIGGER trg_audit_pool_teams AFTER INSERT OR DELETE OR UPDATE ON pool_teams FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_pools",
+    "schema_name": "public",
+    "table_name": "pools",
+    "trigger_definition": "CREATE TRIGGER trg_audit_pools AFTER INSERT OR DELETE OR UPDATE ON pools FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_touch_scoreboard_device_subscriptions",
+    "schema_name": "public",
+    "table_name": "scoreboard_device_subscriptions",
+    "trigger_definition": "CREATE TRIGGER trg_touch_scoreboard_device_subscriptions BEFORE UPDATE ON scoreboard_device_subscriptions FOR EACH ROW EXECUTE FUNCTION touch_scoreboard_device_subscriptions_updated_at()",
+    "function_name": "touch_scoreboard_device_subscriptions_updated_at",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.touch_scoreboard_device_subscriptions_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nbegin\r\n  new.updated_at = now();\r\n  return new;\r\nend;\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_touch_scoreboard_devices",
+    "schema_name": "public",
+    "table_name": "scoreboard_devices",
+    "trigger_definition": "CREATE TRIGGER trg_touch_scoreboard_devices BEFORE UPDATE ON scoreboard_devices FOR EACH ROW EXECUTE FUNCTION touch_scoreboard_devices_updated_at()",
+    "function_name": "touch_scoreboard_devices_updated_at",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.touch_scoreboard_devices_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nbegin\r\n  new.updated_at = now();\r\n  return new;\r\nend;\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_touch_scoreboard_match_snapshots",
+    "schema_name": "public",
+    "table_name": "scoreboard_match_snapshots",
+    "trigger_definition": "CREATE TRIGGER trg_touch_scoreboard_match_snapshots BEFORE UPDATE ON scoreboard_match_snapshots FOR EACH ROW EXECUTE FUNCTION touch_scoreboard_match_snapshots()",
+    "function_name": "touch_scoreboard_match_snapshots",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.touch_scoreboard_match_snapshots()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nbegin\r\n  new.updated_at = now();\r\n  return new;\r\nend;\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_spirit_scores",
+    "schema_name": "public",
+    "table_name": "spirit_scores",
+    "trigger_definition": "CREATE TRIGGER trg_audit_spirit_scores AFTER INSERT OR DELETE OR UPDATE ON spirit_scores FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_team_roster",
+    "schema_name": "public",
+    "table_name": "team_roster",
+    "trigger_definition": "CREATE TRIGGER trg_audit_team_roster AFTER INSERT OR DELETE OR UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_roster_touch",
+    "schema_name": "public",
+    "table_name": "team_roster",
+    "trigger_definition": "CREATE TRIGGER trg_roster_touch BEFORE UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION touch_updated_at()",
+    "function_name": "touch_updated_at",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.touch_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nbegin\r\n  new.updated_at = now();\r\n  return new;\r\nend;\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_team_roster_gender",
+    "schema_name": "public",
+    "table_name": "team_roster",
+    "trigger_definition": "CREATE TRIGGER trg_team_roster_gender AFTER INSERT OR DELETE OR UPDATE ON team_roster FOR EACH ROW EXECUTE FUNCTION trg_roster_gender_sync()",
+    "function_name": "trg_roster_gender_sync",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.trg_roster_gender_sync()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nBEGIN\r\n  PERFORM public.recompute_player_gender(\r\n    COALESCE(NEW.player_id, OLD.player_id)\r\n  );\r\n  RETURN COALESCE(NEW, OLD);\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_teams",
+    "schema_name": "public",
+    "table_name": "teams",
+    "trigger_definition": "CREATE TRIGGER trg_audit_teams AFTER INSERT OR DELETE OR UPDATE ON teams FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_user",
+    "schema_name": "public",
+    "table_name": "user",
+    "trigger_definition": "CREATE TRIGGER trg_audit_user AFTER INSERT OR DELETE OR UPDATE ON \"user\" FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_user_roles",
+    "schema_name": "public",
+    "table_name": "user_roles",
+    "trigger_definition": "CREATE TRIGGER trg_audit_user_roles AFTER INSERT OR DELETE OR UPDATE ON user_roles FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_webhook_deliveries",
+    "schema_name": "public",
+    "table_name": "webhook_deliveries",
+    "trigger_definition": "CREATE TRIGGER trg_audit_webhook_deliveries AFTER INSERT OR DELETE OR UPDATE ON webhook_deliveries FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  },
+  {
+    "trigger_name": "trg_audit_webhook_endpoints",
+    "schema_name": "public",
+    "table_name": "webhook_endpoints",
+    "trigger_definition": "CREATE TRIGGER trg_audit_webhook_endpoints AFTER INSERT OR DELETE OR UPDATE ON webhook_endpoints FOR EACH ROW EXECUTE FUNCTION audit_row()",
+    "function_name": "audit_row",
+    "function_definition": "CREATE OR REPLACE FUNCTION public.audit_row()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\nDECLARE\r\n  v_pk uuid;\r\n  v_actor uuid;\r\n  v_changed text[];\r\nBEGIN\r\n  BEGIN\r\n    SELECT id INTO v_actor\r\n    FROM public.\"user\"\r\n    WHERE id = NULLIF(current_setting('request.jwt.claims', true)::jsonb->>'sub','')::uuid;\r\n  EXCEPTION WHEN others THEN\r\n    v_actor := NULL;\r\n  END;\r\n\r\n  BEGIN v_pk := COALESCE(NEW.id, OLD.id); EXCEPTION WHEN others THEN v_pk := NULL; END;\r\n\r\n  IF TG_OP = 'INSERT' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'INSERT', v_actor, jsonb_build_object('new', to_jsonb(NEW)));\r\n    RETURN NEW;\r\n  ELSIF TG_OP = 'DELETE' THEN\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (TG_TABLE_NAME, v_pk, 'DELETE', v_actor, jsonb_build_object('old', to_jsonb(OLD)));\r\n    RETURN OLD;\r\n  ELSIF TG_OP = 'UPDATE' THEN\r\n    SELECT array_agg(k)::text[] INTO v_changed\r\n    FROM (\r\n      SELECT n.key AS k\r\n      FROM jsonb_each(to_jsonb(NEW)) n\r\n      WHERE n.key NOT IN ('updated_at','created_at')\r\n        AND n.value IS DISTINCT FROM (to_jsonb(OLD)->n.key)\r\n    ) s;\r\n\r\n    IF v_changed IS NULL OR array_length(v_changed,1) IS NULL THEN\r\n      RETURN NEW;\r\n    END IF;\r\n\r\n    INSERT INTO public.audit_log(table_name, record_id, action, actor_id, change_data)\r\n    VALUES (\r\n      TG_TABLE_NAME, v_pk, 'UPDATE', v_actor,\r\n      jsonb_build_object('old', to_jsonb(OLD), 'new', to_jsonb(NEW), 'changed_cols', v_changed)\r\n    );\r\n    RETURN NEW;\r\n  END IF;\r\n\r\n  RETURN NULL;\r\nEND\r\n$function$\n"
+  }
+]

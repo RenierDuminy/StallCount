@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { Card, Chip, Panel, SectionShell, SectionHeader } from "../components/ui/primitives";
 import { getCurrentUser } from "../services/userService";
 import { supabase } from "../services/supabaseClient";
+import { ROLE_NAME_BY_ID, getUserRoleSlugs, normaliseRoleList } from "../utils/accessControl";
 
 const ROLE_LABELS = {
   admin: "Administrator",
@@ -12,13 +13,6 @@ const ROLE_LABELS = {
 const ACCESS_LEVELS = {
   admin: "Full access",
   authenticated: "Standard access",
-};
-
-const ROLE_NAME_BY_ID = {
-  1: "Administrator",
-  2: "Score keeper",
-  3: "Captain",
-  4: "Standard user",
 };
 
 const ROLE_LIBRARY = {
@@ -73,14 +67,6 @@ function formatDate(value) {
   }
 }
 
-function normaliseRoles(roleField) {
-  if (!roleField) return [];
-  const values = Array.isArray(roleField) ? roleField : String(roleField).split(",");
-  return values
-    .map((role) => role.trim().toLowerCase().replace(/\s+/g, "_"))
-    .filter(Boolean);
-}
-
 function resolveAccessLevel(user) {
   if (!user) return { role: "Unknown", level: "Unknown" };
 
@@ -96,7 +82,7 @@ function resolveAccessLevel(user) {
 }
 
 export default function UserPage() {
-  const { session } = useAuth();
+  const { session, roles: sessionRoles } = useAuth();
   const user = session?.user || null;
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(Boolean(user));
@@ -137,14 +123,29 @@ export default function UserPage() {
     };
   }, [user]);
 
-  const roleSource =
+  const assignmentSource = useMemo(() => {
+    if (Array.isArray(profile?.roles) && profile.roles.length > 0) {
+      return profile.roles;
+    }
+    if (Array.isArray(sessionRoles) && sessionRoles.length > 0) {
+      return sessionRoles;
+    }
+    return undefined;
+  }, [profile?.roles, sessionRoles]);
+
+  const fallbackRoleSource =
     profile?.role ||
     user?.app_metadata?.role ||
     user?.user_metadata?.role ||
     user?.user_metadata?.roles ||
     "";
 
-  const normalizedRoles = useMemo(() => normaliseRoles(roleSource), [roleSource]);
+  const normalizedRoles = useMemo(() => {
+    if (assignmentSource) {
+      return getUserRoleSlugs(user, assignmentSource);
+    }
+    return normaliseRoleList(fallbackRoleSource);
+  }, [assignmentSource, fallbackRoleSource, user]);
 
   const recognisedRoles = useMemo(
     () => normalizedRoles.filter((role) => Boolean(ROLE_LIBRARY[role])),
@@ -155,6 +156,25 @@ export default function UserPage() {
     () => normalizedRoles.filter((role) => !ROLE_LIBRARY[role]),
     [normalizedRoles]
   );
+
+  const accessLevelLabels = useMemo(() => {
+    if (Array.isArray(assignmentSource)) {
+      const labels = assignmentSource
+        .map((assignment) => assignment?.roleName || assignment?.role?.name || null)
+        .filter(Boolean);
+      if (labels.length > 0) {
+        return Array.from(new Set(labels));
+      }
+    }
+    if (recognisedRoles.length > 0) {
+      return recognisedRoles.map((role) => ROLE_LIBRARY[role]?.label || role);
+    }
+    if (fallbackRoles.length > 0) {
+      return fallbackRoles;
+    }
+    const fallbackAccess = `${accessInfo.role} - ${accessInfo.level}`;
+    return fallbackAccess.trim() ? [fallbackAccess] : [];
+  }, [assignmentSource, recognisedRoles, fallbackRoles, accessInfo]);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -169,6 +189,8 @@ export default function UserPage() {
     user?.email ||
     "User profile";
 
+  const accessLevelsValue = accessLevelLabels.length > 0 ? accessLevelLabels.join(", ") : `${accessInfo.role} - ${accessInfo.level}`;
+
   const profileEntries = useMemo(() => {
     if (!user) return [];
     const metadata = user.user_metadata || {};
@@ -178,10 +200,13 @@ export default function UserPage() {
         value: profile?.full_name || metadata.full_name || metadata.name || "Unknown",
       },
       { label: "Email", value: profile?.email || user.email || "Unknown" },
-      { label: "Access level", value: `${accessInfo.role} - ${accessInfo.level}` },
+      {
+        label: accessLevelLabels.length > 1 ? "Access levels" : "Access level",
+        value: accessLevelsValue,
+      },
       { label: "Created", value: formatDate(user.created_at) },
     ];
-  }, [user, accessInfo, profile]);
+  }, [user, accessLevelLabels.length, accessLevelsValue, profile]);
 
   return (
     <div className="pb-16 text-ink">

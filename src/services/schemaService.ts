@@ -1,4 +1,4 @@
-import schemaSql from "../../SQL_structure_8-11-2026.txt?raw";
+import schemaSql from "../../SQL_structure_28-12-2025.txt?raw";
 
 const TABLE_REGEX = /CREATE\s+TABLE\s+([^\s(]+)\s*\(/gi;
 const TABLE_BLOCK_REGEX = /CREATE\s+TABLE\s+([^\s(]+)\s*\(([\s\S]*?)\);/gi;
@@ -84,4 +84,4 @@ export function pickRecencyColumn(tableName: string): string | null {
   return fallback ?? null;
 }
 
-export const SCHEMA_SOURCE_FILE = "SQL_structure_8-11-2026.txt";
+export const SCHEMA_SOURCE_FILE = "SQL_structure_28-12-2025.txt";

@@ -10,6 +10,13 @@ const ADMIN_MODULES = [
     accent: "bg-brand/10 text-ink",
   },
   {
+    label: "Scoreboard debug",
+    description:
+      "Temporary sandbox to enter device data, preview the board, and inspect payloads.",
+    to: "/admin/scoreboard-debug",
+    accent: "bg-indigo-100 text-indigo-700",
+  },
+  {
     label: "Captain",
     description:
       "Manage rosters, submit spirit scores, and coordinate pre-game logistics.",
@@ -22,6 +29,13 @@ const ADMIN_MODULES = [
       "Configure leagues, manage access, and oversee StallCount's operational data.",
     to: "/sys-admin",
     accent: "bg-amber-100 text-amber-700",
+  },
+  {
+    label: "Access control",
+    description:
+      "Scan every account, view their IDs, and change access tiers without leaving the admin hub.",
+    to: "/admin/access",
+    accent: "bg-fuchsia-100 text-fuchsia-700",
   },
   {
     label: "Tournament director",

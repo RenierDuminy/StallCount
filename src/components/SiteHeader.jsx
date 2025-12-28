@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import useInstallPrompt from "../hooks/useInstallPrompt";
 import { useAuth } from "../context/AuthContext";
+import { ADMIN_TOOL_ACCESS_ROLES, userHasAnyRole } from "../utils/accessControl";
 
 const NAV_LINKS = [
   { label: "Home", to: "/" },
@@ -27,11 +28,20 @@ function isLinkActive(linkTo, location) {
 }
 
 export default function SiteHeader() {
-  const { session } = useAuth();
+  const { session, roles } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const { canInstall, promptInstall } = useInstallPrompt();
+  const user = session?.user ?? null;
+  const hasLoadedRoles = Array.isArray(roles);
+  const showAdminTools = hasLoadedRoles ? userHasAnyRole(user, ADMIN_TOOL_ACCESS_ROLES, roles) : false;
+  const roleLinks = ROLE_LINKS.filter((link) => {
+    if (link.to === "/admin") {
+      return showAdminTools;
+    }
+    return true;
+  });
 
   useEffect(() => {
     setMenuOpen(false);
@@ -81,7 +91,7 @@ export default function SiteHeader() {
         </nav>
 
         <div className="hidden items-center gap-1 rounded-full bg-white/10 p-1 text-xs font-semibold text-emerald-50 lg:flex">
-          {ROLE_LINKS.map((role) => (
+          {roleLinks.map((role) => (
             <Link
               key={role.to}
               to={role.to}
@@ -130,7 +140,7 @@ export default function SiteHeader() {
                   {link.label}
                 </Link>
               ))}
-              {ROLE_LINKS.map((role) => (
+              {roleLinks.map((role) => (
                 <Link
                   key={role.to}
                   to={role.to}

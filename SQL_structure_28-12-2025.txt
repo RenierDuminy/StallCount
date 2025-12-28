@@ -60,6 +60,16 @@ CREATE TABLE public.divisions (
   CONSTRAINT divisions_pkey PRIMARY KEY (id),
   CONSTRAINT divisions_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id)
 );
+CREATE TABLE public.event_venues (
+  event_id uuid NOT NULL,
+  venue_id uuid NOT NULL,
+  role text CHECK (role = ANY (ARRAY['primary'::text, 'backup'::text, 'practice'::text])),
+  notes text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT event_venues_pkey PRIMARY KEY (event_id, venue_id),
+  CONSTRAINT event_venues_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
+  CONSTRAINT event_venues_venue_id_fkey FOREIGN KEY (venue_id) REFERENCES public.venues(id)
+);
 CREATE TABLE public.events (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -80,10 +90,27 @@ CREATE TABLE public.live_events (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   match_id uuid NOT NULL,
   event_type text NOT NULL,
-  data jsonb,
+  data jsonb NOT NULL,
   sent boolean NOT NULL DEFAULT false,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  team_id uuid,
+  player_id uuid,
+  secondary_player_id uuid,
+  match_name text,
+  match_start_time timestamp with time zone,
+  event_name text,
+  division_name text,
+  team_name text,
+  player_name text,
+  secondary_player_name text,
+  target_name text,
+  title text,
+  body text,
+  payload_version smallint NOT NULL DEFAULT 1,
   CONSTRAINT live_events_pkey PRIMARY KEY (id),
+  CONSTRAINT live_events_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
+  CONSTRAINT live_events_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.player(id),
+  CONSTRAINT live_events_secondary_player_id_fkey FOREIGN KEY (secondary_player_id) REFERENCES public.player(id),
   CONSTRAINT live_events_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
   CONSTRAINT live_events_event_type_fkey FOREIGN KEY (event_type) REFERENCES public.match_events(code)
 );
@@ -217,6 +244,45 @@ CREATE TABLE public.roles (
   description text,
   CONSTRAINT roles_pkey PRIMARY KEY (id)
 );
+CREATE TABLE public.scoreboard_device_subscriptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  device_id uuid NOT NULL,
+  target_type USER-DEFINED NOT NULL,
+  target_id uuid NOT NULL,
+  priority integer NOT NULL DEFAULT 100,
+  created_by uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT scoreboard_device_subscriptions_pkey PRIMARY KEY (id),
+  CONSTRAINT scoreboard_device_subscriptions_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.scoreboard_devices(id),
+  CONSTRAINT scoreboard_device_subscriptions_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.user(id)
+);
+CREATE TABLE public.scoreboard_devices (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  profile_id uuid NOT NULL,
+  device_label text NOT NULL,
+  hardware_id text NOT NULL UNIQUE,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  operator_name text,
+  notes text,
+  status USER-DEFINED NOT NULL DEFAULT 'registered'::scoreboard_device_status,
+  registered_at timestamp with time zone NOT NULL DEFAULT now(),
+  last_seen_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT scoreboard_devices_pkey PRIMARY KEY (id),
+  CONSTRAINT scoreboard_devices_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.user(id)
+);
+CREATE TABLE public.scoreboard_match_snapshots (
+  match_id uuid NOT NULL,
+  payload jsonb NOT NULL,
+  last_log_id uuid,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  source character varying NOT NULL DEFAULT 'admin_console'::character varying,
+  CONSTRAINT scoreboard_match_snapshots_pkey PRIMARY KEY (match_id),
+  CONSTRAINT scoreboard_match_snapshots_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
+  CONSTRAINT scoreboard_match_snapshots_last_log_id_fkey FOREIGN KEY (last_log_id) REFERENCES public.match_logs(id)
+);
 CREATE TABLE public.spirit_scores (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   match_id uuid NOT NULL,
@@ -271,17 +337,28 @@ CREATE TABLE public.user (
   id uuid NOT NULL,
   email text UNIQUE,
   full_name text,
-  role_id smallint,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT user_pkey PRIMARY KEY (id),
-  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
-  CONSTRAINT profiles_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id)
+  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.user_roles (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  role_id smallint NOT NULL,
+  granted_by uuid,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_roles_pkey PRIMARY KEY (id),
+  CONSTRAINT user_roles_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.user(id),
+  CONSTRAINT user_roles_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(id),
+  CONSTRAINT user_roles_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES public.user(id)
 );
 CREATE TABLE public.venues (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
   location text,
   notes text,
+  latitude double precision CHECK (latitude IS NULL OR latitude >= '-90'::integer::double precision AND latitude <= 90::double precision),
+  longitude double precision CHECK (longitude IS NULL OR longitude >= '-180'::integer::double precision AND longitude <= 180::double precision),
   CONSTRAINT venues_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.webhook_deliveries (

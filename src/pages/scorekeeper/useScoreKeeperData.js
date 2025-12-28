@@ -1058,9 +1058,10 @@ useEffect(() => {
         matchSource.team_b?.id ||
         "",
     });
+    const normalizedMatchAbba = normalizeAbbaPattern(matchSource.abba_pattern);
     setRules((prev) => ({
       ...prev,
-      abbaPattern: matchSource.abba_pattern || prev.abbaPattern || "none",
+      abbaPattern: normalizedMatchAbba || prev.abbaPattern || "none",
     }));
   } else {
     setSetupForm({
@@ -2070,9 +2071,12 @@ const rosterNameLookup = useMemo(() => {
       ...(snapshot.setupForm || {}),
     });
     const resumeWasStarted = Boolean(snapshot.matchStarted);
+    const snapshotRules = snapshot.rules || {};
+    const normalizedSnapshotAbba = normalizeAbbaPattern(snapshotRules.abbaPattern);
     setRules((prev) => ({
       ...prev,
-      ...(snapshot.rules || {}),
+      ...snapshotRules,
+      abbaPattern: normalizedSnapshotAbba ?? prev.abbaPattern ?? "none",
     }));
     setRulesManuallyEdited(Boolean(snapshot.rules));
     setScore(snapshot.score ?? { a: 0, b: 0 });

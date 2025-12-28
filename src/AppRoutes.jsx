@@ -4,6 +4,8 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 import HomePage from "./pages/HomePage";
 import AdminPage from "./pages/AdminPage";
+import AdminScoreboardDebugPage from "./pages/AdminScoreboardDebugPage";
+import AdminAccessPage from "./pages/AdminAccessPage";
 import ScoreKeeperPage from "./pages/ScoreKeeperPage";
 import CaptainPage from "./pages/CaptainPage";
 import SysAdminPage from "./pages/SysAdminPage";
@@ -23,6 +25,7 @@ import NotificationsPage from "./pages/NotificationsPage";
 import AppLayout from "./components/AppLayout";
 import TournamentDirectorPage from "./pages/TournamentDirectorPage";
 import MediaAdminPage from "./pages/MediaAdminPage";
+import { ADMIN_TOOL_ACCESS_ROLES } from "./utils/accessControl";
 
 export default function AppRoutes() {
   return (
@@ -52,8 +55,24 @@ export default function AppRoutes() {
           <Route
             path="/admin"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={ADMIN_TOOL_ACCESS_ROLES}>
                 <AdminPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/scoreboard-debug"
+            element={
+              <ProtectedRoute>
+                <AdminScoreboardDebugPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/access"
+            element={
+              <ProtectedRoute>
+                <AdminAccessPage />
               </ProtectedRoute>
             }
           />
