@@ -60,9 +60,9 @@ export default function SiteHeader() {
 
   return (
     <>
-      <header className="border-b border-[var(--sc-border)]/40 bg-[#04140c]/90 text-emerald-50 backdrop-blur">
+      <header className="border-b border-[var(--sc-border)]/50 bg-[var(--sc-bg-accent)] text-[var(--sc-ink)]">
         <div className="sc-shell flex items-center justify-between py-4">
-          <Link to="/" className="flex items-center gap-3 text-emerald-50">
+          <Link to="/" className="flex items-center gap-3 text-[var(--sc-ink)]">
             <img
               src="/assets/stallcount-logo.svg"
               alt="StallCount logo"
@@ -71,18 +71,18 @@ export default function SiteHeader() {
             />
             <div>
               <p className="text-lg font-semibold leading-tight">StallCount</p>
-              <p className="text-sm text-emerald-200">Frisbee League Tracker</p>
+              <p className="text-sm text-[var(--sc-ink-muted)]">Ultimate Frisbee League Tracker</p>
             </div>
           </Link>
 
-        <nav className="hidden items-center gap-8 text-sm font-medium text-emerald-200 md:flex">
+        <nav className="hidden items-center gap-8 text-sm font-medium text-[var(--sc-ink-muted)] md:flex">
           {NAV_LINKS.map((link) => {
             const active = isLinkActive(link.to, location);
             return (
               <Link
                 key={link.to}
                 to={link.to}
-                className={`transition-colors hover:text-white ${active ? "text-white" : ""}`}
+                className={`transition-colors hover:text-[var(--sc-ink)] ${active ? "text-[var(--sc-ink)]" : ""}`}
               >
                 {link.label}
               </Link>
@@ -90,7 +90,7 @@ export default function SiteHeader() {
           })}
         </nav>
 
-        <div className="hidden items-center gap-1 rounded-full bg-white/10 p-1 text-xs font-semibold text-emerald-50 lg:flex">
+        <div className="hidden items-center gap-1 rounded-full bg-[var(--sc-border-strong)] p-1 text-xs font-semibold text-[var(--sc-ink)] lg:flex">
           {roleLinks.map((role) => (
             <Link
               key={role.to}
@@ -102,23 +102,23 @@ export default function SiteHeader() {
           ))}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 text-[var(--sc-ink)]">
           <button
             type="button"
             onClick={handleInstallClick}
-            className="hidden rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 lg:inline-flex"
+            className="hidden rounded-full border border-[var(--sc-border)] px-4 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:bg-white/10 lg:inline-flex"
           >
             Install app
           </button>
           <Link
             to="/login"
-            className="hidden rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 lg:inline-flex"
+            className="hidden rounded-full border border-[var(--sc-border)] px-4 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:bg-white/10 lg:inline-flex"
           >
             Log in
           </Link>
           <button
             type="button"
-            className="inline-flex items-center justify-center rounded-full border border-white/20 px-4 py-3 text-base font-semibold text-emerald-50 transition hover:bg-white/10 lg:hidden"
+            className="inline-flex items-center justify-center rounded-full border border-[var(--sc-border)] px-4 py-3 text-base font-semibold text-[var(--sc-ink)] transition hover:bg-white/10 lg:hidden"
             onClick={() => setMenuOpen((prev) => !prev)}
             aria-label="Toggle navigation menu"
             aria-expanded={menuOpen}
@@ -129,7 +129,7 @@ export default function SiteHeader() {
 
         </div>
         {menuOpen && (
-          <div className="border-t border-[var(--sc-border)]/40 bg-[#04140c] px-6 py-4 text-emerald-50 lg:hidden">
+          <div className="border-t border-[var(--sc-border)]/50 bg-[var(--sc-surface)] px-6 py-4 text-[var(--sc-ink)] lg:hidden">
             <nav className="flex flex-col gap-3 text-sm font-semibold">
               {NAV_LINKS.map((link) => (
                 <Link
@@ -152,13 +152,13 @@ export default function SiteHeader() {
               <button
                 type="button"
                 onClick={handleInstallClick}
-                className="rounded-full border border-white/20 px-4 py-2 text-center text-sm font-semibold text-emerald-50 transition hover:bg-white/10"
+                className="rounded-full border border-[var(--sc-border)] px-4 py-2 text-center text-sm font-semibold text-[var(--sc-ink)] transition hover:bg-white/10"
               >
                 Install app
               </button>
               <Link
                 to="/login"
-                className="rounded-full border border-white/20 px-4 py-2 text-center text-sm font-semibold text-emerald-50 transition hover:bg-white/10"
+                className="rounded-full border border-[var(--sc-border)] px-4 py-2 text-center text-sm font-semibold text-[var(--sc-ink)] transition hover:bg-white/10"
               >
                 Log in
               </Link>

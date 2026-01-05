@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Card,
   Panel,
   SectionHeader,
   SectionShell,
   Chip,
-} from "../components/ui/primitives";
-import { getMatchesByEvent } from "../services/matchService";
-import { getEventHierarchy } from "../services/leagueService";
-const EVENT_ID = "0d3369f9-8461-4f02-b343-5679bb17d644";
+} from "../../components/ui/primitives";
+import { getMatchesByEvent } from "../../services/matchService";
+import { getEventHierarchy } from "../../services/leagueService";
+export const EVENT_ID = "0d3369f9-8461-4f02-b343-5679bb17d644";
+export const EVENT_SLUG = "ctfda-ow-league";
 const MATCH_LIMIT = 400;
 const CURRENT_MATCH_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_MATCH_STATUSES = new Set(["finished", "completed"]);
@@ -377,6 +379,14 @@ export default function DROwLeague26Page() {
                   </p>
                 )}
               </Panel>
+              <div className="flex justify-end">
+                <Link
+                  to={`/event-rosters?eventId=${encodeURIComponent(EVENT_ID)}`}
+                  className="sc-button"
+                >
+                  View event rosters
+                </Link>
+              </div>
             </Card>
             {eventData.divisions.length === 0 ? (
               <Card

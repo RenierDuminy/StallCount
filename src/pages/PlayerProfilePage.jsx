@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getPlayerMatchStats } from "../services/teamService";
-import { Card, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
+import { Card, Panel, SectionHeader, SectionShell, Field, Select } from "../components/ui/primitives";
 
 export default function PlayerProfilePage() {
   const { playerId } = useParams();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [eventFilter, setEventFilter] = useState("all");
 
   useEffect(() => {
     let ignore = false;
@@ -36,13 +37,41 @@ export default function PlayerProfilePage() {
     };
   }, [playerId]);
 
-  const profile = useMemo(() => {
-    if (!rows.length) return null;
+  const identity = useMemo(() => {
     const first = rows[0];
-    const name = first.player?.name || "Player";
-    const jersey = first.player?.jersey_number ?? null;
+    return {
+      name: first?.player?.name || "Player",
+      jersey: first?.player?.jersey_number ?? null,
+    };
+  }, [rows]);
 
-    const totals = rows.reduce(
+  const eventOptions = useMemo(() => {
+    const map = new Map();
+    rows.forEach((row) => {
+      const event = row.match?.event;
+      if (event?.id && !map.has(event.id)) {
+        map.set(event.id, event.name || "Event");
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    if (eventFilter === "all") {
+      return rows;
+    }
+    return rows.filter((row) => row.match?.event?.id === eventFilter);
+  }, [eventFilter, rows]);
+
+  const profile = useMemo(() => {
+    if (!filteredRows.length) return null;
+    const first = filteredRows[0];
+    const name = first.player?.name || identity.name || "Player";
+    const jersey = first.player?.jersey_number ?? identity.jersey ?? null;
+
+    const totals = filteredRows.reduce(
       (acc, row) => {
         acc.goals += row.goals || 0;
         acc.assists += row.assists || 0;
@@ -67,10 +96,10 @@ export default function PlayerProfilePage() {
       assistPerGame: games ? totals.assists / games : 0,
       goalsPerGame: games ? totals.goals / games : 0,
     };
-  }, [rows]);
+  }, [filteredRows, identity.jersey, identity.name]);
 
   const sortedRows = useMemo(() => {
-    return [...rows].sort((a, b) => {
+    return [...filteredRows].sort((a, b) => {
       const aTime = a.match?.start_time ? new Date(a.match.start_time).getTime() : 0;
       const bTime = b.match?.start_time ? new Date(b.match.start_time).getTime() : 0;
       if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
@@ -78,7 +107,7 @@ export default function PlayerProfilePage() {
       if (Number.isNaN(bTime)) return -1;
       return bTime - aTime;
     });
-  }, [rows]);
+    }, [filteredRows]);
 
   return (
     <div className="pb-16 text-ink">
@@ -86,8 +115,8 @@ export default function PlayerProfilePage() {
         <Card className="space-y-4 p-5 sm:p-6">
           <SectionHeader
             eyebrow="Player profile"
-            title={`${profile?.name || "Player"}${profile?.jersey ? ` (#${profile.jersey})` : ""}`}
-            description={`Per-match contributions across recorded games (${profile?.games || 0} total).`}
+            title={`${profile?.name || identity.name}${(profile?.jersey ?? identity.jersey) ? ` (#${profile?.jersey ?? identity.jersey})` : ""}`}
+            description={`Per-match contributions across recorded games (${profile?.games || 0} total${eventFilter !== "all" ? " for this event" : ""}).`}
             action={
               <Link to="/players" className="sc-button is-ghost">
                 Back to players
@@ -109,15 +138,35 @@ export default function PlayerProfilePage() {
             eyebrow="Performance summary"
             title="Match impact ledger"
             description="Totals and per-game rhythm derived from the latest recorded fixtures."
+            action={
+              eventOptions.length > 0 ? (
+                <Field className="w-full max-w-xs" label="Event filter" htmlFor="player-event-filter">
+                  <Select
+                    id="player-event-filter"
+                    value={eventFilter}
+                    onChange={(event) => setEventFilter(event.target.value)}
+                  >
+                    <option value="all">All events</option>
+                    {eventOptions.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {event.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null
+            }
           />
 
           {loading ? (
             <Panel variant="muted" className="p-4 text-sm text-ink-muted">
               Loading player stats...
             </Panel>
-          ) : !rows.length ? (
+          ) : !filteredRows.length ? (
             <Panel variant="muted" className="p-4 text-sm text-ink-muted">
-              No stats recorded for this player yet.
+              {eventFilter === "all"
+                ? "No stats recorded for this player yet."
+                : "No stats recorded for this player in the selected event."}
             </Panel>
           ) : (
             <>

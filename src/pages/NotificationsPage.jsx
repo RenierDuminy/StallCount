@@ -38,6 +38,20 @@ const TOPIC_PRESETS = [
   "halftime_start",
 ];
 
+const TOPIC_LABELS = {
+  match_start: "Match start",
+  goal: "Goal",
+  match_final: "Match end",
+  turnover: "Possession (turnover/block)",
+  timeout_start: "Timeout",
+  stoppage_start: "Stoppage",
+  halftime_start: "Halftime",
+};
+
+const TOPIC_EVENT_ALIASES = {
+  turnover: ["turnover", "block"],
+};
+
 function uniqueTopics(topics) {
   return Array.from(
     new Set(
@@ -57,6 +71,15 @@ function getEventDataValue(data, ...keys) {
     }
   }
   return "";
+}
+
+function topicMatchesEventType(topic, eventType) {
+  const normalizedTopic = String(topic || "").toLowerCase();
+  const normalizedEventType = String(eventType || "").toLowerCase();
+  if (!normalizedTopic || !normalizedEventType) return false;
+  if (normalizedTopic === normalizedEventType) return true;
+  const aliasTargets = TOPIC_EVENT_ALIASES[normalizedTopic];
+  return Array.isArray(aliasTargets) ? aliasTargets.includes(normalizedEventType) : false;
 }
 
 function eventMatchesSubscription(event, subscription) {
@@ -105,7 +128,7 @@ function eventMatchesSubscription(event, subscription) {
   const topics = Array.isArray(subscription.topics) ? subscription.topics : [];
   if (!topics.length) return true;
   const eventType = String(event.event_type || "").toLowerCase();
-  return topics.some((topic) => String(topic || "").toLowerCase() === eventType);
+  return topics.some((topic) => topicMatchesEventType(topic, eventType));
 }
 
 export default function NotificationsPage() {
@@ -139,7 +162,11 @@ export default function NotificationsPage() {
     error: null,
   }));
   const topicOptions = useMemo(
-    () => TOPIC_PRESETS.map((topic) => ({ value: topic, label: topic.replace(/_/g, " ") })),
+    () =>
+      TOPIC_PRESETS.map((topic) => ({
+        value: topic,
+        label: TOPIC_LABELS[topic] || topic.replace(/_/g, " "),
+      })),
     [],
   );
   const notifiedEventIdsRef = useRef(new Set());
@@ -595,7 +622,6 @@ export default function NotificationsPage() {
 
   return (
     <div className="sc-page">
-      <div className="sc-page__glow" aria-hidden="true" />
       <div className="relative z-10">
         <SectionShell as="header" className="pt-6">
           <Card className="space-y-6 p-6 sm:p-8">

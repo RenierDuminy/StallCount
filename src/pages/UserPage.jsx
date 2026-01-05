@@ -58,6 +58,34 @@ const ROLE_LIBRARY = {
   },
 };
 
+const ACCESS_GUIDE = [
+  {
+    key: "viewer",
+    label: "Viewer access",
+    description: "General read-only access to live data and schedules.",
+  },
+  {
+    key: "score_capture",
+    label: "Field assistant",
+    description: "Scorekeeper tools to run live tables and reconcile offline submissions.",
+  },
+  {
+    key: "captain",
+    label: "Captain",
+    description: "Field assistant capabilities plus team management (rosters and spirit submissions).",
+  },
+  {
+    key: "media",
+    label: "Media",
+    description: "Ability to modify match media entries and surface highlights for the community site.",
+  },
+  {
+    key: "admin",
+    label: "Tournament director",
+    description: "Field assistant + captain + media capabilities, along with event management controls.",
+  },
+];
+
 function formatDate(value) {
   if (!value) return "Unknown";
   try {
@@ -87,6 +115,7 @@ export default function UserPage() {
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(Boolean(user));
   const [profileError, setProfileError] = useState(null);
+  const [hideUnknownRoleNotice, setHideUnknownRoleNotice] = useState(false);
   const accessInfo = useMemo(() => resolveAccessLevel(user), [user]);
 
   useEffect(() => {
@@ -190,6 +219,20 @@ export default function UserPage() {
     "User profile";
 
   const accessLevelsValue = accessLevelLabels.length > 0 ? accessLevelLabels.join(", ") : `${accessInfo.role} - ${accessInfo.level}`;
+  const accessGuideEntries = useMemo(() => {
+    const roleSet = new Set(recognisedRoles);
+    const entries = ACCESS_GUIDE.filter((entry) => {
+      if (entry.key === "viewer") {
+        return roleSet.size === 0;
+      }
+      return roleSet.has(entry.key);
+    });
+    return entries;
+  }, [recognisedRoles]);
+
+  useEffect(() => {
+    setHideUnknownRoleNotice(false);
+  }, [fallbackRoles.join(",")]);
 
   const profileEntries = useMemo(() => {
     if (!user) return [];
@@ -269,10 +312,29 @@ export default function UserPage() {
                   <Chip variant="ghost">General viewer</Chip>
                 )}
               </div>
-              {fallbackRoles.length > 0 && (
-                <Panel variant="muted" className="p-4 text-xs text-ink-muted">
-                  Unknown roles detected: {fallbackRoles.join(", ")}. Please contact an administrator to review your access.
+              {fallbackRoles.length > 0 && !hideUnknownRoleNotice && (
+                <Panel variant="muted" className="flex flex-wrap items-center justify-between gap-3 p-4 text-xs text-ink-muted">
+                  <span>
+                    Unknown roles detected: {fallbackRoles.join(", ")}. Please contact an administrator to review your access.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setHideUnknownRoleNotice(true)}
+                    className="rounded-full border border-[var(--sc-border)] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-ink transition hover:bg-white/10"
+                  >
+                    Dismiss
+                  </button>
                 </Panel>
+              )}
+              {accessGuideEntries.length > 0 && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {accessGuideEntries.map((entry) => (
+                    <Panel key={entry.label} variant="muted" className="p-4 text-sm">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{entry.label}</p>
+                      <p className="mt-1 text-ink">{entry.description}</p>
+                    </Panel>
+                  ))}
+                </div>
               )}
             </Card>
 
@@ -307,11 +369,30 @@ export default function UserPage() {
             )}
 
             <Card className="space-y-4 p-6">
-              <SectionHeader title="Need quick help?" description="Reach out to the crew below if you get stuck mid-event." />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Panel variant="muted" className="p-4 text-sm text-ink">
-                  <p className="font-semibold text-ink">Operations Desk</p>
-                  <p className="mt-1 text-xs text-ink-muted">ops@stallcount.io / +1 (555) 010 2234</p>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <SectionHeader
+                  title="Need help?"
+                  description="Reach out if you hit an issue, need access changes, or have general questions."
+                />
+                <img
+                  src="/assets/RCFD Logo (light).png"
+                  alt="RCDF logo"
+                  className="h-20 w-auto object-contain p-1"
+                  loading="lazy"
+                />
+              </div>
+              <div className="grid gap-4 text-sm">
+                <Panel variant="muted" className="flex flex-col gap-2 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">General enquiries</p>
+                  <p className="text-ink">
+                    StallCount is a product of RCDF (Pty) Ltd. For more information or assistance, drop us an email at{" "}
+                    <a
+                      href="mailto:rcfdltf@gmail.com"
+                      className="inline-flex items-center rounded-full border border-[var(--sc-border)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#c6ff62] transition hover:bg-white/10"
+                    >
+                      rcfdltf@gmail.com
+                    </a>
+                  </p>
                 </Panel>
               </div>
             </Card>

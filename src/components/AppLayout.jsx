@@ -7,7 +7,6 @@ export default function AppLayout() {
 
   return (
     <div className="sc-page flex min-h-screen flex-col">
-      <div className="sc-page__glow" aria-hidden="true" />
       <SiteHeader />
       <main className="relative flex-1">
         {!session && (
@@ -25,6 +24,9 @@ export default function AppLayout() {
         )}
         <Outlet />
       </main>
+      <footer className="border-t border-[var(--sc-border)]/60 bg-[#03130d] py-4 text-center text-xs font-semibold uppercase tracking-wide text-emerald-200">
+        StallCount is a product of RCFD (Pty) Ltd. For more information contact rcfdltf@gmail.com
+      </footer>
     </div>
   );
 }

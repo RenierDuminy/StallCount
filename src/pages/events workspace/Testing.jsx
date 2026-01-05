@@ -4,11 +4,12 @@ import {
   Panel,
   SectionHeader,
   SectionShell,
-} from "../components/ui/primitives";
-import { getMatchesByEvent } from "../services/matchService";
-import { getMatchMediaDetails } from "../utils/matchMedia";
+} from "../../components/ui/primitives";
+import { getMatchesByEvent } from "../../services/matchService";
+import { getMatchMediaDetails } from "../../utils/matchMedia";
 
-const EVENT_ID = "4473483d-bc4d-443b-b93e-65375c35a8b4";
+export const EVENT_ID = "4473483d-bc4d-443b-b93e-65375c35a8b4";
+export const EVENT_SLUG = "testing";
 const MATCH_LIMIT = 200;
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);

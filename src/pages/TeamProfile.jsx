@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { MatchMediaButton } from "../components/MatchMediaButton";
-import { Card, Chip, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
+import { Card, Chip, Panel, SectionHeader, SectionShell, Field, Select } from "../components/ui/primitives";
 import { getPlayersByTeam } from "../services/playerService";
 import {
   getSpiritScoresForMatches,
@@ -29,6 +29,7 @@ const GAME_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
 export default function TeamProfilePage() {
   const { teamId } = useParams();
   const [activeTab, setActiveTab] = useState("games");
+  const [eventFilter, setEventFilter] = useState("all");
   const [state, setState] = useState({
     loading: true,
     error: "",
@@ -134,10 +135,62 @@ export default function TeamProfilePage() {
     };
   }, [state.matches, venueLookup]);
 
+  const matchesById = useMemo(() => {
+    const map = new Map();
+    state.matches.forEach((match) => {
+      if (match?.id) {
+        map.set(match.id, match);
+      }
+    });
+    return map;
+  }, [state.matches]);
+
+  const eventOptions = useMemo(() => {
+    const options = new Map();
+    state.matches.forEach((match) => {
+      const eventId = match.event?.id;
+      if (eventId && !options.has(eventId)) {
+        options.set(eventId, match.event?.name || "Event");
+      }
+    });
+    return Array.from(options.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [state.matches]);
+
+  const filteredMatches = useMemo(() => {
+    if (eventFilter === "all") {
+      return state.matches;
+    }
+    return state.matches.filter((match) => match.event?.id === eventFilter);
+  }, [state.matches, eventFilter]);
+
+  const filteredSpiritScores = useMemo(() => {
+    if (eventFilter === "all") {
+      return state.spiritScores;
+    }
+    return state.spiritScores.filter((entry) => {
+      const match = matchesById.get(entry.match_id);
+      return match?.event?.id === eventFilter;
+    });
+  }, [state.spiritScores, matchesById, eventFilter]);
+
+  const filteredPlayerStats = useMemo(() => {
+    if (eventFilter === "all") {
+      return state.playerStats;
+    }
+    return state.playerStats.filter((player) =>
+      player.matchIds?.some((matchId) => matchesById.get(matchId)?.event?.id === eventFilter),
+    );
+  }, [state.playerStats, matchesById, eventFilter]);
+
   const metrics = useMemo(() => {
+    const sourceMatches = filteredMatches;
+    const sourceSpirit = filteredSpiritScores;
+
     if (!state.team) {
       return {
-        gamesPlayed: state.matches.length,
+        gamesPlayed: sourceMatches.length,
         wins: 0,
         losses: 0,
         draws: 0,
@@ -145,7 +198,7 @@ export default function TeamProfilePage() {
         goalsAgainst: 0,
         goalDiff: 0,
         spiritAverage: null,
-        activePlayers: state.roster.length,
+        activePlayers: eventFilter === "all" ? state.roster.length : filteredPlayerStats.length,
       };
     }
 
@@ -155,7 +208,7 @@ export default function TeamProfilePage() {
     let goalsFor = 0;
     let goalsAgainst = 0;
 
-    for (const match of state.matches) {
+    for (const match of sourceMatches) {
       const isTeamA = match.team_a?.id === state.team.id;
       const forScore = isTeamA ? match.score_a ?? 0 : match.score_b ?? 0;
       const againstScore = isTeamA ? match.score_b ?? 0 : match.score_a ?? 0;
@@ -170,9 +223,7 @@ export default function TeamProfilePage() {
       }
     }
 
-    const receivedEntries = state.spiritScores.filter(
-      (entry) => entry.rated_team_id === state.team?.id
-    );
+    const receivedEntries = sourceSpirit.filter((entry) => entry.rated_team_id === state.team?.id);
 
     const spiritAverage =
       receivedEntries.length > 0
@@ -181,7 +232,7 @@ export default function TeamProfilePage() {
         : null;
 
     return {
-      gamesPlayed: state.matches.length,
+      gamesPlayed: sourceMatches.length,
       wins,
       losses,
       draws,
@@ -189,9 +240,9 @@ export default function TeamProfilePage() {
       goalsAgainst,
       goalDiff: goalsFor - goalsAgainst,
       spiritAverage,
-      activePlayers: state.roster.length,
+      activePlayers: eventFilter === "all" ? state.roster.length : filteredPlayerStats.length,
     };
-  }, [state.matches, state.roster, state.spiritScores, state.team]);
+  }, [eventFilter, filteredMatches, filteredPlayerStats, filteredSpiritScores, state.roster, state.team]);
 
   const spiritBreakdown = useMemo(() => {
     if (!state.team) {
@@ -201,7 +252,7 @@ export default function TeamProfilePage() {
     const received = [];
     const given = [];
 
-    for (const entry of state.spiritScores) {
+    for (const entry of filteredSpiritScores) {
       if (entry.rated_team_id === state.team.id) {
         received.push(entry);
       } else {
@@ -210,7 +261,7 @@ export default function TeamProfilePage() {
     }
 
     return { received, given };
-  }, [state.spiritScores, state.team]);
+  }, [filteredSpiritScores, state.team]);
 
   const recordLabel =
     metrics.draws > 0
@@ -243,7 +294,7 @@ export default function TeamProfilePage() {
             action={
               <div className="flex flex-wrap gap-2">
                 <Link to="/teams" className="sc-button is-light text-sm">
-                  All teams
+                  Back to teams list
                 </Link>
               </div>
             }
@@ -270,10 +321,26 @@ export default function TeamProfilePage() {
                 eyebrowVariant="tag"
                 title="Performance overview"
                 description="Key indicators compiled from schedule, roster, and spirit data."
+                action={
+                  <Field className="w-full max-w-xs" label="Event" htmlFor="team-event-filter">
+                    <Select
+                      id="team-event-filter"
+                      value={eventFilter}
+                      onChange={(event) => setEventFilter(event.target.value)}
+                    >
+                      <option value="all">All events</option>
+                      {eventOptions.map((event) => (
+                        <option key={event.id} value={event.id}>
+                          {event.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                }
               />
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <SummaryStat label="Games played" value={metrics.gamesPlayed} />
-                <SummaryStat label="Record" value={ready ? recordLabel : "—"} />
+                <SummaryStat label="Record (W-L-D)" value={ready ? recordLabel : "—"} />
                 <SummaryStat
                   label="Goals for / against"
                   value={ready ? `${metrics.goalsFor} / ${metrics.goalsAgainst}` : "—"}
@@ -313,14 +380,13 @@ export default function TeamProfilePage() {
                 ) : (
                   <>
                     {activeTab === "games" && (
-                      <GamesTable
-                        matches={state.matches}
-                        teamId={state.team?.id}
-                        venueLookup={venueLookup}
-                      />
+                      <GamesTable matches={filteredMatches} teamId={state.team?.id} venueLookup={venueLookup} />
                     )}
                     {activeTab === "players" && (
-                      <PlayersTable stats={state.playerStats} rosterCount={state.roster.length} />
+                      <PlayersTable
+                        stats={filteredPlayerStats}
+                        rosterCount={eventFilter === "all" ? state.roster.length : filteredPlayerStats.length}
+                      />
                     )}
                     {activeTab === "spirit" && (
                       <SpiritTab
@@ -525,9 +591,6 @@ function PlayersTable({ stats, rosterCount }) {
                         {stat.playerName}
                       </Link>
                     </div>
-                    <p className="text-xs text-[var(--sc-surface-light-ink)]/60">
-                      Total: {total} ({stat.goals} G / {stat.assists} A)
-                    </p>
                   </td>
                   <td className="px-4 py-3 text-right font-semibold text-[var(--sc-surface-light-ink)]">
                     {stat.goals}
@@ -552,30 +615,32 @@ function PlayersTable({ stats, rosterCount }) {
 
 function SpiritTab({ received, given, teamId }) {
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div>
-        <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">Spirit received</h3>
-        <p className="text-sm text-[var(--sc-surface-light-ink)]/70">
-          Scores from opponents about this team&apos;s spirit performance.
-        </p>
-        <SpiritTable
-          variant="received"
-          entries={received}
-          emptyLabel="No spirit scores received."
-          teamId={teamId}
-        />
-      </div>
-      <div>
-        <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">Spirit given</h3>
-        <p className="text-sm text-[var(--sc-surface-light-ink)]/70">
-          Scores this team submitted for their opponents.
-        </p>
-        <SpiritTable
-          variant="given"
-          entries={given}
-          emptyLabel="No submitted spirit scores."
-          teamId={teamId}
-        />
+    <div className="overflow-x-auto">
+      <div className="flex min-w-full flex-col gap-6 lg:flex-row lg:items-start">
+        <div className="w-full lg:min-w-[700px] lg:flex-1">
+          <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">Spirit received</h3>
+          <p className="text-sm text-[var(--sc-surface-light-ink)]/70">
+            Scores from opponents about this team&apos;s spirit performance.
+          </p>
+          <SpiritTable
+            variant="received"
+            entries={received}
+            emptyLabel="No spirit scores received."
+            teamId={teamId}
+          />
+        </div>
+        <div className="w-full lg:min-w-[700px] lg:flex-1">
+          <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">Spirit given</h3>
+          <p className="text-sm text-[var(--sc-surface-light-ink)]/70">
+            Scores this team submitted for their opponents.
+          </p>
+          <SpiritTable
+            variant="given"
+            entries={given}
+            emptyLabel="No submitted spirit scores."
+            teamId={teamId}
+          />
+        </div>
       </div>
     </div>
   );
@@ -587,63 +652,68 @@ function SpiritTable({ entries, emptyLabel, teamId, variant = "received" }) {
   }
 
   return (
-    <Panel variant="light" className="mt-3 overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)]">
-      <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
-        <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
-          <tr>
-            <th className="px-3 py-2">Score</th>
-            <th className="px-3 py-2">
-              {variant === "received" ? "Given by" : "Given to"}
-            </th>
-            <th className="px-2 py-2 text-center">Total</th>
-            <th className="px-2 py-2 text-center">Rules</th>
-            <th className="px-2 py-2 text-center">Contact</th>
-            <th className="px-2 py-2 text-center">Fair</th>
-            <th className="px-2 py-2 text-center">Attitude</th>
-            <th className="px-2 py-2 text-center">Communication</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
-          {entries.map((entry) => {
-            const isTeamA = teamId && entry.match?.team_a?.id === teamId;
-            const goalsFor = isTeamA ? entry.match?.score_a ?? 0 : entry.match?.score_b ?? 0;
-            const goalsAgainst = isTeamA ? entry.match?.score_b ?? 0 : entry.match?.score_a ?? 0;
-            const opponent =
-              variant === "received"
-                ? resolveOpponent(entry.match, teamId)
-                : resolveRatedTeam(entry);
-            return (
-              <tr key={entry.id}>
-                <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)]">
-                  {Number.isFinite(goalsFor) && Number.isFinite(goalsAgainst)
-                    ? `${goalsFor} - ${goalsAgainst}`
-                    : "TBD"}
-                </td>
-                <td className="px-3 py-2 text-[var(--sc-surface-light-ink)]/80">
-                  {opponent ? (
-                    <Link
-                      to={`/teams/${opponent.id}`}
-                      className="text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
-                    >
-                      {opponent.name}
-                    </Link>
-                  ) : (
-                    "TBD"
-                  )}
-                </td>
-                <td className="px-2 py-2 text-center font-semibold text-[var(--sc-surface-light-ink)]">
-                  {entry.total ?? "—"}
-                </td>
-                <td className="px-2 py-2 text-center">{entry.rules_knowledge ?? "—"}</td>
-                <td className="px-2 py-2 text-center">{entry.fouls_contact ?? "—"}</td>
-                <td className="px-2 py-2 text-center">{entry.self_control ?? "—"}</td>
-                <td className="px-2 py-2 text-center">{entry.positive_attitude ?? "—"}</td>
-                <td className="px-2 py-2 text-center">{entry.communication ?? "—"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <Panel
+      variant="light"
+      className="mt-3 overflow-hidden rounded-lg border border-[var(--sc-surface-light-border)]/70 shadow-sm shadow-[rgba(8,25,21,0.04)]"
+    >
+      <div className="overflow-x-auto bg-white/90">
+        <table className="min-w-[720px] text-sm text-[var(--sc-surface-light-ink)]/85">
+          <thead className="bg-[var(--sc-surface-light-bg)]">
+            <tr className="text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
+              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-3 py-2">Score</th>
+              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-3 py-2">
+                {variant === "received" ? "Given by" : "Given to"}
+              </th>
+              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Total</th>
+              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Rules</th>
+              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Contact</th>
+              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Fair</th>
+              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Attitude</th>
+              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Communication</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white">
+            {entries.map((entry) => {
+              const isTeamA = teamId && entry.match?.team_a?.id === teamId;
+              const goalsFor = isTeamA ? entry.match?.score_a ?? 0 : entry.match?.score_b ?? 0;
+              const goalsAgainst = isTeamA ? entry.match?.score_b ?? 0 : entry.match?.score_a ?? 0;
+              const opponent =
+                variant === "received"
+                  ? resolveOpponent(entry.match, teamId)
+                  : resolveRatedTeam(entry);
+              return (
+                <tr key={entry.id} className="border-t border-[var(--sc-surface-light-border)]/60">
+                  <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)]">
+                    {Number.isFinite(goalsFor) && Number.isFinite(goalsAgainst)
+                      ? `${goalsFor} - ${goalsAgainst}`
+                      : "TBD"}
+                  </td>
+                  <td className="px-3 py-2 text-[var(--sc-surface-light-ink)]/80">
+                    {opponent ? (
+                      <Link
+                        to={`/teams/${opponent.id}`}
+                        className="text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
+                      >
+                        {opponent.name}
+                      </Link>
+                    ) : (
+                      "TBD"
+                    )}
+                  </td>
+                  <td className="px-2 py-2 text-center font-semibold text-[var(--sc-surface-light-ink)]">
+                    {entry.total ?? "—"}
+                  </td>
+                  <td className="px-2 py-2 text-center">{entry.rules_knowledge ?? "—"}</td>
+                  <td className="px-2 py-2 text-center">{entry.fouls_contact ?? "—"}</td>
+                  <td className="px-2 py-2 text-center">{entry.self_control ?? "—"}</td>
+                  <td className="px-2 py-2 text-center">{entry.positive_attitude ?? "—"}</td>
+                  <td className="px-2 py-2 text-center">{entry.communication ?? "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </Panel>
   );
 }

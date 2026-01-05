@@ -1024,7 +1024,7 @@ export default function HomePage() {
       <footer className="sc-shell mt-10">
         <div className="sc-card-muted flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
           <p className="font-semibold text-ink">
-            &copy; {new Date().getFullYear()} StallCount. Built for Ultimate event control rooms.
+            {new Date().getFullYear()} StallCount. Built for Ultimate event control rooms. StallCount is a product of RCFD (Pty) Ltd. For more information contact rcfdltf@gmail.com
           </p>
           <div className="flex flex-wrap items-center gap-3 md:gap-4">
             <Link to="/matches" className="font-semibold text-accent">

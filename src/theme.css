@@ -3,6 +3,7 @@
   font-size: 16px;
   --sc-font-body: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --sc-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --sc-header-height: 84px;
 
   --sc-bg: #01500a;
   --sc-bg-accent: #0b1f0c;
@@ -124,7 +125,10 @@ body {
 
 .sc-page__glow {
   position: absolute;
-  inset: 0 0 auto 0;
+  top: var(--sc-header-height);
+  left: 0;
+  right: 0;
+  bottom: auto;
   height: 280px;
   pointer-events: none;
   background: radial-gradient(circle at top, rgba(209, 250, 229, 0.55), transparent 70%);
@@ -572,6 +576,11 @@ textarea.sc-input {
   color: var(--td-ink);
   border-color: var(--td-border-strong);
   box-shadow: none;
+}
+
+.td-page button,
+.td-page .sc-button {
+  border: 1px solid #0a3d29;
 }
 
 /* Scorekeeper compact variant */

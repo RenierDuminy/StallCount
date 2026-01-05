@@ -263,7 +263,7 @@ export default function TournamentDirectorPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
+    <div className="td-page min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
       <SectionShell as="header" className="py-8">
         <Card variant="light" className="space-y-5 p-6 sm:p-8 shadow-xl shadow-[rgba(8,25,21,0.08)]">
           <SectionHeader

@@ -5,21 +5,9 @@ import { getMatchesByEvent } from "../services/matchService";
 import { hydrateVenueLookup } from "../services/venueService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
 import { resolveMediaProviderLabel } from "../utils/matchMedia";
+import { getEventWorkspacePath } from "./eventWorkspaces";
 
-const EVENT_DETAIL_ROUTES = {
-  "4473483d-bc4d-443b-b93e-65375c35a8b4": {
-    path: "/events/dr-testing",
-    label: "Open event workspace",
-  },
-  "0d3369f9-8461-4f02-b343-5679bb17d644": {
-    path: "/events/dr-owleague26",
-    label: "Open event workspace",
-  },
-  "b0598bc7-fdd2-498c-ab8c-e5f4904ed03d": {
-    path: "/events/dr-rl26",
-    label: "Open event workspace",
-  },
-};
+const EVENT_WORKSPACE_LABEL = "Open event overview";
 
 export default function EventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -190,14 +178,6 @@ export default function EventsPage() {
     if (matchTab === "current") {
       return bucket.filter((match) => (match.status || "").toLowerCase() === "live");
     }
-    if (bucket.length === 0) {
-      if (matchTab === "upcoming" && matchBuckets.current.length > 0) {
-        return matchBuckets.current;
-      }
-      if (matchTab === "past" && matchBuckets.upcoming.length > 0) {
-        return matchBuckets.upcoming;
-      }
-    }
     return bucket;
   }, [matchBuckets, matchTab]);
 
@@ -234,6 +214,8 @@ export default function EventsPage() {
 
     return rows.length ? rows : null;
   }, [selectedEvent?.rules]);
+
+  const selectedEventWorkspacePath = selectedEvent ? getEventWorkspacePath(selectedEvent.id) : null;
 
   return (
     <div className="pb-16 text-ink">
@@ -337,12 +319,9 @@ export default function EventsPage() {
                     </div>
                   </Panel>
                 )}
-                {selectedEvent && EVENT_DETAIL_ROUTES[selectedEvent.id] && (
-                  <Link
-                    to={EVENT_DETAIL_ROUTES[selectedEvent.id].path}
-                    className="sc-button justify-center"
-                  >
-                    {EVENT_DETAIL_ROUTES[selectedEvent.id].label}
+                {selectedEventWorkspacePath && (
+                  <Link to={selectedEventWorkspacePath} className="sc-button justify-center">
+                    {EVENT_WORKSPACE_LABEL}
                   </Link>
                 )}
               </div>
@@ -382,7 +361,7 @@ export default function EventsPage() {
             </Card>
           ) : activeMatches.length === 0 ? (
             <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-              No matches in this category yet.
+              No matches currently fall in this category.
             </Card>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

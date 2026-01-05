@@ -215,6 +215,7 @@ export type PlayerStatRow = {
   blocks: number;
   turnovers: number;
   games: number;
+  matchIds: string[];
 };
 
 export type PlayerMatchStatRow = {
@@ -320,6 +321,7 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
     blocks: entry.blocks,
     turnovers: entry.turnovers,
     games: entry.matchIds.size,
+    matchIds: Array.from(entry.matchIds),
   }));
 
   return results.sort((a, b) => {

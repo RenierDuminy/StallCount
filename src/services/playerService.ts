@@ -45,6 +45,25 @@ export type RosterEntry = {
   is_spirit_captain: boolean;
 };
 
+export type EventRosterEntry = {
+  id: string;
+  event_id: string | null;
+  team_id: string | null;
+  is_captain: boolean | null;
+  is_spirit_captain: boolean | null;
+  player: {
+    id: string;
+    name: string;
+    jersey_number: number | null;
+    gender_code: "M" | "W" | null;
+  } | null;
+  team: {
+    id: string;
+    name: string;
+    short_name: string | null;
+  } | null;
+};
+
 const PLAYER_SELECT = "id, name, gender_code, jersey_number, birthday, description";
 
 export async function getAllPlayers(): Promise<PlayerRow[]> {
@@ -212,6 +231,36 @@ export async function getRosterEntries(teamId: string, eventId?: string | null) 
   }
 
   return (data ?? []) as RosterEntry[];
+}
+
+export async function getEventRosters(eventId: string): Promise<EventRosterEntry[]> {
+  if (!eventId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("team_roster")
+    .select(
+      `
+        id,
+        event_id,
+        team_id,
+        is_captain,
+        is_spirit_captain,
+        player:player(id, name, jersey_number, gender_code),
+        team:teams(id, name, short_name)
+      `
+    )
+    .eq("event_id", eventId)
+    .order("team_id", { ascending: true })
+    .order("jersey_number", { ascending: true, foreignTable: "player" })
+    .order("name", { ascending: true, foreignTable: "player" });
+
+  if (error) {
+    throw new Error(error.message || "Failed to load event rosters");
+  }
+
+  return (data ?? []) as EventRosterEntry[];
 }
 
 export async function addPlayerToRoster(options: {
