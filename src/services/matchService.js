@@ -1,4 +1,9 @@
 import { supabase } from "./supabaseClient";
+import { getCachedQuery } from "../utils/queryCache";
+
+const RECENT_MATCHES_CACHE_TTL_MS = 30 * 1000;
+const OPEN_MATCHES_CACHE_TTL_MS = 30 * 1000;
+const EVENT_MATCHES_CACHE_TTL_MS = 60 * 1000;
 
 const MATCH_FIELDS = `
   id,
@@ -26,55 +31,73 @@ const MATCH_FIELDS = `
 `;
 
 export async function getRecentMatches(limit = 4) {
-  const { data, error } = await supabase
-    .from("matches")
-    .select(MATCH_FIELDS)
-    .order("start_time", { ascending: false })
-    .limit(limit);
+  return getCachedQuery(
+    `matches:recent:${limit}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("matches")
+        .select(MATCH_FIELDS)
+        .order("start_time", { ascending: false })
+        .limit(limit);
 
-  if (error) {
-    throw new Error(error.message || "Failed to load matches");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load matches");
+      }
 
-  return data ?? [];
+      return data ?? [];
+    },
+    { ttlMs: RECENT_MATCHES_CACHE_TTL_MS },
+  );
 }
 
 export async function getOpenMatches(limit = 12) {
-  const { data, error } = await supabase
-    .from("matches")
-    .select(MATCH_FIELDS)
-    .in("status", ["scheduled", "ready", "pending", "live"])
-    .order("start_time", { ascending: true })
-    .limit(limit);
+  return getCachedQuery(
+    `matches:open:${limit}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("matches")
+        .select(MATCH_FIELDS)
+        .in("status", ["scheduled", "ready", "pending", "live"])
+        .order("start_time", { ascending: true })
+        .limit(limit);
 
-  if (error) {
-    throw new Error(error.message || "Failed to load open matches");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load open matches");
+      }
 
-  return data ?? [];
+      return data ?? [];
+    },
+    { ttlMs: OPEN_MATCHES_CACHE_TTL_MS },
+  );
 }
 
 export async function getMatchesByEvent(eventId, limit = 24, options = {}) {
   const { includeFinished = true } = options;
 
-  let query = supabase
-    .from("matches")
-    .select(MATCH_FIELDS)
-    .eq("event_id", eventId)
-    .order("start_time", { ascending: true })
-    .limit(limit);
+  return getCachedQuery(
+    `matches:event:${eventId}:limit=${limit}:includeFinished=${includeFinished}`,
+    async () => {
+      let query = supabase
+        .from("matches")
+        .select(MATCH_FIELDS)
+        .eq("event_id", eventId)
+        .order("start_time", { ascending: true })
+        .limit(limit);
 
-  if (!includeFinished) {
-    query = query.neq("status", "finished").neq("status", "completed");
-  }
+      if (!includeFinished) {
+        query = query.neq("status", "finished").neq("status", "completed");
+      }
 
-  const { data, error } = await query;
+      const { data, error } = await query;
 
-  if (error) {
-    throw new Error(error.message || "Failed to load matches for event");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load matches for event");
+      }
 
-  return data ?? [];
+      return data ?? [];
+    },
+    { ttlMs: EVENT_MATCHES_CACHE_TTL_MS },
+  );
 }
 
 export async function getMatchById(matchId) {

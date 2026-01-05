@@ -1,4 +1,8 @@
 import { supabase } from "./supabaseClient";
+import { getCachedQuery } from "../utils/queryCache";
+
+const DIVISIONS_CACHE_TTL_MS = 30 * 60 * 1000;
+const EVENTS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 export type DivisionRow = {
   id: string;
@@ -55,45 +59,63 @@ export type EventHierarchyRow = EventRow & {
 };
 
 export async function getDivisions(limit = 6): Promise<DivisionRow[]> {
-  const { data, error } = await supabase
-    .from("divisions")
-    .select("id, name, level, created_at")
-    .order("name", { ascending: true })
-    .limit(limit);
+  return getCachedQuery(
+    `divisions:list:${limit}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("divisions")
+        .select("id, name, level, created_at")
+        .order("name", { ascending: true })
+        .limit(limit);
 
-  if (error) {
-    throw new Error(error.message || "Failed to load divisions");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load divisions");
+      }
 
-  return (data ?? []) as DivisionRow[];
+      return (data ?? []) as DivisionRow[];
+    },
+    { ttlMs: DIVISIONS_CACHE_TTL_MS },
+  );
 }
 
 export async function getRecentEvents(limit = 4): Promise<EventRow[]> {
-  const { data, error } = await supabase
-    .from("events")
-    .select("id, name, type, start_date, end_date, location, created_at, rules")
-    .order("start_date", { ascending: false })
-    .limit(limit);
+  return getCachedQuery(
+    `events:recent:${limit}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("events")
+        .select("id, name, type, start_date, end_date, location, created_at, rules")
+        .order("start_date", { ascending: false })
+        .limit(limit);
 
-  if (error) {
-    throw new Error(error.message || "Failed to load events");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load events");
+      }
 
-  return (data ?? []) as EventRow[];
+      return (data ?? []) as EventRow[];
+    },
+    { ttlMs: EVENTS_CACHE_TTL_MS },
+  );
 }
 
 export async function getEventsList(limit = 12): Promise<EventRow[]> {
-  const { data, error } = await supabase
-    .from("events")
-    .select("id, name, type, start_date, end_date, location, created_at, rules")
-    .order("start_date", { ascending: true })
-    .limit(limit);
+  return getCachedQuery(
+    `events:list:${limit}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("events")
+        .select("id, name, type, start_date, end_date, location, created_at, rules")
+        .order("start_date", { ascending: true })
+        .limit(limit);
 
-  if (error) {
-    throw new Error(error.message || "Failed to load events");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load events");
+      }
 
-  return (data ?? []) as EventRow[];
+      return (data ?? []) as EventRow[];
+    },
+    { ttlMs: EVENTS_CACHE_TTL_MS },
+  );
 }
 
 export async function getEventsByIds(ids: string[]): Promise<EventRow[]> {
@@ -101,16 +123,23 @@ export async function getEventsByIds(ids: string[]): Promise<EventRow[]> {
   if (!uniqueIds.length) {
     return [];
   }
-  const { data, error } = await supabase
-    .from("events")
-    .select("id, name, type, start_date, end_date, location, created_at, rules")
-    .in("id", uniqueIds);
+  const cacheKey = `events:ids:${[...uniqueIds].sort().join(",")}`;
+  return getCachedQuery(
+    cacheKey,
+    async () => {
+      const { data, error } = await supabase
+        .from("events")
+        .select("id, name, type, start_date, end_date, location, created_at, rules")
+        .in("id", uniqueIds);
 
-  if (error) {
-    throw new Error(error.message || "Failed to load events");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load events");
+      }
 
-  return (data ?? []) as EventRow[];
+      return (data ?? []) as EventRow[];
+    },
+    { ttlMs: EVENTS_CACHE_TTL_MS },
+  );
 }
 
 type RawPoolTeam = {

@@ -12,12 +12,6 @@ import {
   resolveTopicsInput,
   upsertSubscription,
 } from "../services/subscriptionService";
-import {
-  disablePushSubscription,
-  ensurePushSubscription,
-  getExistingSubscription,
-  isPushSupported,
-} from "../pwa/pushClient";
 import { Card, Panel, SectionHeader, SectionShell, Chip, Field, Input, Select, Textarea } from "../components/ui/primitives";
 
 const TARGET_OPTIONS = [
@@ -51,6 +45,14 @@ const TOPIC_LABELS = {
 const TOPIC_EVENT_ALIASES = {
   turnover: ["turnover", "block"],
 };
+
+const supportsPush = () =>
+  typeof window !== "undefined" &&
+  "serviceWorker" in navigator &&
+  "PushManager" in window &&
+  "Notification" in window;
+
+const loadPushClient = () => import("../pwa/pushClient");
 
 function uniqueTopics(topics) {
   return Array.from(
@@ -154,7 +156,7 @@ export default function NotificationsPage() {
   const [recentLoading, setRecentLoading] = useState(false);
   const [recentError, setRecentError] = useState(null);
   const [pushState, setPushState] = useState(() => ({
-    supported: isPushSupported(),
+    supported: supportsPush(),
     permission:
       typeof window !== "undefined" && "Notification" in window ? Notification.permission : "default",
     enabled: false,
@@ -327,8 +329,10 @@ export default function NotificationsPage() {
   useEffect(() => {
     if (!pushState.supported) return undefined;
     let ignore = false;
-    getExistingSubscription()
-      .then((subscription) => {
+    const syncSubscription = async () => {
+      try {
+        const { getExistingSubscription } = await loadPushClient();
+        const subscription = await getExistingSubscription();
         if (ignore) return;
         setPushState((prev) => ({
           ...prev,
@@ -336,21 +340,15 @@ export default function NotificationsPage() {
           permission:
             typeof Notification !== "undefined" ? Notification.permission : prev.permission,
         }));
-      })
-      .catch(() => {
+      } catch {
         if (ignore) return;
         setPushState((prev) => ({ ...prev, enabled: false }));
-      });
+      }
+    };
+    void syncSubscription();
     const handleMessage = (event) => {
       if (event.data?.type === "PUSH_SUBSCRIPTION_CHANGED") {
-        getExistingSubscription().then((subscription) => {
-          setPushState((prev) => ({
-            ...prev,
-            enabled: Boolean(subscription),
-            permission:
-              typeof Notification !== "undefined" ? Notification.permission : prev.permission,
-          }));
-        });
+        void syncSubscription();
       }
     };
     navigator.serviceWorker?.addEventListener("message", handleMessage);
@@ -582,6 +580,7 @@ export default function NotificationsPage() {
       if (!profileId) {
         throw new Error("Sign in to enable push notifications.");
       }
+      const { ensurePushSubscription } = await loadPushClient();
       await ensurePushSubscription(profileId);
       setPushState((prev) => ({
         ...prev,
@@ -605,6 +604,7 @@ export default function NotificationsPage() {
     if (pushState.busy) return;
     setPushState((prev) => ({ ...prev, busy: true, error: null }));
     try {
+      const { disablePushSubscription } = await loadPushClient();
       await disablePushSubscription(profileId || undefined);
       setPushState((prev) => ({
         ...prev,

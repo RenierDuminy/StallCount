@@ -1,4 +1,7 @@
 import { supabase, type PlayerRow } from "./supabaseClient";
+import { getCachedQuery, invalidateCachedQuery } from "../utils/queryCache";
+
+const PLAYER_DIRECTORY_CACHE_TTL_MS = 10 * 60 * 1000;
 
 type TeamRosterRow = {
   id: string;
@@ -134,16 +137,22 @@ export async function getPlayersByTeam(teamId: string) {
 }
 
 export async function getPlayerDirectory(): Promise<PlayerDirectoryRow[]> {
-  const { data, error } = await supabase
-    .from("player")
-    .select(PLAYER_SELECT)
-    .order("name", { ascending: true });
+  return getCachedQuery(
+    "players:directory",
+    async () => {
+      const { data, error } = await supabase
+        .from("player")
+        .select(PLAYER_SELECT)
+        .order("name", { ascending: true });
 
-  if (error) {
-    throw new Error(error.message || "Failed to load player directory");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load player directory");
+      }
 
-  return (data ?? []) as PlayerDirectoryRow[];
+      return (data ?? []) as PlayerDirectoryRow[];
+    },
+    { ttlMs: PLAYER_DIRECTORY_CACHE_TTL_MS },
+  );
 }
 
 export async function getPlayersByIds(ids: string[]): Promise<PlayerDirectoryRow[]> {
@@ -186,6 +195,7 @@ export async function upsertPlayer(payload: UpsertPlayerPayload) {
     if (error) {
       throw new Error(error.message || "Unable to update player");
     }
+    invalidateCachedQuery("players:directory");
     return payload.id;
   }
 
@@ -198,6 +208,8 @@ export async function upsertPlayer(payload: UpsertPlayerPayload) {
   if (error) {
     throw new Error(error.message || "Unable to create player");
   }
+
+  invalidateCachedQuery("players:directory");
 
   return data?.id as string;
 }

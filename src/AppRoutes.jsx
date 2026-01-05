@@ -1,30 +1,38 @@
+import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import LoginPage from "./pages/LoginPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-import HomePage from "./pages/HomePage";
-import AdminPage from "./pages/AdminPage";
-import AdminScoreboardDebugPage from "./pages/AdminScoreboardDebugPage";
-import AdminAccessPage from "./pages/AdminAccessPage";
-import ScoreKeeperPage from "./pages/ScoreKeeperPage";
-import CaptainPage from "./pages/CaptainPage";
-import SysAdminPage from "./pages/SysAdminPage";
-import Teams from "./pages/Teams";
-import Players from "./pages/PlayersPage";
-import PlayerProfilePage from "./pages/PlayerProfilePage";
-import MatchesPage from "./pages/MatchesPage";
-import EventsPage from "./pages/EventsPage";
-import EventSetupWizardPage from "./pages/EventSetupWizard";
-import TeamProfilePage from "./pages/TeamProfile";
-import SpiritScoresPage from "./pages/SpiritScoresPage";
-import UserPage from "./pages/UserPage";
-import NotificationsPage from "./pages/NotificationsPage";
 import AppLayout from "./components/AppLayout";
-import TournamentDirectorPage from "./pages/TournamentDirectorPage";
-import MediaAdminPage from "./pages/MediaAdminPage";
 import { ADMIN_TOOL_ACCESS_ROLES } from "./utils/accessControl";
 import { eventWorkspaces } from "./pages/eventWorkspaces";
-import EventRostersPage from "./pages/EventRostersPage";
+
+const HomePage = lazy(() => import("./pages/HomePage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const Players = lazy(() => import("./pages/PlayersPage"));
+const PlayerProfilePage = lazy(() => import("./pages/PlayerProfilePage"));
+const Teams = lazy(() => import("./pages/Teams"));
+const TeamProfilePage = lazy(() => import("./pages/TeamProfile"));
+const MatchesPage = lazy(() => import("./pages/MatchesPage"));
+const EventsPage = lazy(() => import("./pages/EventsPage"));
+const EventSetupWizardPage = lazy(() => import("./pages/EventSetupWizard"));
+const ScoreKeeperPage = lazy(() => import("./pages/ScoreKeeperPage"));
+const CaptainPage = lazy(() => import("./pages/CaptainPage"));
+const SysAdminPage = lazy(() => import("./pages/SysAdminPage"));
+const UserPage = lazy(() => import("./pages/UserPage"));
+const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
+const AdminScoreboardDebugPage = lazy(() => import("./pages/AdminScoreboardDebugPage"));
+const AdminAccessPage = lazy(() => import("./pages/AdminAccessPage"));
+const SpiritScoresPage = lazy(() => import("./pages/SpiritScoresPage"));
+const TournamentDirectorPage = lazy(() => import("./pages/TournamentDirectorPage"));
+const MediaAdminPage = lazy(() => import("./pages/MediaAdminPage"));
+const EventRostersPageLazy = lazy(() => import("./pages/EventRostersPage"));
+
+const routeFallback = (
+  <div className="sc-shell flex min-h-[40vh] items-center justify-center text-sm text-[var(--sc-ink-muted)]">
+    Loading...
+  </div>
+);
 
 export default function AppRoutes() {
   return (
@@ -39,7 +47,7 @@ export default function AppRoutes() {
           <Route path="/teams/:teamId" element={<TeamProfilePage />} />
           <Route path="/matches" element={<MatchesPage />} />
           <Route path="/events" element={<EventsPage />} />
-          <Route path="/event-rosters" element={<EventRostersPage />} />
+          <Route path="/event-rosters" element={<EventRostersPageLazy />} />
           {eventWorkspaces.map((workspace) => (
             <Route
               key={workspace.path}
@@ -133,7 +141,9 @@ export default function AppRoutes() {
           path="/score-keeper"
           element={
             <ProtectedRoute>
-              <ScoreKeeperPage />
+              <Suspense fallback={routeFallback}>
+                <ScoreKeeperPage />
+              </Suspense>
             </ProtectedRoute>
           }
         />

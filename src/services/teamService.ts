@@ -1,4 +1,7 @@
 import { supabase } from "./supabaseClient";
+import { getCachedQuery } from "../utils/queryCache";
+
+const TEAMS_CACHE_TTL_MS = 10 * 60 * 1000;
 
 export type TeamRow = {
   id: string;
@@ -8,22 +11,29 @@ export type TeamRow = {
 };
 
 export async function getAllTeams(limit?: number): Promise<TeamRow[]> {
-  let query = supabase
-    .from("teams")
-    .select("id, name, short_name, created_at")
-    .order("name", { ascending: true });
+  const cacheLimit = typeof limit === "number" ? limit : "all";
+  return getCachedQuery(
+    `teams:list:${cacheLimit}`,
+    async () => {
+      let query = supabase
+        .from("teams")
+        .select("id, name, short_name, created_at")
+        .order("name", { ascending: true });
 
-  if (typeof limit === "number") {
-    query = query.limit(limit);
-  }
+      if (typeof limit === "number") {
+        query = query.limit(limit);
+      }
 
-  const { data, error } = await query;
+      const { data, error } = await query;
 
-  if (error) {
-    throw new Error(error.message || "Failed to load teams");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load teams");
+      }
 
-  return (data ?? []) as TeamRow[];
+      return (data ?? []) as TeamRow[];
+    },
+    { ttlMs: TEAMS_CACHE_TTL_MS },
+  );
 }
 
 export async function getTeamsByIds(ids: string[]): Promise<TeamRow[]> {
