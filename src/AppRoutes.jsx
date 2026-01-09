@@ -88,14 +88,7 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/spirit-scores"
-            element={
-              <ProtectedRoute>
-                <SpiritScoresPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/spirit-scores" element={<SpiritScoresPage />} />
           <Route
             path="/tournament-director"
             element={
@@ -120,14 +113,7 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/captain"
-            element={
-              <ProtectedRoute>
-                <CaptainPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/captain" element={<CaptainPage />} />
           <Route
             path="/sys-admin"
             element={
@@ -140,11 +126,9 @@ export default function AppRoutes() {
         <Route
           path="/score-keeper"
           element={
-            <ProtectedRoute>
-              <Suspense fallback={routeFallback}>
-                <ScoreKeeperPage />
-              </Suspense>
-            </ProtectedRoute>
+            <Suspense fallback={routeFallback}>
+              <ScoreKeeperPage />
+            </Suspense>
           }
         />
       </Routes>

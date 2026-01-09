@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { supabase } from "../services/supabaseClient";
+import { setSupabaseAuthState, supabase } from "../services/supabaseClient";
 import { getUserRoleAssignments } from "../services/userService";
 
 const AuthContext = createContext();
@@ -22,7 +22,9 @@ export function AuthProvider({ children }) {
         if (error) {
           console.error("[AuthProvider] Failed to fetch session:", error);
         }
-        setSession(data?.session ?? null);
+        const nextSession = data?.session ?? null;
+        setSession(nextSession);
+        setSupabaseAuthState(Boolean(nextSession));
       } catch (err) {
         if (isMounted) {
           console.error("[AuthProvider] Unexpected session error:", err);
@@ -40,6 +42,7 @@ export function AuthProvider({ children }) {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!isMounted) return;
       setSession(nextSession);
+      setSupabaseAuthState(Boolean(nextSession));
       setLoading(false);
     });
 

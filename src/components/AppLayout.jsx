@@ -16,19 +16,6 @@ export default function AppLayout() {
     <div className="sc-page flex min-h-screen flex-col">
       <SiteHeader />
       <main className="relative flex-1">
-        {!session && (
-          <div className="bg-amber-50/90 text-amber-900">
-            <div className="sc-shell flex flex-wrap items-center justify-between gap-3 py-2 text-sm">
-              <p className="font-semibold">Data hidden: sign in to view live match details.</p>
-              <Link
-                to="/login"
-                className="rounded-full bg-amber-500 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white hover:bg-amber-600"
-              >
-                Sign in
-              </Link>
-            </div>
-          </div>
-        )}
         <Suspense fallback={routeFallback}>
           <Outlet />
         </Suspense>
