@@ -25,9 +25,18 @@ const ADMIN_MODULES = [
 
 export default function LoginPage() {
   const { session, loading } = useAuth();
-  const authRedirectTo =
-    import.meta.env.VITE_SUPABASE_REDIRECT_URL?.trim() ||
-    (typeof window !== "undefined" ? window.location.href : undefined);
+  const envRedirectTo = import.meta.env.VITE_SUPABASE_REDIRECT_URL?.trim();
+  const authRedirectTo = (() => {
+    if (typeof window === "undefined") return envRedirectTo;
+    const { origin, hostname } = window.location;
+    const isLocalhost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "0.0.0.0" ||
+      hostname.endsWith(".local");
+    if (isLocalhost) return `${origin}/`;
+    return envRedirectTo || `${origin}/`;
+  })();
 
   if (!loading && session) {
     return <Navigate to="/" replace />;
