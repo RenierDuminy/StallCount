@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import useInstallPrompt from "../hooks/useInstallPrompt";
 import { useAuth } from "../context/AuthContext";
-import { ADMIN_TOOL_ACCESS_ROLES, userHasAnyRole } from "../utils/accessControl";
 
 const NAV_LINKS = [
   { label: "Home", to: "/" },
@@ -35,7 +34,9 @@ export default function SiteHeader() {
   const { canInstall, promptInstall } = useInstallPrompt();
   const user = session?.user ?? null;
   const hasLoadedRoles = Array.isArray(roles);
-  const showAdminTools = hasLoadedRoles ? userHasAnyRole(user, ADMIN_TOOL_ACCESS_ROLES, roles) : false;
+  const showAdminTools = hasLoadedRoles
+    ? roles.some((role) => role?.roleId !== null && role?.roleId !== undefined && role?.roleId !== 14)
+    : false;
   const roleLinks = ROLE_LINKS.filter((link) => {
     if (link.to === "/admin") {
       return showAdminTools;

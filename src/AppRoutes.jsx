@@ -3,7 +3,16 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import AppLayout from "./components/AppLayout";
-import { ADMIN_TOOL_ACCESS_ROLES } from "./utils/accessControl";
+import {
+  ADMIN_ACCESS_ACCESS_ROLES,
+  CAPTAIN_ACCESS_ROLES,
+  EVENT_SETUP_ACCESS_ROLES,
+  MEDIA_ACCESS_PERMISSIONS,
+  SPIRIT_SCORES_ACCESS_ROLES,
+  SCOREKEEPER_ACCESS_ROLES,
+  SYS_ADMIN_ACCESS_ROLES,
+  TOURNAMENT_DIRECTOR_ACCESS_ROLES,
+} from "./utils/accessControl";
 import { eventWorkspaces } from "./pages/eventWorkspaces";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -67,7 +76,7 @@ export default function AppRoutes() {
           <Route
             path="/admin"
             element={
-              <ProtectedRoute allowedRoles={ADMIN_TOOL_ACCESS_ROLES}>
+              <ProtectedRoute requireNonViewer>
                 <AdminPage />
               </ProtectedRoute>
             }
@@ -83,16 +92,23 @@ export default function AppRoutes() {
           <Route
             path="/admin/access"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={ADMIN_ACCESS_ACCESS_ROLES}>
                 <AdminAccessPage />
               </ProtectedRoute>
             }
           />
-          <Route path="/spirit-scores" element={<SpiritScoresPage />} />
+          <Route
+            path="/spirit-scores"
+            element={
+              <ProtectedRoute allowedRoles={SPIRIT_SCORES_ACCESS_ROLES}>
+                <SpiritScoresPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/tournament-director"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={TOURNAMENT_DIRECTOR_ACCESS_ROLES}>
                 <TournamentDirectorPage />
               </ProtectedRoute>
             }
@@ -100,7 +116,7 @@ export default function AppRoutes() {
           <Route
             path="/admin/media"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedPermissions={MEDIA_ACCESS_PERMISSIONS}>
                 <MediaAdminPage />
               </ProtectedRoute>
             }
@@ -108,16 +124,23 @@ export default function AppRoutes() {
           <Route
             path="/admin/event-setup"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={EVENT_SETUP_ACCESS_ROLES}>
                 <EventSetupWizardPage />
               </ProtectedRoute>
             }
           />
-          <Route path="/captain" element={<CaptainPage />} />
+          <Route
+            path="/captain"
+            element={
+              <ProtectedRoute allowedRoles={CAPTAIN_ACCESS_ROLES}>
+                <CaptainPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/sys-admin"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={SYS_ADMIN_ACCESS_ROLES}>
                 <SysAdminPage />
               </ProtectedRoute>
             }
@@ -126,9 +149,11 @@ export default function AppRoutes() {
         <Route
           path="/score-keeper"
           element={
-            <Suspense fallback={routeFallback}>
-              <ScoreKeeperPage />
-            </Suspense>
+            <ProtectedRoute allowedRoles={SCOREKEEPER_ACCESS_ROLES}>
+              <Suspense fallback={routeFallback}>
+                <ScoreKeeperPage />
+              </Suspense>
+            </ProtectedRoute>
           }
         />
       </Routes>

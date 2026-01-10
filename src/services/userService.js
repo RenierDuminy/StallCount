@@ -187,10 +187,31 @@ export async function updateUserRoleAssignment(userId, nextRoleId) {
     normalizedRoleId = Number.isNaN(parsed) ? null : parsed;
   }
 
+  const {
+    data: { user: actor },
+  } = await supabase.auth.getUser();
+  const grantedBy = actor?.id ?? null;
+
+  const { error: clearError } = await supabase.from("user_roles").delete().eq("user_id", userId);
+  if (clearError) {
+    throw new Error(clearError.message || "Failed to update user access level");
+  }
+
+  if (normalizedRoleId === null) {
+    return {
+      id: userId,
+      roleId: null,
+      roleName: null,
+    };
+  }
+
   const { data, error } = await supabase
-    .from("user")
-    .update({ role_id: normalizedRoleId })
-    .eq("id", userId)
+    .from("user_roles")
+    .insert({
+      user_id: userId,
+      role_id: normalizedRoleId,
+      granted_by: grantedBy,
+    })
     .select("id, role_id, role:roles(id, name)")
     .maybeSingle();
 

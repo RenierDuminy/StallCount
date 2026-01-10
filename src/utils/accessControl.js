@@ -6,6 +6,20 @@ const ROLE_NAME_BY_ID = {
 };
 
 const ADMIN_TOOL_ACCESS_ROLES = ["admin", "tournament_director", "media", "captain"];
+const SCOREKEEPER_ACCESS_ROLES = ["tournament_director", "field_assistant", "scorekeeper"];
+const CAPTAIN_ACCESS_ROLES = ["captain"];
+const TOURNAMENT_DIRECTOR_ACCESS_ROLES = ["tournament_director"];
+const SYS_ADMIN_ACCESS_ROLES = ["admin"];
+const ADMIN_ACCESS_ACCESS_ROLES = ["admin"];
+const EVENT_SETUP_ACCESS_ROLES = ["tournament_director"];
+const SPIRIT_SCORES_ACCESS_ROLES = [
+  "captain",
+  "team_manager",
+  "scorekeeper",
+  "field_assistant",
+  "tournament_director",
+];
+const MEDIA_ACCESS_PERMISSIONS = ["publish_media"];
 
 function normalizePermissionKey(value) {
   if (value === undefined || value === null) return null;
@@ -217,4 +231,15 @@ export function userHasAnyPermission(
   return userPermissions.some((permission) => normalizedAllowed.has(permission));
 }
 
-export { ROLE_NAME_BY_ID, ADMIN_TOOL_ACCESS_ROLES };
+export {
+  ROLE_NAME_BY_ID,
+  ADMIN_TOOL_ACCESS_ROLES,
+  SCOREKEEPER_ACCESS_ROLES,
+  CAPTAIN_ACCESS_ROLES,
+  TOURNAMENT_DIRECTOR_ACCESS_ROLES,
+  SYS_ADMIN_ACCESS_ROLES,
+  ADMIN_ACCESS_ACCESS_ROLES,
+  EVENT_SETUP_ACCESS_ROLES,
+  SPIRIT_SCORES_ACCESS_ROLES,
+  MEDIA_ACCESS_PERMISSIONS,
+};
