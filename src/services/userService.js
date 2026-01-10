@@ -11,6 +11,18 @@ function mapRoleAssignments(assignments) {
   }));
 }
 
+function mapRolePermissions(permissionRows) {
+  const items = Array.isArray(permissionRows) ? permissionRows : [];
+  return items
+    .map((row) => row?.permission)
+    .filter((permission) => permission?.key)
+    .map((permission) => ({
+      id: permission.id ?? null,
+      key: permission.key,
+      description: permission.description || "",
+    }));
+}
+
 export async function getCurrentUser() {
   const {
     data: { user },
@@ -25,13 +37,12 @@ export async function getCurrentUser() {
   if (!user) return null;
 
   const { data, error } = await supabase
-    .from("user")
+    .from("profiles")
     .select(
       `
         id,
         email,
         full_name,
-        role:roles(name),
         assignments:user_roles!user_roles_user_id_fkey(
           id,
           role_id,
@@ -50,9 +61,10 @@ export async function getCurrentUser() {
 
   if (data) {
     const roles = mapRoleAssignments(data.assignments);
+    const primaryRole = roles[0]?.roleName || null;
     return {
       ...data,
-      role: data.role?.name || null,
+      role: primaryRole,
       roles,
       email: data.email || user.email,
     };
@@ -97,7 +109,7 @@ export async function getUserRoleAssignments(userId) {
 
 export async function getAccessControlUsers(limit = 500) {
   let query = supabase
-    .from("user")
+    .from("profiles")
     .select(
       `
         id,
@@ -140,7 +152,16 @@ export async function getAccessControlUsers(limit = 500) {
 export async function getRoleCatalog() {
   const { data, error } = await supabase
     .from("roles")
-    .select("id, name, description")
+    .select(
+      `
+        id,
+        name,
+        description,
+        role_permissions:role_permissions!role_permissions_role_id_fkey(
+          permission:permissions(id, key, description)
+        )
+      `,
+    )
     .order("name", { ascending: true });
 
   if (error) {
@@ -151,6 +172,7 @@ export async function getRoleCatalog() {
     id: row.id,
     name: row.name,
     description: row.description || "",
+    permissions: mapRolePermissions(row.role_permissions),
   }));
 }
 

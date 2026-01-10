@@ -30,6 +30,12 @@ function formatRoleCounts(users) {
   }, new Map());
 }
 
+function formatPermissionLabel(permission) {
+  if (!permission) return "Permission";
+  if (permission.description) return permission.description;
+  return String(permission.key || "permission").replace(/_/g, " ");
+}
+
 export default function AdminAccessPage() {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -80,6 +86,14 @@ export default function AdminAccessPage() {
   }, [users, search, roleFilter]);
 
   const roleCounts = useMemo(() => formatRoleCounts(users), [users]);
+  const rolesWithPermissions = useMemo(
+    () =>
+      roles.map((role) => ({
+        ...role,
+        permissions: Array.isArray(role.permissions) ? role.permissions : [],
+      })),
+    [roles],
+  );
 
   const isEmpty = !loading && filteredUsers.length === 0;
 
@@ -154,6 +168,44 @@ export default function AdminAccessPage() {
           {error ? (
             <Panel className="border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</Panel>
           ) : null}
+          <Panel className="space-y-3 border border-border/70 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-ink">Role permissions</p>
+                <p className="text-xs text-ink-muted">
+                  Each role grants these permissions to users who hold it.
+                </p>
+              </div>
+              <Chip variant="ghost" className="text-xs text-ink-muted">
+                Permissions mapped: {rolesWithPermissions.length}
+              </Chip>
+            </div>
+            {rolesWithPermissions.length === 0 ? (
+              <p className="text-xs text-ink-muted">No role catalog loaded yet.</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {rolesWithPermissions.map((role) => (
+                  <div key={role.id} className="rounded-xl border border-border/60 p-3">
+                    <p className="text-sm font-semibold text-ink">{role.name}</p>
+                    <p className="text-xs text-ink-muted">{role.description || "No description"}</p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {role.permissions.length === 0 ? (
+                        <Chip variant="ghost" className="text-[11px] text-ink-muted">
+                          No permissions assigned
+                        </Chip>
+                      ) : (
+                        role.permissions.map((permission) => (
+                          <Chip key={permission.key} variant="tag" className="text-[11px]">
+                            {formatPermissionLabel(permission)}
+                          </Chip>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
           <Panel className="p-0">
             {loading ? (
               <div className="p-6 text-sm text-ink-muted">Loading access records...</div>
