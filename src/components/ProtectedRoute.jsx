@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getRoleCatalog } from "../services/userService";
-import { userHasAnyPermission, userHasAnyRole } from "../utils/accessControl";
+import {
+  normalisePermissionList,
+  normaliseRoleList,
+  userHasAnyPermission,
+  userHasAnyRole,
+} from "../utils/accessControl";
 
 export default function ProtectedRoute({
   children,
@@ -22,6 +27,24 @@ export default function ProtectedRoute({
     ? allowedPermissions.length > 0
     : Boolean(allowedPermissions);
   const shouldCheckNonViewer = Boolean(requireNonViewer);
+  const requiredRoles = shouldCheckRoles ? normaliseRoleList(allowedRoles) : [];
+  const requiredPermissions = shouldCheckPermissions
+    ? normalisePermissionList(allowedPermissions)
+    : [];
+
+  const formatAccessLabel = (value) =>
+    String(value)
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  const accessRequirements = [
+    requiredRoles.length > 0
+      ? `Roles: ${requiredRoles.map(formatAccessLabel).join(", ")}`
+      : null,
+    requiredPermissions.length > 0
+      ? `Permissions: ${requiredPermissions.map(formatAccessLabel).join(", ")}`
+      : null,
+    shouldCheckNonViewer ? "Role: Non-viewer (any elevated role)" : null,
+  ].filter(Boolean);
 
   useEffect(() => {
     let isActive = true;
@@ -84,6 +107,16 @@ export default function ProtectedRoute({
           <p className="mt-3 text-sm text-ink-muted">
             You need elevated admin permissions to view this area. Contact operations if you require access.
           </p>
+          {accessRequirements.length > 0 ? (
+            <div className="mt-4 text-xs text-ink-muted">
+              <p className="font-semibold text-ink">Required access levels</p>
+              <ul className="mt-2 space-y-1">
+                {accessRequirements.map((requirement) => (
+                  <li key={requirement}>{requirement}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       );
     }

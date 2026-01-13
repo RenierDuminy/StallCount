@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Card,
   Panel,
@@ -427,6 +427,11 @@ export default function InternalDraftLeague5Page() {
             eyebrow="Operations workspace"
             title={EVENT_NAME}
             description={`${EVENT_NAME}, a semi-competitive draft league held by Maties Ultimate Frisbee Club.`}
+            action={
+              <Link to={`/event-rosters?eventId=${EVENT_ID}`} className="sc-button">
+                View event roster
+              </Link>
+            }
           />
           {error && <div className="sc-alert is-error">{error}</div>}
         </Card>

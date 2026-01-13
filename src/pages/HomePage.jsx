@@ -529,9 +529,9 @@ export default function HomePage() {
   }, [safeLatestMatches, heroCardMatchId]);
 
   const heroStats = [
-    { label: "Registered teams", value: stats.teams },
-    { label: "Rostered players", value: stats.players },
-    { label: "Tracked events", value: stats.events },
+    { label: "teams", value: stats.teams },
+    { label: "players", value: stats.players },
+    { label: "events", value: stats.events },
   ];
 
   const myNextMatchAnswer = nextMatchCandidate
@@ -623,15 +623,11 @@ export default function HomePage() {
           <div className="grid gap-8 lg:grid-cols-[1.05fr,0.95fr] lg:items-start">
             <div className="space-y-6">
               <div className="space-y-4">
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-ink-muted">
-                  Ultimate ops console
-                </p>
                 <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
-                  Know what's live, what's next, and who's responsible.
+                  Live now, next up, and standings - at a glance
                 </h1>
                 <p className="max-w-2xl text-sm text-ink-muted">
-                  This homepage answers four Ultimate operations questions: live scores, the next assignment, how to
-                  start scoring, and where to see standings.
+                  See live scores, your next assignment, quick links to start scoring, and current standings in one view.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -717,7 +713,7 @@ export default function HomePage() {
             <SectionHeader
               eyebrow="For you"
               title="My teams, matches, alerts"
-              description="Personalized answers to the same four questions once you sign in."
+              description="All your followed teams, matches, and subscriptions in one place."
               divider
               action={
                 <>
