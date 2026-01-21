@@ -6,6 +6,7 @@ import { getEventsList } from "../services/leagueService";
 import { MatchMediaButton } from "../components/MatchMediaButton";
 import { getMatchMediaDetails } from "../utils/matchMedia";
 import { useAuth } from "../context/AuthContext";
+import { supabase } from "../services/supabaseClient";
 
 const SERIES_COLORS = {
   teamA: "#1d4ed8",
@@ -22,6 +23,9 @@ const MATCH_EVENT_ID_HINTS = {
   MATCH_START: 8,
   MATCH_END: 9,
 };
+const LIVE_MATCH_STATUSES = new Set(["live", "halftime"]);
+
+const isMatchLive = (status) => LIVE_MATCH_STATUSES.has((status || "").toLowerCase());
 
 export default function MatchesPage() {
   const { session } = useAuth();
@@ -157,6 +161,65 @@ export default function MatchesPage() {
       ignore = true;
     };
   }, [selectedMatchId]);
+
+  useEffect(() => {
+    if (!selectedMatchId || !isMatchLive(selectedMatch?.status)) return undefined;
+    let isActive = true;
+    let refreshTimeout = null;
+
+    const scheduleRefresh = () => {
+      if (!isActive) return;
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+      refreshTimeout = setTimeout(async () => {
+        try {
+          const [match, logs] = await Promise.all([
+            getMatchById(selectedMatchId),
+            getMatchLogs(selectedMatchId),
+          ]);
+          if (!isActive) return;
+          setSelectedMatch(match);
+          setMatchLogs(logs ?? []);
+        } catch (err) {
+          if (!isActive) return;
+          console.error("[MatchesPage] Failed to refresh live match data", err);
+        }
+      }, 250);
+    };
+
+    const channel = supabase
+      .channel(`match-live-${selectedMatchId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "match_logs",
+          filter: `match_id=eq.${selectedMatchId}`,
+        },
+        () => scheduleRefresh(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "matches",
+          filter: `id=eq.${selectedMatchId}`,
+        },
+        () => scheduleRefresh(),
+      )
+      .subscribe();
+
+    return () => {
+      isActive = false;
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [selectedMatchId, selectedMatch?.status]);
 
   const matchMediaDetails = useMemo(() => getMatchMediaDetails(selectedMatch), [selectedMatch]);
   const derived = useMemo(() => deriveMatchInsights(selectedMatch, matchLogs), [selectedMatch, matchLogs]);
@@ -842,12 +905,33 @@ function PointLogTable({ rows, teamAName, teamBName }) {
       <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">No match events recorded yet.</div>
     );
   }
+  const getEventSymbol = (row) => {
+    const description = (row.description || "").toLowerCase();
+    if (row.eventTypeId === 11) return "♻️";
+    if (description.includes("block")) return "🛡️";
+    if (description.includes("turnover")) return "🗑️";
+    if (description.includes("match start")) return "▶️";
+    if (description.includes("match end")) return "🏁";
+    if (description.includes("timeout")) return "⏸️";
+    if (description.includes("halftime")) return "⏱️";
+    if (description.includes("stoppage")) return "⛔";
+    if (
+      row.variant === "goalA" ||
+      row.variant === "goalB" ||
+      row.variant === "callahan" ||
+      description.includes("score")
+    ) {
+      return "+1";
+    }
+    return "•";
+  };
   return (
     <div className="w-full overflow-x-auto px-0 sm:mx-0 sm:px-0">
       <table className="w-full table-auto text-left text-xs sm:text-sm text-black">
         <thead className="text-white">
           <tr className="uppercase tracking-wide text-[11px]">
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Time</th>
+            <th className="px-1 py-0.5 text-center sm:px-2 sm:py-1.5">Event</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Team</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Assist → Score</th>
             <th className="px-1 py-0.5 text-right sm:px-2 sm:py-1.5">Gap</th>
@@ -878,6 +962,11 @@ function PointLogTable({ rows, teamAName, teamBName }) {
               }`}
             >
               <td className="px-1 py-0.5 whitespace-nowrap text-black sm:px-2 sm:py-1.5">{row.formattedTime}</td>
+              <td className="px-1 py-0.5 text-center text-base sm:px-2 sm:py-1.5">
+                <span aria-label={row.description || "Event"} title={row.description || "Event"}>
+                  {getEventSymbol(row)}
+                </span>
+              </td>
               <td className="px-1 py-0.5 font-semibold text-black sm:px-2 sm:py-1.5">{row.teamLabel}</td>
               <td className="px-1 py-0.5 sm:px-2 sm:py-1.5">
                 {row.description === "Timeout" ||
@@ -1063,6 +1152,7 @@ function deriveMatchInsights(match, logs) {
             index: 0,
             timestamp,
             formattedTime,
+            eventTypeId: typeId,
             teamLabel: pullingTeamLabel,
             scorer: "-",
             assist: "-",
@@ -1094,6 +1184,7 @@ function deriveMatchInsights(match, logs) {
         index: 0,
         timestamp,
         formattedTime,
+        eventTypeId: typeId,
         teamLabel: "-",
         scorer: "-",
         assist: "-",
@@ -1136,6 +1227,7 @@ function deriveMatchInsights(match, logs) {
         index: pointIndex,
         timestamp,
         formattedTime,
+        eventTypeId: typeId,
         teamLabel,
         scorer: scorerName,
         assist: assistName,
@@ -1228,6 +1320,7 @@ function deriveMatchInsights(match, logs) {
         index: pointIndex,
         timestamp,
         formattedTime,
+        eventTypeId: typeId,
         teamLabel: gainingTeamLabel,
         scorer: "-",
         assist: "-",
@@ -1248,6 +1341,7 @@ function deriveMatchInsights(match, logs) {
         index: pointIndex,
         timestamp,
         formattedTime,
+        eventTypeId: typeId,
         teamLabel: log.team_id === teamAId ? teamAName : teamBName,
         scorer: "-",
         assist: "-",
@@ -1273,6 +1367,7 @@ function deriveMatchInsights(match, logs) {
         index: pointIndex,
         timestamp,
         formattedTime,
+        eventTypeId: typeId,
         teamLabel: "-",
         scorer: "-",
         assist: "-",
@@ -1302,6 +1397,7 @@ function deriveMatchInsights(match, logs) {
         index: pointIndex,
         timestamp,
         formattedTime,
+        eventTypeId: typeId,
         teamLabel: "-",
         scorer: "-",
         assist: "-",
