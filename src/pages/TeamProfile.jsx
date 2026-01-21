@@ -187,10 +187,18 @@ export default function TeamProfilePage() {
   const metrics = useMemo(() => {
     const sourceMatches = filteredMatches;
     const sourceSpirit = filteredSpiritScores;
+    const countableMatches = sourceMatches.filter((match) => {
+      const scoreA = match?.score_a;
+      const scoreB = match?.score_b;
+      if (!Number.isFinite(scoreA) || !Number.isFinite(scoreB)) {
+        return false;
+      }
+      return !(scoreA === 0 && scoreB === 0);
+    });
 
     if (!state.team) {
       return {
-        gamesPlayed: sourceMatches.length,
+        gamesPlayed: countableMatches.length,
         wins: 0,
         losses: 0,
         draws: 0,
@@ -208,7 +216,7 @@ export default function TeamProfilePage() {
     let goalsFor = 0;
     let goalsAgainst = 0;
 
-    for (const match of sourceMatches) {
+    for (const match of countableMatches) {
       const isTeamA = match.team_a?.id === state.team.id;
       const forScore = isTeamA ? match.score_a ?? 0 : match.score_b ?? 0;
       const againstScore = isTeamA ? match.score_b ?? 0 : match.score_a ?? 0;
@@ -232,7 +240,7 @@ export default function TeamProfilePage() {
         : null;
 
     return {
-      gamesPlayed: sourceMatches.length,
+      gamesPlayed: countableMatches.length,
       wins,
       losses,
       draws,

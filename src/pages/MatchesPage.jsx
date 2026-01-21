@@ -957,6 +957,11 @@ function deriveMatchInsights(match, logs) {
     if (teamId === teamBId) return "teamB";
     return null;
   };
+  const getTeamLabel = (teamId) => {
+    if (teamId === teamAId) return teamAName;
+    if (teamId === teamBId) return teamBName;
+    return null;
+  };
   const getOppositeTeam = (teamKey) => {
     if (teamKey === "teamA") return "teamB";
     if (teamKey === "teamB") return "teamA";
@@ -1051,15 +1056,18 @@ function deriveMatchInsights(match, logs) {
         snapshots.unshift({ time: matchStartEventTime, scoreA: 0, scoreB: 0 });
         timestamps.push(matchStartEventTime);
         if (!matchStartLogged) {
+          const pullingTeamId = match.starting_team_id || log.team_id || null;
+          const pullingTeamLabel = getTeamLabel(pullingTeamId) || "Unassigned";
           logRows.unshift({
             label: "Start",
             index: 0,
             timestamp,
             formattedTime,
-            teamLabel: "-",
+            teamLabel: pullingTeamLabel,
             scorer: "-",
             assist: "-",
             description: "Match start",
+            metaDetails: `Pulling team: ${pullingTeamLabel}`,
             gap: "-",
             variant: "halftime",
           });

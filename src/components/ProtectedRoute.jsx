@@ -19,9 +19,6 @@ export default function ProtectedRoute({
   const [roleCatalog, setRoleCatalog] = useState(null);
   const [roleCatalogLoading, setRoleCatalogLoading] = useState(false);
 
-  if (loading) return <div className="p-8 text-gray-500">Loading...</div>;
-  if (!session) return <Navigate to="/login" replace />;
-
   const shouldCheckRoles = Array.isArray(allowedRoles) ? allowedRoles.length > 0 : Boolean(allowedRoles);
   const shouldCheckPermissions = Array.isArray(allowedPermissions)
     ? allowedPermissions.length > 0
@@ -49,7 +46,7 @@ export default function ProtectedRoute({
   useEffect(() => {
     let isActive = true;
 
-    if (!shouldCheckPermissions) {
+    if (!shouldCheckPermissions || !session) {
       setRoleCatalog(null);
       setRoleCatalogLoading(false);
       return () => {
@@ -79,7 +76,10 @@ export default function ProtectedRoute({
     return () => {
       isActive = false;
     };
-  }, [shouldCheckPermissions]);
+  }, [session, shouldCheckPermissions]);
+
+  if (loading) return <div className="p-8 text-gray-500">Loading...</div>;
+  if (!session) return <Navigate to="/login" replace />;
 
   if (shouldCheckRoles || shouldCheckPermissions || shouldCheckNonViewer) {
     if (!Array.isArray(roles) || rolesLoading || (shouldCheckPermissions && roleCatalogLoading)) {

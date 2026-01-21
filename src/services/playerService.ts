@@ -101,10 +101,10 @@ export async function getAllPlayers(): Promise<PlayerRow[]> {
   }));
 }
 
-export async function getPlayersByTeam(teamId: string) {
+export async function getPlayersByTeam(teamId: string, eventId?: string | null) {
   if (!teamId) return [];
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("team_roster")
     .select(
       `
@@ -112,8 +112,16 @@ export async function getPlayersByTeam(teamId: string) {
         players:player(id, name, gender_code, jersey_number)
       `
     )
-    .eq("team_id", teamId)
-    .order("jersey_number", { ascending: true, foreignTable: "player" });
+    .eq("team_id", teamId);
+
+  if (eventId) {
+    query = query.eq("event_id", eventId);
+  }
+
+  const { data, error } = await query.order("jersey_number", {
+    ascending: true,
+    foreignTable: "player",
+  });
 
   if (error) {
     throw new Error(error.message || "Failed to load team roster");

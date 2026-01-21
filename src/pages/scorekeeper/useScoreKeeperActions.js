@@ -91,7 +91,9 @@ export function useScoreKeeperActions(controller) {
         controller.setRostersLoading(true);
         controller.setRostersError(null);
         try {
-          const rosterData = await controller.fetchRostersForTeams(teamA, teamB);
+          const rosterEventId =
+            updated.event_id || updated.event?.id || controller.selectedEventId || null;
+          const rosterData = await controller.fetchRostersForTeams(teamA, teamB, rosterEventId);
           controller.setRosters(rosterData);
         } catch (err) {
           controller.setRostersError(

@@ -226,15 +226,19 @@ function normalizeEventRules(rawRules) {
   };
 
   const abbaPattern = normalizeAbbaPattern(parsed.abbaPattern);
-  const derivedAbbaPattern =
+  const mixedRatioEnabled = Boolean(mergedRaw.mixedRatio?.isEnabled);
+  let derivedAbbaPattern =
     abbaPattern ||
     (Object.prototype.hasOwnProperty.call(parsed, "abbaEnabled")
       ? parsed.abbaEnabled
         ? DEFAULT_ABBA_PATTERN_WHEN_ENABLED
         : "none"
-      : mergedRaw.mixedRatio?.isEnabled
+      : mixedRatioEnabled
         ? DEFAULT_ABBA_PATTERN_WHEN_ENABLED
         : "none");
+  if (!mixedRatioEnabled) {
+    derivedAbbaPattern = "none";
+  }
 
   const gamePointTarget = coerceOptionalNumber(mergedRaw.game?.pointTarget);
   const gameSoftCapMinutes = coerceOptionalNumber(mergedRaw.game?.softCapMinutes);
@@ -323,7 +327,7 @@ function normalizeEventRules(rawRules) {
       mergedRaw.discInPlay?.newDiscRetrievalMaxSeconds,
       coerceRuleNumber(baseRaw.discInPlay.newDiscRetrievalMaxSeconds, 0)
     ),
-    mixedRatioEnabled: Boolean(mergedRaw.mixedRatio?.isEnabled),
+    mixedRatioEnabled,
     mixedRatioRule: mergedRaw.mixedRatio?.ratioRule || null,
     mixedRatioChooser: mergedRaw.mixedRatio?.initialRatioChoosingTeam || null,
     raw: mergedRaw,
@@ -480,10 +484,10 @@ const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
     };
   }, []);
 
-  const fetchRostersForTeams = useCallback(async (teamAId, teamBId) => {
+  const fetchRostersForTeams = useCallback(async (teamAId, teamBId, eventId) => {
     const [teamAPlayers, teamBPlayers] = await Promise.all([
-      teamAId ? getPlayersByTeam(teamAId) : [],
-      teamBId ? getPlayersByTeam(teamBId) : [],
+      teamAId ? getPlayersByTeam(teamAId, eventId) : [],
+      teamBId ? getPlayersByTeam(teamBId, eventId) : [],
     ]);
     return {
       teamA: teamAPlayers,
@@ -816,6 +820,8 @@ useEffect(() => {
     const teamA = matchSource?.team_a?.id || null;
     const teamB = matchSource?.team_b?.id || null;
     const targetMatchId = matchSource?.id || null;
+    const matchEventId =
+      matchSource?.event_id || matchSource?.event?.id || selectedEventId || null;
 
     if (!teamA && !teamB) {
       setRosters({ teamA: [], teamB: [] });
@@ -827,7 +833,7 @@ useEffect(() => {
     setRostersLoading(true);
     setRostersError(null);
 
-    fetchRostersForTeams(teamA, teamB)
+    fetchRostersForTeams(teamA, teamB, matchEventId)
       .then((data) => {
         if (!ignore) {
           setRosters(data);
@@ -850,7 +856,7 @@ useEffect(() => {
     return () => {
       ignore = true;
     };
-  }, [activeMatch, selectedMatch, fetchRostersForTeams]);
+  }, [activeMatch, selectedMatch, selectedEventId, fetchRostersForTeams]);
 
 useEffect(() => {
   if (resumeHydrationRef.current) {
@@ -1058,11 +1064,22 @@ useEffect(() => {
         matchSource.team_b?.id ||
         "",
     });
+    const rulesSource = matchSource.rules || matchSource.event?.rules || null;
+    const normalizedRules = normalizeEventRules(rulesSource);
+    const allowAbba = normalizedRules.mixedRatioEnabled;
     const normalizedMatchAbba = normalizeAbbaPattern(matchSource.abba_pattern);
-    setRules((prev) => ({
-      ...prev,
-      abbaPattern: normalizedMatchAbba || prev.abbaPattern || "none",
-    }));
+    setRules((prev) => {
+      const nextAbba = allowAbba
+        ? normalizedMatchAbba || prev.abbaPattern || "none"
+        : "none";
+      if (nextAbba === prev.abbaPattern) {
+        return prev;
+      }
+      return {
+        ...prev,
+        abbaPattern: nextAbba,
+      };
+    });
   } else {
     setSetupForm({
       startTime: toDateTimeLocal(),
@@ -2155,7 +2172,9 @@ const rosterNameLookup = useMemo(() => {
         setRostersLoading(true);
         setRostersError(null);
         try {
-          const rosterData = await fetchRostersForTeams(teamA, teamB);
+          const rosterEventId =
+            targetMatch.event_id || targetMatch.event?.id || snapshot.eventId || null;
+          const rosterData = await fetchRostersForTeams(teamA, teamB, rosterEventId);
           setRosters(rosterData);
         } catch (err) {
           setRostersError(err instanceof Error ? err.message : "Failed to load rosters.");

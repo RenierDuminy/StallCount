@@ -336,6 +336,15 @@ export default function ScoreKeeperView() {
       secondaryResetTriggeredRef.current = false;
       return;
     }
+    const normalizedSecondaryLabel = (secondaryLabel || "").toLowerCase();
+    if (secondaryRunning && normalizedSecondaryLabel === "discussion") {
+      commitSecondaryTimerState(0, false);
+      setSecondaryTotalSeconds(0);
+      setSecondaryLabel("Discussion");
+      setSecondaryFlashActive(false);
+      setSecondaryFlashPulse(false);
+      return;
+    }
     const duration = rules.discussionSeconds || DEFAULT_DISCUSSION_SECONDS;
     commitSecondaryTimerState(duration, true);
     setSecondaryTotalSeconds(duration);
@@ -407,19 +416,7 @@ export default function ScoreKeeperView() {
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={handleToggleTimer}
-                  onMouseDown={startPrimaryHoldReset}
-                  onMouseUp={cancelPrimaryHoldReset}
-                  onMouseLeave={cancelPrimaryHoldReset}
-                  onTouchStart={startPrimaryHoldReset}
-                  onTouchEnd={cancelPrimaryHoldReset}
-                  className="rounded-md bg-[#1e3a8a] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#162e6a]"
-                >
-                  Start/Stop
-                </button>
+              <div className="grid grid-cols-1 gap-2">
                 <button
                   type="button"
                   onClick={handleStartDiscussionTimer}
@@ -431,7 +428,7 @@ export default function ScoreKeeperView() {
                   onTouchCancel={cancelSecondaryHoldReset}
                   className="rounded-md bg-[#dc2626] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#b91c1c]"
                 >
-                  START-END-DISCUSSION
+                  DISCUSSION-START/STOP
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-2 text-center text-sm font-semibold text-slate-800">
