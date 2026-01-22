@@ -298,15 +298,6 @@ export default function CaptainPage() {
                 </Field>
               </div>
 
-              <Field label="Description / Notes" htmlFor="player-description">
-                <Textarea
-                  id="player-description"
-                  rows={3}
-                  value={playerForm.description}
-                  onChange={(event) => handlePlayerFieldChange("description", event.target.value)}
-                />
-              </Field>
-
               {playerAlert && (
                 <div className={`sc-alert ${playerAlert.tone === "error" ? "is-error" : "is-success"}`}>
                   {playerAlert.message}

@@ -15,6 +15,7 @@ const ROLE_LINKS = [
   { label: "User", to: "/user" },
   { label: "Notifications", to: "/notifications" },
   { label: "Admin tools", to: "/admin" },
+  { label: "Scrimmage", to: "/admin/scrimmage" },
 ];
 
 function isLinkActive(linkTo, location) {

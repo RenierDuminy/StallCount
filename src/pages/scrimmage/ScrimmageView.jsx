@@ -420,8 +420,8 @@ export default function ScrimmageView() {
             >
               Export CSV
             </ScorekeeperButton>
-            <ScorekeeperButton as={Link} to="/admin" variant="compactGhost" className="text-xs">
-              Back to admin hub
+            <ScorekeeperButton as={Link} to="/" variant="compactGhost" className="text-xs">
+              Back to home
             </ScorekeeperButton>
           </div>
         </div>
