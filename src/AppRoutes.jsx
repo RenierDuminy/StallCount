@@ -25,6 +25,7 @@ const MatchesPage = lazy(() => import("./pages/MatchesPage"));
 const EventsPage = lazy(() => import("./pages/EventsPage"));
 const EventSetupWizardPage = lazy(() => import("./pages/EventSetupWizard"));
 const ScoreKeeperPage = lazy(() => import("./pages/ScoreKeeperPage"));
+const ScrimmagePage = lazy(() => import("./pages/ScrimmagePage"));
 const CaptainPage = lazy(() => import("./pages/CaptainPage"));
 const SysAdminPage = lazy(() => import("./pages/SysAdminPage"));
 const UserPage = lazy(() => import("./pages/UserPage"));
@@ -170,6 +171,16 @@ export default function AppRoutes() {
             <ProtectedRoute allowedRoles={SCOREKEEPER_ACCESS_ROLES}>
               <Suspense fallback={routeFallback}>
                 <ScoreKeeperPage />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/scrimmage"
+          element={
+            <ProtectedRoute allowedRoles={SCOREKEEPER_ACCESS_ROLES}>
+              <Suspense fallback={routeFallback}>
+                <ScrimmagePage />
               </Suspense>
             </ProtectedRoute>
           }

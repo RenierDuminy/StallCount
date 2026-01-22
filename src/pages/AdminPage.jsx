@@ -10,6 +10,13 @@ const ADMIN_MODULES = [
     accent: "bg-brand/10 text-ink",
   },
   {
+    label: "Scrimmage",
+    description:
+      "Scrimmage console with the same live scoring workflow for test matches.",
+    to: "/admin/scrimmage",
+    accent: "bg-emerald-100 text-emerald-700",
+  },
+  {
     label: "Scoreboard debug",
     description:
       "Temporary sandbox to enter device data, preview the board, and inspect payloads.",
