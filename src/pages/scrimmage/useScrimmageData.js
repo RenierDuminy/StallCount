@@ -24,8 +24,8 @@ const TEAM_B = { id: "scrimmage-dark", name: "Dark" };
 
 const DEFAULT_RULES = {
   matchDuration: 0,
-  halftimeMinutes: 0,
-  halftimeBreakMinutes: 0,
+  halftimeMinutes: 30,
+  halftimeBreakMinutes: 7,
   halftimeScoreThreshold: 0,
   timeoutSeconds: DEFAULT_TIMEOUT_SECONDS,
   timeoutsTotal: 2,

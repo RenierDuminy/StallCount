@@ -251,6 +251,10 @@ export function useScrimmageActions(controller) {
     const { logs: updatedLogs, score: nextScore } = rebuildLogsWithTotals(nextLogs);
     controller.setLogs(updatedLogs);
     controller.setScore(nextScore);
+    if (mode !== "edit") {
+      const nextPossession = team === "A" ? "B" : "A";
+      void controller.updatePossession(nextPossession, { logTurnover: false });
+    }
     closeScoreModal();
   }
 
@@ -298,7 +302,47 @@ export function useScrimmageActions(controller) {
   function handleDeleteLog(logIndex) {
     if (!Number.isFinite(logIndex)) return;
     const nextLogs = [...(controller.logs || [])];
-    nextLogs.splice(logIndex, 1);
+    const target = nextLogs[logIndex];
+    if (!target) return;
+    const pairMap = {
+      [MATCH_LOG_EVENT_CODES.TIMEOUT_START]: MATCH_LOG_EVENT_CODES.TIMEOUT_END,
+      [MATCH_LOG_EVENT_CODES.TIMEOUT_END]: MATCH_LOG_EVENT_CODES.TIMEOUT_START,
+      [MATCH_LOG_EVENT_CODES.HALFTIME_START]: MATCH_LOG_EVENT_CODES.HALFTIME_END,
+      [MATCH_LOG_EVENT_CODES.HALFTIME_END]: MATCH_LOG_EVENT_CODES.HALFTIME_START,
+      [MATCH_LOG_EVENT_CODES.STOPPAGE_START]: MATCH_LOG_EVENT_CODES.STOPPAGE_END,
+      [MATCH_LOG_EVENT_CODES.STOPPAGE_END]: MATCH_LOG_EVENT_CODES.STOPPAGE_START,
+    };
+    const pairCode = pairMap[target.eventCode];
+    const deleteIndexes = [logIndex];
+
+    if (pairCode) {
+      if (
+        target.eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START ||
+        target.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START ||
+        target.eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START
+      ) {
+        const pairIndex = nextLogs.findIndex(
+          (entry, index) => index > logIndex && entry.eventCode === pairCode
+        );
+        if (pairIndex !== -1) {
+          deleteIndexes.push(pairIndex);
+        }
+      } else {
+        for (let index = logIndex - 1; index >= 0; index -= 1) {
+          if (nextLogs[index]?.eventCode === pairCode) {
+            deleteIndexes.push(index);
+            break;
+          }
+        }
+      }
+    }
+
+    [...new Set(deleteIndexes)]
+      .sort((a, b) => b - a)
+      .forEach((index) => {
+        nextLogs.splice(index, 1);
+      });
+
     const { logs: updatedLogs, score: nextScore } = rebuildLogsWithTotals(nextLogs);
     controller.setLogs(updatedLogs);
     controller.setScore(nextScore);

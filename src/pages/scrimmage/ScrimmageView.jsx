@@ -363,6 +363,11 @@ export default function ScrimmageView() {
     closeSimpleEventModal();
   };
 
+  const handleStartNewMatch = () => {
+    handleDiscardResume();
+    setSetupModalOpen(true);
+  };
+
   const handleStartDiscussionTimer = () => {
     cancelSecondaryHoldReset();
     if (secondaryResetTriggeredRef?.current) {
@@ -794,7 +799,7 @@ export default function ScrimmageView() {
               </button>
               <button
                 type="button"
-                onClick={handleDiscardResume}
+                onClick={handleStartNewMatch}
                 disabled={resumeBusy}
                 className="inline-flex items-center justify-center rounded-full border border-[#0f5132]/40 px-4 py-2 font-semibold text-[#0f5132] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -1411,10 +1416,14 @@ function MatchLogCard({
   const isMatchStartLog = log.eventCode === MATCH_LOG_EVENT_CODES.MATCH_START;
   const isTimeoutLog =
     log.eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT ||
-    log.eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START;
+    log.eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START ||
+    log.eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_END;
   const isPossessionLog = log.eventCode === MATCH_LOG_EVENT_CODES.TURNOVER;
-  const isHalftimeLog = log.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START;
+  const isHalftimeLog =
+    log.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START ||
+    log.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END;
   const isStoppageStart = log.eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START;
+  const isStoppageEnd = log.eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_END;
   const isCalahanLog = log.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
   const shortTeamLabel =
     log.team === "B" ? displayTeamB : log.team === "A" ? displayTeamA : null;
@@ -1456,7 +1465,7 @@ function MatchLogCard({
     bannerBgClass = "bg-[#bbf7d0]";
     bannerBorderClass = "border-[#059669]/70";
     bannerTextClass = "text-black";
-  } else if (isStoppageStart) {
+  } else if (isStoppageStart || isStoppageEnd) {
     bannerBgClass = "bg-[#fecdd3]";
     bannerBorderClass = "border-[#ef4444]/60";
     bannerTextClass = "text-black";
@@ -1471,7 +1480,7 @@ function MatchLogCard({
     if (isScoreLog) {
       return { bg: "bg-[#e5ffe8]", border: "border-[#16a34a]/70", label: "text-black" };
     }
-    if (isTimeoutLog || isStoppageStart) {
+    if (isTimeoutLog || isStoppageStart || isStoppageEnd) {
       return { bg: "bg-[#fef3c7]", border: "border-[#f59e0b]/60", label: "text-black" };
     }
     if (isHalftimeLog) {
@@ -1486,12 +1495,14 @@ function MatchLogCard({
   const description = isMatchStartLog
     ? `Pulling team: ${fullTeamLabel || "Unassigned"}`
     : isTimeoutLog
-    ? `${shortTeamLabel || "Team"} timeout`
+      ? `${shortTeamLabel || "Team"} timeout`
       : isHalftimeLog
-        ? "Halftime reached"
+        ? "Halftime"
         : isStoppageStart
           ? "Match stoppage"
-          : null;
+          : isStoppageEnd
+            ? "Stoppage ended"
+            : null;
   const abbaLineLabel = log.abbaLine && log.abbaLine !== "none" ? log.abbaLine : null;
 
   return (
@@ -1570,17 +1581,26 @@ function MatchLogCard({
                     ? "Second-half prep underway"
                     : ""}
           </p>
-          {log.team && (isTimeoutLog || isPossessionLog) && (
-            <button
-              type="button"
-              onClick={() => openSimpleEventModal(log, editIndex)}
-              className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-accent transition hover:border-accent hover:bg-[#e6fffa]"
-            >
-              Edit
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => openSimpleEventModal(log, editIndex)}
+            className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-accent transition hover:border-accent hover:bg-[#e6fffa]"
+          >
+            Edit
+          </button>
         </div>
       ) : null}
+      {!isScoringDisplay && !description && (
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => openSimpleEventModal(log, editIndex)}
+            className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-accent transition hover:border-accent hover:bg-[#e6fffa]"
+          >
+            Edit
+          </button>
+        </div>
+      )}
     </article>
   );
 }
