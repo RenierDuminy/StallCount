@@ -366,6 +366,9 @@ export function useScrimmageActions(controller) {
     if (!controller.stoppageActive) {
       const elapsed = controller.getPrimaryRemainingSeconds();
       controller.commitPrimaryTimerState(elapsed, false);
+    } else if (controller.matchStarted) {
+      const elapsed = controller.getPrimaryRemainingSeconds();
+      controller.commitPrimaryTimerState(elapsed, true);
     }
     controller.setStoppageActive((prev) => !prev);
   }

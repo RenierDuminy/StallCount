@@ -54,8 +54,6 @@ export default function ScrimmageView() {
     consoleReady,
     displayTeamA,
     displayTeamB,
-    displayTeamAShort,
-    displayTeamBShort,
     kickoffLabel,
     teamAId,
     teamBId,
@@ -485,22 +483,14 @@ export default function ScrimmageView() {
                   onTouchCancel={cancelSecondaryHoldReset}
                   className="rounded-md bg-[#dc2626] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#b91c1c]"
                 >
-                  DISCUSSION-START/STOP
+                  DISCUSSION-START/STOP (1min)
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-2 text-center text-sm font-semibold text-slate-800">
-                <div className="rounded border border-slate-400 bg-white px-2 py-1">
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={rules.matchDuration || ""}
-                    placeholder="No limit"
-                    disabled
-                    aria-label="Match duration (minutes)"
-                    inputMode="numeric"
-                    className="w-full border-none bg-transparent text-center text-sm font-semibold text-slate-800 focus:outline-none focus:ring-0"
-                  />
+                <div className="flex items-center justify-center rounded border border-slate-400 bg-white px-2 py-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Timeout length:
+                  </span>
                 </div>
                 <div className="rounded border border-slate-400 bg-white px-2 py-1">
                   <input
@@ -517,9 +507,6 @@ export default function ScrimmageView() {
                   />
                 </div>
               </div>
-              <p className="text-center text-[10px] uppercase tracking-wide text-slate-500">
-                Hold 3s to reset
-              </p>
               <button
                 type="button"
                 onClick={() => setTimeModalOpen(true)}
@@ -555,7 +542,7 @@ export default function ScrimmageView() {
                       aria-pressed={possessionTeam === "A"}
                       tabIndex={-1}
                     >
-                      {displayTeamAShort}
+                      {displayTeamA}
                     </button>
                     <button
                       type="button"
@@ -565,7 +552,7 @@ export default function ScrimmageView() {
                       aria-pressed={possessionTeam === "B"}
                       tabIndex={-1}
                     >
-                      {displayTeamBShort}
+                      {displayTeamB}
                     </button>
                   </div>
                   <div className="flex flex-col gap-1 text-slate-800 sm:flex-row sm:items-center sm:justify-between">
@@ -604,7 +591,7 @@ export default function ScrimmageView() {
                           onClick={() => openScoreModal("A")}
                         className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
                         >
-                          Add score - {displayTeamAShort}
+                          Add score - {displayTeamA}
                         </button>
                         <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
                           <p>{nextAbbaDescriptor ? `ABBA: ${nextAbbaDescriptor}` : "ABBA disabled"}</p>
@@ -617,7 +604,7 @@ export default function ScrimmageView() {
                           onClick={() => openScoreModal("B")}
                         className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
                         >
-                          Add score - {displayTeamBShort}
+                          Add score - {displayTeamB}
                         </button>
                       </div>
                     </div>
@@ -658,8 +645,6 @@ export default function ScrimmageView() {
                               editIndex={editIndex}
                               displayTeamA={displayTeamA}
                               displayTeamB={displayTeamB}
-                              displayTeamAShort={displayTeamAShort}
-                              displayTeamBShort={displayTeamBShort}
                               getAbbaDescriptor={getAbbaDescriptor}
                               openScoreModal={openScoreModal}
                               openSimpleEventModal={openSimpleEventModal}
@@ -1086,7 +1071,7 @@ export default function ScrimmageView() {
               disabled={remainingTimeouts.A === 0}
               className="mt-1.5 w-full rounded-full bg-[#162e6a] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1e4fd7] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Timeout {displayTeamAShort || "A"}
+              Timeout {displayTeamA || "Team A"}
             </button>
             <p className="mt-1 text-xs">
               Remaining (total): {remainingTimeouts.A}
@@ -1105,7 +1090,7 @@ export default function ScrimmageView() {
               disabled={remainingTimeouts.B === 0}
               className="mt-1.5 w-full rounded-full bg-[#162e6a] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1e4fd7] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Timeout {displayTeamBShort || "B"}
+              Timeout {displayTeamB || "Team B"}
             </button>
             <p className="mt-1 text-xs">
               Remaining (total): {remainingTimeouts.B}
@@ -1129,17 +1114,6 @@ export default function ScrimmageView() {
             <p className="text-xs text-[#0f5132]/80">
               Resume match time to unlock this menu and log the stoppage end.
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                if (!timerRunning) {
-                  handleToggleTimer();
-                }
-              }}
-              className="w-full rounded-full bg-[#0f5132] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-            >
-              Resume match time
-            </button>
           </div>
         )}
       </div>
@@ -1429,8 +1403,6 @@ function MatchLogCard({
   editIndex,
   displayTeamA,
   displayTeamB,
-  displayTeamAShort,
-  displayTeamBShort,
   getAbbaDescriptor,
   openScoreModal,
   openSimpleEventModal,
@@ -1445,7 +1417,7 @@ function MatchLogCard({
   const isStoppageStart = log.eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START;
   const isCalahanLog = log.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
   const shortTeamLabel =
-    log.team === "B" ? displayTeamBShort : log.team === "A" ? displayTeamAShort : null;
+    log.team === "B" ? displayTeamB : log.team === "A" ? displayTeamA : null;
   const fullTeamLabel =
     log.team === "B" ? displayTeamB : log.team === "A" ? displayTeamA : null;
   const abbaDescriptor =
@@ -1514,7 +1486,7 @@ function MatchLogCard({
   const description = isMatchStartLog
     ? `Pulling team: ${fullTeamLabel || "Unassigned"}`
     : isTimeoutLog
-      ? `${shortTeamLabel || "Team"} timeout`
+    ? `${shortTeamLabel || "Team"} timeout`
       : isHalftimeLog
         ? "Halftime reached"
         : isStoppageStart
