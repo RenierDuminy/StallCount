@@ -92,7 +92,9 @@ CREATE TABLE public.events (
   location text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   rules jsonb,
-  CONSTRAINT events_pkey PRIMARY KEY (id)
+  Status text,
+  CONSTRAINT events_pkey PRIMARY KEY (id),
+  CONSTRAINT events_Status_fkey FOREIGN KEY (Status) REFERENCES public.match_status(code)
 );
 CREATE TABLE public.genders (
   code text NOT NULL,
@@ -385,6 +387,7 @@ CREATE TABLE public.venues (
   notes text,
   latitude double precision CHECK (latitude IS NULL OR latitude >= '-90'::integer::double precision AND latitude <= 90::double precision),
   longitude double precision CHECK (longitude IS NULL OR longitude >= '-180'::integer::double precision AND longitude <= 180::double precision),
+  City text,
   CONSTRAINT venues_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.webhook_deliveries (

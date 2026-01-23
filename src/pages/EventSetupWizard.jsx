@@ -6,7 +6,7 @@ import {
   SectionShell,
   Chip,
 } from "../components/ui/primitives";
-import { getAllTeams } from "../services/teamService";
+import { createTeam, getAllTeams } from "../services/teamService";
 import {
   createEventHierarchy,
   getEventHierarchy,
@@ -34,7 +34,6 @@ const INITIAL_EVENT = {
   start_date: "",
   end_date: "",
   location: "",
-  notes: "",
 };
 
 const DEFAULT_RULES = {
@@ -92,6 +91,7 @@ const INITIAL_VENUE_FORM = {
   id: null,
   venueId: "",
   name: "",
+  city: "",
   location: "",
   notes: "",
   latitude: "",
@@ -116,52 +116,66 @@ const formatTeamOptionLabel = (team) => {
   return team.short_name ? `${team.name} (${team.short_name})` : team.name;
 };
 
+const formatVenueMetaLabel = (venue) => {
+  if (!venue) return "";
+  const city = (venue.city || "City TBD").trim() || "City TBD";
+  const location =
+    (venue.location || "Location TBD").trim() || "Location TBD";
+  return `${city} · ${location}`;
+};
+
 const formatVenueOptionLabel = (venue) => {
   if (!venue) return "";
   const name = (venue.name || "Unnamed venue").trim() || "Unnamed venue";
+  const city = (venue.city || "City TBD").trim() || "City TBD";
   const location =
     (venue.location || "Location TBD").trim() || "Location TBD";
-  return `${name} (${location})`;
+  return `${city} - ${location} - ${name}`;
+};
+
+const normalizeSortValue = (value) =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const mergeClassNames = (...classes) => classes.filter(Boolean).join(" ");
+
+const compareVenueSort = (left, right) => {
+  const leftCity = normalizeSortValue(left?.city);
+  const rightCity = normalizeSortValue(right?.city);
+  if (leftCity !== rightCity) {
+    return leftCity.localeCompare(rightCity);
+  }
+  const leftLocation = normalizeSortValue(left?.location);
+  const rightLocation = normalizeSortValue(right?.location);
+  if (leftLocation !== rightLocation) {
+    return leftLocation.localeCompare(rightLocation);
+  }
+  const leftName = normalizeSortValue(left?.name);
+  const rightName = normalizeSortValue(right?.name);
+  return leftName.localeCompare(rightName);
 };
 
 const Stepper = ({ current }) => (
-  <ol className="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-wide">
+  <ol className="wizard-stepper">
     {STEPS.map((step, index) => {
       const isActive = index === current;
       const isComplete = index < current;
-      const pillStyle = {
-        border: `1px solid ${
-          isActive ? "var(--sc-accent)" : "var(--sc-border)"
-        }`,
-        background: isActive ? "var(--sc-accent)" : "rgba(9, 30, 24, 0.65)",
-        color: isActive ? "var(--sc-button-ink)" : "var(--sc-ink)",
-      };
-      const badgeStyle = {
-        background: isActive
-          ? "rgba(0, 0, 0, 0.15)"
-          : isComplete
-            ? "rgba(99, 255, 160, 0.15)"
-            : "rgba(255, 255, 255, 0.08)",
-        color: isActive
-          ? "var(--sc-button-ink)"
-          : isComplete
-            ? "var(--sc-ink)"
-            : "var(--sc-ink-muted)",
-        border: `1px solid ${
-          isActive ? "rgba(3, 20, 15, 0.4)" : "rgba(255, 255, 255, 0.1)"
-        }`,
-      };
       return (
         <li
           key={step.key}
-          className="flex items-center gap-2 rounded-full px-3 py-1"
-          style={pillStyle}
+          className={mergeClassNames(
+            "wizard-stepper__pill",
+            isActive && "is-active",
+            isComplete && "is-complete",
+          )}
         >
           <span
-            className="rounded-full px-2 py-0.5 text-[11px]"
-            style={badgeStyle}
+            className={mergeClassNames(
+              "wizard-stepper__badge",
+              isActive && "is-active",
+              !isActive && isComplete && "is-complete",
+            )}
           >
-            {isComplete ? "✓" : index + 1}
+            {isComplete ? "OK" : index + 1}
           </span>
           {step.title}
         </li>
@@ -170,15 +184,10 @@ const Stepper = ({ current }) => (
   </ol>
 );
 
-const TextField = ({ label, className = "", ...props }) => (
-  <label className="space-y-1 text-sm">
-    <span className="text-xs uppercase tracking-wide text-ink-muted">
-      {label}
-    </span>
-    <input
-      className={`w-full rounded border border-border bg-white px-3 py-2 text-black ${className}`}
-      {...props}
-    />
+const TextField = ({ label, className = "", inputClassName = "", ...props }) => (
+  <label className={mergeClassNames("sc-fieldset", className)}>
+    <span className="sc-field-label">{label}</span>
+    <input className={mergeClassNames("sc-input", inputClassName)} {...props} />
   </label>
 );
 
@@ -201,6 +210,14 @@ export default function EventSetupWizardPage() {
   const [divisionTeamForm, setDivisionTeamForm] = useState({
     divisionId: "",
     name: "",
+  });
+  const [createTeamForm, setCreateTeamForm] = useState({
+    name: "",
+    shortName: "",
+  });
+  const [createTeamState, setCreateTeamState] = useState({
+    status: "idle",
+    error: null,
   });
   const [poolForm, setPoolForm] = useState({
     id: null,
@@ -335,17 +352,18 @@ export default function EventSetupWizardPage() {
     return map;
   }, [availableVenues]);
 
-  const availableVenueOptions = useMemo(
-    () =>
-      availableVenues
-        .filter((venue) => venue?.id)
-        .map((venue) => ({
-          id: venue.id,
-          label: formatVenueOptionLabel(venue),
-          venue,
-        })),
-    [availableVenues],
-  );
+  const availableVenueOptions = useMemo(() => {
+    const options = availableVenues
+      .filter((venue) => venue?.id)
+      .map((venue) => ({
+        id: venue.id,
+        label: formatVenueOptionLabel(venue),
+        venue,
+      }));
+    return options.sort((left, right) =>
+      compareVenueSort(left.venue, right.venue),
+    );
+  }, [availableVenues]);
 
   const loadExistingEvents = useCallback(async () => {
     setExistingEventsLoading(true);
@@ -383,6 +401,7 @@ export default function EventSetupWizardPage() {
       id: venue.id || venue.venueId || createId(),
       venueId: venue.venueId || venue.id || null,
       name: venue.name || "",
+      city: venue.city || "",
       location: venue.location || "",
       notes: venue.notes || "",
       latitude:
@@ -435,6 +454,7 @@ export default function EventSetupWizardPage() {
               (match.venueName
                 ? formatVenueOptionLabel({
                     name: match.venueName,
+                    city: match.venueCity,
                     location: match.venueLocation,
                   })
                 : "");
@@ -561,6 +581,7 @@ export default function EventSetupWizardPage() {
         id: selection.id,
         venueId: selection.id,
         name: selection.name || "",
+        city: selection.city || "",
         location: selection.location || "",
         notes: selection.notes || "",
         latitude:
@@ -579,10 +600,12 @@ export default function EventSetupWizardPage() {
   const handleVenueSubmit = (event) => {
     event.preventDefault();
     const trimmedName = venueForm.name.trim();
-    if (!trimmedName) {
+    const trimmedCity = venueForm.city.trim();
+    const trimmedLocation = venueForm.location.trim();
+    if (!trimmedName || !trimmedCity || !trimmedLocation) {
       setFormNotice({
         type: "error",
-        message: "Venue name is required.",
+        message: "Venue name, city, and location are required.",
       });
       return;
     }
@@ -590,7 +613,8 @@ export default function EventSetupWizardPage() {
       id: venueForm.id,
       venueId: venueForm.venueId || null,
       name: trimmedName,
-      location: (venueForm.location || "").trim(),
+      city: trimmedCity,
+      location: trimmedLocation,
       notes: (venueForm.notes || "").trim(),
       latitude: venueForm.latitude,
       longitude: venueForm.longitude,
@@ -621,6 +645,7 @@ export default function EventSetupWizardPage() {
       id: target.id,
       venueId: target.venueId || "",
       name: target.name || "",
+      city: target.city || "",
       location: target.location || "",
       notes: target.notes || "",
       latitude: target.latitude ?? "",
@@ -830,6 +855,45 @@ export default function EventSetupWizardPage() {
     setPoolForm({ id: null, divisionId, name: "" });
   };
 
+  const assignTeamToDivision = useCallback(
+    (divisionId, team) => {
+      const divisionEntry =
+        divisions.find((division) => division.id === divisionId) || null;
+      if (!divisionEntry) {
+        return false;
+      }
+      const existingTeams = divisionEntry.divisionTeams || [];
+      if (existingTeams.some((entry) => entry.teamId === team.id)) {
+        setFormNotice({
+          type: "error",
+          message: "That team is already assigned to this division.",
+        });
+        return false;
+      }
+      setFormNotice(null);
+      setDivisions((prev) =>
+        prev.map((division) => {
+          if (division.id !== divisionId) {
+            return division;
+          }
+          const nextTeams = [
+            ...(division.divisionTeams || []),
+            {
+              id: createId(),
+              teamId: team.id,
+              name: team.name,
+              shortName: team.short_name || null,
+              displayLabel: formatTeamOptionLabel(team),
+            },
+          ];
+          return { ...division, divisionTeams: nextTeams };
+        }),
+      );
+      return true;
+    },
+    [divisions],
+  );
+
   const handleDivisionTeamSubmit = (event) => {
     event.preventDefault();
     const divisionId = divisionTeamForm.divisionId || divisions[0]?.id;
@@ -843,36 +907,57 @@ export default function EventSetupWizardPage() {
       });
       return;
     }
-    const divisionEntry =
-      divisions.find((division) => division.id === divisionId) || null;
-    const existingTeams = divisionEntry?.divisionTeams || [];
-    if (existingTeams.some((team) => team.teamId === selected.id)) {
-      setFormNotice({
-        type: "error",
-        message: "That team is already assigned to this division.",
+    const assigned = assignTeamToDivision(divisionId, selected);
+    if (assigned) {
+      setDivisionTeamForm((prev) => ({ ...prev, divisionId, name: "" }));
+    }
+  };
+
+  const handleCreateTeamSubmit = async (event) => {
+    event.preventDefault();
+    const divisionId = divisionTeamForm.divisionId || divisions[0]?.id;
+    const name = createTeamForm.name.trim();
+    const shortName = createTeamForm.shortName.trim();
+    if (!divisionId) {
+      setCreateTeamState({
+        status: "error",
+        error: "Select a division before creating a team.",
       });
       return;
     }
-    setFormNotice(null);
-    setDivisions((prev) =>
-      prev.map((division) => {
-        if (division.id !== divisionId) {
-          return division;
-        }
-        const nextTeams = [
-          ...(division.divisionTeams || []),
-          {
-            id: createId(),
-            teamId: selected.id,
-            name: selected.name,
-            shortName: selected.short_name || null,
-            displayLabel: formatTeamOptionLabel(selected),
-          },
-        ];
-        return { ...division, divisionTeams: nextTeams };
-      }),
-    );
-    setDivisionTeamForm((prev) => ({ ...prev, divisionId, name: "" }));
+    if (!name) {
+      setCreateTeamState({
+        status: "error",
+        error: "Team name is required.",
+      });
+      return;
+    }
+    setCreateTeamState({ status: "loading", error: null });
+    try {
+      const created = await createTeam({
+        name,
+        shortName: shortName || null,
+      });
+      setTeamOptions((prev) => {
+        const exists = prev.some((team) => team.id === created.id);
+        const next = exists ? prev : [...prev, created];
+        return next.slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      });
+      const assigned = assignTeamToDivision(divisionId, created);
+      setCreateTeamForm({ name: "", shortName: "" });
+      setCreateTeamState({ status: "success", error: null });
+      if (assigned) {
+        setFormNotice({
+          type: "success",
+          message: `Created "${created.name}" and added to the division.`,
+        });
+      }
+    } catch (err) {
+      setCreateTeamState({
+        status: "error",
+        error: err?.message || "Unable to create team.",
+      });
+    }
   };
 
   const removeDivisionTeam = (divisionId, entryId, teamId) => {
@@ -1133,6 +1218,19 @@ export default function EventSetupWizardPage() {
   }, [venueMode]);
 
   useEffect(() => {
+    if (rules.format !== "wfdfChampionship") {
+      return;
+    }
+    setRules((prev) => {
+      const next = cloneDefaultRules();
+      if (prev.format === next.format && JSON.stringify(prev) === JSON.stringify(next)) {
+        return prev;
+      }
+      return next;
+    });
+  }, [rules.format]);
+
+  useEffect(() => {
     setDivisions((prev) => {
       if (!prev.length) {
         return prev;
@@ -1240,11 +1338,12 @@ export default function EventSetupWizardPage() {
 
   const renderEventStep = () => {
     const eventFieldsDisabled = eventMode === "edit" && !selectedEventId;
+    const isRulesLocked = rules.format === "wfdfChampionship";
     return (
-      <div className="space-y-4">
-      <Panel variant="tinted" className="space-y-3 p-4">
+      <div className="wizard-stack-lg">
+      <Panel variant="tinted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader eyebrow="Mode" title="Create or edit" />
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="wizard-grid wizard-gap-md wizard-grid-cols-2-md">
           {[
             {
               key: "create",
@@ -1261,11 +1360,12 @@ export default function EventSetupWizardPage() {
             return (
               <label
                 key={option.key}
-                className={`cursor-pointer rounded border p-3 text-sm ${
-                  isSelected ? "border-accent bg-accent/10" : "border-border"
-                }`}
+                className={mergeClassNames(
+                  "wizard-option",
+                  isSelected && "is-selected",
+                )}
               >
-                <div className="flex items-center gap-2">
+                <div className="wizard-flex wizard-items-center wizard-gap-sm">
                   <input
                     type="radio"
                     name="event-mode"
@@ -1274,8 +1374,8 @@ export default function EventSetupWizardPage() {
                     onChange={() => handleModeChange(option.key)}
                   />
                   <div>
-                    <p className="font-semibold text-ink">{option.title}</p>
-                    <p className="text-xs text-ink-muted">
+                    <p className="wizard-text-strong">{option.title}</p>
+                    <p className="wizard-text-muted-xs">
                       {option.description}
                     </p>
                   </div>
@@ -1285,13 +1385,13 @@ export default function EventSetupWizardPage() {
           })}
         </div>
         {eventMode === "edit" && (
-          <div className="space-y-2">
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <div className="wizard-stack-sm">
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
                 Existing event
               </span>
               <select
-                className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+                className="sc-input"
                 value={selectedEventId}
                 onChange={handleExistingEventSelection}
                 disabled={existingEventsLoading}
@@ -1308,30 +1408,30 @@ export default function EventSetupWizardPage() {
               </select>
             </label>
             {existingEventsLoading && (
-              <p className="text-xs text-ink-muted">Loading events...</p>
+              <p className="wizard-text-muted-xs">Loading events...</p>
             )}
             {existingEventsError && (
-              <div className="sc-alert is-error text-xs">
+              <div className="sc-alert is-error wizard-text-xs">
                 {existingEventsError}
               </div>
             )}
             {prefillState.status === "loading" && (
-              <p className="text-xs text-ink-muted">
+              <p className="wizard-text-muted-xs">
                 Loading event hierarchy...
               </p>
             )}
             {prefillState.status === "error" && prefillState.error && (
-              <div className="sc-alert is-error text-xs">
+              <div className="sc-alert is-error wizard-text-xs">
                 {prefillState.error}
               </div>
             )}
           </div>
         )}
       </Panel>
-      <Panel variant="muted" className="space-y-4 p-4">
-        <div className="grid gap-4 md:grid-cols-2">
+      <Panel variant="muted" className="wizard-stack-lg wizard-pad-md">
+        <div className="wizard-grid wizard-gap-lg wizard-grid-cols-2-md">
         {Object.keys(INITIAL_EVENT)
-          .filter((key) => key !== "notes")
+          .filter((key) => key !== "notes" && key !== "type")
           .map((key) => (
             <TextField
               key={key}
@@ -1344,27 +1444,30 @@ export default function EventSetupWizardPage() {
               disabled={eventFieldsDisabled}
             />
           ))}
-        <label className="space-y-1 text-sm md:col-span-2">
-          <span className="text-xs uppercase tracking-wide text-ink-muted">
-            Notes
+        <label className="sc-fieldset">
+          <span className="sc-field-label">
+            Type
           </span>
-          <textarea
-            name="notes"
-            value={event.notes}
+          <select
+            className="sc-input"
+            name="type"
+            value={event.type}
             onChange={updateEvent}
-            className="min-h-[120px] w-full rounded border border-border bg-white px-3 py-2 text-black"
             disabled={eventFieldsDisabled}
-          />
+          >
+            <option value="tournament">Tournament</option>
+            <option value="league">League</option>
+          </select>
         </label>
         </div>
       </Panel>
-      <Panel variant="muted" className="space-y-4 p-4">
+      <Panel variant="muted" className="wizard-stack-lg wizard-pad-md">
         <SectionHeader
           eyebrow="Venues"
           title="Event venues"
           description="Define the locations this event will use."
         />
-        <div className="grid gap-2 md:grid-cols-2">
+        <div className="wizard-grid wizard-gap-sm wizard-grid-cols-2-md">
           {[
             {
               key: "create",
@@ -1381,9 +1484,12 @@ export default function EventSetupWizardPage() {
             return (
               <label
                 key={option.key}
-                className={`cursor-pointer rounded border p-3 text-sm ${isSelected ? "border-accent bg-accent/10" : "border-border"}`}
+                className={mergeClassNames(
+                  "wizard-option",
+                  isSelected && "is-selected",
+                )}
               >
-                <div className="flex items-center gap-2">
+                <div className="wizard-flex wizard-items-center wizard-gap-sm">
                   <input
                     type="radio"
                     name="venue-mode"
@@ -1392,8 +1498,8 @@ export default function EventSetupWizardPage() {
                     onChange={() => setVenueMode(option.key)}
                   />
                   <div>
-                    <p className="font-semibold text-ink">{option.title}</p>
-                    <p className="text-xs text-ink-muted">
+                    <p className="wizard-text-strong">{option.title}</p>
+                    <p className="wizard-text-muted-xs">
                       {option.description}
                     </p>
                   </div>
@@ -1403,13 +1509,13 @@ export default function EventSetupWizardPage() {
           })}
         </div>
         {venueMode === "existing" ? (
-          <form className="space-y-3" onSubmit={handleAssignExistingVenue}>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <form className="wizard-stack-md" onSubmit={handleAssignExistingVenue}>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
                 Saved venue
               </span>
               <select
-                className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+                className="sc-input"
                 value={selectedExistingVenueId}
                 onChange={(event) =>
                   setSelectedExistingVenueId(event.target.value)
@@ -1425,14 +1531,14 @@ export default function EventSetupWizardPage() {
               </select>
             </label>
             {availableVenuesLoading && (
-              <p className="text-xs text-ink-muted">Loading venues...</p>
+              <p className="wizard-text-muted-xs">Loading venues...</p>
             )}
             {availableVenuesError && (
-              <div className="sc-alert is-error text-xs">
+              <div className="sc-alert is-error wizard-text-xs">
                 {availableVenuesError}
               </div>
             )}
-            <div className="flex flex-wrap gap-2">
+            <div className="wizard-flex wizard-flex-wrap wizard-gap-sm">
               <button
                 type="submit"
                 className="sc-button"
@@ -1447,7 +1553,7 @@ export default function EventSetupWizardPage() {
             </div>
           </form>
         ) : (
-          <form className="grid gap-3 md:grid-cols-2" onSubmit={handleVenueSubmit}>
+          <form className="wizard-grid wizard-gap-md wizard-grid-cols-2-md" onSubmit={handleVenueSubmit}>
             <TextField
               label="Name"
               name="name"
@@ -1457,11 +1563,19 @@ export default function EventSetupWizardPage() {
               disabled={eventFieldsDisabled}
             />
             <TextField
+              label="City"
+              name="city"
+              value={venueForm.city}
+              onChange={handleVenueFieldChange}
+              placeholder="Host city"
+              disabled={eventFieldsDisabled}
+            />
+            <TextField
               label="Location"
               name="location"
               value={venueForm.location}
               onChange={handleVenueFieldChange}
-              placeholder="City, site, or complex"
+              placeholder="Field, complex, or address"
               disabled={eventFieldsDisabled}
             />
             <TextField
@@ -1482,24 +1596,29 @@ export default function EventSetupWizardPage() {
               onChange={handleVenueFieldChange}
               disabled={eventFieldsDisabled}
             />
-            <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+            <label className="sc-fieldset wizard-span-2">
+              <span className="sc-field-label">
                 Notes
               </span>
               <textarea
                 name="notes"
                 value={venueForm.notes}
                 onChange={handleVenueFieldChange}
-                className="min-h-[80px] w-full rounded border border-border bg-white px-3 py-2 text-black"
+                className="sc-input wizard-textarea-compact"
                 placeholder="Surface, access instructions, etc."
                 disabled={eventFieldsDisabled}
               />
             </label>
-            <div className="flex flex-wrap gap-2 md:col-span-2">
+            <div className="wizard-flex wizard-flex-wrap wizard-gap-sm wizard-span-2">
               <button
                 type="submit"
                 className="sc-button"
-                disabled={eventFieldsDisabled || !venueForm.name.trim()}
+                disabled={
+                  eventFieldsDisabled ||
+                  !venueForm.name.trim() ||
+                  !venueForm.city.trim() ||
+                  !venueForm.location.trim()
+                }
               >
                 {venueForm.id ? "Save venue" : "Add venue"}
               </button>
@@ -1516,42 +1635,42 @@ export default function EventSetupWizardPage() {
             </div>
           </form>
         )}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs uppercase tracking-wide text-ink-muted">
-            <span className="font-semibold text-ink">Defined venues</span>
+        <div className="wizard-stack-sm">
+          <div className="wizard-toolbar">
+            <span className="wizard-text-strong">Defined venues</span>
             <Chip>{eventVenues.length}</Chip>
           </div>
           {eventVenues.length === 0 ? (
-            <p className="text-sm text-ink-muted">
+            <p className="wizard-text-muted">
               Add at least one venue to capture playing locations.
             </p>
           ) : (
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="wizard-grid wizard-gap-md wizard-grid-cols-2-md">
               {eventVenues.map((venue) => (
                 <div
                   key={venue.id}
-                  className="rounded border border-border p-3 text-sm"
+                  className="wizard-box"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-semibold text-ink">
+                  <div className="wizard-flex wizard-items-center wizard-justify-between wizard-gap-sm">
+                    <p className="wizard-text-strong">
                       {formatVenueOptionLabel(venue)}
                     </p>
                     {venue.venueId && (
-                      <span className="text-[11px] uppercase tracking-wide text-ink-muted">
+                      <span className="wizard-tag">
                         Existing
                       </span>
                     )}
                   </div>
-                  <div className="mt-2 space-y-1 text-xs text-ink-muted">
+                  <div className="wizard-mt-sm wizard-stack-xs wizard-text-muted-xs">
                     {(venue.latitude || venue.longitude) && (
                       <p>
                         Coords: {venue.latitude || "?"},{" "}
                         {venue.longitude || "?"}
                       </p>
                     )}
-                    {venue.notes && <p className="line-clamp-3">{venue.notes}</p>}
+                    {venue.notes && <p className="wizard-clamp-3">{venue.notes}</p>}
                   </div>
-                  <div className="mt-3 flex gap-2">
+                  <div className="wizard-mt-md wizard-flex wizard-gap-sm">
                     <button
                       type="button"
                       className="sc-button is-ghost"
@@ -1575,18 +1694,36 @@ export default function EventSetupWizardPage() {
           )}
         </div>
       </Panel>
-      <Panel variant="muted" className="space-y-4 p-4">
+      <Panel variant="muted" className="wizard-stack-lg wizard-pad-md">
         <SectionHeader eyebrow="Rules" title="Game configuration" />
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+        <div className="wizard-grid wizard-gap-md wizard-grid-cols-123">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
+              Format
+            </span>
+            <span className="sc-field-hint">
+              Chooses the overarching tournament ruleset template.
+            </span>
+            <select
+              className="sc-input"
+              value={rules.format}
+              onChange={(event) =>
+                setRuleValue(["format"], event.target.value)
+              }
+            >
+              <option value="wfdfChampionship">WFDF Championship</option>
+              <option value="localSimple">Local Simple</option>
+            </select>
+          </label>
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Division
             </span>
-            <span className="block text-[11px] text-ink-muted italic leading-tight">
+            <span className="sc-field-hint">
               Sets the roster category competing in this event.
             </span>
             <select
-              className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+              className="sc-input"
               value={rules.division}
               onChange={(event) =>
                 setRuleValue(["division"], event.target.value)
@@ -1597,104 +1734,92 @@ export default function EventSetupWizardPage() {
               <option value="women">Women</option>
             </select>
           </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
-              Format
-            </span>
-            <span className="block text-[11px] text-ink-muted italic leading-tight">
-              Chooses the overarching tournament ruleset template.
-            </span>
-            <select
-              className="w-full rounded border border-border bg-white px-3 py-2 text-black"
-              value={rules.format}
-              onChange={(event) =>
-                setRuleValue(["format"], event.target.value)
-              }
-            >
-              <option value="wfdfChampionship">WFDF Championship</option>
-              <option value="localSimple">Local Simple</option>
-            </select>
-          </label>
         </div>
+        <div className="wizard-divider" />
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+          <p className="wizard-kicker-strong">
             Game
           </p>
-          <div className="mt-2 grid gap-3 md:grid-cols-3">
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
                 Point target
               </span>
-              <span className="block text-[11px] text-ink-muted italic leading-tight">
+              <span className="sc-field-hint">
                 Winning score before any caps are applied.
               </span>
               <input
                 type="number"
-                className="w-full rounded border border-border px-3 py-2 text-black"
+                className="sc-input"
                 value={rules.game.pointTarget ?? ""}
                 onChange={handleRuleNumberInput(["game", "pointTarget"])}
+                disabled={isRulesLocked}
               />
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
                 Soft cap (min)
               </span>
-              <span className="block text-[11px] text-ink-muted italic leading-tight">
+              <span className="sc-field-hint">
                 Game clock minute when soft cap checks in.
               </span>
               <input
                 type="number"
-                className="w-full rounded border border-border px-3 py-2 text-black"
+                className="sc-input"
                 value={rules.game.softCapMinutes ?? ""}
                 onChange={handleRuleNumberInput(["game", "softCapMinutes"])}
+                disabled={isRulesLocked}
               />
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
                 Soft cap mode
               </span>
-              <span className="block text-[11px] text-ink-muted italic leading-tight">
+              <span className="sc-field-hint">
                 Adjusts scoring once the soft cap hits.
               </span>
               <select
-                className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+                className="sc-input"
                 value={rules.game.softCapMode}
                 onChange={(event) =>
                   setRuleValue(["game", "softCapMode"], event.target.value)
                 }
+                disabled={isRulesLocked}
               >
                 <option value="addOneToHighest">Add one to highest</option>
                 <option value="addTwoToHighest">Add two to highest</option>
                 <option value="none">None</option>
               </select>
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
                 Hard cap (min)
               </span>
-              <span className="block text-[11px] text-ink-muted italic leading-tight">
+              <span className="sc-field-hint">
                 Absolute game time limit.
               </span>
               <input
                 type="number"
-                className="w-full rounded border border-border px-3 py-2 text-black"
+                className="sc-input"
                 value={rules.game.hardCapMinutes ?? ""}
                 onChange={handleRuleNumberInput(["game", "hardCapMinutes"])}
+                disabled={isRulesLocked}
               />
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
                 Hard cap end mode
               </span>
-              <span className="block text-[11px] text-ink-muted italic leading-tight">
+              <span className="sc-field-hint">
                 Defines how play stops when the hard cap arrives.
               </span>
               <select
-                className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+                className="sc-input"
                 value={rules.game.hardCapEndMode}
                 onChange={(event) =>
                   setRuleValue(["game", "hardCapEndMode"], event.target.value)
                 }
+                disabled={isRulesLocked}
               >
                 <option value="afterPoint">After point</option>
                 <option value="immediate">Immediate</option>
@@ -1702,108 +1827,116 @@ export default function EventSetupWizardPage() {
             </label>
           </div>
         </div>
+        <div className="wizard-divider" />
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+          <p className="wizard-kicker-strong">
             Half
           </p>
-          <div className="mt-2 grid gap-3 md:grid-cols-3">
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
                 Point target
               </span>
-              <span className="block text-[11px] text-ink-muted italic leading-tight">
+              <span className="sc-field-hint">
                 Points needed to reach halftime.
               </span>
               <input
                 type="number"
-                className="w-full rounded border border-border px-3 py-2 text-black"
+                className="sc-input"
                 value={rules.half.pointTarget ?? ""}
                 onChange={handleRuleNumberInput(["half", "pointTarget"])}
+                disabled={isRulesLocked}
               />
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
                 Time cap (min)
               </span>
-              <span className="block text-[11px] text-ink-muted italic leading-tight">
+              <span className="sc-field-hint">
                 Minutes allowed before the half time cap.
               </span>
               <input
                 type="number"
-                className="w-full rounded border border-border px-3 py-2 text-black"
+                className="sc-input"
                 value={rules.half.timeCapMinutes ?? ""}
                 onChange={handleRuleNumberInput(["half", "timeCapMinutes"])}
+                disabled={isRulesLocked}
               />
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
                 Break (min)
               </span>
-              <span className="block text-[11px] text-ink-muted italic leading-tight">
+              <span className="sc-field-hint">
                 Length of the halftime break.
               </span>
               <input
                 type="number"
-                className="w-full rounded border border-border px-3 py-2 text-black"
+                className="sc-input"
                 value={rules.half.breakMinutes ?? ""}
                 onChange={handleRuleNumberInput(["half", "breakMinutes"])}
+                disabled={isRulesLocked}
               />
             </label>
           </div>
         </div>
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="space-y-1 text-sm">
-          <span className="text-xs uppercase tracking-wide text-ink-muted">
+      <div className="wizard-divider" />
+      <div className="wizard-grid wizard-gap-md wizard-grid-cols-123">
+        <label className="sc-fieldset">
+          <span className="sc-field-label">
             Running clock
           </span>
-          <span className="block text-[11px] text-ink-muted italic leading-tight">
+          <span className="sc-field-hint">
             Controls whether the clock pauses between points.
           </span>
           <select
-            className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+            className="sc-input"
             value={rules.clock.isRunningClockEnabled ? "true" : "false"}
             onChange={handleRuleBooleanInput(["clock", "isRunningClockEnabled"])}
+            disabled={isRulesLocked}
           >
             <option value="true">Enabled</option>
             <option value="false">Disabled</option>
           </select>
         </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-xs uppercase tracking-wide text-ink-muted">
+        <label className="sc-fieldset">
+          <span className="sc-field-label">
             Inter-point timeouts stack
           </span>
-          <span className="block text-[11px] text-ink-muted italic leading-tight">
+          <span className="sc-field-hint">
             Allow unused inter-point timeouts to accumulate.
           </span>
           <select
-            className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+            className="sc-input"
             value={rules.interPoint.areTimeoutsStacked ? "true" : "false"}
             onChange={handleRuleBooleanInput([
               "interPoint",
               "areTimeoutsStacked",
             ])}
+            disabled={isRulesLocked}
           >
             <option value="true">Yes</option>
             <option value="false">No</option>
           </select>
         </label>
       </div>
+      <div className="wizard-divider" />
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        <p className="wizard-kicker-strong">
           Inter-point timing
         </p>
-        <div className="mt-2 grid gap-3 md:grid-cols-4">
+        <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
           {[
             ["Offence on line", ["interPoint", "offenceOnLineSeconds"]],
             ["Offence ready", ["interPoint", "offenceReadySeconds"]],
             ["Pull deadline", ["interPoint", "pullDeadlineSeconds"]],
             ["Timeout adds", ["interPoint", "timeoutAddsSeconds"]],
           ].map(([label, path]) => (
-            <label key={label} className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+            <label key={label} className="sc-fieldset">
+              <span className="sc-field-label">
                 {label} (s)
               </span>
-              <span className="block text-[11px] text-ink-muted italic leading-tight">
+              <span className="sc-field-hint">
                 {label === "Offence on line"
                   ? "Seconds offence has to reach the line."
                   : label === "Offence ready"
@@ -1814,98 +1947,105 @@ export default function EventSetupWizardPage() {
               </span>
               <input
                 type="number"
-                className="w-full rounded border border-border px-3 py-2 text-black"
+                className="sc-input"
                 value={path.reduce((acc, key) => acc[key], rules) ?? ""}
                 onChange={handleRuleNumberInput(path)}
+                disabled={isRulesLocked}
               />
             </label>
           ))}
         </div>
       </div>
+      <div className="wizard-divider" />
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        <p className="wizard-kicker-strong">
           Timeouts & in-point timeouts
         </p>
-        <div className="mt-2 grid gap-3 md:grid-cols-4">
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+        <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Timeouts per team
             </span>
-            <span className="block text-[11px] text-ink-muted italic leading-tight">
+            <span className="sc-field-hint">
               Total timeouts each team gets per game.
             </span>
             <input
               type="number"
-              className="w-full rounded border border-border px-3 py-2 text-black"
+              className="sc-input"
               value={rules.timeouts.perTeamPerGame ?? ""}
               onChange={handleRuleNumberInput(["timeouts", "perTeamPerGame"])}
+              disabled={isRulesLocked}
             />
           </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Timeout duration (s)
             </span>
-            <span className="block text-[11px] text-ink-muted italic leading-tight">
+            <span className="sc-field-hint">
               Seconds each timeout lasts.
             </span>
             <input
               type="number"
-              className="w-full rounded border border-border px-3 py-2 text-black"
+              className="sc-input"
               value={rules.timeouts.durationSeconds ?? ""}
               onChange={handleRuleNumberInput(["timeouts", "durationSeconds"])}
+              disabled={isRulesLocked}
             />
           </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               In-point offence set (s)
             </span>
-            <span className="block text-[11px] text-ink-muted italic leading-tight">
+            <span className="sc-field-hint">
               Seconds offence has to reset after an in-point timeout.
             </span>
             <input
               type="number"
-              className="w-full rounded border border-border px-3 py-2 text-black"
+              className="sc-input"
               value={rules.inPointTimeout.offenceSetSeconds ?? ""}
               onChange={handleRuleNumberInput([
                 "inPointTimeout",
                 "offenceSetSeconds",
               ])}
+              disabled={isRulesLocked}
             />
           </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Defence check max (s)
             </span>
-            <span className="block text-[11px] text-ink-muted italic leading-tight">
+            <span className="sc-field-hint">
               Maximum time defence can take to check the disc in.
             </span>
             <input
               type="number"
-              className="w-full rounded border border-border px-3 py-2 text-black"
+              className="sc-input"
               value={rules.inPointTimeout.defenceCheckMaxSeconds ?? ""}
               onChange={handleRuleNumberInput([
                 "inPointTimeout",
                 "defenceCheckMaxSeconds",
               ])}
+              disabled={isRulesLocked}
             />
           </label>
         </div>
       </div>
+      <div className="wizard-divider" />
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        <p className="wizard-kicker-strong">
           Discussions
         </p>
-        <div className="mt-2 grid gap-3 md:grid-cols-3">
+        <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
           {[
             ["Captain intervention", ["discussions", "captainInterventionSeconds"]],
             ["Auto contest", ["discussions", "autoContestSeconds"]],
             ["Restart play max", ["discussions", "restartPlayMaxSeconds"]],
           ].map(([label, path]) => (
-            <label key={label} className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+            <label key={label} className="sc-fieldset">
+              <span className="sc-field-label">
                 {label} (s)
               </span>
-              <span className="block text-[11px] text-ink-muted italic leading-tight">
+              <span className="sc-field-hint">
                 {label === "Captain intervention"
                   ? "Delay before captains intervene in disputes."
                   : label === "Auto contest"
@@ -1914,19 +2054,21 @@ export default function EventSetupWizardPage() {
               </span>
               <input
                 type="number"
-                className="w-full rounded border border-border px-3 py-2 text-black"
+                className="sc-input"
                 value={path.reduce((acc, key) => acc[key], rules) ?? ""}
                 onChange={handleRuleNumberInput(path)}
+                disabled={isRulesLocked}
               />
             </label>
           ))}
         </div>
       </div>
+      <div className="wizard-divider" />
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        <p className="wizard-kicker-strong">
           Disc in play
         </p>
-        <div className="mt-2 grid gap-3 md:grid-cols-3">
+        <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
           {[
             [
               "Pivot central zone",
@@ -1938,11 +2080,11 @@ export default function EventSetupWizardPage() {
               ["discInPlay", "newDiscRetrievalMaxSeconds"],
             ],
           ].map(([label, path]) => (
-            <label key={label} className="space-y-1 text-sm">
-              <span className="text-xs uppercase tracking-wide text-ink-muted">
+            <label key={label} className="sc-fieldset">
+              <span className="sc-field-label">
                 {label} (s)
               </span>
-              <span className="block text-[11px] text-ink-muted italic leading-tight">
+              <span className="sc-field-hint">
                 {label === "Pivot central zone"
                   ? "Maximal stall time for a pivot in the central zone."
                   : label === "Pivot end zone"
@@ -1951,74 +2093,79 @@ export default function EventSetupWizardPage() {
               </span>
               <input
                 type="number"
-                className="w-full rounded border border-border px-3 py-2 text-black"
+                className="sc-input"
                 value={path.reduce((acc, key) => acc[key], rules) ?? ""}
                 onChange={handleRuleNumberInput(path)}
+                disabled={isRulesLocked}
               />
             </label>
           ))}
         </div>
       </div>
+      <div className="wizard-divider" />
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        <p className="wizard-kicker-strong">
           Mixed ratio
         </p>
-        <div className="mt-2 grid gap-3 md:grid-cols-3">
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+        <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Mixed ratio enabled
             </span>
-            <span className="block text-[11px] text-ink-muted italic leading-tight">
+            <span className="sc-field-hint">
               Toggles gender-ratio tracking for mixed play.
             </span>
-            <select
-              className="w-full rounded border border-border bg-white px-3 py-2 text-black"
-              value={rules.mixedRatio.isEnabled ? "true" : "false"}
-              onChange={handleRuleBooleanInput(["mixedRatio", "isEnabled"])}
-            >
+          <select
+            className="sc-input"
+            value={rules.mixedRatio.isEnabled ? "true" : "false"}
+            onChange={handleRuleBooleanInput(["mixedRatio", "isEnabled"])}
+            disabled={isRulesLocked}
+          >
               <option value="true">Yes</option>
               <option value="false">No</option>
             </select>
           </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Ratio rule
             </span>
-            <span className="block text-[11px] text-ink-muted italic leading-tight">
+            <span className="sc-field-hint">
               Selects the WFDF-style ratio application rule.
             </span>
-            <select
-              className="w-full rounded border border-border bg-white px-3 py-2 text-black"
-              value={rules.mixedRatio.ratioRule || ""}
-              onChange={(event) =>
-                setRuleValue(
-                  ["mixedRatio", "ratioRule"],
-                  event.target.value || null,
-                )
-              }
-            >
+          <select
+            className="sc-input"
+            value={rules.mixedRatio.ratioRule || ""}
+            onChange={(event) =>
+              setRuleValue(
+                ["mixedRatio", "ratioRule"],
+                event.target.value || null,
+              )
+            }
+            disabled={isRulesLocked}
+          >
               <option value="">Not set</option>
               <option value="A">Rule A</option>
               <option value="B">Rule B</option>
             </select>
           </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Initial chooser
             </span>
-            <span className="block text-[11px] text-ink-muted italic leading-tight">
+            <span className="sc-field-hint">
               Determines the team that sets the first ratio.
             </span>
-            <select
-              className="w-full rounded border border-border bg-white px-3 py-2 text-black"
-              value={rules.mixedRatio.initialRatioChoosingTeam || ""}
-              onChange={(event) =>
-                setRuleValue(
-                  ["mixedRatio", "initialRatioChoosingTeam"],
-                  event.target.value || null,
-                )
-              }
-            >
+          <select
+            className="sc-input"
+            value={rules.mixedRatio.initialRatioChoosingTeam || ""}
+            onChange={(event) =>
+              setRuleValue(
+                ["mixedRatio", "initialRatioChoosingTeam"],
+                event.target.value || null,
+              )
+            }
+            disabled={isRulesLocked}
+          >
               <option value="">Not set</option>
               <option value="home">Home</option>
               <option value="away">Away</option>
@@ -2037,10 +2184,10 @@ export default function EventSetupWizardPage() {
     const manageDivision =
       divisions.find((division) => division.id === manageDivisionId) || null;
     return (
-    <div className="grid gap-6 md:grid-cols-[320px,1fr]">
-      <Panel variant="muted" className="space-y-3 p-4">
+    <div className="wizard-grid wizard-gap-xl wizard-grid-cols-sidebar-md">
+      <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader eyebrow="Divisions" title="Add or edit" />
-        <form className="space-y-3" onSubmit={handleDivisionSubmit}>
+        <form className="wizard-stack-md" onSubmit={handleDivisionSubmit}>
           <TextField
             label="Name"
             value={divisionForm.name}
@@ -2058,14 +2205,14 @@ export default function EventSetupWizardPage() {
               }))
             }
           />
-          <button type="submit" className="sc-button w-full">
+          <button type="submit" className="sc-button is-block">
             {divisionForm.id ? "Save" : "Add division"}
           </button>
         </form>
       </Panel>
-      <div className="space-y-3">
+      <div className="wizard-stack-md">
         {divisions.length === 0 ? (
-          <Panel variant="muted" className="p-4 text-sm text-ink-muted">
+          <Panel variant="muted" className="wizard-pad-md wizard-text-muted">
             No divisions yet.
           </Panel>
         ) : (
@@ -2073,17 +2220,17 @@ export default function EventSetupWizardPage() {
             <Panel
               key={division.id}
               variant="tinted"
-              className="flex items-center justify-between p-4"
+              className="wizard-flex wizard-items-center wizard-justify-between wizard-pad-md"
             >
               <div>
-                <p className="font-semibold">{division.name}</p>
-                <p className="text-xs text-ink-muted">
+                <p className="wizard-text-strong">{division.name}</p>
+                <p className="wizard-text-muted-xs">
                   Level {division.level || "N/A"} / Pools{" "}
                   {division.pools?.length || 0} / Division teams{" "}
                   {division.divisionTeams?.length || 0}
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="wizard-flex wizard-gap-sm">
                 <button
                   type="button"
                   className="sc-button is-ghost"
@@ -2113,77 +2260,141 @@ export default function EventSetupWizardPage() {
           ))
         )}
         {divisions.length > 0 && (
-          <Panel variant="muted" className="space-y-3 p-4">
-            <SectionHeader eyebrow="Division teams" title="Assign rosters" />
-            <form className="space-y-3" onSubmit={handleDivisionTeamSubmit}>
-              <label className="space-y-1 text-sm">
-                <span className="text-xs uppercase tracking-wide text-ink-muted">
-                  Division
-                </span>
-                <select
-                  className="w-full rounded border border-border bg-white px-3 py-2 text-black"
-                  value={manageDivisionId}
+          <>
+            <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
+              <SectionHeader eyebrow="Division teams" title="Assign rosters" />
+              <form className="wizard-stack-md" onSubmit={handleDivisionTeamSubmit}>
+                <label className="sc-fieldset">
+                  <span className="sc-field-label">
+                    Division
+                  </span>
+                  <select
+                    className="sc-input"
+                    value={manageDivisionId}
+                    onChange={(event) =>
+                      setDivisionTeamForm((prev) => ({
+                        ...prev,
+                        divisionId: event.target.value,
+                      }))
+                    }
+                  >
+                    {divisions.map((division) => (
+                      <option key={division.id} value={division.id}>
+                        {division.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <TextField
+                  label="Team"
+                  value={divisionTeamForm.name}
                   onChange={(event) =>
                     setDivisionTeamForm((prev) => ({
                       ...prev,
-                      divisionId: event.target.value,
+                      name: event.target.value,
                     }))
                   }
-                >
-                  {divisions.map((division) => (
-                    <option key={division.id} value={division.id}>
-                      {division.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <TextField
-                label="Team"
-                value={divisionTeamForm.name}
-                onChange={(event) =>
-                  setDivisionTeamForm((prev) => ({
-                    ...prev,
-                    name: event.target.value,
-                  }))
-                }
-                list="team-options-list"
-                autoComplete="off"
-                placeholder="Search all teams..."
-              />
-              <button type="submit" className="sc-button w-full">
-                Add team to division
-              </button>
-            </form>
-            {!manageDivision || (manageDivision.divisionTeams || []).length === 0 ? (
-              <p className="text-xs text-ink-muted">
-                No teams assigned to {manageDivision?.name || "this division"}.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {(manageDivision.divisionTeams || []).map((team) => (
-                  <div
-                    key={team.id}
-                    className="flex items-center justify-between rounded border border-border px-3 py-2 text-sm"
-                  >
-                    <span>{team.displayLabel || team.name}</span>
-                    <button
-                      type="button"
-                      className="sc-button is-destructive"
-                      onClick={() =>
-                        removeDivisionTeam(
-                          manageDivision.id,
-                          team.id,
-                          team.teamId,
-                        )
-                      }
+                  list="team-options-list"
+                  autoComplete="off"
+                  placeholder="Search all teams..."
+                />
+                <button type="submit" className="sc-button is-block">
+                  Add team to division
+                </button>
+              </form>
+              {!manageDivision || (manageDivision.divisionTeams || []).length === 0 ? (
+                <p className="wizard-text-muted-xs">
+                  No teams assigned to {manageDivision?.name || "this division"}.
+                </p>
+              ) : (
+                <div className="wizard-stack-sm">
+                  {(manageDivision.divisionTeams || []).map((team) => (
+                    <div
+                      key={team.id}
+                      className="wizard-flex wizard-items-center wizard-justify-between wizard-box-compact"
                     >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Panel>
+                      <span>{team.displayLabel || team.name}</span>
+                      <button
+                        type="button"
+                        className="sc-button is-destructive"
+                        onClick={() =>
+                          removeDivisionTeam(
+                            manageDivision.id,
+                            team.id,
+                            team.teamId,
+                          )
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+            <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
+              <SectionHeader eyebrow="Teams" title="Create new team" />
+              <form className="wizard-stack-md" onSubmit={handleCreateTeamSubmit}>
+                <label className="sc-fieldset">
+                  <span className="sc-field-label">
+                    Division
+                  </span>
+                  <select
+                    className="sc-input"
+                    value={manageDivisionId}
+                    onChange={(event) =>
+                      setDivisionTeamForm((prev) => ({
+                        ...prev,
+                        divisionId: event.target.value,
+                      }))
+                    }
+                  >
+                    {divisions.map((division) => (
+                      <option key={division.id} value={division.id}>
+                        {division.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <TextField
+                  label="Team name"
+                  value={createTeamForm.name}
+                  onChange={(event) =>
+                    setCreateTeamForm((prev) => ({
+                      ...prev,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="New team name"
+                />
+                <TextField
+                  label="Short name"
+                  value={createTeamForm.shortName}
+                  onChange={(event) =>
+                    setCreateTeamForm((prev) => ({
+                      ...prev,
+                      shortName: event.target.value,
+                    }))
+                  }
+                  placeholder="Optional"
+                />
+                <button
+                  type="submit"
+                  className="sc-button is-block"
+                  disabled={createTeamState.status === "loading"}
+                >
+                  {createTeamState.status === "loading"
+                    ? "Creating..."
+                    : "Create team & add"}
+                </button>
+              </form>
+              {createTeamState.error && (
+                <div className="sc-alert is-error wizard-text-xs">
+                  {createTeamState.error}
+                </div>
+              )}
+            </Panel>
+          </>
         )}
       </div>
     </div>
@@ -2191,16 +2402,16 @@ export default function EventSetupWizardPage() {
 };
 
   const renderPoolsStep = () => (
-    <div className="grid gap-6 md:grid-cols-[320px,1fr]">
-      <Panel variant="muted" className="space-y-3 p-4">
+    <div className="wizard-grid wizard-gap-xl wizard-grid-cols-sidebar-md">
+      <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader eyebrow="Pools" title="Within division" />
-        <form className="space-y-3" onSubmit={handlePoolSubmit}>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+        <form className="wizard-stack-md" onSubmit={handlePoolSubmit}>
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Division
             </span>
             <select
-              className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+              className="sc-input"
               value={poolForm.divisionId || activeDivision?.id || ""}
               onChange={(event) =>
                 setPoolForm((prev) => ({
@@ -2224,14 +2435,14 @@ export default function EventSetupWizardPage() {
               setPoolForm((prev) => ({ ...prev, name: event.target.value }))
             }
           />
-          <button type="submit" className="sc-button w-full">
+          <button type="submit" className="sc-button is-block">
             {poolForm.id ? "Save" : "Add pool"}
           </button>
         </form>
       </Panel>
-      <div className="space-y-3">
+      <div className="wizard-stack-md">
         {!activeDivision ? (
-          <Panel variant="muted" className="p-4 text-sm text-ink-muted">
+          <Panel variant="muted" className="wizard-pad-md wizard-text-muted">
             Select a division.
           </Panel>
         ) : (
@@ -2239,16 +2450,16 @@ export default function EventSetupWizardPage() {
             <Panel
               key={pool.id}
               variant="tinted"
-              className="flex items-center justify-between p-4"
+              className="wizard-flex wizard-items-center wizard-justify-between wizard-pad-md"
             >
               <div>
-                <p className="font-semibold">{pool.name}</p>
-                <p className="text-xs text-ink-muted">
+                <p className="wizard-text-strong">{pool.name}</p>
+                <p className="wizard-text-muted-xs">
                   Teams {pool.teams?.length || 0} / Matches{" "}
                   {pool.matches?.length || 0}
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="wizard-flex wizard-gap-sm">
                 <button
                   type="button"
                   className="sc-button is-ghost"
@@ -2304,17 +2515,17 @@ export default function EventSetupWizardPage() {
       Boolean(currentDivisionForMatches) &&
       (currentDivisionForMatches.divisionTeams || []).length > 0;
     return (
-    <div className="space-y-4">
+    <div className="wizard-stack-lg">
       {teamOptionsLoading && (
-        <div className="text-xs uppercase tracking-wide text-ink-muted">
+        <div className="sc-field-label">
           Loading team directory...
         </div>
       )}
       {teamOptionsError && (
-        <div className="sc-alert is-error text-xs">{teamOptionsError}</div>
+        <div className="sc-alert is-error wizard-text-xs">{teamOptionsError}</div>
       )}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel variant="muted" className="space-y-3 p-4">
+      <div className="wizard-grid wizard-gap-lg wizard-grid-cols-2-lg">
+        <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
           <SectionHeader
             eyebrow="Teams"
             title={
@@ -2327,12 +2538,12 @@ export default function EventSetupWizardPage() {
                 : "Select a pool"
             }
           />
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Pool
             </span>
             <select
-              className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+              className="sc-input"
               value={teamForm.poolId || activePool?.id || ""}
               onChange={(event) =>
                 setTeamForm((prev) => ({ ...prev, poolId: event.target.value }))
@@ -2346,6 +2557,28 @@ export default function EventSetupWizardPage() {
               ))}
             </select>
           </label>
+          <div className="wizard-stack-sm">
+            <p className="wizard-kicker-strong">
+              Division teams
+            </p>
+            {!currentDivisionForTeams ? (
+              <p className="wizard-text-muted-xs">
+                Select a pool to view the division roster.
+              </p>
+            ) : (currentDivisionForTeams.divisionTeams || []).length === 0 ? (
+              <p className="wizard-text-muted-xs">
+                No teams linked to {currentDivisionForTeams.name || "this division"}.
+              </p>
+            ) : (
+              <div className="wizard-stack-sm">
+                {(currentDivisionForTeams.divisionTeams || []).map((team) => (
+                  <div key={team.id} className="wizard-box-compact">
+                    {team.displayLabel || team.name}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <TextField
             label="Team name"
             value={teamForm.name}
@@ -2362,7 +2595,7 @@ export default function EventSetupWizardPage() {
             disabled={!canAssignPoolTeams}
           />
           {!canAssignPoolTeams && (
-            <p className="text-xs text-ink-muted">
+            <p className="wizard-text-muted-xs">
               Assign teams to the division in Step 2 to populate this pool.
             </p>
           )}
@@ -2375,25 +2608,25 @@ export default function EventSetupWizardPage() {
           />
           <button
             type="button"
-            className="sc-button w-full"
+            className="sc-button is-block"
             onClick={handleTeamSubmit}
             disabled={!canAssignPoolTeams}
           >
             {teamForm.id ? "Save team" : "Add team"}
           </button>
-          <div className="space-y-2">
+          <div className="wizard-stack-sm">
             {!activePool || (activePool.teams || []).length === 0 ? (
-              <p className="text-xs text-ink-muted">No teams yet.</p>
+              <p className="wizard-text-muted-xs">No teams yet.</p>
             ) : (
               activePool.teams.map((team) => (
                 <div
                   key={team.id}
-                  className="flex items-center justify-between rounded border border-border px-3 py-2 text-sm"
+                  className="wizard-flex wizard-items-center wizard-justify-between wizard-box-compact"
                 >
                   <span>
                     {team.displayLabel || team.name} - Seed {team.seed || "--"}
                   </span>
-                  <div className="flex gap-2">
+                  <div className="wizard-flex wizard-gap-sm">
                     <button
                       type="button"
                       className="sc-button is-ghost"
@@ -2429,9 +2662,9 @@ export default function EventSetupWizardPage() {
             )}
           </div>
         </Panel>
-        <Panel variant="muted" className="space-y-3 p-4">
+        <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
           <SectionHeader eyebrow="Matches" title="Round planning" />
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="wizard-grid wizard-gap-sm wizard-grid-cols-2-md">
             <TextField
               label="Team A"
               value={matchForm.teamA}
@@ -2464,7 +2697,7 @@ export default function EventSetupWizardPage() {
             />
           </div>
           {!canPlanMatches && (
-            <p className="text-xs text-ink-muted">
+            <p className="wizard-text-muted-xs">
               Choose a pool tied to a division that has teams assigned to plan matches.
             </p>
           )}
@@ -2477,12 +2710,12 @@ export default function EventSetupWizardPage() {
             }
             disabled={!canPlanMatches}
           />
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Status
             </span>
             <select
-              className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+              className="sc-input"
               value={matchForm.status}
               onChange={(event) =>
                 setMatchForm((prev) => ({
@@ -2499,12 +2732,12 @@ export default function EventSetupWizardPage() {
               ))}
             </select>
           </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Pool
             </span>
             <select
-              className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+              className="sc-input"
               value={
                 matchForm.matchPoolId ||
                 matchForm.poolId ||
@@ -2527,12 +2760,12 @@ export default function EventSetupWizardPage() {
               ))}
             </select>
           </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-xs uppercase tracking-wide text-ink-muted">
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
               Venue
             </span>
             <select
-              className="w-full rounded border border-border bg-white px-3 py-2 text-black"
+              className="sc-input"
               value={matchForm.venueRefId || ""}
               onChange={(event) =>
                 setMatchForm((prev) => ({
@@ -2551,23 +2784,23 @@ export default function EventSetupWizardPage() {
             </select>
           </label>
           {eventVenueOptions.length === 0 && (
-            <p className="text-xs text-ink-muted">
+            <p className="wizard-text-muted-xs">
               Define event venues in Step 1 to assign them here.
             </p>
           )}
           <button
             type="button"
-            className="sc-button w-full"
+            className="sc-button is-block"
             onClick={handleMatchSubmit}
             disabled={!canPlanMatches}
           >
             {matchForm.id ? "Save match" : "Add match"}
           </button>
-          <div className="space-y-4">
+          <div className="wizard-stack-lg">
             {(activeDivision?.pools || []).map((pool) => (
-              <div key={pool.id} className="space-y-2">
-                <div className="flex items-center justify-between text-xs uppercase tracking-wide text-ink-muted">
-                  <span className="font-semibold text-ink">
+              <div key={pool.id} className="wizard-stack-sm">
+                <div className="wizard-toolbar">
+                  <span className="wizard-text-strong">
                     {pool.name || "Pool"}
                   </span>
                   <span>
@@ -2575,27 +2808,27 @@ export default function EventSetupWizardPage() {
                   </span>
                 </div>
                 {(pool.matches || []).length === 0 ? (
-                  <p className="text-xs text-ink-muted">
+                  <p className="wizard-text-muted-xs">
                     No matches yet for this pool.
                   </p>
                 ) : (
-                  <div className="grid gap-2 md:grid-cols-2">
+                  <div className="wizard-grid wizard-gap-sm wizard-grid-cols-2-md">
                     {pool.matches.map((match) => (
                       <div
                         key={match.id}
-                        className="rounded border border-border px-3 py-2 text-sm"
+                        className="wizard-box-compact"
                       >
-                        <p className="font-semibold">
+                        <p className="wizard-text-strong">
                           {match.teamALabel || match.teamA || "Team A"} vs{" "}
                           {match.teamBLabel || match.teamB || "Team B"}
                         </p>
-                        <p className="text-xs text-ink-muted">
+                        <p className="wizard-text-muted-xs">
                           {match.status} - {match.start || "TBD"}
                         </p>
-                        <p className="text-xs text-ink-muted">
+                        <p className="wizard-text-muted-xs">
                           Venue: {match.venueLabel || "Not assigned"}
                         </p>
-                        <div className="mt-1 flex gap-2">
+                        <div className="wizard-mt-xs wizard-flex wizard-gap-sm">
                           <button
                             type="button"
                             className="sc-button is-ghost"
@@ -2645,85 +2878,85 @@ export default function EventSetupWizardPage() {
 };
 
   const renderReviewStep = () => (
-    <div className="space-y-4">
-      <Panel variant="muted" className="space-y-3 p-4">
+    <div className="wizard-stack-lg">
+      <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader
           eyebrow="Event"
           title={event.name || "Untitled event"}
           description="Verify the baseline metadata."
         />
-        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+        <dl className="wizard-definition-list">
           <div>
-            <dt className="text-xs uppercase tracking-wide text-ink-muted">
+            <dt className="sc-field-label">
               Type
             </dt>
-            <dd className="font-semibold text-ink">
+            <dd className="wizard-text-strong">
               {event.type || "tournament"}
             </dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-ink-muted">
+            <dt className="sc-field-label">
               Location
             </dt>
-            <dd className="font-semibold text-ink">
+            <dd className="wizard-text-strong">
               {event.location || "TBD"}
             </dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-ink-muted">
+            <dt className="sc-field-label">
               Start date
             </dt>
-            <dd className="font-semibold text-ink">
+            <dd className="wizard-text-strong">
               {event.start_date || "Pending"}
             </dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-ink-muted">
+            <dt className="sc-field-label">
               End date
             </dt>
-            <dd className="font-semibold text-ink">
+            <dd className="wizard-text-strong">
               {event.end_date || "Pending"}
             </dd>
           </div>
-      <div className="sm:col-span-2">
-        <dt className="text-xs uppercase tracking-wide text-ink-muted">
+      <div className="wizard-span-2-sm">
+        <dt className="sc-field-label">
           Notes
         </dt>
-        <dd className="text-ink-muted">
+        <dd className="wizard-text-muted">
           {event.notes || "No additional notes captured."}
         </dd>
       </div>
     </dl>
   </Panel>
 
-      <Panel variant="muted" className="space-y-3 p-4">
+      <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader
           eyebrow="Venues"
           title="Event venues"
           description="Confirm the locations tied to this event."
         />
         {eventVenues.length === 0 ? (
-          <p className="text-sm text-ink-muted">
+          <p className="wizard-text-muted">
             No venues have been added for this event.
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="wizard-stack-sm">
             {eventVenues.map((venue) => (
               <div
                 key={venue.id}
-                className="rounded border border-border p-3 text-sm"
+                className="wizard-box"
               >
-                <p className="font-semibold text-ink">{venue.name}</p>
-                <p className="text-xs text-ink-muted">
-                  {venue.location || "Location pending"}
+                <p className="wizard-text-strong">{venue.name}</p>
+                <p className="wizard-text-muted-xs">
+                  {formatVenueMetaLabel(venue)}
                 </p>
                 {(venue.latitude || venue.longitude) && (
-                  <p className="text-xs text-ink-muted">
+                  <p className="wizard-text-muted-xs">
                     {venue.latitude || "?"}, {venue.longitude || "?"}
                   </p>
                 )}
                 {venue.notes && (
-                  <p className="mt-1 text-xs text-ink-muted">{venue.notes}</p>
+                  <p className="wizard-mt-xs wizard-text-muted-xs">{venue.notes}</p>
                 )}
               </div>
             ))}
@@ -2731,48 +2964,48 @@ export default function EventSetupWizardPage() {
         )}
       </Panel>
 
-      <Panel variant="muted" className="space-y-3 p-4">
+      <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader eyebrow="Structure" title="Divisions & pools" />
         {divisions.length === 0 ? (
-          <p className="text-sm text-ink-muted">
+          <p className="wizard-text-muted">
             Add at least one division to review the structure.
           </p>
         ) : (
-          <div className="space-y-3">
+          <div className="wizard-stack-md">
             {divisions.map((division) => (
               <div
                 key={division.id}
-                className="rounded border border-border p-3"
+                className="wizard-box"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="wizard-flex wizard-flex-wrap wizard-items-center wizard-justify-between wizard-gap-sm">
                   <div>
-                    <p className="font-semibold text-ink">{division.name}</p>
-                    <p className="text-xs text-ink-muted">
+                    <p className="wizard-text-strong">{division.name}</p>
+                    <p className="wizard-text-muted-xs">
                       Level {division.level || "N/A"}
                     </p>
                   </div>
                   <Chip>{division.pools?.length || 0} pools</Chip>
                 </div>
                 {(division.pools || []).length === 0 ? (
-                  <p className="mt-2 text-xs text-ink-muted">
+                  <p className="wizard-mt-sm wizard-text-muted-xs">
                     No pools have been assigned yet.
                   </p>
                 ) : (
-                  <div className="mt-2 space-y-2">
+                  <div className="wizard-mt-sm wizard-stack-sm">
                     {(division.pools || []).map((pool) => (
                       <div
                         key={pool.id}
-                        className="rounded border border-dashed border-border p-2 text-xs"
+                        className="wizard-box wizard-box-dashed wizard-box-xs"
                       >
-                        <div className="flex flex-wrap items-center justify-between">
-                          <p className="font-semibold text-ink">{pool.name}</p>
-                          <span className="text-ink-muted">
+                        <div className="wizard-flex wizard-flex-wrap wizard-items-center wizard-justify-between">
+                          <p className="wizard-text-strong">{pool.name}</p>
+                          <span className="wizard-text-muted">
                             Teams {(pool.teams || []).length} / Matches{" "}
                             {(pool.matches || []).length}
                           </span>
                         </div>
                         {(pool.teams || []).length > 0 && (
-                          <ul className="mt-1 list-disc pl-4 text-ink-muted">
+                          <ul className="wizard-mt-xs wizard-list wizard-text-muted">
                             {pool.teams.map((team) => (
                               <li key={team.id}>
                                 {team.displayLabel || team.name}
@@ -2796,66 +3029,66 @@ export default function EventSetupWizardPage() {
     const submissionInFlight = submissionState.status === "submitting";
     const submissionSucceeded = submissionState.status === "success";
     return (
-      <div className="space-y-4">
-        <Panel variant="muted" className="space-y-3 p-4">
+      <div className="wizard-stack-lg">
+        <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
           <SectionHeader eyebrow="Checklist" title="Ready to publish-" />
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded border border-border p-3">
-              <p className="text-xs uppercase tracking-wide text-ink-muted">
+          <div className="wizard-grid wizard-gap-md wizard-grid-cols-2-md">
+            <div className="wizard-box">
+              <p className="sc-field-label">
                 Venues
               </p>
-              <p className="text-2xl font-semibold text-ink">
+              <p className="wizard-metric-value">
                 {summary.eventVenueCount}
               </p>
             </div>
-            <div className="rounded border border-border p-3">
-              <p className="text-xs uppercase tracking-wide text-ink-muted">
+            <div className="wizard-box">
+              <p className="sc-field-label">
                 Divisions
               </p>
-              <p className="text-2xl font-semibold text-ink">
+              <p className="wizard-metric-value">
                 {divisions.length}
               </p>
             </div>
-            <div className="rounded border border-border p-3">
-              <p className="text-xs uppercase tracking-wide text-ink-muted">
+            <div className="wizard-box">
+              <p className="sc-field-label">
                 Pools
               </p>
-              <p className="text-2xl font-semibold text-ink">
+              <p className="wizard-metric-value">
                 {summary.poolCount}
               </p>
             </div>
-            <div className="rounded border border-border p-3">
-              <p className="text-xs uppercase tracking-wide text-ink-muted">
+            <div className="wizard-box">
+              <p className="sc-field-label">
                 Teams (valid)
               </p>
-              <p className="text-2xl font-semibold text-ink">
+              <p className="wizard-metric-value">
                 {derivedSubmissionCounts.validTeams}
               </p>
             </div>
-            <div className="rounded border border-border p-3">
-              <p className="text-xs uppercase tracking-wide text-ink-muted">
+            <div className="wizard-box">
+              <p className="sc-field-label">
                 Matches (valid)
               </p>
-              <p className="text-2xl font-semibold text-ink">
+              <p className="wizard-metric-value">
                 {derivedSubmissionCounts.validMatches}
               </p>
             </div>
           </div>
         </Panel>
 
-        <Panel variant="muted" className="space-y-3 p-4">
-          <SectionHeader
-            eyebrow="Confirmation"
-            title="Submit hierarchy to database"
-          />
+      <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
+        <SectionHeader
+          eyebrow="Confirmation"
+          title="Submit hierarchy to database"
+        />
           {!isSubmissionReady ? (
-            <Card variant="muted" className="p-4 text-sm text-ink-muted">
+            <Card variant="muted" className="wizard-pad-md wizard-text-muted">
               Complete the earlier steps and ensure at least one pool has
               assigned teams before submitting.
             </Card>
           ) : (
             <>
-              <p className="text-sm text-ink">
+              <p className="wizard-text">
                 Once confirmed, the event, its venues, divisions, pools, pool
                 teams, and scheduled matches will be created in the database as
                 a single batch.
@@ -2864,13 +3097,13 @@ export default function EventSetupWizardPage() {
                 <div className="sc-alert is-error">{submissionState.error}</div>
               )}
               {submissionSucceeded && submissionState.summary && (
-                <div className="sc-alert is-success space-y-1">
+                <div className="sc-alert is-success wizard-stack-xs">
                   <p>Event created successfully.</p>
-                  <p className="text-xs">
+                  <p className="wizard-text-xs">
                     Event ID:{" "}
-                    <span className="font-mono">{submissionState.eventId}</span>
+                    <span className="wizard-mono">{submissionState.eventId}</span>
                   </p>
-                  <p className="text-xs text-ink-muted">
+                  <p className="wizard-text-muted-xs">
                     Venues {submissionState.summary.eventVenueCount ?? 0} /
                     Divisions {submissionState.summary.divisionCount} /
                     Division teams{" "}
@@ -2881,14 +3114,6 @@ export default function EventSetupWizardPage() {
                   </p>
                 </div>
               )}
-              <button
-                type="button"
-                className="sc-button"
-                onClick={handleSubmitToDatabase}
-                disabled={submissionInFlight}
-              >
-                {submissionInFlight ? "Submitting..." : "Submit to database"}
-              </button>
             </>
           )}
         </Panel>
@@ -2923,6 +3148,12 @@ export default function EventSetupWizardPage() {
           message: "Complete the earlier steps before confirming the event.",
         });
       }
+      return;
+    }
+    const confirmMessage = isEditingExistingEvent
+      ? "Update this event and replace its existing hierarchy?"
+      : "Submit this event hierarchy to the database?";
+    if (typeof window !== "undefined" && !window.confirm(confirmMessage)) {
       return;
     }
     setFormNotice(null);
@@ -2973,9 +3204,9 @@ export default function EventSetupWizardPage() {
   };
 
   return (
-    <div className="pb-16 text-ink">
-      <SectionShell as="header" className="py-6">
-        <Card className="space-y-4 p-6 sm:p-8">
+    <div className="wizard-page">
+      <SectionShell as="header" className="wizard-pad-y-lg">
+        <Card className="wizard-stack-lg wizard-pad-responsive">
           <SectionHeader
             eyebrow="Admin"
             title="Event setup wizard"
@@ -2985,8 +3216,8 @@ export default function EventSetupWizardPage() {
         </Card>
       </SectionShell>
 
-      <SectionShell as="main" className="space-y-6">
-        <Card className="space-y-6 p-6 sm:p-8">
+      <SectionShell as="main" className="wizard-stack-xl">
+        <Card className="wizard-stack-xl wizard-pad-responsive">
           <SectionHeader
             eyebrow={`Step ${step + 1} of ${STEPS.length}`}
             title={STEPS[step].title}
@@ -3000,13 +3231,13 @@ export default function EventSetupWizardPage() {
             </div>
           )}
           {renderStep()}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs uppercase tracking-wide text-ink-muted">
+          <div className="wizard-summary-bar">
             <span>
               Venues {summary.eventVenueCount} - Divisions {divisions.length} -
               Pools {summary.poolCount} - Teams {summary.teamCount} - Matches{" "}
               {summary.matchCount}
             </span>
-            <div className="flex gap-2">
+            <div className="wizard-flex wizard-gap-sm">
               <button
                 type="button"
                 className="sc-button is-ghost"
@@ -3019,27 +3250,39 @@ export default function EventSetupWizardPage() {
                 type="button"
                 className="sc-button"
                 disabled={
-                  step === STEPS.length - 1 ||
-                  (step === 0 && eventMode === "edit" && !selectedEventId)
+                  step === STEPS.length - 1
+                    ? submissionState.status === "submitting" ||
+                      !isSubmissionReady
+                    : step === 0 && eventMode === "edit" && !selectedEventId
                 }
-                onClick={() =>
-                  setStep((prev) => Math.min(STEPS.length - 1, prev + 1))
-                }
+                onClick={() => {
+                  if (step === STEPS.length - 1) {
+                    handleSubmitToDatabase();
+                    return;
+                  }
+                  setStep((prev) => Math.min(STEPS.length - 1, prev + 1));
+                }}
               >
-                {step === STEPS.length - 2 ? "Confirm" : "Next"}
+                {step === STEPS.length - 1
+                  ? isEditingExistingEvent
+                    ? "Update"
+                    : "Submit"
+                  : step === STEPS.length - 2
+                    ? "Confirm"
+                    : "Next"}
               </button>
             </div>
           </div>
         </Card>
 
-        <Card className="space-y-3 p-6">
+        <Card className="wizard-stack-md wizard-pad-lg">
           <SectionHeader
             eyebrow="Blueprint"
             title={event.name || "Untitled event"}
             description="Share this outline with the tournament crew."
           />
           {divisions.length === 0 ? (
-            <Panel variant="muted" className="p-4 text-sm text-ink-muted">
+            <Panel variant="muted" className="wizard-pad-md wizard-text-muted">
               Add divisions to build the blueprint.
             </Panel>
           ) : (
@@ -3047,19 +3290,19 @@ export default function EventSetupWizardPage() {
               <Panel
                 key={division.id}
                 variant="tinted"
-                className="space-y-2 p-4"
+                className="wizard-stack-sm wizard-pad-md"
               >
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold">{division.name}</p>
+                <div className="wizard-flex wizard-items-center wizard-justify-between">
+                  <p className="wizard-text-strong">{division.name}</p>
                   <Chip>{division.pools?.length || 0} pools</Chip>
                 </div>
                 {(division.pools || []).map((pool) => (
                   <div
                     key={pool.id}
-                    className="rounded border border-border p-3 text-sm"
+                    className="wizard-box"
                   >
-                    <p className="font-semibold">{pool.name}</p>
-                    <p className="text-xs text-ink-muted">
+                    <p className="wizard-text-strong">{pool.name}</p>
+                    <p className="wizard-text-muted-xs">
                       Teams {pool.teams?.length || 0} / Matches{" "}
                       {pool.matches?.length || 0}
                     </p>

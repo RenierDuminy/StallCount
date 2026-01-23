@@ -725,3 +725,380 @@ textarea.sc-input {
     font-size: 15px;
   }
 }
+
+/* Event setup wizard */
+.wizard-page {
+  padding-bottom: 4rem;
+  color: var(--sc-ink);
+}
+
+.wizard-stack-xs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.wizard-stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.wizard-stack-md {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.wizard-stack-lg {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.wizard-stack-xl {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.wizard-pad-xs {
+  padding: 0.5rem;
+}
+
+.wizard-pad-sm {
+  padding: 0.75rem;
+}
+
+.wizard-pad-md {
+  padding: 1rem;
+}
+
+.wizard-pad-lg {
+  padding: 1.5rem;
+}
+
+.wizard-pad-xl {
+  padding: 2rem;
+}
+
+.wizard-pad-responsive {
+  padding: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .wizard-pad-responsive {
+    padding: 2rem;
+  }
+}
+
+.wizard-pad-y-lg {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+.wizard-gap-sm {
+  gap: 0.5rem;
+}
+
+.wizard-gap-md {
+  gap: 0.75rem;
+}
+
+.wizard-gap-lg {
+  gap: 1rem;
+}
+
+.wizard-gap-xl {
+  gap: 1.5rem;
+}
+
+.wizard-grid {
+  display: grid;
+}
+
+.wizard-grid-cols-2-md {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .wizard-grid-cols-2-md {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.wizard-grid-cols-2-lg {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 1024px) {
+  .wizard-grid-cols-2-lg {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.wizard-grid-cols-123 {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .wizard-grid-cols-123 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .wizard-grid-cols-123 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.wizard-grid-cols-sidebar-md {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .wizard-grid-cols-sidebar-md {
+    grid-template-columns: 320px 1fr;
+  }
+}
+
+.wizard-flex {
+  display: flex;
+}
+
+.wizard-flex-wrap {
+  flex-wrap: wrap;
+}
+
+.wizard-items-center {
+  align-items: center;
+}
+
+.wizard-justify-between {
+  justify-content: space-between;
+}
+
+.wizard-mt-xs {
+  margin-top: 0.25rem;
+}
+
+.wizard-mt-sm {
+  margin-top: 0.5rem;
+}
+
+.wizard-mt-md {
+  margin-top: 0.75rem;
+}
+
+.wizard-list {
+  list-style: disc;
+  padding-left: 1rem;
+}
+
+.wizard-text {
+  font-size: 0.9rem;
+  color: var(--sc-ink);
+}
+
+.wizard-text-muted {
+  font-size: 0.9rem;
+  color: var(--sc-ink-muted);
+}
+
+.wizard-text-muted-xs {
+  font-size: 0.75rem;
+  color: var(--sc-ink-muted);
+}
+
+.wizard-text-xs {
+  font-size: 0.75rem;
+  color: var(--sc-ink);
+}
+
+.wizard-text-strong {
+  font-weight: 600;
+  color: var(--sc-ink);
+}
+
+.wizard-metric-value {
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--sc-ink);
+}
+
+.wizard-mono {
+  font-family: var(--sc-font-mono);
+}
+
+.wizard-kicker-strong {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sc-ink-muted);
+}
+
+.wizard-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sc-ink-muted);
+  font-weight: 600;
+}
+
+.wizard-tag {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sc-ink-muted);
+}
+
+.wizard-option {
+  cursor: pointer;
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-radius-md);
+  padding: 0.75rem;
+  font-size: 0.9rem;
+  transition: border var(--sc-transition-fast), background var(--sc-transition-fast);
+}
+
+.wizard-option.is-selected {
+  border-color: var(--sc-accent);
+  background: rgba(198, 255, 98, 0.12);
+}
+
+.wizard-divider {
+  border-top: 1px solid rgba(255, 255, 255, 0.7);
+}
+
+.wizard-box {
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-radius-md);
+  padding: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.wizard-box-compact {
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-radius-md);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.wizard-box-xs {
+  padding: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.wizard-box-dashed {
+  border-style: dashed;
+}
+
+.wizard-textarea-compact {
+  min-height: 80px;
+}
+
+.wizard-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.wizard-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.wizard-stepper__pill {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--sc-border);
+  background: rgba(9, 30, 24, 0.65);
+  color: var(--sc-ink);
+}
+
+.wizard-stepper__pill.is-active {
+  border-color: var(--sc-accent);
+  background: var(--sc-accent);
+  color: var(--sc-button-ink);
+}
+
+.wizard-stepper__badge {
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sc-ink-muted);
+}
+
+.wizard-stepper__badge.is-active {
+  background: rgba(0, 0, 0, 0.15);
+  border-color: rgba(3, 20, 15, 0.4);
+  color: var(--sc-button-ink);
+}
+
+.wizard-stepper__badge.is-complete {
+  background: rgba(99, 255, 160, 0.15);
+  color: var(--sc-ink);
+}
+
+.wizard-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--sc-border);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sc-ink-muted);
+}
+
+.wizard-span-2 {
+  grid-column: auto;
+}
+
+@media (min-width: 768px) {
+  .wizard-span-2 {
+    grid-column: span 2;
+  }
+}
+
+.wizard-span-2-sm {
+  grid-column: auto;
+}
+
+@media (min-width: 640px) {
+  .wizard-span-2-sm {
+    grid-column: span 2;
+  }
+}
+
+.wizard-definition-list {
+  display: grid;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+@media (min-width: 640px) {
+  .wizard-definition-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

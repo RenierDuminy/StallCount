@@ -36,7 +36,11 @@ const toNullableNumber = (value) => {
     return value;
   }
   if (typeof value === "string") {
-    const parsed = Number(value);
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const parsed = Number(trimmed);
     if (!Number.isNaN(parsed)) {
       return parsed;
     }
@@ -130,6 +134,7 @@ const cleanEventVenuesInput = (eventVenues) =>
           if (!name) {
             return null;
           }
+          const city = normalizeText(venue?.city);
           const location = normalizeText(venue?.location);
           const notes = normalizeText(venue?.notes);
           const venueId = normalizeText(venue?.venueId);
@@ -137,6 +142,7 @@ const cleanEventVenuesInput = (eventVenues) =>
             id: venue?.id || venueId || null,
             venueId: venueId || null,
             name,
+            city: city || null,
             location: location || null,
             notes: notes || null,
             latitude: toNullableNumber(venue?.latitude),
@@ -370,6 +376,7 @@ const persistEventVenues = async (eventId, cleanedEventVenues) => {
   cleanedEventVenues.forEach((venue) => {
     const baseRecord = {
       name: venue.name,
+      city: venue.city,
       location: venue.location,
       notes: venue.notes,
       latitude: venue.latitude,
@@ -739,7 +746,9 @@ export async function listAvailableVenues(limit = 200) {
 
   const { data, error } = await supabase
     .from("venues")
-    .select("id, name, location, notes, latitude, longitude")
+    .select("id, name, city, location, notes, latitude, longitude")
+    .order("city", { ascending: true })
+    .order("location", { ascending: true })
     .order("name", { ascending: true })
     .limit(effectiveLimit);
 
@@ -775,7 +784,7 @@ export async function getEventHierarchy(eventId) {
     .select(
       `
         venue_id,
-        venue:venues(id, name, location, notes, latitude, longitude)
+        venue:venues(id, name, city, location, notes, latitude, longitude)
       `,
     )
     .eq("event_id", normalizedEventId);
@@ -859,7 +868,7 @@ export async function getEventHierarchy(eventId) {
         start_time,
         team_a_meta:teams!matches_team_a_fkey (id, name, short_name),
         team_b_meta:teams!matches_team_b_fkey (id, name, short_name),
-        venue:venues!matches_venue_id_fkey (id, name, location, notes, latitude, longitude)
+        venue:venues!matches_venue_id_fkey (id, name, city, location, notes, latitude, longitude)
       `,
     )
     .eq("event_id", normalizedEventId);
@@ -904,6 +913,7 @@ export async function getEventHierarchy(eventId) {
       teamBLabel: formatTeamDisplayLabel(row.team_b_meta),
       venueId: row.venue_id || null,
       venueName: row.venue?.name || "",
+      venueCity: row.venue?.city || "",
       venueLocation: row.venue?.location || "",
       venueRefId: row.venue_id || null,
     });
@@ -942,6 +952,7 @@ export async function getEventHierarchy(eventId) {
     id: row.venue_id,
     venueId: row.venue_id,
     name: row.venue?.name || "",
+    city: row.venue?.city || "",
     location: row.venue?.location || "",
     notes: row.venue?.notes || "",
     latitude: row.venue?.latitude ?? null,

@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import { getCachedQuery } from "../utils/queryCache";
+import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
 
 const TEAMS_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -34,6 +34,39 @@ export async function getAllTeams(limit?: number): Promise<TeamRow[]> {
     },
     { ttlMs: TEAMS_CACHE_TTL_MS },
   );
+}
+
+export async function createTeam(payload: {
+  name: string;
+  shortName?: string | null;
+}): Promise<TeamRow> {
+  const name = typeof payload?.name === "string" ? payload.name.trim() : "";
+  const shortName =
+    typeof payload?.shortName === "string" ? payload.shortName.trim() : "";
+
+  if (!name) {
+    throw new Error("Team name is required.");
+  }
+
+  const { data, error } = await supabase
+    .from("teams")
+    .insert({
+      name,
+      short_name: shortName || null,
+    })
+    .select("id, name, short_name, created_at")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to create team.");
+  }
+
+  if (!data) {
+    throw new Error("Team creation failed.");
+  }
+
+  invalidateCachedQueries("teams:list");
+  return data as TeamRow;
 }
 
 export async function getTeamsByIds(ids: string[]): Promise<TeamRow[]> {
