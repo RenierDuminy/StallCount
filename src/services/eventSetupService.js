@@ -76,6 +76,11 @@ const normalizeMatchStatus = (value) => {
   return "scheduled";
 };
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isUuid = (value) => typeof value === "string" && UUID_REGEX.test(value);
+
 const isRlsViolation = (error) => {
   const message = error?.message || error?.toString() || "";
   return /row-level security/i.test(message);
@@ -463,7 +468,7 @@ const persistEventVenues = async (eventId, cleanedEventVenues) => {
   if (linkPayload.length) {
     const { error: eventVenueError } = await supabase
       .from("event_venues")
-      .insert(linkPayload);
+      .upsert(linkPayload, { onConflict: "event_id,venue_id" });
 
     if (eventVenueError) {
       throw new Error(
@@ -683,39 +688,476 @@ export async function replaceEventHierarchy(payload) {
     throw new Error(updateError.message || "Failed to update event.");
   }
 
-  await deleteExistingHierarchy(normalizedEventId);
-
   const cleanedDivisions = cleanDivisionsInput(divisions);
   const cleanedEventVenues = cleanEventVenuesInput(eventVenues);
-  const { divisionPayload, divisionIdLookup } = await persistDivisions(
-    normalizedEventId,
-    cleanedDivisions,
-  );
-  const divisionTeamCount = await persistDivisionTeams(
-    cleanedDivisions,
-    divisionIdLookup,
-  );
-  const { poolRecords, poolIdLookup } = await persistPools(
-    cleanedDivisions,
-    divisionIdLookup,
-  );
-  const poolTeamCount = await persistPoolTeams(cleanedDivisions, poolIdLookup);
+  const { data: existingDivisions, error: existingDivisionsError } =
+    await supabase
+      .from("divisions")
+      .select("id")
+      .eq("event_id", normalizedEventId);
+  if (existingDivisionsError) {
+    throw new Error(
+      existingDivisionsError.message || "Failed to load existing divisions.",
+    );
+  }
+  const existingDivisionIds = (existingDivisions ?? []).map((row) => row.id);
+
+  const { data: existingPools, error: existingPoolsError } =
+    existingDivisionIds.length > 0
+      ? await supabase
+          .from("pools")
+          .select("id, division_id")
+          .in("division_id", existingDivisionIds)
+      : { data: [], error: null };
+  if (existingPoolsError) {
+    throw new Error(existingPoolsError.message || "Failed to load pools.");
+  }
+  const existingPoolIds = (existingPools ?? []).map((row) => row.id);
+
+  const { data: existingMatches, error: existingMatchesError } =
+    await supabase
+      .from("matches")
+      .select("id")
+      .eq("event_id", normalizedEventId);
+  if (existingMatchesError) {
+    throw new Error(existingMatchesError.message || "Failed to load matches.");
+  }
+  const existingMatchIds = (existingMatches ?? []).map((row) => row.id);
+
+  const { data: existingDivisionTeams, error: existingDivisionTeamsError } =
+    existingDivisionIds.length > 0
+      ? await supabase
+          .from("division_teams")
+          .select("division_id, team_id")
+          .in("division_id", existingDivisionIds)
+      : { data: [], error: null };
+  if (existingDivisionTeamsError) {
+    throw new Error(
+      existingDivisionTeamsError.message ||
+        "Failed to load division teams.",
+    );
+  }
+
+  const { data: existingPoolTeams, error: existingPoolTeamsError } =
+    existingPoolIds.length > 0
+      ? await supabase
+          .from("pool_teams")
+          .select("pool_id, team_id")
+          .in("pool_id", existingPoolIds)
+      : { data: [], error: null };
+  if (existingPoolTeamsError) {
+    throw new Error(
+      existingPoolTeamsError.message || "Failed to load pool teams.",
+    );
+  }
+
+  const { data: existingEventVenues, error: existingEventVenuesError } =
+    await supabase
+      .from("event_venues")
+      .select("venue_id")
+      .eq("event_id", normalizedEventId);
+  if (existingEventVenuesError) {
+    throw new Error(
+      existingEventVenuesError.message || "Failed to load event venues.",
+    );
+  }
+
   const { count: eventVenueCount, venueIdLookup } = await persistEventVenues(
     normalizedEventId,
     cleanedEventVenues,
   );
-  const matchCount = await persistMatches(
-    cleanedDivisions,
-    divisionIdLookup,
-    poolIdLookup,
-    normalizedEventId,
-    venueIdLookup,
+
+  const desiredVenueIds = new Set();
+  cleanedEventVenues.forEach((venue) => {
+    const clientId = venue.id || venue.venueId || null;
+    const resolvedId = venue.venueId || venueIdLookup.get(clientId);
+    if (resolvedId) {
+      desiredVenueIds.add(resolvedId);
+    }
+  });
+
+  if (desiredVenueIds.size === 0) {
+    const { error: deleteAllVenuesError } = await supabase
+      .from("event_venues")
+      .delete()
+      .eq("event_id", normalizedEventId);
+    if (deleteAllVenuesError) {
+      throw new Error(
+        deleteAllVenuesError.message || "Failed to remove event venues.",
+      );
+    }
+  } else {
+    const desiredVenueIdsList = Array.from(desiredVenueIds).map(
+      (id) => `"${id}"`,
+    );
+    const { error: deleteVenuesError } = await supabase
+      .from("event_venues")
+      .delete()
+      .eq("event_id", normalizedEventId)
+      .not("venue_id", "in", `(${desiredVenueIdsList.join(",")})`);
+    if (deleteVenuesError) {
+      throw new Error(
+        deleteVenuesError.message || "Failed to remove event venues.",
+      );
+    }
+  }
+
+  const divisionIdLookup = new Map();
+  const divisionUpsertPayload = [];
+  const divisionInsertPayload = [];
+  const divisionInsertClientIds = [];
+
+  cleanedDivisions.forEach((division) => {
+    const name = normalizeText(division.name);
+    if (!name) {
+      return;
+    }
+    const level = normalizeText(division.level) || null;
+    const rawId = normalizeText(division.id);
+    if (isUuid(rawId)) {
+      divisionIdLookup.set(rawId, rawId);
+      divisionUpsertPayload.push({
+        id: rawId,
+        event_id: normalizedEventId,
+        name,
+        level,
+      });
+    } else {
+      divisionInsertPayload.push({
+        event_id: normalizedEventId,
+        name,
+        level,
+      });
+      divisionInsertClientIds.push(rawId || `client_${Math.random()}`);
+    }
+  });
+
+  if (divisionUpsertPayload.length) {
+    const { error: divisionUpsertError } = await supabase
+      .from("divisions")
+      .upsert(divisionUpsertPayload, { onConflict: "id" });
+    if (divisionUpsertError) {
+      throw new Error(
+        divisionUpsertError.message || "Failed to update divisions.",
+      );
+    }
+  }
+
+  if (divisionInsertPayload.length) {
+    const { data: insertedDivisions, error: divisionInsertError } =
+      await supabase
+        .from("divisions")
+        .insert(divisionInsertPayload)
+        .select("id");
+    if (divisionInsertError) {
+      throw new Error(
+        divisionInsertError.message || "Failed to create divisions.",
+      );
+    }
+    (insertedDivisions ?? []).forEach((row, index) => {
+      const clientId = divisionInsertClientIds[index];
+      if (row?.id && clientId) {
+        divisionIdLookup.set(clientId, row.id);
+      }
+    });
+  }
+
+  const desiredDivisionIds = new Set(
+    Array.from(divisionIdLookup.values()).filter(isUuid),
   );
+
+  const poolIdLookup = new Map();
+  const poolUpsertPayload = [];
+  const poolInsertPayload = [];
+  const poolInsertClientIds = [];
+
+  cleanedDivisions.forEach((division) => {
+    const divisionKey = normalizeText(division.id);
+    const divisionId =
+      (divisionKey && divisionIdLookup.get(divisionKey)) ||
+      (isUuid(divisionKey) ? divisionKey : null);
+    if (!divisionId) {
+      return;
+    }
+    (division.pools || [])
+      .filter((pool) => normalizeText(pool?.name))
+      .forEach((pool) => {
+        const poolName = normalizeText(pool.name);
+        const poolId = normalizeText(pool.id);
+        if (isUuid(poolId)) {
+          poolIdLookup.set(poolId, poolId);
+          poolUpsertPayload.push({
+            id: poolId,
+            division_id: divisionId,
+            name: poolName,
+          });
+        } else {
+          poolInsertPayload.push({
+            division_id: divisionId,
+            name: poolName,
+          });
+          poolInsertClientIds.push(poolId || `client_${Math.random()}`);
+        }
+      });
+  });
+
+  if (poolUpsertPayload.length) {
+    const { error: poolUpsertError } = await supabase
+      .from("pools")
+      .upsert(poolUpsertPayload, { onConflict: "id" });
+    if (poolUpsertError) {
+      throw new Error(poolUpsertError.message || "Failed to update pools.");
+    }
+  }
+
+  if (poolInsertPayload.length) {
+    const { data: insertedPools, error: poolInsertError } = await supabase
+      .from("pools")
+      .insert(poolInsertPayload)
+      .select("id");
+    if (poolInsertError) {
+      throw new Error(poolInsertError.message || "Failed to create pools.");
+    }
+    (insertedPools ?? []).forEach((row, index) => {
+      const clientId = poolInsertClientIds[index];
+      if (row?.id && clientId) {
+        poolIdLookup.set(clientId, row.id);
+      }
+    });
+  }
+
+  const desiredPoolIds = new Set(
+    Array.from(poolIdLookup.values()).filter(isUuid),
+  );
+
+  const desiredDivisionTeamKeys = new Set();
+  const desiredDivisionTeamRows = [];
+  cleanedDivisions.forEach((division) => {
+    const divisionKey = normalizeText(division.id);
+    const divisionId =
+      (divisionKey && divisionIdLookup.get(divisionKey)) ||
+      (isUuid(divisionKey) ? divisionKey : null);
+    if (!divisionId) {
+      return;
+    }
+    (division.divisionTeams || []).forEach((team) => {
+      if (!team?.teamId) return;
+      const key = `${divisionId}:${team.teamId}`;
+      if (desiredDivisionTeamKeys.has(key)) return;
+      desiredDivisionTeamKeys.add(key);
+      desiredDivisionTeamRows.push({ division_id: divisionId, team_id: team.teamId });
+    });
+  });
+
+  const existingDivisionTeamKeys = new Set(
+    (existingDivisionTeams ?? []).map(
+      (row) => `${row.division_id}:${row.team_id}`,
+    ),
+  );
+
+  const divisionTeamsToInsert = desiredDivisionTeamRows.filter(
+    (row) => !existingDivisionTeamKeys.has(`${row.division_id}:${row.team_id}`),
+  );
+  if (divisionTeamsToInsert.length) {
+    const { error: divisionTeamsInsertError } = await supabase
+      .from("division_teams")
+      .insert(divisionTeamsToInsert);
+    if (divisionTeamsInsertError) {
+      throw new Error(
+        divisionTeamsInsertError.message ||
+          "Failed to assign teams to divisions.",
+      );
+    }
+  }
+
+  const divisionTeamsToDelete = Array.from(existingDivisionTeamKeys).filter(
+    (key) => !desiredDivisionTeamKeys.has(key),
+  );
+  for (const key of divisionTeamsToDelete) {
+    const [divisionId, teamId] = key.split(":");
+    const { error } = await supabase
+      .from("division_teams")
+      .delete()
+      .eq("division_id", divisionId)
+      .eq("team_id", teamId);
+    if (error) {
+      throw new Error(error.message || "Failed to remove division teams.");
+    }
+  }
+
+  const desiredPoolTeamKeys = new Set();
+  const desiredPoolTeamRows = [];
+  cleanedDivisions.forEach((division) => {
+    (division.pools || []).forEach((pool) => {
+      const poolKey = normalizeText(pool.id);
+      const poolId =
+        (poolKey && poolIdLookup.get(poolKey)) ||
+        (isUuid(poolKey) ? poolKey : null);
+      if (!poolId) return;
+      (pool.teams || []).forEach((team) => {
+        if (!team?.teamId) return;
+        const key = `${poolId}:${team.teamId}`;
+        if (desiredPoolTeamKeys.has(key)) return;
+        desiredPoolTeamKeys.add(key);
+        desiredPoolTeamRows.push({
+          pool_id: poolId,
+          team_id: team.teamId,
+          seed: toNullableNumber(team.seed),
+        });
+      });
+    });
+  });
+
+  if (desiredPoolTeamRows.length) {
+    const { error: poolTeamsUpsertError } = await supabase
+      .from("pool_teams")
+      .upsert(desiredPoolTeamRows, { onConflict: "pool_id,team_id" });
+    if (poolTeamsUpsertError) {
+      throw new Error(
+        poolTeamsUpsertError.message || "Failed to update pool teams.",
+      );
+    }
+  }
+
+  const existingPoolTeamKeys = new Set(
+    (existingPoolTeams ?? []).map(
+      (row) => `${row.pool_id}:${row.team_id}`,
+    ),
+  );
+
+  const poolTeamsToDelete = Array.from(existingPoolTeamKeys).filter(
+    (key) => !desiredPoolTeamKeys.has(key),
+  );
+  for (const key of poolTeamsToDelete) {
+    const [poolId, teamId] = key.split(":");
+    const { error } = await supabase
+      .from("pool_teams")
+      .delete()
+      .eq("pool_id", poolId)
+      .eq("team_id", teamId);
+    if (error) {
+      throw new Error(error.message || "Failed to remove pool teams.");
+    }
+  }
+
+  const desiredMatchIds = new Set();
+  const matchUpsertPayload = [];
+  const matchInsertPayload = [];
+
+  cleanedDivisions.forEach((division) => {
+    const divisionKey = normalizeText(division.id);
+    const divisionId =
+      (divisionKey && divisionIdLookup.get(divisionKey)) ||
+      (isUuid(divisionKey) ? divisionKey : null);
+    if (!divisionId) return;
+    (division.pools || []).forEach((pool) => {
+      const poolKey = normalizeText(pool.id);
+      const poolId =
+        (poolKey && poolIdLookup.get(poolKey)) ||
+        (isUuid(poolKey) ? poolKey : null);
+      if (!poolId) return;
+      (pool.matches || []).forEach((match) => {
+        if (!match?.teamAId || !match?.teamBId) return;
+        if (match.teamAId === match.teamBId) return;
+        const startTime = normalizeTimestamp(match.start);
+        const clientVenueRef = match.venueRefId || match.venueId || null;
+        const mappedVenueId =
+          (clientVenueRef &&
+            (venueIdLookup.get(clientVenueRef) || clientVenueRef)) ||
+          null;
+        const payload = {
+          event_id: normalizedEventId,
+          division_id: divisionId,
+          pool_id: poolId,
+          team_a: match.teamAId,
+          team_b: match.teamBId,
+          status: normalizeMatchStatus(match.status),
+          start_time: startTime,
+          venue_id: mappedVenueId,
+        };
+        const matchId = normalizeText(match.id);
+        if (isUuid(matchId)) {
+          desiredMatchIds.add(matchId);
+          matchUpsertPayload.push({ id: matchId, ...payload });
+        } else {
+          matchInsertPayload.push(payload);
+        }
+      });
+    });
+  });
+
+  if (matchUpsertPayload.length) {
+    const { error: matchUpsertError } = await supabase
+      .from("matches")
+      .upsert(matchUpsertPayload, { onConflict: "id" });
+    if (matchUpsertError) {
+      throw new Error(matchUpsertError.message || "Failed to update matches.");
+    }
+  }
+
+  if (matchInsertPayload.length) {
+    const { error: matchInsertError } = await supabase
+      .from("matches")
+      .insert(matchInsertPayload);
+    if (matchInsertError) {
+      throw new Error(matchInsertError.message || "Failed to create matches.");
+    }
+  }
+
+  const matchesToDelete = existingMatchIds.filter(
+    (id) => !desiredMatchIds.has(id),
+  );
+  if (matchesToDelete.length) {
+    const { error: matchDeleteError } = await supabase
+      .from("matches")
+      .delete()
+      .in("id", matchesToDelete);
+    if (matchDeleteError) {
+      throw new Error(matchDeleteError.message || "Failed to remove matches.");
+    }
+  }
+
+  const poolsToDelete = existingPoolIds.filter(
+    (id) => !desiredPoolIds.has(id),
+  );
+  if (poolsToDelete.length) {
+    const { error: poolsDeleteError } = await supabase
+      .from("pools")
+      .delete()
+      .in("id", poolsToDelete);
+    if (poolsDeleteError) {
+      throw new Error(poolsDeleteError.message || "Failed to remove pools.");
+    }
+  }
+
+  const divisionsToDelete = existingDivisionIds.filter(
+    (id) => !desiredDivisionIds.has(id),
+  );
+  if (divisionsToDelete.length) {
+    const { error: divisionsDeleteError } = await supabase
+      .from("divisions")
+      .delete()
+      .in("id", divisionsToDelete);
+    if (divisionsDeleteError) {
+      throw new Error(
+        divisionsDeleteError.message || "Failed to remove divisions.",
+      );
+    }
+  }
+
+  const divisionCount = cleanedDivisions.length;
+  const poolCount = cleanedDivisions.reduce(
+    (total, division) => total + (division.pools?.length || 0),
+    0,
+  );
+  const divisionTeamCount = desiredDivisionTeamKeys.size;
+  const poolTeamCount = desiredPoolTeamKeys.size;
+  const matchCount = desiredMatchIds.size + matchInsertPayload.length;
 
   return {
     eventId: normalizedEventId,
-    divisionCount: divisionPayload.length,
-    poolCount: poolRecords.length,
+    divisionCount,
+    poolCount,
     divisionTeamCount,
     poolTeamCount,
     matchCount,

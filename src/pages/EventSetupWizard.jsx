@@ -175,7 +175,7 @@ const Stepper = ({ current }) => (
               !isActive && isComplete && "is-complete",
             )}
           >
-            {isComplete ? "OK" : index + 1}
+            {isComplete ? String.fromCharCode(10003) : index + 1}
           </span>
           {step.title}
         </li>
@@ -2559,7 +2559,7 @@ export default function EventSetupWizardPage() {
           </label>
           <div className="wizard-stack-sm">
             <p className="wizard-kicker-strong">
-              Division teams
+              Availible Division teams for pool
             </p>
             {!currentDivisionForTeams ? (
               <p className="wizard-text-muted-xs">
@@ -2664,6 +2664,34 @@ export default function EventSetupWizardPage() {
         </Panel>
         <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
           <SectionHeader eyebrow="Matches" title="Round planning" />
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
+              Pool
+            </span>
+            <select
+              className="sc-input"
+              value={
+                matchForm.matchPoolId ||
+                matchForm.poolId ||
+                teamForm.poolId ||
+                activePool?.id ||
+                ""
+              }
+              onChange={(event) =>
+                setMatchForm((prev) => ({
+                  ...prev,
+                  matchPoolId: event.target.value,
+                }))
+              }
+            >
+              <option value="">Select pool</option>
+              {poolOptions.map((pool) => (
+                <option key={pool.id} value={pool.id}>
+                  {pool.name} ({pool.divisionName})
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="wizard-grid wizard-gap-sm wizard-grid-cols-2-md">
             <TextField
               label="Team A"
@@ -2734,34 +2762,6 @@ export default function EventSetupWizardPage() {
           </label>
           <label className="sc-fieldset">
             <span className="sc-field-label">
-              Pool
-            </span>
-            <select
-              className="sc-input"
-              value={
-                matchForm.matchPoolId ||
-                matchForm.poolId ||
-                teamForm.poolId ||
-                activePool?.id ||
-                ""
-              }
-              onChange={(event) =>
-                setMatchForm((prev) => ({
-                  ...prev,
-                  matchPoolId: event.target.value,
-                }))
-              }
-            >
-              <option value="">Select pool</option>
-              {poolOptions.map((pool) => (
-                <option key={pool.id} value={pool.id}>
-                  {pool.name} ({pool.divisionName})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="sc-fieldset">
-            <span className="sc-field-label">
               Venue
             </span>
             <select
@@ -2797,79 +2797,94 @@ export default function EventSetupWizardPage() {
             {matchForm.id ? "Save match" : "Add match"}
           </button>
           <div className="wizard-stack-lg">
-            {(activeDivision?.pools || []).map((pool) => (
-              <div key={pool.id} className="wizard-stack-sm">
-                <div className="wizard-toolbar">
-                  <span className="wizard-text-strong">
-                    {pool.name || "Pool"}
-                  </span>
-                  <span>
-                    Matches {(pool.matches || []).length}
-                  </span>
-                </div>
-                {(pool.matches || []).length === 0 ? (
-                  <p className="wizard-text-muted-xs">
-                    No matches yet for this pool.
-                  </p>
-                ) : (
-                  <div className="wizard-grid wizard-gap-sm wizard-grid-cols-2-md">
-                    {pool.matches.map((match) => (
-                      <div
-                        key={match.id}
-                        className="wizard-box-compact"
-                      >
-                        <p className="wizard-text-strong">
-                          {match.teamALabel || match.teamA || "Team A"} vs{" "}
-                          {match.teamBLabel || match.teamB || "Team B"}
-                        </p>
-                        <p className="wizard-text-muted-xs">
-                          {match.status} - {match.start || "TBD"}
-                        </p>
-                        <p className="wizard-text-muted-xs">
-                          Venue: {match.venueLabel || "Not assigned"}
-                        </p>
-                        <div className="wizard-mt-xs wizard-flex wizard-gap-sm">
-                          <button
-                            type="button"
-                            className="sc-button is-ghost"
-                            onClick={() =>
-                              setMatchForm({
-                                id: match.id,
-                                poolId: pool.id,
-                                matchPoolId: pool.id,
-                                teamA: match.teamALabel || match.teamA,
-                                teamAId: match.teamAId || "",
-                                teamB: match.teamBLabel || match.teamB,
-                                teamBId: match.teamBId || "",
-                                start: match.start || "",
-                                status: match.status,
-                                venueRefId: match.venueRefId || "",
-                              })
-                            }
+            {divisions.length === 0 ? (
+              <p className="wizard-text-muted-xs">
+                Add divisions and pools to start scheduling matches.
+              </p>
+            ) : (
+              divisions.flatMap((division) =>
+                (division.pools || []).map((pool) => (
+                  <div key={pool.id} className="wizard-stack-sm wizard-divider-top">
+                    <div className="wizard-toolbar">
+                      <span className="wizard-text-strong">
+                        {pool.name || "Pool"}
+                        {division.name ? ` (${division.name})` : ""}
+                      </span>
+                      <span>
+                        Matches {(pool.matches || []).length}
+                      </span>
+                    </div>
+                    {(pool.matches || []).length === 0 ? (
+                      <p className="wizard-text-muted-xs">
+                        No matches yet for this pool.
+                      </p>
+                    ) : (
+                      <div className="wizard-grid wizard-gap-sm wizard-grid-cols-2-md">
+                        {pool.matches.map((match) => (
+                          <div
+                            key={match.id}
+                            className="wizard-box-compact"
                           >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="sc-button is-destructive"
-                            onClick={() =>
-                              upsertPoolEntity(pool.id, (poolState) => ({
-                                ...poolState,
-                                matches: (poolState.matches || []).filter(
-                                  (entry) => entry.id !== match.id,
-                                ),
-                              }))
-                            }
-                          >
-                            Delete
-                          </button>
-                        </div>
+                            <p className="wizard-text-strong">
+                              {match.teamALabel || match.teamA || "Team A"} vs{" "}
+                              {match.teamBLabel || match.teamB || "Team B"}
+                            </p>
+                            <p className="wizard-text-muted-xs">
+                              {match.status} - {match.start || "TBD"}
+                            </p>
+                            <p className="wizard-text-muted-xs">
+                              Venue: {match.venueLabel || "Not assigned"}
+                            </p>
+                            <div className="wizard-mt-xs wizard-flex wizard-gap-sm">
+                              <button
+                                type="button"
+                                className="sc-button is-ghost"
+                                onClick={() =>
+                                  setMatchForm({
+                                    id: match.id,
+                                    poolId: pool.id,
+                                    matchPoolId: pool.id,
+                                    teamA: match.teamALabel || match.teamA,
+                                    teamAId: match.teamAId || "",
+                                    teamB: match.teamBLabel || match.teamB,
+                                    teamBId: match.teamBId || "",
+                                    start: match.start || "",
+                                    status: match.status,
+                                    venueRefId: match.venueRefId || "",
+                                  })
+                                }
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="sc-button is-destructive"
+                                onClick={() => {
+                                  if (
+                                    typeof window !== "undefined" &&
+                                    !window.confirm("Remove this match?")
+                                  ) {
+                                    return;
+                                  }
+                                  upsertPoolEntity(pool.id, (poolState) => ({
+                                    ...poolState,
+                                    matches: (poolState.matches || []).filter(
+                                      (entry) => entry.id !== match.id,
+                                    ),
+                                  }));
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
+                )),
+              )
+            )}
           </div>
         </Panel>
       </div>
