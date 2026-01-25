@@ -45,6 +45,13 @@ const ADMIN_MODULES = [
     accent: "bg-fuchsia-100 text-fuchsia-700",
   },
   {
+    label: "Event access control",
+    description:
+      "Review event-linked access and role assignments tied to specific competitions.",
+    to: "/admin/event-access",
+    accent: "bg-teal-100 text-teal-700",
+  },
+  {
     label: "Tournament director",
     description:
       "Desktop command center to view, create, and alter tournament data across every table.",

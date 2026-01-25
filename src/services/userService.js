@@ -11,6 +11,21 @@ function mapRoleAssignments(assignments) {
   }));
 }
 
+function mapEventRoleAssignments(assignments) {
+  return (Array.isArray(assignments) ? assignments : []).map((assignment) => ({
+    assignmentId: assignment.id,
+    roleId: assignment.role_id ?? assignment.role?.id ?? null,
+    roleName: assignment.role?.name ?? null,
+    roleDescription: assignment.role?.description ?? "",
+    eventId: assignment.event_id ?? assignment.event?.id ?? null,
+    eventName: assignment.event?.name ?? "",
+    eventStartDate: assignment.event?.start_date ?? null,
+    eventEndDate: assignment.event?.end_date ?? null,
+    grantedAt: assignment.created_at ?? null,
+    grantedBy: assignment.granted_by ?? null,
+  }));
+}
+
 function mapRolePermissions(permissionRows) {
   const items = Array.isArray(permissionRows) ? permissionRows : [];
   return items
@@ -121,6 +136,15 @@ export async function getAccessControlUsers(limit = 500) {
           role_id,
           created_at,
           role:roles(id, name, description)
+        ),
+        event_roles:event_user_roles!event_user_roles_user_id_fkey(
+          id,
+          role_id,
+          event_id,
+          created_at,
+          granted_by,
+          role:roles(id, name, description),
+          event:events(id, name, start_date, end_date)
         )
       `,
     )
@@ -138,6 +162,7 @@ export async function getAccessControlUsers(limit = 500) {
 
   return (data ?? []).map((row) => {
     const roles = mapRoleAssignments(row.assignments);
+    const eventRoles = mapEventRoleAssignments(row.event_roles);
 
     return {
       id: row.id,
@@ -145,6 +170,7 @@ export async function getAccessControlUsers(limit = 500) {
       fullName: row.full_name || "",
       createdAt: row.created_at || null,
       roles,
+      eventRoles,
     };
   });
 }
@@ -224,4 +250,152 @@ export async function updateUserRoleAssignment(userId, nextRoleId) {
     roleId: data?.role_id ?? normalizedRoleId,
     roleName: data?.role?.name ?? null,
   };
+}
+
+export async function addUserRoleAssignment(userId, roleId) {
+  if (!userId) {
+    throw new Error("User ID is required to add a role.");
+  }
+
+  let normalizedRoleId = null;
+  if (roleId !== null && roleId !== undefined && roleId !== "") {
+    const parsed = Number(roleId);
+    normalizedRoleId = Number.isNaN(parsed) ? null : parsed;
+  }
+
+  if (normalizedRoleId === null) {
+    throw new Error("Role ID is required to add a role.");
+  }
+
+  const {
+    data: { user: actor },
+  } = await supabase.auth.getUser();
+  const grantedBy = actor?.id ?? null;
+
+  const { data, error } = await supabase
+    .from("user_roles")
+    .insert({
+      user_id: userId,
+      role_id: normalizedRoleId,
+      granted_by: grantedBy,
+    })
+    .select("id, role_id, created_at, granted_by, role:roles(id, name, description)")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to add user role");
+  }
+
+  const mapped = mapRoleAssignments(data ? [data] : []);
+  return mapped[0] || {
+    assignmentId: data?.id ?? null,
+    roleId: normalizedRoleId,
+    roleName: data?.role?.name ?? null,
+    roleDescription: data?.role?.description ?? "",
+    grantedAt: data?.created_at ?? null,
+    grantedBy: data?.granted_by ?? null,
+  };
+}
+
+export async function removeUserRoleAssignment(assignmentId, userId, roleId) {
+  if (!assignmentId && (!userId || roleId === undefined || roleId === null || roleId === "")) {
+    throw new Error("Assignment ID or user/role identifiers are required to remove a role.");
+  }
+
+  let query = supabase.from("user_roles").delete();
+
+  if (assignmentId) {
+    query = query.eq("id", assignmentId);
+  } else {
+    const parsed = Number(roleId);
+    const normalizedRoleId = Number.isNaN(parsed) ? null : parsed;
+    if (normalizedRoleId === null) {
+      throw new Error("Valid role ID is required to remove a role.");
+    }
+    query = query.eq("user_id", userId).eq("role_id", normalizedRoleId);
+  }
+
+  const { error } = await query;
+
+  if (error) {
+    throw new Error(error.message || "Failed to remove user role");
+  }
+}
+
+export async function addEventUserRoleAssignment(userId, roleId, eventId) {
+  if (!userId) {
+    throw new Error("User ID is required to add an event role.");
+  }
+  if (!eventId) {
+    throw new Error("Event ID is required to add an event role.");
+  }
+
+  let normalizedRoleId = null;
+  if (roleId !== null && roleId !== undefined && roleId !== "") {
+    const parsed = Number(roleId);
+    normalizedRoleId = Number.isNaN(parsed) ? null : parsed;
+  }
+
+  if (normalizedRoleId === null) {
+    throw new Error("Role ID is required to add an event role.");
+  }
+
+  const {
+    data: { user: actor },
+  } = await supabase.auth.getUser();
+  const grantedBy = actor?.id ?? null;
+
+  const { data, error } = await supabase
+    .from("event_user_roles")
+    .insert({
+      user_id: userId,
+      role_id: normalizedRoleId,
+      event_id: eventId,
+      granted_by: grantedBy,
+    })
+    .select("id, role_id, event_id, created_at, granted_by, role:roles(id, name, description), event:events(id, name, start_date, end_date)")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to add event role");
+  }
+
+  const mapped = mapEventRoleAssignments(data ? [data] : []);
+  return mapped[0] || {
+    assignmentId: data?.id ?? null,
+    roleId: normalizedRoleId,
+    roleName: data?.role?.name ?? null,
+    roleDescription: data?.role?.description ?? "",
+    eventId: data?.event_id ?? eventId,
+    eventName: data?.event?.name ?? "",
+    eventStartDate: data?.event?.start_date ?? null,
+    eventEndDate: data?.event?.end_date ?? null,
+    grantedAt: data?.created_at ?? null,
+    grantedBy: data?.granted_by ?? null,
+  };
+}
+
+export async function removeEventUserRoleAssignment(assignmentId, userId, roleId, eventId) {
+  if (!assignmentId && (!userId || !eventId || roleId === undefined || roleId === null || roleId === "")) {
+    throw new Error("Assignment ID or user/event/role identifiers are required to remove an event role.");
+  }
+
+  let query = supabase.from("event_user_roles").delete();
+
+  if (assignmentId) {
+    query = query.eq("id", assignmentId);
+  } else {
+    const parsed = Number(roleId);
+    const normalizedRoleId = Number.isNaN(parsed) ? null : parsed;
+    if (normalizedRoleId === null) {
+      throw new Error("Valid role ID is required to remove an event role.");
+    }
+    query = query.eq("user_id", userId).eq("event_id", eventId).eq("role_id", normalizedRoleId);
+  }
+
+  const { error } = await query;
+
+  if (error) {
+    throw new Error(error.message || "Failed to remove event role");
+  }
 }

@@ -86,6 +86,11 @@ export default function ProtectedRoute({
       return <div className="p-8 text-gray-500">Checking access...</div>;
     }
 
+    const isAdmin = userHasAnyRole(session.user, ["admin"], roles);
+    if (isAdmin) {
+      return children;
+    }
+
     const hasNonViewerRole = roles.some(
       (role) => role?.roleId !== null && role?.roleId !== undefined && role?.roleId !== 14,
     );

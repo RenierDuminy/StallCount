@@ -34,6 +34,7 @@ const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const AdminScoreboardDebugPage = lazy(() => import("./pages/AdminScoreboardDebugPage"));
 const AdminAccessPage = lazy(() => import("./pages/AdminAccessPage"));
+const EventAccessPage = lazy(() => import("./pages/EventAccessPage"));
 const SpiritScoresPage = lazy(() => import("./pages/SpiritScoresPage"));
 const TournamentDirectorPage = lazy(() => import("./pages/TournamentDirectorPage"));
 const MediaAdminPage = lazy(() => import("./pages/MediaAdminPage"));
@@ -115,6 +116,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute allowedRoles={ADMIN_ACCESS_ACCESS_ROLES}>
                 <AdminAccessPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/event-access"
+            element={
+              <ProtectedRoute allowedRoles={TOURNAMENT_DIRECTOR_ACCESS_ROLES}>
+                <EventAccessPage />
               </ProtectedRoute>
             }
           />
