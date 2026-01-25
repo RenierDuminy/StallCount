@@ -750,7 +750,15 @@ export default function HomePage() {
                     ) : heroCardMatch ? (
                       <div className="space-y-1">
                         {nextMatchCountdown && (
-                          <p className="text-3xl font-semibold text-rose-50">{nextMatchCountdown}</p>
+                          <div className="flex items-center gap-2 text-rose-50">
+                            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-10 w-10">
+                              <path
+                                fill="currentColor"
+                                d="M12 2a1 1 0 0 1 1 1v1.05a7.95 7.95 0 0 1 3.75 1.56l.75-.75a1 1 0 1 1 1.4 1.42l-.74.74A8 8 0 1 1 12 4.05V3a1 1 0 0 1 1-1zm0 4a6 6 0 1 0 6 6 6.01 6.01 0 0 0-6-6zm-.5 2a1 1 0 0 1 1 1v3.2l2.3 1.3a1 1 0 1 1-1 1.74l-2.8-1.6A1 1 0 0 1 11 13V9a1 1 0 0 1 1-1z"
+                              />
+                            </svg>
+                            <p className="text-3xl font-semibold">{nextMatchCountdown}</p>
+                          </div>
                         )}
                         <p className="text-sm text-ink-muted">
                           Scheduled: {formatHeadingDateTime(heroCardMatch.start_time)}
@@ -764,8 +772,8 @@ export default function HomePage() {
                         Last event: <span className="text-ink">{heroLastEvent || "No logs yet"}</span>
                       </p>
                     )}
-                    {!heroCardIsLive && heroCardMatch?.venue?.name && (
-                      <p className="text-xs text-ink-muted">Field: {heroCardMatch.venue.name}</p>
+                    {!heroCardIsLive && heroCardMatch && formatVenueDetails(heroCardMatch) && (
+                      <p className="text-xs text-ink-muted">{formatVenueDetails(heroCardMatch)}</p>
                     )}
                   </div>
                   {heroStreamUrl && (
@@ -1326,6 +1334,16 @@ function formatMatchVenue(match) {
   if (match.venue?.name) return match.venue.name;
   if (match.event?.name) return match.event.name;
   return match.start_time ? formatMatchTime(match.start_time) : "Venue TBD";
+}
+
+function formatVenueDetails(match) {
+  if (!match?.venue) return null;
+  const city = match.venue.city ? match.venue.city.toString().trim() : "";
+  const location = match.venue.location ? match.venue.location.toString().trim() : "";
+  const field = match.venue.name ? match.venue.name.toString().trim() : "";
+  const parts = [city, location, field].filter(Boolean);
+  if (parts.length === 0) return null;
+  return parts.join(", ");
 }
 
 function buildMatchLink(matchId, options = {}) {
