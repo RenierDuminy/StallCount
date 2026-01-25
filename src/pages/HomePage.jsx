@@ -533,6 +533,7 @@ export default function HomePage() {
   const heroCardSubscription = heroCardMatch ? subscriptionLookup.get(`match:${heroCardMatch.id}`) || null : null;
   const heroStreamUrl = heroCardMatch ? resolveStreamUrl(heroCardMatch) : null;
   const heroTrackerHref = heroCardMatch ? buildMatchLink(heroCardMatch.id) : "/matches";
+  const heroNotificationHref = heroCardMatch ? `/notifications?targetType=match&targetId=${heroCardMatch.id}` : "/notifications";
   const heroCardMatchId = heroCardMatch?.id || null;
 
   const activeTimelineEvents = useMemo(() => filterActiveEvents(safeEvents), [safeEvents]);
@@ -742,13 +743,22 @@ export default function HomePage() {
                     <p className={`text-2xl font-semibold ${heroCardIsLive ? "text-rose-50" : "text-ink"}`}>
                       {heroCardMatch ? formatMatchup(heroCardMatch) : "No matches scheduled"}
                     </p>
-                    <p className="text-sm text-ink-muted">
-                      {heroCardIsLive
-                        ? heroClockLabel || "Waiting for next score update"
-                        : heroCardMatch
-                          ? nextMatchCountdown || formatMatchTime(heroCardMatch.start_time)
-                          : "Add matches to see them here."}
-                    </p>
+                    {heroCardIsLive ? (
+                      <p className="text-sm text-ink-muted">
+                        {heroClockLabel || "Waiting for next score update"}
+                      </p>
+                    ) : heroCardMatch ? (
+                      <div className="space-y-1">
+                        {nextMatchCountdown && (
+                          <p className="text-3xl font-semibold text-rose-50">{nextMatchCountdown}</p>
+                        )}
+                        <p className="text-sm text-ink-muted">
+                          Scheduled: {formatHeadingDateTime(heroCardMatch.start_time)}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-ink-muted">Add matches to see them here.</p>
+                    )}
                     {heroCardIsLive && (
                       <p className="text-xs uppercase tracking-wide text-ink-muted">
                         Last event: <span className="text-ink">{heroLastEvent || "No logs yet"}</span>
@@ -773,9 +783,15 @@ export default function HomePage() {
                   )}
                 </div>
                 <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                  <Link to={heroTrackerHref} className="sc-button text-center">
-                    {heroCardIsLive ? "Open live tracker" : "Match hub"}
-                  </Link>
+                  {heroCardIsLive ? (
+                    <Link to={heroTrackerHref} className="sc-button text-center">
+                      Open live tracker
+                    </Link>
+                  ) : (
+                    <Link to={heroNotificationHref} className="sc-button text-center">
+                      Notifications
+                    </Link>
+                  )}
                   <button
                     type="button"
                     onClick={() => void handleShareMatch(heroCardMatch)}
@@ -1246,6 +1262,14 @@ function formatMatchTime(timestamp) {
   })}`;
 }
 
+function formatScheduledShort(timestamp) {
+  if (!timestamp) return "Start time pending";
+  const date = new Date(timestamp);
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const day = date.toLocaleDateString([], { day: "2-digit", month: "short", year: "2-digit" });
+  return `${time}, ${day}`;
+}
+
 function formatHeadingDateTime(timestamp) {
   if (!timestamp) return "Start time pending";
   const date = new Date(timestamp);
@@ -1520,13 +1544,23 @@ function formatCountdown(timestamp) {
   const target = new Date(timestamp).getTime();
   const diffMs = target - Date.now();
   if (diffMs <= 0) return "Now";
-  const totalMinutes = Math.floor(diffMs / 60000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours > 0) {
-    return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
+  const totalMinutes = Math.max(1, Math.ceil(diffMs / 60000));
+  const totalHours = Math.floor(totalMinutes / 60);
+  let days = Math.floor(totalHours / 24);
+  let hours = totalHours % 24;
+  let minutes = totalMinutes % 60;
+
+  const parts = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || days > 0) parts.push(`${hours}h`);
+  if (totalMinutes < 60) {
+    let approxMinutes = Math.max(10, Math.round(minutes / 10) * 10);
+    if (approxMinutes === 60) {
+      approxMinutes = 50;
+    }
+    parts.push(`~${approxMinutes}min`);
   }
-  return `${minutes}m`;
+  return parts.join(" ");
 }
 
 function pickSpotlightEvent(filteredEvents, allEvents) {

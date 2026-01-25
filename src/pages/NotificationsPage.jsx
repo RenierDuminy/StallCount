@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getDivisions, getEventsList, getEventsByIds } from "../services/leagueService";
 import { getRecentMatches } from "../services/matchService";
@@ -134,6 +135,7 @@ function eventMatchesSubscription(event, subscription) {
 }
 
 export default function NotificationsPage() {
+  const [searchParams] = useSearchParams();
   const { session, loading: authLoading } = useAuth();
   const profileId = session?.user?.id ?? null;
 
@@ -173,6 +175,21 @@ export default function NotificationsPage() {
   );
   const notifiedEventIdsRef = useRef(new Set());
   const liveEventsChannelRef = useRef(null);
+  const prefillAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (prefillAppliedRef.current) return;
+    const typeParam = searchParams.get("targetType");
+    const idParam = searchParams.get("targetId");
+    if (!typeParam || !idParam) return;
+    const normalizedType = String(typeParam).toLowerCase();
+    const validType = TARGET_OPTIONS.some((option) => option.value === normalizedType);
+    if (!validType) return;
+    setTargetType(normalizedType);
+    setTargetId(idParam);
+    setChoiceSearch(idParam);
+    prefillAppliedRef.current = true;
+  }, [searchParams]);
 
   useEffect(() => {
     notifiedEventIdsRef.current.clear();
