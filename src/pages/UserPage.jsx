@@ -115,7 +115,6 @@ export default function UserPage() {
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(Boolean(user));
   const [profileError, setProfileError] = useState(null);
-  const [hideUnknownRoleNotice, setHideUnknownRoleNotice] = useState(false);
   const accessInfo = useMemo(() => resolveAccessLevel(user), [user]);
 
   useEffect(() => {
@@ -230,9 +229,48 @@ export default function UserPage() {
     return entries;
   }, [recognisedRoles]);
 
-  useEffect(() => {
-    setHideUnknownRoleNotice(false);
-  }, [fallbackRoles.join(",")]);
+  const moduleRoles = useMemo(
+    () => recognisedRoles.filter((role) => role !== "admin"),
+    [recognisedRoles],
+  );
+  
+  const roleDetails = useMemo(() => {
+    if (Array.isArray(assignmentSource) && assignmentSource.length > 0) {
+      const map = new Map();
+      assignmentSource.forEach((assignment) => {
+        const name = assignment?.roleName || assignment?.role?.name || "Role";
+        if (map.has(name)) return;
+        const slug = normaliseRoleList(name)[0];
+        map.set(name, {
+          key: assignment?.assignmentId || assignment?.roleId || name,
+          name,
+          description:
+            assignment?.roleDescription ||
+            (slug && ROLE_LIBRARY[slug]?.description) ||
+            "No description available.",
+        });
+      });
+      return Array.from(map.values());
+    }
+
+    if (recognisedRoles.length > 0) {
+      return recognisedRoles.map((role) => ({
+        key: role,
+        name: ROLE_LIBRARY[role]?.label || role,
+        description: ROLE_LIBRARY[role]?.description || "No description available.",
+      }));
+    }
+
+    if (fallbackRoles.length > 0) {
+      return fallbackRoles.map((role) => ({
+        key: role,
+        name: role,
+        description: "No description available.",
+      }));
+    }
+
+    return [];
+  }, [assignmentSource, recognisedRoles, fallbackRoles]);
 
   const profileEntries = useMemo(() => {
     if (!user) return [];
@@ -301,30 +339,17 @@ export default function UserPage() {
                 eyebrow="Your access"
                 description="The roles below determine which workflows you can launch within StallCount."
               />
-              <div className="flex flex-wrap gap-2">
-                {recognisedRoles.length > 0 ? (
-                  recognisedRoles.map((role) => (
-                    <Chip key={role} variant="tag">
-                      {ROLE_LIBRARY[role].label}
-                    </Chip>
-                  ))
-                ) : (
-                  <Chip variant="ghost">General viewer</Chip>
-                )}
-              </div>
-              {fallbackRoles.length > 0 && !hideUnknownRoleNotice && (
-                <Panel variant="muted" className="flex flex-wrap items-center justify-between gap-3 p-4 text-xs text-ink-muted">
-                  <span>
-                    Unknown roles detected: {fallbackRoles.join(", ")}. Please contact an administrator to review your access.
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setHideUnknownRoleNotice(true)}
-                    className="rounded-full border border-[var(--sc-border)] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-ink transition hover:bg-white/10"
-                  >
-                    Dismiss
-                  </button>
-                </Panel>
+              {roleDetails.length > 0 ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {roleDetails.map((role) => (
+                    <Panel key={role.key} variant="muted" className="p-4 text-sm">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{role.name}</p>
+                      <p className="mt-1 text-ink">{role.description}</p>
+                    </Panel>
+                  ))}
+                </div>
+              ) : (
+                <Chip variant="ghost">General viewer</Chip>
               )}
               {accessGuideEntries.length > 0 && (
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -338,8 +363,12 @@ export default function UserPage() {
               )}
             </Card>
 
-            {recognisedRoles.length > 0 ? (
-              recognisedRoles.map((role) => {
+            {recognisedRoles.length === 0 ? (
+              <Card className="p-6 text-sm text-ink-muted">
+                You currently have viewer-level access. Reach out to an administrator if you require elevated permissions for officiating duties.
+              </Card>
+            ) : moduleRoles.length > 0 ? (
+              moduleRoles.map((role) => {
                 const module = ROLE_LIBRARY[role];
                 return (
                   <Card key={role} className="space-y-4 p-6">
@@ -362,11 +391,7 @@ export default function UserPage() {
                   </Card>
                 );
               })
-            ) : (
-              <Card className="p-6 text-sm text-ink-muted">
-                You currently have viewer-level access. Reach out to an administrator if you require elevated permissions for officiating duties.
-              </Card>
-            )}
+            ) : null}
 
             <Card className="space-y-4 p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -387,10 +412,10 @@ export default function UserPage() {
                   <p className="text-ink">
                     StallCount is a product of RCDF (Pty) Ltd. For more information or assistance, drop us an email at{" "}
                     <a
-                      href="mailto:rcfdltf@gmail.com"
+                      href="mailto:rcfdltd@gmail.com"
                       className="inline-flex items-center rounded-full border border-[var(--sc-border)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#c6ff62] transition hover:bg-white/10"
                     >
-                      rcfdltf@gmail.com
+                      rcfdltd@gmail.com
                     </a>
                   </p>
                 </Panel>
