@@ -210,6 +210,58 @@ a:focus-visible {
   color: var(--sc-ink);
 }
 
+.sc-live-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.sc-live-card.is-live {
+  border-color: rgba(255, 99, 99, 0.65);
+  background: linear-gradient(155deg, rgba(63, 13, 16, 0.7), rgba(12, 28, 22, 0.95));
+  box-shadow: 0 28px 60px rgba(255, 80, 80, 0.2), var(--sc-shadow-card);
+}
+
+.sc-live-card.is-live::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255, 86, 86, 0.22), transparent 55%),
+    radial-gradient(circle at 85% 0%, rgba(255, 110, 110, 0.18), transparent 45%);
+  animation: sc-live-glow 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.sc-live-card.is-live .sc-live-badge {
+  background: linear-gradient(120deg, rgba(255, 90, 90, 0.45), rgba(255, 130, 130, 0.2));
+  box-shadow: 0 8px 20px rgba(255, 90, 90, 0.3);
+}
+
+.sc-live-card.is-live .sc-live-score {
+  text-shadow: 0 0 16px rgba(255, 120, 120, 0.6);
+}
+
+.sc-live-card.is-live .sc-live-watch {
+  border-color: rgba(255, 120, 120, 0.6);
+  box-shadow: 0 16px 40px rgba(255, 90, 90, 0.25);
+}
+
+.sc-live-card.is-live .sc-button.is-ghost {
+  border-color: rgba(255, 110, 110, 0.45);
+}
+
+@keyframes sc-live-glow {
+  0% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+
 .sc-button {
   display: inline-flex;
   align-items: center;
@@ -374,6 +426,34 @@ a:focus-visible {
 .sc-metric strong {
   font-size: 1.6rem;
   color: var(--sc-accent);
+}
+
+.sc-metric-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.sc-metric--stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.7rem 0.9rem;
+}
+
+.sc-metric--stacked strong {
+  font-size: 1.35rem;
+}
+
+@media (min-width: 640px) {
+  .sc-metric--stacked {
+    padding: 0.85rem 1.1rem;
+  }
+  .sc-metric--stacked strong {
+    font-size: 1.55rem;
+  }
 }
 
 .sc-frosted {

@@ -19,7 +19,7 @@ const MAX_MY_TEAMS = 2;
 const MAX_MY_MATCHES = 3;
 const MAX_SUBSCRIPTIONS_PREVIEW = 4;
 const MAX_FINALS_RESULTS = 16;
-const MAX_UPCOMING_MATCHES = 16;
+const MAX_UPCOMING_MATCHES = 10;
 
 export default function HomePage() {
   const [featuredTeams, setFeaturedTeams] = useState([]);
@@ -45,6 +45,9 @@ export default function HomePage() {
 
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState(null);
+  const [renderStreaming, setRenderStreaming] = useState(false);
+  const [renderMatches, setRenderMatches] = useState(false);
+  const [renderFinals, setRenderFinals] = useState(false);
 
   const { session } = useAuth();
 
@@ -59,6 +62,42 @@ export default function HomePage() {
     const timer = setTimeout(() => setPersonalizedMessage(null), 4000);
     return () => clearTimeout(timer);
   }, [personalizedMessage]);
+
+  useEffect(() => {
+    let canceled = false;
+    let matchesTimer = null;
+    let finalsTimer = null;
+
+    const revealSections = () => {
+      if (canceled) return;
+      setRenderStreaming(true);
+      matchesTimer = setTimeout(() => {
+        if (canceled) return;
+        setRenderMatches(true);
+        finalsTimer = setTimeout(() => {
+          if (!canceled) setRenderFinals(true);
+        }, 150);
+      }, 150);
+    };
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(revealSections, { timeout: 800 });
+      return () => {
+        canceled = true;
+        window.cancelIdleCallback?.(idleId);
+        if (matchesTimer) clearTimeout(matchesTimer);
+        if (finalsTimer) clearTimeout(finalsTimer);
+      };
+    }
+
+    const fallbackTimer = setTimeout(revealSections, 120);
+    return () => {
+      canceled = true;
+      clearTimeout(fallbackTimer);
+      if (matchesTimer) clearTimeout(matchesTimer);
+      if (finalsTimer) clearTimeout(finalsTimer);
+    };
+  }, []);
   useEffect(() => {
     let ignore = false;
 
@@ -391,8 +430,14 @@ export default function HomePage() {
   const liveNowEvent = liveNowMatch ? liveEventLookup.get(liveNowMatch.id) || null : null;
 
   const nextMatchCandidate = useMemo(() => {
+    const now = Date.now();
     const futureSorted = [...safeOpenMatches]
       .filter((match) => !FINISHED_STATUSES.has((match?.status || "").toLowerCase()))
+      .filter((match) => {
+        if (!match?.start_time) return true;
+        const startTime = new Date(match.start_time).getTime();
+        return Number.isNaN(startTime) ? true : startTime > now;
+      })
       .sort((a, b) => {
         const aTime = a.start_time ? new Date(a.start_time).getTime() : Number.MAX_SAFE_INTEGER;
         const bTime = b.start_time ? new Date(b.start_time).getTime() : Number.MAX_SAFE_INTEGER;
@@ -490,13 +535,39 @@ export default function HomePage() {
   const heroTrackerHref = heroCardMatch ? buildMatchLink(heroCardMatch.id) : "/matches";
   const heroCardMatchId = heroCardMatch?.id || null;
 
+  const activeTimelineEvents = useMemo(() => filterActiveEvents(safeEvents), [safeEvents]);
   const filteredTimelineEvents = useMemo(() => filterTimelineEvents(safeEvents), [safeEvents]);
   const timelineEmptyMessage = "No upcoming events on the calendar.";
 
-  const upcomingStreamMatch = useMemo(
-    () => safeOpenMatches.find((match) => matchHasStream(match)),
-    [safeOpenMatches],
-  );
+  const streamMatches = useMemo(() => {
+    const map = new Map();
+    [...safeOpenMatches, ...safeLatestMatches].forEach((match) => {
+      if (match?.id && !map.has(match.id)) {
+        map.set(match.id, match);
+      }
+    });
+    return Array.from(map.values()).filter((match) => matchHasStream(match));
+  }, [safeOpenMatches, safeLatestMatches]);
+
+  const upcomingStreamMatches = useMemo(() => {
+    return streamMatches
+      .filter((match) => !isMatchFinal(match?.status))
+      .sort((a, b) => {
+        const aTime = a?.start_time ? new Date(a.start_time).getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b?.start_time ? new Date(b.start_time).getTime() : Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      })
+      .slice(0, 5);
+  }, [streamMatches]);
+
+  const recentStreamMatches = useMemo(() => {
+    return streamMatches
+      .filter((match) => (match?.status || "").toLowerCase() === "completed")
+      .map((match) => ({ match, completedTime: getMatchCompletionTime(match) }))
+      .sort((a, b) => (b.completedTime ?? 0) - (a.completedTime ?? 0))
+      .slice(0, 10)
+      .map(({ match }) => match);
+  }, [streamMatches]);
 
   const spotlightEvent = useMemo(
     () => pickSpotlightEvent(filteredTimelineEvents, safeEvents),
@@ -535,7 +606,7 @@ export default function HomePage() {
   ];
 
   const myNextMatchAnswer = nextMatchCandidate
-    ? `${formatMatchup(nextMatchCandidate)} - ${formatMatchVenue(nextMatchCandidate)}`
+    ? `${formatMatchup(nextMatchCandidate)}`
     : "Add your fixtures";
 
   async function handleLogout() {
@@ -626,13 +697,10 @@ export default function HomePage() {
                 <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
                   Live now, next up, and standings - at a glance
                 </h1>
-                <p className="max-w-2xl text-sm text-ink-muted">
-                  See live scores, your next assignment, quick links to start scoring, and current standings in one view.
-                </p>
               </div>
-              <div className="flex flex-wrap gap-3">
+              <div className="sc-metric-row">
                 {heroStats.map((item) => (
-                  <Metric key={item.label} value={loading ? "..." : item.value} label={item.label} />
+                  <Metric key={item.label} className="sc-metric--stacked" value={loading ? "..." : item.value} label={item.label} />
                 ))}
               </div>
               {heroActionStatus && (
@@ -640,36 +708,74 @@ export default function HomePage() {
               )}
             </div>
             <div className="space-y-4">
-              <Card variant="muted" className="sc-frosted p-5">
-                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  <span>{heroCardIsLive ? "Live now" : "Next up"}</span>
-                  {heroPointStatus && heroCardIsLive && <Chip as="span">{heroPointStatus} point</Chip>}
+              <Card
+                variant="muted"
+                className={`sc-frosted sc-live-card p-5 ${
+                  heroCardIsLive ? "is-live border-2 border-rose-500/70 bg-rose-500/10" : ""
+                }`}
+              >
+                <div className={`flex flex-col gap-5 ${heroStreamUrl ? "sm:flex-row sm:items-center sm:justify-between" : ""}`}>
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                      <span>{heroCardIsLive ? "Live now" : "Next up"}</span>
+                      {heroCardIsLive && (
+                        <span className="sc-live-badge inline-flex items-center gap-2 rounded-full border border-rose-400/60 bg-rose-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-100">
+                          <span className="relative flex h-2 w-2">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-200 opacity-75" />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-200" />
+                          </span>
+                          Live
+                        </span>
+                      )}
+                      {heroPointStatus && heroCardIsLive && <Chip as="span">{heroPointStatus} point</Chip>}
+                    </div>
+                    {heroCardIsLive && heroCardMatch && (
+                      <div className="flex flex-wrap items-baseline gap-3">
+                        <p className="sc-live-score text-3xl font-semibold text-rose-50">
+                          {formatLiveScore(heroCardMatch)}
+                        </p>
+                        <span className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-100/90">
+                          Live match
+                        </span>
+                      </div>
+                    )}
+                    <p className={`text-2xl font-semibold ${heroCardIsLive ? "text-rose-50" : "text-ink"}`}>
+                      {heroCardMatch ? formatMatchup(heroCardMatch) : "No matches scheduled"}
+                    </p>
+                    <p className="text-sm text-ink-muted">
+                      {heroCardIsLive
+                        ? heroClockLabel || "Waiting for next score update"
+                        : heroCardMatch
+                          ? nextMatchCountdown || formatMatchTime(heroCardMatch.start_time)
+                          : "Add matches to see them here."}
+                    </p>
+                    {heroCardIsLive && (
+                      <p className="text-xs uppercase tracking-wide text-ink-muted">
+                        Last event: <span className="text-ink">{heroLastEvent || "No logs yet"}</span>
+                      </p>
+                    )}
+                    {!heroCardIsLive && heroCardMatch?.venue?.name && (
+                      <p className="text-xs text-ink-muted">Field: {heroCardMatch.venue.name}</p>
+                    )}
+                  </div>
+                  {heroStreamUrl && (
+                    <a
+                      href={heroStreamUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="sc-live-watch group inline-flex items-center gap-3 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-4 py-3 text-rose-50"
+                    >
+                      <span className="flex h-14 w-14 items-center justify-center rounded-full border border-rose-300/50 bg-rose-500/20">
+                        <img src="/youtube.png" alt="" className="h-9 w-9" aria-hidden="true" />
+                      </span>
+                      <span className="text-xs font-semibold uppercase tracking-[0.3em]">Watch</span>
+                    </a>
+                  )}
                 </div>
-                <p className="mt-2 text-xl font-semibold text-ink">
-                  {heroCardMatch ? formatMatchup(heroCardMatch) : "No matches scheduled"}
-                </p>
-                <p className="text-sm text-ink-muted">
-                  {heroCardIsLive
-                    ? heroClockLabel || "Waiting for next score update"
-                    : heroCardMatch
-                      ? nextMatchCountdown || formatMatchTime(heroCardMatch.start_time)
-                      : "Add matches to see them here."}
-                </p>
-                {heroCardIsLive && (
-                  <p className="mt-2 text-xs uppercase tracking-wide text-ink-muted">
-                    Last event: <span className="text-ink">{heroLastEvent || "No logs yet"}</span>
-                  </p>
-                )}
-                {!heroCardIsLive && heroCardMatch?.venue?.name && (
-                  <p className="mt-2 text-xs text-ink-muted">Field: {heroCardMatch.venue.name}</p>
-                )}
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <div className="mt-5 grid gap-2 sm:grid-cols-2">
                   <Link to={heroTrackerHref} className="sc-button text-center">
                     {heroCardIsLive ? "Open live tracker" : "Match hub"}
                   </Link>
-                  <button type="button" onClick={handleToggleHeroSubscription} className="sc-button is-ghost">
-                    {heroCardSubscription ? "Subscribed" : "Subscribe"}
-                  </button>
                   <button
                     type="button"
                     onClick={() => void handleShareMatch(heroCardMatch)}
@@ -678,11 +784,7 @@ export default function HomePage() {
                   >
                     Share
                   </button>
-                  {heroStreamUrl ? (
-                    <a href={heroStreamUrl} target="_blank" rel="noreferrer" className="sc-button is-ghost text-center">
-                      Stream
-                    </a>
-                  ) : (
+                  {!heroStreamUrl && (
                     <Panel
                       variant="dashed"
                       className="flex items-center justify-center px-3 py-2 text-center text-xs uppercase tracking-wide text-ink-muted"
@@ -693,9 +795,12 @@ export default function HomePage() {
                 </div>
               </Card>
               <Panel variant="tinted" className="p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  What's my next match?
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  <span>Next scheduled</span>
+                  {nextMatchCandidate?.start_time && (
+                    <span>{formatHeadingDateTime(nextMatchCandidate.start_time)}</span>
+                  )}
+                </div>
                 <p className="text-sm text-ink">{myNextMatchAnswer}</p>
               </Panel>
               {error && (
@@ -820,36 +925,32 @@ export default function HomePage() {
       <main className="space-y-12">
         <SectionShell as="section">
           <Card className="space-y-5 p-5 sm:p-6 lg:p-7">
-            <SectionHeader
-              eyebrow="Timeline"
-              title="Upcoming events"
-              description="Future tournaments and fixtures, sorted by start time."
-            />
+            <SectionHeader eyebrow="Timeline" title="Active events" />
             {loading && safeEvents.length === 0 ? (
               <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
                 Loading events...
               </Card>
-            ) : filteredTimelineEvents.length === 0 ? (
+            ) : activeTimelineEvents.length === 0 ? (
               <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                {timelineEmptyMessage}
+                No active events right now.
               </Card>
             ) : (
               <div className="space-y-3">
-                {filteredTimelineEvents.slice(0, 8).map((event) => (
+                {activeTimelineEvents.slice(0, 6).map((event) => (
                   <Card key={event.id} as="article" variant="muted" className="p-4">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                          {event.location ? `${event.location} - ` : ""}
                           {formatEventType(event.type)}
                         </p>
                         <h3 className="text-lg font-semibold text-ink">{event.name}</h3>
-                        {event.location && <p className="text-xs text-ink-muted">{event.location}</p>}
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm text-ink-muted">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <p className="text-sm text-ink-muted text-left">
                           {formatDateRange(event.start_date, event.end_date)}
                         </p>
-                        <Link to={`/events?eventId=${event.id}`} className="sc-button is-ghost mt-2 inline-flex text-xs">
+                        <Link to={`/events?eventId=${event.id}`} className="sc-button is-ghost inline-flex text-xs">
                           View matches
                         </Link>
                       </div>
@@ -858,162 +959,241 @@ export default function HomePage() {
                 ))}
               </div>
             )}
-          </Card>
-        </SectionShell>
 
-        <SectionShell as="section" className="grid gap-6 lg:grid-cols-2">
-          <Card className="space-y-3 p-5 sm:p-6">
-            <SectionHeader eyebrow="Streaming" title="Featured broadcast" />
-            {upcomingStreamMatch ? (
-              <>
-                <p className="text-sm text-ink">{formatMatchup(upcomingStreamMatch)}</p>
-                <p className="text-xs text-ink-muted">{formatMatchTime(upcomingStreamMatch.start_time)}</p>
-                <p className="text-xs text-ink-muted">
-                  Provider: {formatMediaProvider(upcomingStreamMatch)}
-                </p>
-                <a href={resolveStreamUrl(upcomingStreamMatch)} target="_blank" rel="noreferrer" className="sc-button mt-2">
-                  Watch stream
-                </a>
-              </>
-            ) : (
-              <p className="text-sm text-ink-muted">Attach media links to highlight upcoming streams.</p>
-            )}
-          </Card>
-          <Card className="space-y-3 p-5 sm:p-6">
-            <SectionHeader eyebrow="Spotlight" title="Event focus" />
-            {spotlightEvent ? (
-              <>
-                <p className="text-lg font-semibold text-ink">{spotlightEvent.name}</p>
-                <p className="text-sm text-ink-muted">
-                  {formatDateRange(spotlightEvent.start_date, spotlightEvent.end_date)}
-                </p>
-                <p className="text-sm text-ink-muted">{spotlightEvent.location || "Location TBC"}</p>
-              </>
-            ) : (
-              <p className="text-sm text-ink-muted">Create events to spotlight a league, tournament, or camp.</p>
-            )}
-          </Card>
-        </SectionShell>
-
-        <SectionShell as="section">
-          <Card className="space-y-4 p-5 sm:p-6">
-            <SectionHeader
-              eyebrow="Matches"
-              title="Live & upcoming"
-              action={
-                <Link to="/matches" className="sc-button is-ghost">
-                  All matches
-                </Link>
-              }
-            />
-            {loading && liveAndUpcomingMatches.length === 0 ? (
-              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                Loading matches...
-              </Card>
-            ) : liveAndUpcomingMatches.length === 0 ? (
-              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                No open matches right now.
-              </Card>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {liveAndUpcomingMatches.map((match) => {
-                  const live = isMatchLive(match.status);
-                  const final = isMatchFinal(match.status);
-                  const showScore = live || final;
-                  return (
-                    <Panel key={match.id} as="article" variant="tintedAlt" className="flex flex-col gap-3 p-4">
-                      <div className="flex flex-col gap-2">
+            <div className="mt-6 border-t border-border/60 pt-4">
+              <SectionHeader
+                title="Upcoming events"
+              />
+              {loading && safeEvents.length === 0 ? (
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                  Loading events...
+                </Card>
+              ) : filteredTimelineEvents.length === 0 ? (
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                  {timelineEmptyMessage}
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {filteredTimelineEvents.slice(0, 8).map((event) => (
+                    <Card key={event.id} as="article" variant="muted" className="p-4">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                            {match.event?.name || match.venue?.name || "Match"}
+                            {event.location ? `${event.location} - ` : ""}
+                            {formatEventType(event.type)}
+                          </p>
+                          <h3 className="text-lg font-semibold text-ink">{event.name}</h3>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <p className="text-sm text-ink-muted text-left">
+                            {formatDateRange(event.start_date, event.end_date)}
+                          </p>
+                          <Link to={`/events?eventId=${event.id}`} className="sc-button is-ghost inline-flex text-xs">
+                            View matches
+                          </Link>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
+        </SectionShell>
+
+        {renderStreaming && (
+          <SectionShell as="section" className="grid gap-6 lg:grid-cols-2">
+            <Card className="space-y-3 p-5 sm:p-6">
+              <SectionHeader eyebrow="Streaming" title="Featured broadcast" />
+              {upcomingStreamMatches.length > 0 ? (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Next with media</p>
+                  {upcomingStreamMatches.map((match) => (
+                    <Card key={match.id} variant="muted" className="p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-ink">{formatMatchup(match)}</p>
+                          <p className="text-xs text-ink-muted">{formatMatchTime(match.start_time)}</p>
+                          <p className="text-xs text-ink-muted">Provider: {formatMediaProvider(match)}</p>
+                        </div>
+                        {resolveStreamUrl(match) && (
+                          <a
+                            href={resolveStreamUrl(match)}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label="Open stream"
+                            className="inline-flex items-center justify-center pr-2"
+                          >
+                            <img src="/youtube.png" alt="" className="h-8 w-8" aria-hidden="true" />
+                          </a>
+                        )}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-ink-muted">No upcoming matches with media linked.</p>
+              )}
+
+              {recentStreamMatches.length > 0 ? (
+                <div className="space-y-3 pt-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Recent with media</p>
+                  {recentStreamMatches.map((match) => (
+                    <Card key={match.id} variant="muted" className="p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-ink">{formatMatchup(match)}</p>
+                          <p className="text-xs text-ink-muted">{formatMatchTime(match.start_time)}</p>
+                          <p className="text-xs text-ink-muted">Provider: {formatMediaProvider(match)}</p>
+                        </div>
+                        {resolveStreamUrl(match) && (
+                          <a
+                            href={resolveStreamUrl(match)}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label="Open stream"
+                            className="inline-flex items-center justify-center pr-2"
+                          >
+                            <img src="/youtube.png" alt="" className="h-8 w-8" aria-hidden="true" />
+                          </a>
+                        )}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-ink-muted pt-3">No recent matches with media linked.</p>
+              )}
+            </Card>
+          </SectionShell>
+        )}
+
+        {renderMatches && (
+          <SectionShell as="section">
+            <Card className="space-y-4 p-5 sm:p-6">
+              <SectionHeader
+                eyebrow="Matches"
+                title="Live & upcoming"
+              />
+              {loading && liveAndUpcomingMatches.length === 0 ? (
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                  Loading matches...
+                </Card>
+              ) : liveAndUpcomingMatches.length === 0 ? (
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                  No open matches right now.
+                </Card>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {liveAndUpcomingMatches.map((match) => {
+                    const live = isMatchLive(match.status);
+                    const final = isMatchFinal(match.status);
+                    const showScore = live || final;
+                    return (
+                      <Panel key={match.id} as="article" variant="tintedAlt" className="flex flex-col gap-3 p-4">
+                        <div className="flex flex-col gap-2">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                              {match.event?.name || match.venue?.name || "Match"}
+                            </p>
+                            <h3 className="text-lg font-semibold text-ink">{formatMatchup(match)}</h3>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs text-ink-muted">{formatMatchMeta(match)}</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Link to={`/matches?matchId=${match.id}`} className="sc-button is-ghost text-xs">
+                                {live ? "Live tracker" : "Details"}
+                              </Link>
+                              {matchHasStream(match) && (
+                                <a
+                                  href={resolveStreamUrl(match)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="sc-button is-ghost text-xs"
+                                >
+                                  Watch
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-left">
+                            {showScore ? (
+                              <>
+                                <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                                  {formatMatchStatus(match.status) || (live ? "Live" : "Final")}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                                {formatMatchStatus(match.status) || "Scheduled"}
+                              </p>
+                            )}
+                          </div>
+                          <div />
+                        </div>
+                      </Panel>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+          </SectionShell>
+        )}
+
+        {renderFinals && (
+          <SectionShell as="section">
+            <Card className="space-y-4 p-5 sm:p-6">
+              <SectionHeader
+                eyebrow="Finals"
+                title="Latest results"
+                action={
+                  <Link to="/events" className="sc-button is-ghost">
+                    Match archive
+                  </Link>
+                }
+              />
+              {loading && latestResults.length === 0 ? (
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                  Loading results...
+                </Card>
+              ) : latestResults.length === 0 ? (
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                  No finals saved yet.
+                </Card>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {latestResults.map((match) => (
+                    <Panel
+                      key={match.id}
+                      as={Link}
+                      variant="tinted"
+                      to={`/matches?matchId=${match.id}`}
+                      className="block p-4"
+                    >
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                            {match.event?.name || "Match"}
                           </p>
                           <h3 className="text-lg font-semibold text-ink">{formatMatchup(match)}</h3>
                         </div>
-                        <p className="text-xs text-ink-muted">{formatMatchMeta(match)}</p>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-left">
-                          {showScore ? (
-                            <>
-                              <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
-                              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                                {formatMatchStatus(match.status) || (live ? "Live" : "Final")}
-                              </p>
-                            </>
-                          ) : (
-                            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                              {formatMatchStatus(match.status) || "Scheduled"}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <Link to={`/matches?matchId=${match.id}`} className="sc-button is-ghost text-xs">
-                            {live ? "Live tracker" : "Details"}
-                          </Link>
-                          {matchHasStream(match) && (
-                            <a href={resolveStreamUrl(match)} target="_blank" rel="noreferrer" className="sc-button is-ghost text-xs">
-                              Watch
-                            </a>
-                          )}
+                        <div className="text-right">
+                          <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                            {match.status || "final"}
+                          </p>
                         </div>
                       </div>
                     </Panel>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
-        </SectionShell>
-
-        <SectionShell as="section">
-          <Card className="space-y-4 p-5 sm:p-6">
-            <SectionHeader
-              eyebrow="Finals"
-              title="Latest results"
-              action={
-                <Link to="/events" className="sc-button is-ghost">
-                  Match archive
-                </Link>
-              }
-            />
-            {loading && latestResults.length === 0 ? (
-              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                Loading results...
-              </Card>
-            ) : latestResults.length === 0 ? (
-              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                No finals saved yet.
-              </Card>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {latestResults.map((match) => (
-                  <Panel
-                    key={match.id}
-                    as={Link}
-                    variant="tinted"
-                    to={`/matches?matchId=${match.id}`}
-                    className="block p-4"
-                  >
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                          {match.event?.name || "Match"}
-                        </p>
-                        <h3 className="text-lg font-semibold text-ink">{formatMatchup(match)}</h3>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                          {match.status || "final"}
-                        </p>
-                      </div>
-                    </div>
-                  </Panel>
-                ))}
-              </div>
-            )}
-          </Card>
-        </SectionShell>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </SectionShell>
+        )}
 
       </main>
 
@@ -1066,6 +1246,14 @@ function formatMatchTime(timestamp) {
   })}`;
 }
 
+function formatHeadingDateTime(timestamp) {
+  if (!timestamp) return "Start time pending";
+  const date = new Date(timestamp);
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const day = date.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
+  return `${time}, ${day}`;
+}
+
 function formatMatchup(match) {
   const teamA = match.team_a?.name || "Team A";
   const teamB = match.team_b?.name || "Team B";
@@ -1106,10 +1294,6 @@ function formatMatchMeta(match) {
   }
   if (match?.venue?.name) {
     parts.push(match.venue.name);
-  }
-  const statusLabel = formatMatchStatus(match?.status);
-  if (statusLabel) {
-    parts.push(statusLabel);
   }
   return parts.join(" | ") || "Details pending";
 }
@@ -1358,6 +1542,23 @@ function filterTimelineEvents(events = []) {
     .filter((event) => {
       const startTime = event.start_date ? new Date(event.start_date).getTime() : null;
       return !startTime || startTime >= now;
+    })
+    .sort((a, b) => {
+      const aTime = a.start_date ? new Date(a.start_date).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.start_date ? new Date(b.start_date).getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    });
+}
+
+function filterActiveEvents(events = []) {
+  const now = Date.now();
+  return events
+    .filter((event) => {
+      const startTime = event.start_date ? new Date(event.start_date).getTime() : null;
+      const endTime = event.end_date ? new Date(event.end_date).getTime() : null;
+      if (startTime === null || Number.isNaN(startTime)) return false;
+      if (endTime === null || Number.isNaN(endTime)) return now >= startTime;
+      return now >= startTime && now <= endTime;
     })
     .sort((a, b) => {
       const aTime = a.start_date ? new Date(a.start_date).getTime() : Number.MAX_SAFE_INTEGER;
