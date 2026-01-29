@@ -11,6 +11,8 @@ import {
   SCORE_NA_PLAYER_VALUE,
 } from "./scorekeeperConstants";
 
+const BLOCK_EVENT_TYPE_ID = 19;
+
 export default function ScoreKeeperView() {
   const data = useScoreKeeperData();
   const actions = useScoreKeeperActions(data);
@@ -111,6 +113,21 @@ export default function ScoreKeeperView() {
     const name = player.name || "Player";
     return `${jersey} ${name}`;
   };
+  const isStartMatchReady =
+    Boolean(setupForm.startingTeamId) && ["male", "female"].includes(rules.abbaPattern);
+  const renderPlayerGridLabel = (player) => {
+    const jerseyValue = player?.jersey_number;
+    const jerseyText = `${jerseyValue ?? ""}`.trim();
+    const name = player?.name || "Player";
+    return (
+      <span className="flex flex-col items-center text-center leading-tight">
+        {jerseyText && <span className="text-sm font-extrabold">{jerseyText}</span>}
+        <span className={`${jerseyText ? "mt-0.5" : ""} w-full text-[0.7rem] font-semibold whitespace-normal break-words`}>
+          {name}
+        </span>
+      </span>
+    );
+  };
 
   const {
     cancelPrimaryHoldReset,
@@ -147,12 +164,14 @@ export default function ScoreKeeperView() {
   const possessionPadRef = useRef(null);
   const possessionPointerIdRef = useRef(null);
   const possessionDragStateRef = useRef({ startX: null, moved: false });
+  const possessionConfirmTimeoutRef = useRef(null);
   const [possessionEventReady, setPossessionEventReady] = useState(false);
   const [possessionResult, setPossessionResult] = useState("throwaway"); // "throwaway" | "block"
   const [possessionActorId, setPossessionActorId] = useState("");
   const [possessionModalOpen, setPossessionModalOpen] = useState(false);
   const [pendingPossessionTeam, setPendingPossessionTeam] = useState(null);
   const [possessionPreviewTeam, setPossessionPreviewTeam] = useState(null);
+  const [possessionEditIndex, setPossessionEditIndex] = useState(null);
   const updatePossessionFromCoordinate = (clientX) => {
     const track = possessionPadRef.current;
     if (!track || !Number.isFinite(clientX)) {
@@ -191,17 +210,37 @@ export default function ScoreKeeperView() {
   };
 
   const getRosterOptionsForTeam = (teamKey) => {
+    const sortPlayers = (players) =>
+      [...players].sort((a, b) => {
+        const parsedA = Number(a?.jersey_number);
+        const parsedB = Number(b?.jersey_number);
+        const numA = Number.isFinite(parsedA) ? parsedA : null;
+        const numB = Number.isFinite(parsedB) ? parsedB : null;
+        if (numA !== null && numB !== null) {
+          return numA - numB || (a.name || "").localeCompare(b.name || "");
+        }
+        if (numA !== null) return -1;
+        if (numB !== null) return 1;
+        return (a.name || "").localeCompare(b.name || "");
+      });
+
     if (teamKey === "A") {
-      return (sortedRosters.teamA || []).filter((player) => player?.id).map((player) => ({
-        id: player.id,
-        name: player.name || "Unnamed player",
-      }));
+      return sortPlayers(sortedRosters.teamA || [])
+        .filter((player) => player?.id)
+        .map((player) => ({
+          id: player.id,
+          name: player.name || "Unnamed player",
+          jersey_number: player.jersey_number ?? null,
+        }));
     }
     if (teamKey === "B") {
-      return (sortedRosters.teamB || []).filter((player) => player?.id).map((player) => ({
-        id: player.id,
-        name: player.name || "Unnamed player",
-      }));
+      return sortPlayers(sortedRosters.teamB || [])
+        .filter((player) => player?.id)
+        .map((player) => ({
+          id: player.id,
+          name: player.name || "Unnamed player",
+          jersey_number: player.jersey_number ?? null,
+        }));
     }
     return [];
   };
@@ -260,13 +299,19 @@ export default function ScoreKeeperView() {
   }, [activeActorOptions, possessionActorId]);
 
   const resetPossessionModalState = () => {
+    if (possessionConfirmTimeoutRef.current) {
+      clearTimeout(possessionConfirmTimeoutRef.current);
+      possessionConfirmTimeoutRef.current = null;
+    }
     setPossessionModalOpen(false);
     setPendingPossessionTeam(null);
     setPossessionPreviewTeam(null);
     setPossessionEventReady(false);
+    setPossessionResult("throwaway");
+    setPossessionEditIndex(null);
   };
 
-  const confirmPossessionChange = () => {
+  const confirmPossessionChange = (actorOverride) => {
     const nextTeam = pendingPossessionTeam;
     if (!nextTeam) {
       resetPossessionModalState();
@@ -275,18 +320,56 @@ export default function ScoreKeeperView() {
     const blockTeam = nextTeam === "A" ? "B" : "A";
     const rosterSourceTeam = possessionResult === "block" ? nextTeam : blockTeam;
     const options = getRosterOptionsForTeam(rosterSourceTeam);
-    const actorId = options.find((player) => player.id === possessionActorId)?.id || possessionActorId || null;
+    const resolvedActor = actorOverride ?? possessionActorId;
+    const actorId = options.find((player) => player.id === resolvedActor)?.id || resolvedActor || null;
     setPossessionActorId(actorId || "");
-    resetPossessionModalState();
     const isBlock = possessionResult === "block";
-    const eventTypeIdOverride = isBlock ? 19 : null;
-    const eventTeamKey = isBlock ? nextTeam : null;
+    const eventTeamKey = isBlock ? nextTeam : blockTeam;
+    const editingIndex = possessionEditIndex;
+    resetPossessionModalState();
+    if (editingIndex !== null) {
+      if (isBlock) {
+        void handleUpdateLog(editingIndex, {
+          teamKey: eventTeamKey,
+          scorerId: actorId || null,
+          eventTypeId: BLOCK_EVENT_TYPE_ID,
+        });
+      } else {
+        void handleUpdateLog(editingIndex, {
+          teamKey: eventTeamKey,
+          scorerId: actorId || null,
+          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
+        });
+      }
+      return;
+    }
+
     void updatePossession(nextTeam, {
       actorId: actorId || null,
-      eventTypeIdOverride,
-      eventTeamKey,
+      eventTypeIdOverride: isBlock ? BLOCK_EVENT_TYPE_ID : null,
+      eventTeamKey: isBlock ? nextTeam : null,
     });
   };
+
+  const handlePossessionActorSelect = (nextActorId) => {
+    setPossessionActorId(nextActorId);
+    if (possessionConfirmTimeoutRef.current) {
+      clearTimeout(possessionConfirmTimeoutRef.current);
+    }
+    possessionConfirmTimeoutRef.current = setTimeout(() => {
+      confirmPossessionChange(nextActorId || null);
+      possessionConfirmTimeoutRef.current = null;
+    }, 200);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (possessionConfirmTimeoutRef.current) {
+        clearTimeout(possessionConfirmTimeoutRef.current);
+        possessionConfirmTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const scorerAssistClash =
     scoreForm.assistId &&
@@ -304,6 +387,33 @@ export default function ScoreKeeperView() {
       teamKey: log.team || "",
       eventLabel: log.eventDescription || "Match event",
     });
+  };
+
+  const isBlockPossessionLog = (log) => {
+    if (!log) return false;
+    if (Number.isFinite(log.eventTypeId) && log.eventTypeId === BLOCK_EVENT_TYPE_ID) return true;
+    const code = `${log.eventCode || ""}`.toLowerCase();
+    if (code.includes("block")) return true;
+    const desc = `${log.eventDescription || ""}`.toLowerCase();
+    return desc.includes("block");
+  };
+
+  const openPossessionEditModal = (log, index) => {
+    const isBlockLog = isBlockPossessionLog(log);
+    const loggedTeam = log?.team || null;
+    const nextTeam = isBlockLog
+      ? loggedTeam
+      : loggedTeam === "A"
+        ? "B"
+        : loggedTeam === "B"
+          ? "A"
+          : null;
+    setPendingPossessionTeam(nextTeam);
+    setPossessionPreviewTeam(nextTeam);
+    setPossessionResult(isBlockLog ? "block" : "throwaway");
+    setPossessionActorId(log?.scorerId || "");
+    setPossessionModalOpen(true);
+    setPossessionEditIndex(index);
   };
 
   const closeSimpleEventModal = () => {
@@ -536,7 +646,12 @@ export default function ScoreKeeperView() {
                     <button
                       type="button"
                       onClick={handleStartMatch}
-                      className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                      disabled={!isStartMatchReady}
+                      className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
+                        isStartMatchReady
+                          ? "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
+                          : "bg-slate-300 text-slate-600"
+                      } disabled:cursor-not-allowed`}
                     >
                       Start match
                     </button>
@@ -607,6 +722,7 @@ export default function ScoreKeeperView() {
                               getAbbaDescriptor={getAbbaDescriptor}
                               openScoreModal={openScoreModal}
                               openSimpleEventModal={openSimpleEventModal}
+                              openPossessionEditModal={openPossessionEditModal}
                             />
                           );
                         });
@@ -964,7 +1080,7 @@ export default function ScoreKeeperView() {
       )}
 
       {possessionModalOpen && (
-        <ActionModal title="Possession outcome" onClose={resetPossessionModalState}>
+        <ActionModal title="Possession outcome" onClose={resetPossessionModalState} alignTop scrollable>
           <div className="space-y-3 text-[#0f5132]">
             <p className="text-sm font-semibold">
               {pendingPossessionTeam === "A"
@@ -975,7 +1091,7 @@ export default function ScoreKeeperView() {
             </p>
             <div className="grid grid-cols-2 gap-2 text-sm font-semibold">
               <label
-                className={`flex items-center gap-2 rounded-2xl border px-3 py-2 ${
+                className={`flex items-center gap-2 rounded-2xl border px-3 py-3 min-h-[52px] ${
                   possessionResult === "throwaway"
                     ? "border-[#0f5132] bg-[#0f5132] text-white"
                     : "border-[#0f5132]/30 bg-white text-[#0f5132]"
@@ -993,7 +1109,7 @@ export default function ScoreKeeperView() {
                 <span>Turnover</span>
               </label>
               <label
-                className={`flex items-center gap-2 rounded-2xl border px-3 py-2 ${
+                className={`flex items-center gap-2 rounded-2xl border px-3 py-3 min-h-[52px] ${
                   possessionResult === "block"
                     ? "border-[#0f5132] bg-[#0f5132] text-white"
                     : "border-[#0f5132]/30 bg-white text-[#0f5132]"
@@ -1017,37 +1133,44 @@ export default function ScoreKeeperView() {
               <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
                 Player ({possessionResult === "block" ? "current team" : "opposition"})
               </p>
-              <select
-                value={possessionActorId}
-                onChange={(event) => setPossessionActorId(event.target.value || "")}
-                className="w-full rounded-xl border border-[#0f5132]/30 bg-white px-3 py-2 text-sm font-semibold text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30"
-              >
-                <option value="">N/A</option>
-                {!activeActorOptions.length && <option value="__no_players" disabled>No players available</option>}
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePossessionActorSelect("")}
+                  className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                    possessionActorId === ""
+                      ? "border-[#0f5132] bg-[#0f5132] text-white"
+                      : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                  }`}
+                >
+                  N/A
+                </button>
+                {!activeActorOptions.length && (
+                  <div className="rounded-xl border border-dashed border-[#0f5132]/30 px-2 py-2 text-center text-xs font-semibold text-[#0f5132]/60">
+                    No players
+                  </div>
+                )}
                 {activeActorOptions.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {player.name}
-                  </option>
+                  <button
+                    key={player.id}
+                    type="button"
+                    onClick={() => handlePossessionActorSelect(player.id)}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                      possessionActorId === player.id
+                        ? "border-[#0f5132] bg-[#0f5132] text-white"
+                        : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                    }`}
+                  >
+                    {renderPlayerGridLabel(player)}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={confirmPossessionChange}
-                className="w-full rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-                disabled={!pendingPossessionTeam}
-              >
-                Confirm
-              </button>
-              <button
-                type="button"
-                onClick={resetPossessionModalState}
-                className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
-              >
-                Cancel
-              </button>
-            </div>
+            {!pendingPossessionTeam && (
+              <div className="rounded-xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-2 text-xs font-semibold text-[#0f5132]">
+                Select a team to continue.
+              </div>
+            )}
           </div>
         </ActionModal>
       )}
@@ -1155,42 +1278,83 @@ export default function ScoreKeeperView() {
             </p>
             <label className="block text-base font-semibold text-[#0f5132]">
               Scorer:
-              <select
-                value={scoreForm.scorerId}
-                onChange={(event) =>
-                  setScoreForm((prev) => ({ ...prev, scorerId: event.target.value }))
-                }
-                required
-                className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
-              >
-                <option value="">Select Scorer</option>
-                <option value={SCORE_NA_PLAYER_VALUE}>N/A</option>
-                {rosterOptionsForModal.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {formatPlayerSelectLabel(player)}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-[#0f5132]/30 bg-white/70 p-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScoreForm((prev) => ({ ...prev, scorerId: SCORE_NA_PLAYER_VALUE }))}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                      scoreForm.scorerId === SCORE_NA_PLAYER_VALUE
+                        ? "border-[#0f5132] bg-[#0f5132] text-white"
+                        : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                    }`}
+                    aria-pressed={scoreForm.scorerId === SCORE_NA_PLAYER_VALUE}
+                  >
+                    N/A
+                  </button>
+                  {rosterOptionsForModal.map((player) => (
+                    <button
+                      key={player.id}
+                      type="button"
+                      onClick={() => setScoreForm((prev) => ({ ...prev, scorerId: player.id }))}
+                      className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                        scoreForm.scorerId === player.id
+                          ? "border-[#0f5132] bg-[#0f5132] text-white"
+                          : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                      }`}
+                      aria-pressed={scoreForm.scorerId === player.id}
+                    >
+                      {renderPlayerGridLabel(player)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </label>
             <label className="block text-base font-semibold text-[#0f5132]">
               Assist:
-              <select
-                value={scoreForm.assistId}
-                onChange={(event) =>
-                  setScoreForm((prev) => ({ ...prev, assistId: event.target.value }))
-                }
-                required
-                className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
-              >
-                <option value="">Select Assist</option>
-                <option value={SCORE_NA_PLAYER_VALUE}>N/A</option>
-                {rosterOptionsForModal.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {formatPlayerSelectLabel(player)}
-                  </option>
-                ))}
-                <option value={CALAHAN_ASSIST_VALUE}>CALLAHAN!!</option>
-              </select>
+              <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-[#0f5132]/30 bg-white/70 p-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScoreForm((prev) => ({ ...prev, assistId: SCORE_NA_PLAYER_VALUE }))}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                      scoreForm.assistId === SCORE_NA_PLAYER_VALUE
+                        ? "border-[#0f5132] bg-[#0f5132] text-white"
+                        : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                    }`}
+                    aria-pressed={scoreForm.assistId === SCORE_NA_PLAYER_VALUE}
+                  >
+                    N/A
+                  </button>
+                  {rosterOptionsForModal.map((player) => (
+                    <button
+                      key={player.id}
+                      type="button"
+                      onClick={() => setScoreForm((prev) => ({ ...prev, assistId: player.id }))}
+                      className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                        scoreForm.assistId === player.id
+                          ? "border-[#0f5132] bg-[#0f5132] text-white"
+                          : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                      }`}
+                      aria-pressed={scoreForm.assistId === player.id}
+                    >
+                      {renderPlayerGridLabel(player)}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setScoreForm((prev) => ({ ...prev, assistId: CALAHAN_ASSIST_VALUE }))}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                      scoreForm.assistId === CALAHAN_ASSIST_VALUE
+                        ? "border-[#0f5132] bg-[#0f5132] text-white"
+                        : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                    }`}
+                    aria-pressed={scoreForm.assistId === CALAHAN_ASSIST_VALUE}
+                  >
+                    CALLAHAN!!
+                  </button>
+                </div>
+              </div>
             </label>
             <div className="space-y-1.5">
               {!isScoreFormValid && (
@@ -1267,7 +1431,7 @@ export default function ScoreKeeperView() {
   );
 }
 
-function ActionModal({ title, onClose, children, disableClose = false }) {
+function ActionModal({ title, onClose, children, disableClose = false, alignTop = false, scrollable = false }) {
   const handleClose = () => {
     if (!disableClose) {
       onClose();
@@ -1275,8 +1439,16 @@ function ActionModal({ title, onClose, children, disableClose = false }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px] px-4 py-3">
-      <div className="w-full max-w-sm rounded-[32px] bg-white p-3">
+    <div
+      className={`fixed inset-0 z-50 flex justify-center bg-black/50 backdrop-blur-[2px] px-4 py-3 ${
+        alignTop ? "items-start" : "items-center"
+      }`}
+    >
+      <div
+        className={`w-full max-w-sm rounded-[32px] bg-white p-3 ${
+          scrollable ? "max-h-[85vh] overflow-y-auto" : ""
+        }`}
+      >
         <div className="mb-2 flex items-start justify-between">
           <h3 className="text-2xl font-semibold text-[#0f5132]">{title}</h3>
           <button
@@ -1306,13 +1478,24 @@ function MatchLogCard({
   getAbbaDescriptor,
   openScoreModal,
   openSimpleEventModal,
+  openPossessionEditModal,
 }) {
   const isScoreLog = log.eventCode === MATCH_LOG_EVENT_CODES.SCORE;
   const isMatchStartLog = log.eventCode === MATCH_LOG_EVENT_CODES.MATCH_START;
   const isTimeoutLog =
     log.eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT ||
     log.eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START;
-  const isPossessionLog = log.eventCode === MATCH_LOG_EVENT_CODES.TURNOVER;
+  const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
+  const normalizedEventDescription = `${log.eventDescription || ""}`.toLowerCase();
+  const isBlockLog =
+    (Number.isFinite(log.eventTypeId) && log.eventTypeId === BLOCK_EVENT_TYPE_ID) ||
+    normalizedEventCode.includes("block") ||
+    normalizedEventDescription.includes("block");
+  const isPossessionLog =
+    log.eventCode === MATCH_LOG_EVENT_CODES.TURNOVER ||
+    normalizedEventCode.includes("turnover") ||
+    normalizedEventDescription.includes("turnover") ||
+    isBlockLog;
   const isHalftimeLog = log.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START;
   const isStoppageStart = log.eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START;
   const isCalahanLog = log.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
@@ -1326,6 +1509,9 @@ function MatchLogCard({
     hour: "2-digit",
     minute: "2-digit",
   });
+  const creditedPlayerLabel = isPossessionLog
+    ? log.scorerName || (log.scorerId ? "Unknown player" : "Unassigned")
+    : null;
   const alignClass = (() => {
     if (isPossessionLog) {
       return log.team === "A" ? "text-right" : log.team === "B" ? "text-left" : "text-center";
@@ -1394,9 +1580,13 @@ function MatchLogCard({
           : null;
   const abbaLineLabel = log.abbaLine && log.abbaLine !== "none" ? log.abbaLine : null;
 
+  const showDetachedEdit = isPossessionLog;
+
   return (
     <article
-      className={`rounded-2xl border px-4 py-3 text-sm transition ${eventStyles.bg} ${eventStyles.border} ${alignClass}`}
+      className={`rounded-2xl border px-4 py-3 text-sm transition ${eventStyles.bg} ${eventStyles.border} ${alignClass} ${
+        showDetachedEdit ? "relative pr-12" : ""
+      }`}
     >
       <div className={`w-full ${alignClass}`}>
         <p className="text-xs font-semibold uppercase tracking-wide text-black">
@@ -1450,37 +1640,101 @@ function MatchLogCard({
               <button
                 type="button"
                 onClick={() => openScoreModal(log.team, "edit", editIndex)}
-                className="rounded-full border border-border px-4 py-1 text-xs font-semibold text-accent transition hover:border-accent hover:bg-[#e6fffa]"
+                className="rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
+                aria-label="Edit event"
+                title="Edit event"
               >
-                Edit event
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
               </button>
             </div>
           )}
         </div>
-      ) : description ? (
-        <div className="mt-3 flex items-center justify-between text-xs text-black">
-          <p>
-            {isPossessionLog
-              ? `${shortTeamLabel || "Team"} now has the disc`
-              : isTimeoutLog
-                ? `${shortTeamLabel || "Team"} called a timeout`
-                : isStoppageStart
-                  ? "Clock paused while stoppage is logged"
-                  : isHalftimeLog
-                    ? "Second-half prep underway"
-                    : ""}
-          </p>
-          {log.team && (isTimeoutLog || isPossessionLog) && (
+      ) : (
+        <div
+          className={`mt-3 text-xs text-black ${
+            isPossessionLog
+              ? "flex flex-col items-start gap-1"
+              : `flex items-center ${description ? "justify-between" : "justify-end"}`
+          }`}
+        >
+          {(description || isPossessionLog) && (
+            <p>
+              {isPossessionLog
+                ? `${shortTeamLabel || "Team"} now has the disc`
+                : isTimeoutLog
+                  ? `${shortTeamLabel || "Team"} called a timeout`
+                  : isStoppageStart
+                    ? "Clock paused while stoppage is logged"
+                    : isHalftimeLog
+                      ? "Second-half prep underway"
+                      : ""}
+            </p>
+          )}
+          {isPossessionLog && (
+            <p className="text-[11px] font-semibold text-black/70">
+              Credited: {creditedPlayerLabel}
+            </p>
+          )}
+          {!showDetachedEdit && (
             <button
               type="button"
               onClick={() => openSimpleEventModal(log, editIndex)}
-              className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-accent transition hover:border-accent hover:bg-[#e6fffa]"
+              className="rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
+              aria-label="Edit event"
+              title="Edit event"
             >
-              Edit
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
             </button>
           )}
         </div>
-      ) : null}
+      )}
+      {showDetachedEdit && (
+        <button
+          type="button"
+          onClick={() => openPossessionEditModal(log, editIndex)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
+          aria-label="Edit event"
+          title="Edit event"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+        </button>
+      )}
     </article>
   );
 }

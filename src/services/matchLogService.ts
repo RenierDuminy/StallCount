@@ -64,6 +64,7 @@ export type MatchLogUpdate = {
   actorId?: string | null;
   secondaryActorId?: string | null;
   eventTypeCode?: keyof typeof MATCH_LOG_EVENT_CODES | string;
+  eventTypeId?: number | null;
   abbaLine?: string | null;
 };
 
@@ -200,18 +201,27 @@ export async function updateMatchLogEntry(logId: string, updates: MatchLogUpdate
   if (Object.prototype.hasOwnProperty.call(updates, "eventTypeCode") && updates.eventTypeCode) {
     updatePayload.event_type_id = await resolveEventTypeId(updates.eventTypeCode);
   }
+  if (Object.prototype.hasOwnProperty.call(updates, "eventTypeId")) {
+    updatePayload.event_type_id = updates.eventTypeId ?? null;
+  }
   if (Object.prototype.hasOwnProperty.call(updates, "abbaLine")) {
     updatePayload.abba_line = updates.abbaLine ?? null;
   }
 
+  const selectClause = matchLogsSupportsOptimisticId ? MATCH_LOG_SELECT : MATCH_LOG_SELECT_LEGACY;
+
   if (Object.keys(updatePayload).length === 0) {
     const { data, error } = await supabase
       .from("match_logs")
-      .select(MATCH_LOG_SELECT)
+      .select(selectClause)
       .eq("id", logId)
       .maybeSingle();
 
     if (error || !data) {
+      if (matchLogsSupportsOptimisticId && isMissingOptimisticColumn(error)) {
+        matchLogsSupportsOptimisticId = false;
+        return updateMatchLogEntry(logId, updates);
+      }
       throw new Error(error?.message || "Failed to fetch match log");
     }
 
@@ -222,10 +232,81 @@ export async function updateMatchLogEntry(logId: string, updates: MatchLogUpdate
     .from("match_logs")
     .update(updatePayload)
     .eq("id", logId)
-    .select(MATCH_LOG_SELECT)
+    .select(selectClause)
     .maybeSingle();
 
   if (error || !data) {
+    if (matchLogsSupportsOptimisticId && isMissingOptimisticColumn(error)) {
+      matchLogsSupportsOptimisticId = false;
+      return updateMatchLogEntry(logId, updates);
+    }
+    throw new Error(error?.message || "Failed to update match log");
+  }
+
+  return data as MatchLogRow;
+}
+
+export async function updateMatchLogEntryByTimestamp(
+  matchId: string,
+  createdAt: string,
+  updates: MatchLogUpdate
+) {
+  const updatePayload: Record<string, unknown> = {};
+
+  if (Object.prototype.hasOwnProperty.call(updates, "teamId")) {
+    updatePayload.team_id = updates.teamId ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "actorId")) {
+    updatePayload.actor_id = updates.actorId ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "secondaryActorId")) {
+    updatePayload.secondary_actor_id = updates.secondaryActorId ?? null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, "eventTypeCode") && updates.eventTypeCode) {
+    updatePayload.event_type_id = await resolveEventTypeId(updates.eventTypeCode);
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "eventTypeId")) {
+    updatePayload.event_type_id = updates.eventTypeId ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "abbaLine")) {
+    updatePayload.abba_line = updates.abbaLine ?? null;
+  }
+
+  const selectClause = matchLogsSupportsOptimisticId ? MATCH_LOG_SELECT : MATCH_LOG_SELECT_LEGACY;
+
+  if (Object.keys(updatePayload).length === 0) {
+    const { data, error } = await supabase
+      .from("match_logs")
+      .select(selectClause)
+      .eq("match_id", matchId)
+      .eq("created_at", createdAt)
+      .maybeSingle();
+
+    if (error || !data) {
+      if (matchLogsSupportsOptimisticId && isMissingOptimisticColumn(error)) {
+        matchLogsSupportsOptimisticId = false;
+        return updateMatchLogEntryByTimestamp(matchId, createdAt, updates);
+      }
+      throw new Error(error?.message || "Failed to fetch match log");
+    }
+
+    return data as MatchLogRow;
+  }
+
+  const { data, error } = await supabase
+    .from("match_logs")
+    .update(updatePayload)
+    .eq("match_id", matchId)
+    .eq("created_at", createdAt)
+    .select(selectClause)
+    .maybeSingle();
+
+  if (error || !data) {
+    if (matchLogsSupportsOptimisticId && isMissingOptimisticColumn(error)) {
+      matchLogsSupportsOptimisticId = false;
+      return updateMatchLogEntryByTimestamp(matchId, createdAt, updates);
+    }
     throw new Error(error?.message || "Failed to update match log");
   }
 

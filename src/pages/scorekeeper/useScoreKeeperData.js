@@ -1210,7 +1210,8 @@ useEffect(() => {
     [rules.abbaPattern, normalizeAbbaLine]
   );
   const startingTeamId = activeMatch?.starting_team_id || setupForm.startingTeamId;
-  const matchStartingTeamKey = startingTeamId === teamBId ? "B" : "A";
+  const matchStartingTeamKey =
+    startingTeamId === teamAId ? "A" : startingTeamId === teamBId ? "B" : null;
   const matchDuration = rules.matchDuration || DEFAULT_DURATION;
   const remainingTimeouts = {
     A: Math.max(rules.timeoutsTotal - timeoutUsage.A, 0),
@@ -1970,6 +1971,7 @@ const rosterNameLookup = useMemo(() => {
           scorerId: row.actor_id ?? null,
           assistName,
           assistId: row.secondary_actor_id ?? null,
+          eventTypeId: row.event_type_id ?? null,
           totalA: runningA,
           totalB: runningB,
           eventCode: row.event?.code || null,

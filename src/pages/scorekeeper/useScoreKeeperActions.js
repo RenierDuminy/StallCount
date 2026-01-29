@@ -1,7 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import { initialiseMatch, updateMatchStatus } from "../../services/matchService";
 import { updateScore } from "../../services/realtimeService";
-import { MATCH_LOG_EVENT_CODES, deleteMatchLogEntry, updateMatchLogEntry } from "../../services/matchLogService";
+import {
+  MATCH_LOG_EVENT_CODES,
+  deleteMatchLogEntry,
+  updateMatchLogEntry,
+  updateMatchLogEntryByTimestamp,
+} from "../../services/matchLogService";
 import {
   DEFAULT_DURATION,
   DEFAULT_SECONDARY_LABEL,
@@ -193,7 +198,12 @@ export function useScoreKeeperActions(controller) {
     controller.setMatchStarted(true);
     controller.setTimerLabel("Game time");
     logMatchStartEvent();
-    const receivingTeam = controller.matchStartingTeamKey === "A" ? "B" : "A";
+    const receivingTeam =
+      controller.matchStartingTeamKey === "A"
+        ? "B"
+        : controller.matchStartingTeamKey === "B"
+          ? "A"
+          : null;
     if (receivingTeam) {
       void controller.updatePossession(receivingTeam, { logTurnover: false });
     }
@@ -208,8 +218,9 @@ export function useScoreKeeperActions(controller) {
       );
       return;
     }
-    const pullTeamId = controller.startingTeamId || controller.teamAId || controller.teamBId;
-    const teamKey = pullTeamId === controller.teamBId ? "B" : "A";
+    const pullTeamId = controller.startingTeamId || controller.teamAId || controller.teamBId || null;
+    const teamKey =
+      pullTeamId === controller.teamAId ? "A" : pullTeamId === controller.teamBId ? "B" : null;
     const timestamp = new Date().toISOString();
     const appended = controller.appendLocalLog({
       team: teamKey,
@@ -224,7 +235,7 @@ export function useScoreKeeperActions(controller) {
       matchId: controller.activeMatch.id,
       eventTypeId,
       eventCode: MATCH_LOG_EVENT_CODES.MATCH_START,
-      teamId: pullTeamId || null,
+      teamId: teamKey ? pullTeamId : null,
       createdAt: timestamp,
       abbaLine: null,
     };
@@ -452,7 +463,24 @@ export function useScoreKeeperActions(controller) {
       if (Object.prototype.hasOwnProperty.call(updates, "eventCode") && updates.eventCode) {
         payload.eventTypeCode = updates.eventCode;
       }
-      await updateMatchLogEntry(targetLog.id, payload);
+      if (Object.prototype.hasOwnProperty.call(updates, "eventTypeId")) {
+        payload.eventTypeId = updates.eventTypeId ?? null;
+      }
+      const isUuid =
+        typeof targetLog.id === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          targetLog.id
+        );
+      if (isUuid) {
+        await updateMatchLogEntry(targetLog.id, payload);
+      } else {
+        const matchId = controller.matchLogMatchId;
+        const createdAt = targetLog.timestamp;
+        if (!matchId || !createdAt) {
+          throw new Error("Match log is still syncing. Please try again.");
+        }
+        await updateMatchLogEntryByTimestamp(matchId, createdAt, payload);
+      }
       const totals = await controller.refreshMatchLogs(
         controller.matchLogMatchId,
         controller.currentMatchScoreRef.current
@@ -474,9 +502,21 @@ export function useScoreKeeperActions(controller) {
 
     try {
       await deleteMatchLogEntry(targetLog.id);
+      const isScoreLog =
+        targetLog.eventCode === MATCH_LOG_EVENT_CODES.SCORE ||
+        targetLog.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
+      const currentScore = controller.currentMatchScoreRef.current || { a: 0, b: 0 };
+      let nextScore = currentScore;
+      if (isScoreLog) {
+        if (targetLog.team === "A") {
+          nextScore = { ...currentScore, a: Math.max(0, currentScore.a - 1) };
+        } else if (targetLog.team === "B") {
+          nextScore = { ...currentScore, b: Math.max(0, currentScore.b - 1) };
+        }
+      }
       const totals = await controller.refreshMatchLogs(
         controller.matchLogMatchId,
-        controller.currentMatchScoreRef.current
+        nextScore
       );
       if (totals) {
         await syncActiveMatchScore(totals);

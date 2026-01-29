@@ -449,6 +449,36 @@ export default function HomePage() {
     return futureSorted[0] || null;
   }, [safeOpenMatches, liveNowMatch]);
 
+  const heroCardMatch = liveNowMatch || nextMatchCandidate || null;
+  const heroCardIsLive = Boolean(liveNowMatch);
+
+  const nextScheduledMatch = useMemo(() => {
+    const now = Date.now();
+    const futureSorted = [...safeOpenMatches]
+      .filter((match) => !FINISHED_STATUSES.has((match?.status || "").toLowerCase()))
+      .filter((match) => {
+        if (!match?.start_time) return true;
+        const startTime = new Date(match.start_time).getTime();
+        return Number.isNaN(startTime) ? true : startTime > now;
+      })
+      .sort((a, b) => {
+        const aTime = a.start_time ? new Date(a.start_time).getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b.start_time ? new Date(b.start_time).getTime() : Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      });
+    if (futureSorted.length === 0) return null;
+    if (heroCardIsLive) {
+      return futureSorted[0] || null;
+    }
+    if (heroCardMatch?.id) {
+      const index = futureSorted.findIndex((match) => match.id === heroCardMatch.id);
+      if (index >= 0) {
+        return futureSorted[index + 1] || null;
+      }
+    }
+    return futureSorted[0] || null;
+  }, [safeOpenMatches, heroCardIsLive, heroCardMatch]);
+
   const isLoggedIn = Boolean(session?.user);
   const profileId = session?.user?.id ?? null;
 
@@ -523,8 +553,6 @@ export default function HomePage() {
     [mySubscriptionsPreview, teamLookup, matchLookup, playerLookup, eventLookup],
   );
 
-  const heroCardMatch = liveNowMatch || nextMatchCandidate || null;
-  const heroCardIsLive = Boolean(liveNowMatch);
   const heroClockLabel = deriveClockLabel(liveNowMatch, liveNowEvent);
   const heroPointStatus = derivePointStatus(liveNowEvent);
   const heroLastEvent = formatLiveEventSummary(liveNowEvent, liveNowMatch);
@@ -606,8 +634,8 @@ export default function HomePage() {
     { label: "events", value: stats.events },
   ];
 
-  const myNextMatchAnswer = nextMatchCandidate
-    ? `${formatMatchup(nextMatchCandidate)}`
+  const myNextMatchAnswer = nextScheduledMatch
+    ? `${formatMatchup(nextScheduledMatch)}`
     : "Add your fixtures";
 
   async function handleLogout() {
@@ -821,8 +849,8 @@ export default function HomePage() {
               <Panel variant="tinted" className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
                   <span>Next scheduled</span>
-                  {nextMatchCandidate?.start_time && (
-                    <span>{formatHeadingDateTime(nextMatchCandidate.start_time)}</span>
+                  {nextScheduledMatch?.start_time && (
+                    <span>{formatHeadingDateTime(nextScheduledMatch.start_time)}</span>
                   )}
                 </div>
                 <p className="text-sm text-ink">{myNextMatchAnswer}</p>
@@ -1267,13 +1295,14 @@ function formatMatchTime(timestamp) {
   return `${date.toLocaleDateString()} at ${date.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   })}`;
 }
 
 function formatScheduledShort(timestamp) {
   if (!timestamp) return "Start time pending";
   const date = new Date(timestamp);
-  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
   const day = date.toLocaleDateString([], { day: "2-digit", month: "short", year: "2-digit" });
   return `${time}, ${day}`;
 }
@@ -1281,7 +1310,7 @@ function formatScheduledShort(timestamp) {
 function formatHeadingDateTime(timestamp) {
   if (!timestamp) return "Start time pending";
   const date = new Date(timestamp);
-  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
   const day = date.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
   return `${time}, ${day}`;
 }
