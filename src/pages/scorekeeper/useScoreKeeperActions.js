@@ -59,6 +59,15 @@ export function useScoreKeeperActions(controller) {
       controller.setConsoleError("You must be signed in to initialise a match.");
       return;
     }
+    const isMixedDivision = (controller.rules.division || "").toLowerCase() === "mixed";
+    if (!controller.setupForm.startingTeamId) {
+      controller.setConsoleError("Select a pulling team before initialising the match.");
+      return;
+    }
+    if (isMixedDivision && !["male", "female"].includes(controller.setupForm.abbaPattern)) {
+      controller.setConsoleError("Select an ABBA line before initialising the match.");
+      return;
+    }
     const normalizedStatus = (controller.selectedMatch.status || "").toLowerCase();
     if (normalizedStatus === "finished" || normalizedStatus === "completed") {
       controller.setConsoleError("This match is finished and cannot be initialised.");
@@ -72,11 +81,8 @@ export function useScoreKeeperActions(controller) {
         start_time: controller.setupForm.startTime
           ? new Date(controller.setupForm.startTime).toISOString()
           : new Date().toISOString(),
-        starting_team_id:
-          controller.setupForm.startingTeamId ||
-          controller.selectedMatch.team_a?.id ||
-          controller.selectedMatch.team_b?.id,
-        abba_pattern: controller.rules.abbaPattern,
+        starting_team_id: controller.setupForm.startingTeamId,
+        abba_pattern: isMixedDivision ? controller.setupForm.abbaPattern : "none",
         scorekeeper: controller.userId,
       };
 
@@ -218,7 +224,7 @@ export function useScoreKeeperActions(controller) {
       );
       return;
     }
-    const pullTeamId = controller.startingTeamId || controller.teamAId || controller.teamBId || null;
+    const pullTeamId = controller.startingTeamId || null;
     const teamKey =
       pullTeamId === controller.teamAId ? "A" : pullTeamId === controller.teamBId ? "B" : null;
     const timestamp = new Date().toISOString();
@@ -249,7 +255,7 @@ export function useScoreKeeperActions(controller) {
 
   async function handleAddScore(team, scorerId = null, assistId = null, options = {}) {
     if (!controller.consoleReady || !controller.activeMatch?.id) return;
-    const { isCalahan = false } = options;
+    const { isCalahan = false, timestamp: providedTimestamp = null } = options;
     const eventCode = isCalahan ? MATCH_LOG_EVENT_CODES.CALAHAN : MATCH_LOG_EVENT_CODES.SCORE;
     const eventTypeId = await controller.resolveEventTypeIdLocal(eventCode);
     if (!eventTypeId) {
@@ -270,7 +276,7 @@ export function useScoreKeeperActions(controller) {
     };
     controller.setScore(nextTotals);
 
-    const timestamp = new Date().toISOString();
+    const timestamp = providedTimestamp || new Date().toISOString();
     const optimisticId = `${Math.random().toString(16).slice(2)}`;
     const appended = controller.appendLocalLog({
       team,
@@ -366,6 +372,7 @@ export function useScoreKeeperActions(controller) {
       team,
       mode,
       logIndex,
+      openedAt: mode === "add" ? new Date().toISOString() : null,
     });
     if (mode === "edit" && logIndex !== null) {
       const log = controller.logs[logIndex];
@@ -385,7 +392,13 @@ export function useScoreKeeperActions(controller) {
   }
 
   function closeScoreModal() {
-    controller.setScoreModalState({ open: false, team: null, mode: "add", logIndex: null });
+    controller.setScoreModalState({
+      open: false,
+      team: null,
+      mode: "add",
+      logIndex: null,
+      openedAt: null,
+    });
     controller.setScoreForm({ scorerId: "", assistId: "" });
   }
 
@@ -421,11 +434,13 @@ export function useScoreKeeperActions(controller) {
         eventCode: isCalahan ? MATCH_LOG_EVENT_CODES.CALAHAN : MATCH_LOG_EVENT_CODES.SCORE,
       });
     } else {
+      const submittedTimestamp =
+        controller.scoreModalState.openedAt || new Date().toISOString();
       await handleAddScore(
         controller.scoreModalState.team,
         normalizedScorerId,
         normalizedAssistId || null,
-        { isCalahan }
+        { isCalahan, timestamp: submittedTimestamp }
       );
     }
 
@@ -579,10 +594,6 @@ export function useScoreKeeperActions(controller) {
 
   async function handleEndMatchNavigation() {
     if (!controller.canEndMatch || !controller.activeMatch?.id) return;
-    const confirmed = window.confirm(
-      "End this match and clear local data? You can still enter spirit scores next."
-    );
-    if (!confirmed) return;
     try {
       await logMatchEndEvent();
       const updated = await updateMatchStatus(controller.activeMatch.id, "finished");

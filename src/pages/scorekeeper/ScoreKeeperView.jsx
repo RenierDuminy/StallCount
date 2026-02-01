@@ -6,12 +6,33 @@ import { useScoreKeeperData } from "./useScoreKeeperData";
 import { useScoreKeeperActions } from "./useScoreKeeperActions";
 import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
 import {
+  BlockEventCard,
+  CalahanEventCard,
+  HalftimeEndEventCard,
+  HalftimeStartEventCard,
+  MatchEndEventCard,
+  MatchStartEventCard,
+  ScoreEventCard,
+  StoppageEndEventCard,
+  StoppageStartEventCard,
+  TimeoutEndEventCard,
+  TimeoutStartEventCard,
+  TurnoverEventCard,
+  UnknownEventCard,
+} from "./eventCards";
+import {
   CALAHAN_ASSIST_VALUE,
   DEFAULT_DISCUSSION_SECONDS,
   SCORE_NA_PLAYER_VALUE,
 } from "./scorekeeperConstants";
 
 const BLOCK_EVENT_TYPE_ID = 19;
+const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([
+  MATCH_LOG_EVENT_CODES.HALFTIME_START,
+  MATCH_LOG_EVENT_CODES.HALFTIME_END,
+  MATCH_LOG_EVENT_CODES.STOPPAGE_START,
+  MATCH_LOG_EVENT_CODES.STOPPAGE_END,
+]);
 
 export default function ScoreKeeperView() {
   const data = useScoreKeeperData();
@@ -29,6 +50,7 @@ export default function ScoreKeeperView() {
     selectedMatchId,
     setSelectedMatchId,
     selectedMatch,
+    activeMatch,
     initialising,
     setupForm,
     setSetupForm,
@@ -111,10 +133,75 @@ export default function ScoreKeeperView() {
     if (!player) return "Unassigned";
     const jersey = player.jersey_number ?? "-";
     const name = player.name || "Player";
-    return `${jersey} ${name}`;
+    return (
+      <span className="flex items-center gap-2">
+        <span className="font-extrabold">{jersey}</span>
+        <span>{name}</span>
+      </span>
+    );
   };
+  const isMixedDivision = (rules.division || "").toLowerCase() === "mixed";
+  const spiritScoresUrl = activeMatch?.id
+    ? `/spirit-scores?matchId=${activeMatch.id}`
+    : selectedMatch?.id
+      ? `/spirit-scores?matchId=${selectedMatch.id}`
+      : "/spirit-scores";
   const isStartMatchReady =
-    Boolean(setupForm.startingTeamId) && ["male", "female"].includes(rules.abbaPattern);
+    Boolean(setupForm.startingTeamId) &&
+    (!isMixedDivision || ["male", "female"].includes(setupForm.abbaPattern));
+  const renderMatchEventCard = (log, options) => {
+    const { chronologicalIndex, editIndex } = options;
+    const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
+    const normalizedEventDescription = `${log.eventDescription || ""}`.toLowerCase();
+    const isBlockLog =
+      (Number.isFinite(log.eventTypeId) && log.eventTypeId === BLOCK_EVENT_TYPE_ID) ||
+      normalizedEventCode.includes("block") ||
+      normalizedEventDescription.includes("block");
+
+    let CardComponent = UnknownEventCard;
+    if (isBlockLog) {
+      CardComponent = BlockEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.SCORE) {
+      CardComponent = ScoreEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.CALAHAN) {
+      CardComponent = CalahanEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TURNOVER) {
+      CardComponent = TurnoverEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START) {
+      CardComponent = TimeoutStartEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_END) {
+      CardComponent = TimeoutEndEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START) {
+      CardComponent = HalftimeStartEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
+      CardComponent = HalftimeEndEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START) {
+      CardComponent = StoppageStartEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_END) {
+      CardComponent = StoppageEndEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.MATCH_START) {
+      CardComponent = MatchStartEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.MATCH_END) {
+      CardComponent = MatchEndEventCard;
+    }
+
+    return (
+      <CardComponent
+        key={log.id}
+        log={log}
+        chronologicalIndex={chronologicalIndex}
+        editIndex={editIndex}
+        displayTeamA={displayTeamA}
+        displayTeamB={displayTeamB}
+        displayTeamAShort={displayTeamAShort}
+        displayTeamBShort={displayTeamBShort}
+        getAbbaDescriptor={getAbbaDescriptor}
+        openScoreModal={openScoreModal}
+        openSimpleEventModal={openSimpleEventModal}
+        openPossessionEditModal={openPossessionEditModal}
+      />
+    );
+  };
   const renderPlayerGridLabel = (player) => {
     const jerseyValue = player?.jersey_number;
     const jerseyText = `${jerseyValue ?? ""}`.trim();
@@ -160,6 +247,7 @@ export default function ScoreKeeperView() {
     logIndex: null,
     teamKey: "",
     eventLabel: "",
+    eventCode: "",
   });
   const possessionPadRef = useRef(null);
   const possessionPointerIdRef = useRef(null);
@@ -172,6 +260,9 @@ export default function ScoreKeeperView() {
   const [pendingPossessionTeam, setPendingPossessionTeam] = useState(null);
   const [possessionPreviewTeam, setPossessionPreviewTeam] = useState(null);
   const [possessionEditIndex, setPossessionEditIndex] = useState(null);
+  const [possessionDeleteModalOpen, setPossessionDeleteModalOpen] = useState(false);
+  const [endMatchModalOpen, setEndMatchModalOpen] = useState(false);
+  const [endMatchBusy, setEndMatchBusy] = useState(false);
   const updatePossessionFromCoordinate = (clientX) => {
     const track = possessionPadRef.current;
     if (!track || !Number.isFinite(clientX)) {
@@ -386,6 +477,7 @@ export default function ScoreKeeperView() {
       logIndex: index,
       teamKey: log.team || "",
       eventLabel: log.eventDescription || "Match event",
+      eventCode: log.eventCode || "",
     });
   };
 
@@ -422,6 +514,7 @@ export default function ScoreKeeperView() {
       logIndex: null,
       teamKey: "",
       eventLabel: "",
+      eventCode: "",
     });
   };
 
@@ -438,6 +531,32 @@ export default function ScoreKeeperView() {
     if (simpleEventEditState.logIndex === null) return;
     await handleDeleteLog(simpleEventEditState.logIndex);
     closeSimpleEventModal();
+  };
+
+  const openPossessionDeleteModal = () => {
+    if (possessionEditIndex === null) return;
+    setPossessionDeleteModalOpen(true);
+  };
+
+  const closePossessionDeleteModal = () => {
+    setPossessionDeleteModalOpen(false);
+  };
+
+  const handlePossessionDelete = async () => {
+    if (possessionEditIndex === null) return;
+    await handleDeleteLog(possessionEditIndex);
+    setPossessionDeleteModalOpen(false);
+    resetPossessionModalState();
+  };
+
+  const confirmEndMatch = async () => {
+    setEndMatchBusy(true);
+    try {
+      await handleEndMatchNavigation();
+    } finally {
+      setEndMatchBusy(false);
+      setEndMatchModalOpen(false);
+    }
   };
 
   const handleStartDiscussionTimer = () => {
@@ -472,11 +591,11 @@ export default function ScoreKeeperView() {
       <ScorekeeperCard as="header" className="w-full">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-col leading-tight">
-            <h1 className="text-xl font-semibold text-white">Score keeper console</h1>
+            <h1 className="text-xl font-semibold text-white">Score keeper</h1>
           </div>
-          <ScorekeeperButton as={Link} to="/admin" variant="compactGhost" className="text-xs">
+          <Link to="/admin" className="sc-button is-light text-xs">
             Back to admin hub
-          </ScorekeeperButton>
+          </Link>
         </div>
       </ScorekeeperCard>
 
@@ -521,9 +640,9 @@ export default function ScoreKeeperView() {
                   <p className="text-[clamp(2.6rem,11vw,4.5rem)] font-semibold leading-none text-slate-900">
                     {formattedSecondaryClock}
                   </p>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    {secondaryLabel || "Inter point"}
-                  </p>
+                  <div className="flex items-center justify-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    <span>{secondaryLabel || "Inter point"}</span>
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-2">
@@ -541,21 +660,7 @@ export default function ScoreKeeperView() {
                   DISCUSSION-START/STOP
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-center text-sm font-semibold text-slate-800">
-                <div className="rounded border border-slate-400 bg-white px-2 py-1">
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={rules.matchDuration ?? ""}
-                    onChange={(event) =>
-                      handleRuleChange("matchDuration", Math.max(0, Number(event.target.value) || 0))
-                    }
-                    aria-label="Match duration (minutes)"
-                    inputMode="numeric"
-                    className="w-full border-none bg-transparent text-center text-sm font-semibold text-slate-800 focus:outline-none focus:ring-0"
-                  />
-                </div>
+              <div className="grid grid-cols-1 gap-2 text-center text-sm font-semibold text-slate-800">
                 <div className="rounded border border-slate-400 bg-white px-2 py-1">
                   <input
                     type="number"
@@ -571,9 +676,6 @@ export default function ScoreKeeperView() {
                   />
                 </div>
               </div>
-              <p className="text-center text-[10px] uppercase tracking-wide text-slate-500">
-                Hold 3s to reset
-              </p>
               <button
                 type="button"
                 onClick={() => setTimeModalOpen(true)}
@@ -635,6 +737,12 @@ export default function ScoreKeeperView() {
               </div>
             )}
 
+            {consoleError && (
+              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {consoleError}
+              </p>
+            )}
+
             <div className="space-y-2 rounded-3xl border border-[#0f5132]/40 bg-white p-1.5">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 </div>
@@ -666,7 +774,15 @@ export default function ScoreKeeperView() {
                           Add score - {displayTeamAShort}
                         </button>
                         <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
-                          <p>{nextAbbaDescriptor ? `ABBA: ${nextAbbaDescriptor}` : "ABBA disabled"}</p>
+                          <div className="flex justify-center">
+                            {nextAbbaDescriptor ? (
+                              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#0f5132] text-base font-extrabold text-white">
+                                {nextAbbaDescriptor}
+                              </span>
+                            ) : (
+                              <span>ABBA disabled</span>
+                            )}
+                          </div>
                           <p className="text-lg font-semibold text-[#0f5132]">
                             {score.a} - {score.b}
                           </p>
@@ -709,28 +825,13 @@ export default function ScoreKeeperView() {
                           const chronologicalIndex = logs.findIndex((entry) => entry.id === log.id);
                           const editIndex =
                             chronologicalIndex >= 0 ? chronologicalIndex : logs.indexOf(log);
-                          return (
-                            <MatchLogCard
-                              key={log.id}
-                              log={log}
-                              chronologicalIndex={chronologicalIndex}
-                              editIndex={editIndex}
-                              displayTeamA={displayTeamA}
-                              displayTeamB={displayTeamB}
-                              displayTeamAShort={displayTeamAShort}
-                              displayTeamBShort={displayTeamBShort}
-                              getAbbaDescriptor={getAbbaDescriptor}
-                              openScoreModal={openScoreModal}
-                              openSimpleEventModal={openSimpleEventModal}
-                              openPossessionEditModal={openPossessionEditModal}
-                            />
-                          );
+                          return renderMatchEventCard(log, { chronologicalIndex, editIndex });
                         });
                     })()
                   )}
                 <button
                   type="button"
-                  onClick={handleEndMatchNavigation}
+                  onClick={() => setEndMatchModalOpen(true)}
                   disabled={!canEndMatch}
                   className="block w-full rounded-full bg-[#0f5132] px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -793,20 +894,26 @@ export default function ScoreKeeperView() {
               </div>
             </div>
 
-            {consoleError && (
-              <p className="text-center text-sm text-rose-600">{consoleError}</p>
-            )}
           </section>
         ) : (
-          <section className="space-y-2 rounded-3xl border border-slate-200 bg-white p-2 text-center">
+          <section
+            className="space-y-[var(--setup-button-size)] rounded-3xl border border-slate-200 bg-white p-2 text-center"
+            style={{ "--setup-button-size": "4.5rem" }}
+          >
             <button
               type="button"
               onClick={() => setSetupModalOpen(true)}
               disabled={initialising}
-              className="inline-flex w-full items-center justify-center rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
               {initialising ? "Initialising..." : "Match setup"}
             </button>
+            <Link
+              to={spiritScoresUrl}
+              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full border border-[#0f5132]/40 px-4 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
+            >
+              Enter spirit scores
+            </Link>
             {consoleError && (
               <p className="text-sm text-rose-600">{consoleError}</p>
             )}
@@ -1050,27 +1157,29 @@ export default function ScoreKeeperView() {
                   {teamBId && <option value={teamBId}>{displayTeamB}</option>}
                 </select>
               </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">ABBA</span>
-                <select
-                  value={rules.abbaPattern}
-                  onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      abbaPattern: event.target.value,
-                    }))
-                  }
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="none">None</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                </select>
-              </label>
+              {isMixedDivision && (
+                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                  <span className="shrink-0">ABBA</span>
+                  <select
+                    value={setupForm.abbaPattern}
+                    onChange={(event) =>
+                      setSetupForm((prev) => ({
+                        ...prev,
+                        abbaPattern: event.target.value,
+                      }))
+                    }
+                    className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">Select line...</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </label>
+              )}
             </div>
             <button
               type="submit"
-              disabled={initialising || !selectedMatch}
+              disabled={initialising || !selectedMatch || !isStartMatchReady}
               className="w-full rounded-full bg-[#0f5132] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {initialising ? "Initialising..." : "Initialise"}
@@ -1080,7 +1189,7 @@ export default function ScoreKeeperView() {
       )}
 
       {possessionModalOpen && (
-        <ActionModal title="Possession outcome" onClose={resetPossessionModalState} alignTop scrollable>
+        <ActionModal title="Possession change" onClose={resetPossessionModalState} alignTop scrollable>
           <div className="space-y-3 text-[#0f5132]">
             <p className="text-sm font-semibold">
               {pendingPossessionTeam === "A"
@@ -1106,7 +1215,7 @@ export default function ScoreKeeperView() {
                     setPossessionResult("throwaway");
                   }}
                 />
-                <span>Turnover</span>
+                <span>Incompletion</span>
               </label>
               <label
                 className={`flex items-center gap-2 rounded-2xl border px-3 py-3 min-h-[52px] ${
@@ -1171,8 +1280,81 @@ export default function ScoreKeeperView() {
                 Select a team to continue.
               </div>
             )}
+            {possessionEditIndex !== null && (
+              <button
+                type="button"
+                onClick={openPossessionDeleteModal}
+                className="w-full rounded-full bg-[#b91c1c] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#991b1b]"
+              >
+                Delete possession event
+              </button>
+            )}
           </div>
         </ActionModal>
+      )}
+
+      {possessionDeleteModalOpen && (
+        <ActionModal title="Delete possession event?" onClose={closePossessionDeleteModal}>
+          <div className="space-y-3 text-sm text-[#0f5132]">
+            <p>This will remove the turnover/block event from the match log.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={closePossessionDeleteModal}
+                className="inline-flex items-center justify-center rounded-full border border-[#0f5132]/40 px-4 py-2 font-semibold text-[#0f5132] transition hover:bg-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePossessionDelete}
+                className="inline-flex items-center justify-center rounded-full bg-[#b91c1c] px-4 py-2 font-semibold text-white transition hover:bg-[#991b1b]"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </ActionModal>
+      )}
+
+      {endMatchModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px] px-4 py-3">
+          <div className="w-full max-w-sm rounded-[32px] border-4 border-[#b91c1c] bg-[#fee2e2] p-4">
+            <div className="mb-3 flex items-start justify-between">
+              <h3 className="text-2xl font-semibold text-[#7f1d1d]">End match?</h3>
+              <button
+                type="button"
+                onClick={() => setEndMatchModalOpen(false)}
+                disabled={endMatchBusy}
+                aria-label="Close modal"
+                className="text-2xl font-semibold text-[#7f1d1d] transition hover:text-[#5f1313] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                X
+              </button>
+            </div>
+            <p className="text-sm text-[#7f1d1d]">
+              End this match and clear local data? You can still enter spirit scores next.
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setEndMatchModalOpen(false)}
+                disabled={endMatchBusy}
+                className="inline-flex items-center justify-center rounded-full border border-[#7f1d1d]/40 bg-white/70 px-4 py-2 font-semibold text-[#7f1d1d] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmEndMatch}
+                disabled={endMatchBusy}
+                className="inline-flex items-center justify-center rounded-full bg-[#b91c1c] px-4 py-2 font-semibold text-white transition hover:bg-[#991b1b] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {endMatchBusy ? "Ending..." : "End match"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
   {timeModalOpen && (
@@ -1191,7 +1373,12 @@ export default function ScoreKeeperView() {
           onClick={() => {
             handleHalfTimeTrigger();
           }}
-          className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+          disabled={stoppageActive}
+          className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
+            stoppageActive
+              ? "bg-slate-300 text-slate-600"
+              : "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
+          }`}
         >
           Half Time
         </button>
@@ -1204,7 +1391,7 @@ export default function ScoreKeeperView() {
               onClick={() => {
                 handleTimeoutTrigger("A");
               }}
-              disabled={remainingTimeouts.A === 0}
+              disabled={stoppageActive || remainingTimeouts.A === 0}
               className="mt-1.5 w-full rounded-full bg-[#162e6a] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1e4fd7] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Timeout {displayTeamAShort || "A"}
@@ -1223,7 +1410,7 @@ export default function ScoreKeeperView() {
               onClick={() => {
                 handleTimeoutTrigger("B");
               }}
-              disabled={remainingTimeouts.B === 0}
+              disabled={stoppageActive || remainingTimeouts.B === 0}
               className="mt-1.5 w-full rounded-full bg-[#162e6a] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1e4fd7] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Timeout {displayTeamBShort || "B"}
@@ -1238,29 +1425,26 @@ export default function ScoreKeeperView() {
 
         <button
           type="button"
-          onClick={handleGameStoppage}
+          onClick={() => {
+            if (stoppageActive) {
+              if (!timerRunning) {
+                handleToggleTimer();
+              }
+              return;
+            }
+            handleGameStoppage();
+          }}
           className="w-full rounded-full bg-[#b91c1c] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#991b1b]"
         >
-          Game stoppage
+          {stoppageActive ? "End stoppage" : "Game stoppage"}
         </button>
 
         {stoppageActive && (
-          <div className="space-y-2 rounded-2xl border border-[#a7f3d0]/60 bg-[#f0fff4] p-3 text-left">
-            <p className="text-base font-semibold text-[#0f5132]">Stoppage active</p>
-            <p className="text-xs text-[#0f5132]/80">
-              Resume match time to unlock this menu and log the stoppage end.
+          <div className="space-y-2 rounded-2xl border border-[#ef4444]/70 bg-[#fee2e2] p-3 text-left">
+            <p className="text-base font-semibold text-[#991b1b]">Stoppage active</p>
+            <p className="text-xs text-[#991b1b]/80">
+              Use the stoppage button above to end the stoppage and resume play.
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                if (!timerRunning) {
-                  handleToggleTimer();
-                }
-              }}
-              className="w-full rounded-full bg-[#0f5132] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-            >
-              Resume match time
-            </button>
           </div>
         )}
       </div>
@@ -1389,31 +1573,49 @@ export default function ScoreKeeperView() {
 
       {simpleEventEditState.open && (
         <ActionModal title="Edit event" onClose={closeSimpleEventModal}>
-          <form className="space-y-3" onSubmit={handleSimpleEventSubmit}>
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              const normalizedCode = (simpleEventEditState.eventCode || "").toLowerCase();
+              if (SIMPLE_EVENT_DELETE_ONLY_CODES.has(normalizedCode)) {
+                event.preventDefault();
+                return;
+              }
+              handleSimpleEventSubmit(event);
+            }}
+          >
             <p className="text-sm font-semibold text-[#0f5132]">
               {simpleEventEditState.eventLabel}
             </p>
-            <label className="block text-base font-semibold text-[#0f5132]">
-              Team
-              <select
-                value={simpleEventEditState.teamKey}
-                onChange={(event) =>
-                  setSimpleEventEditState((prev) => ({ ...prev, teamKey: event.target.value }))
-                }
-                className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
-              >
-                <option value="">Unassigned</option>
-                <option value="A">{displayTeamA}</option>
-                <option value="B">{displayTeamB}</option>
-              </select>
-            </label>
+            {!SIMPLE_EVENT_DELETE_ONLY_CODES.has(
+              (simpleEventEditState.eventCode || "").toLowerCase()
+            ) && (
+              <label className="block text-base font-semibold text-[#0f5132]">
+                Team
+                <select
+                  value={simpleEventEditState.teamKey}
+                  onChange={(event) =>
+                    setSimpleEventEditState((prev) => ({ ...prev, teamKey: event.target.value }))
+                  }
+                  className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
+                >
+                  <option value="">Unassigned</option>
+                  <option value="A">{displayTeamA}</option>
+                  <option value="B">{displayTeamB}</option>
+                </select>
+              </label>
+            )}
             <div className="space-y-1.5">
-              <button
-                type="submit"
-                className="w-full rounded-full bg-[#0f5132] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-              >
-                Save changes
-              </button>
+              {!SIMPLE_EVENT_DELETE_ONLY_CODES.has(
+                (simpleEventEditState.eventCode || "").toLowerCase()
+              ) && (
+                <button
+                  type="submit"
+                  className="w-full rounded-full bg-[#0f5132] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                >
+                  Save changes
+                </button>
+              )}
               {simpleEventEditState.logIndex !== null && (
                 <button
                   type="button"
@@ -1503,8 +1705,8 @@ function MatchLogCard({
     log.team === "B" ? displayTeamBShort : log.team === "A" ? displayTeamAShort : null;
   const fullTeamLabel =
     log.team === "B" ? displayTeamB : log.team === "A" ? displayTeamA : null;
-  const abbaDescriptor =
-    isScoreLog || isCalahanLog ? getAbbaDescriptor(log.scoreOrderIndex ?? chronologicalIndex) : null;
+  const abbaLineLabel = log.abbaLine && log.abbaLine !== "none" ? log.abbaLine : null;
+  const abbaDescriptor = isScoreLog || isCalahanLog ? abbaLineLabel : null;
   const eventTime = new Date(log.timestamp).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -1578,8 +1780,6 @@ function MatchLogCard({
         : isStoppageStart
           ? "Match stoppage"
           : null;
-  const abbaLineLabel = log.abbaLine && log.abbaLine !== "none" ? log.abbaLine : null;
-
   const showDetachedEdit = isPossessionLog;
 
   return (
@@ -1594,14 +1794,9 @@ function MatchLogCard({
           {!isScoringDisplay && !isMatchStartLog && shortTeamLabel ? ` - ${shortTeamLabel}` : ""}
         </p>
         {abbaDescriptor && (
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-black">{abbaDescriptor}</p>
+          <p className="text-[30px] font-extrabold uppercase tracking-wide text-black">{abbaDescriptor}</p>
         )}
         {description && <p className="text-xs text-black">{description}</p>}
-        {abbaLineLabel && (
-          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-black">
-            Line {abbaLineLabel}
-          </p>
-        )}
         <p className="text-xs text-black">{eventTime}</p>
       </div>
 

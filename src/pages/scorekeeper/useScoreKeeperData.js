@@ -120,6 +120,16 @@ function normalizeAbbaPattern(input) {
   return null;
 }
 
+function normalizeDivision(input) {
+  if (typeof input !== "string") return null;
+  const candidate = input.trim().toLowerCase();
+  if (!candidate) return null;
+  if (candidate === "mixed" || candidate === "open" || candidate === "women") return candidate;
+  if (candidate === "men" || candidate === "mens" || candidate === "male") return "open";
+  if (candidate === "woman" || candidate === "womens" || candidate === "female") return "women";
+  return candidate;
+}
+
 function normalizeSoftCapMode(input) {
   if (typeof input !== "string") return "none";
   const candidate = input.trim().toLowerCase();
@@ -142,7 +152,9 @@ function normalizeHardCapEndMode(input) {
 function normalizeEventRules(rawRules) {
   const baseRaw = DEFAULT_EVENT_RULES;
   if (!rawRules) {
+    const division = normalizeDivision(baseRaw.division) || "mixed";
     return {
+      division,
       matchDuration: coerceRuleNumber(baseRaw.game.hardCapMinutes, DEFAULT_DURATION),
       halftimeMinutes: coerceRuleNumber(baseRaw.half.timeCapMinutes, 0),
       halftimeBreakMinutes: coerceRuleNumber(baseRaw.half.breakMinutes, 0),
@@ -192,7 +204,7 @@ function normalizeEventRules(rawRules) {
         0
       ),
       discInPlayNewDiscSeconds: coerceRuleNumber(baseRaw.discInPlay.newDiscRetrievalMaxSeconds, 0),
-      mixedRatioEnabled: Boolean(baseRaw.mixedRatio?.isEnabled),
+      mixedRatioEnabled: division === "mixed" && Boolean(baseRaw.mixedRatio?.isEnabled),
       mixedRatioRule: baseRaw.mixedRatio?.ratioRule || null,
       mixedRatioChooser: baseRaw.mixedRatio?.initialRatioChoosingTeam || null,
       raw: baseRaw,
@@ -225,8 +237,10 @@ function normalizeEventRules(rawRules) {
     mixedRatio: { ...baseRaw.mixedRatio, ...(parsed.mixedRatio || {}) },
   };
 
+  const division = normalizeDivision(mergedRaw.division) || normalizeDivision(baseRaw.division) || "mixed";
   const abbaPattern = normalizeAbbaPattern(parsed.abbaPattern);
-  const mixedRatioEnabled = Boolean(mergedRaw.mixedRatio?.isEnabled);
+  const mixedRatioEnabled =
+    division === "mixed" && Boolean(mergedRaw.mixedRatio?.isEnabled);
   let derivedAbbaPattern =
     abbaPattern ||
     (Object.prototype.hasOwnProperty.call(parsed, "abbaEnabled")
@@ -248,6 +262,7 @@ function normalizeEventRules(rawRules) {
     coerceRuleNumber(baseRaw.game.hardCapMinutes, DEFAULT_DURATION);
 
   return {
+    division,
     matchDuration: coerceRuleNumber(
       mergedRaw.game?.hardCapMinutes,
       coerceRuleNumber(baseRaw.game.hardCapMinutes, DEFAULT_DURATION)
@@ -434,12 +449,13 @@ export function useScoreKeeperData() {
   const [rostersError, setRostersError] = useState(null);
   const [timeModalOpen, setTimeModalOpen] = useState(false);
   const [setupModalOpen, setSetupModalOpen] = useState(false);
-const [scoreModalState, setScoreModalState] = useState({
-  open: false,
-  team: null,
-  mode: "add",
-  logIndex: null,
-});
+  const [scoreModalState, setScoreModalState] = useState({
+    open: false,
+    team: null,
+    mode: "add",
+    logIndex: null,
+    openedAt: null,
+  });
   const [scoreForm, setScoreForm] = useState({ scorerId: "", assistId: "" });
   const [timeoutUsage, setTimeoutUsage] = useState({ ...DEFAULT_TIMEOUT_USAGE });
   const [timerLabel, setTimerLabel] = useState(DEFAULT_TIMER_LABEL);
@@ -1056,27 +1072,33 @@ useEffect(() => {
 useEffect(() => {
   const matchSource = activeMatch || selectedMatch || null;
   if (matchSource) {
-    setSetupForm({
-      startTime: toDateTimeLocal(matchSource.start_time),
-      startingTeamId:
-        matchSource.starting_team_id ||
-        matchSource.team_a?.id ||
-        matchSource.team_b?.id ||
-        "",
-    });
     const rulesSource = matchSource.rules || matchSource.event?.rules || null;
     const normalizedRules = normalizeEventRules(rulesSource);
-    const allowAbba = normalizedRules.mixedRatioEnabled;
+    const isMixedDivision = normalizedRules.division === "mixed";
     const normalizedMatchAbba = normalizeAbbaPattern(matchSource.abba_pattern);
+    setSetupForm({
+      startTime: toDateTimeLocal(matchSource.start_time),
+      startingTeamId: matchSource.starting_team_id || "",
+      abbaPattern: isMixedDivision ? normalizedMatchAbba ?? "" : "",
+    });
+    const allowAbba = isMixedDivision;
     setRules((prev) => {
       const nextAbba = allowAbba
         ? normalizedMatchAbba || prev.abbaPattern || "none"
         : "none";
-      if (nextAbba === prev.abbaPattern) {
+      const nextDivision = normalizedRules.division;
+      const nextMixedRatioEnabled = normalizedRules.mixedRatioEnabled;
+      if (
+        nextAbba === prev.abbaPattern &&
+        nextDivision === prev.division &&
+        nextMixedRatioEnabled === prev.mixedRatioEnabled
+      ) {
         return prev;
       }
       return {
         ...prev,
+        division: nextDivision,
+        mixedRatioEnabled: nextMixedRatioEnabled,
         abbaPattern: nextAbba,
       };
     });
@@ -1084,6 +1106,7 @@ useEffect(() => {
     setSetupForm({
       startTime: toDateTimeLocal(),
       startingTeamId: "",
+      abbaPattern: "",
     });
   }
 }, [activeMatch, selectedMatch]);
@@ -1268,10 +1291,10 @@ useEffect(() => {
     );
   }, [logs]);
 
-  const nextAbbaDescriptor = useMemo(
-    () => getAbbaDescriptor(scoreEventCount),
-    [getAbbaDescriptor, scoreEventCount]
-  );
+  const nextAbbaDescriptor = useMemo(() => {
+    const code = getAbbaLineCode(scoreEventCount);
+    return code && code !== "none" ? code : null;
+  }, [getAbbaLineCode, scoreEventCount]);
 
   const buildSessionSnapshot = useCallback(() => {
     const matchId = activeMatch?.id || selectedMatchId;
