@@ -1481,7 +1481,10 @@ const recordPendingEntry = useCallback(
         // Replace any optimistic placeholder with the confirmed DB row once the server echoes the optimistic_id.
         cleanupOptimisticLog(created?.optimistic_id || optimisticId);
         setPendingEntries((prev) => prev.filter((item) => item !== supabasePayload));
-        void refreshMatchLogs(matchId, currentMatchScoreRef.current);
+        const refresh = refreshMatchLogsRef.current;
+        if (refresh) {
+          void refresh(matchId, currentMatchScoreRef.current);
+        }
       } catch (err) {
         console.error("[ScoreKeeper] Failed to persist match log entry:", err);
         setConsoleError((prev) =>

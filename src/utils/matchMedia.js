@@ -18,14 +18,14 @@ function parseMediaLink(mediaLink) {
 }
 
 const HOST_PROVIDER_MAP = [
-  { tokens: ["youtube", "youtu.be"], label: "YouTube" },
-  { tokens: ["twitch"], label: "Twitch" },
-  { tokens: ["vimeo"], label: "Vimeo" },
-  { tokens: ["facebook", "fb.watch"], label: "Facebook" },
-  { tokens: ["instagram"], label: "Instagram" },
-  { tokens: ["twitter", "x.com"], label: "Twitter" },
-  { tokens: ["espn"], label: "ESPN" },
-  { tokens: ["ultiworld"], label: "Ultiworld" },
+  { tokens: ["youtube", "youtu.be"], code: "youtube", label: "YouTube" },
+  { tokens: ["twitch"], code: "twitch", label: "Twitch" },
+  { tokens: ["vimeo"], code: "vimeo", label: "Vimeo" },
+  { tokens: ["facebook", "fb.watch"], code: "facebook", label: "Facebook" },
+  { tokens: ["instagram"], code: "instagram", label: "Instagram" },
+  { tokens: ["twitter", "x.com"], code: "twitter", label: "Twitter" },
+  { tokens: ["espn"], code: "espn", label: "ESPN" },
+  { tokens: ["ultiworld"], code: "ultiworld", label: "Ultiworld" },
 ];
 
 function formatMediaProviderLabel(provider) {
@@ -43,9 +43,7 @@ function inferProviderFromUrl(url) {
   try {
     const { hostname } = new URL(url);
     const host = hostname.toLowerCase();
-    const mapped = HOST_PROVIDER_MAP.find((entry) =>
-      entry.tokens.some((token) => host.includes(token))
-    );
+    const mapped = HOST_PROVIDER_MAP.find((entry) => entry.tokens.some((token) => host.includes(token)));
     if (mapped) return mapped.label;
     const cleanHost = host.replace(/^www\./, "");
     const segments = cleanHost.split(".");
@@ -56,6 +54,18 @@ function inferProviderFromUrl(url) {
     }
     if (!baseSegment) return null;
     return baseSegment.charAt(0).toUpperCase() + baseSegment.slice(1);
+  } catch {
+    return null;
+  }
+}
+
+export function inferProviderCodeFromUrl(url) {
+  if (!url) return null;
+  try {
+    const { hostname } = new URL(url);
+    const host = hostname.toLowerCase();
+    const mapped = HOST_PROVIDER_MAP.find((entry) => entry.tokens.some((token) => host.includes(token)));
+    return mapped ? mapped.code : null;
   } catch {
     return null;
   }

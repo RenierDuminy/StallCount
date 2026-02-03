@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getEventsList } from "../services/leagueService";
 import { getMatchesByEvent, updateMatchMediaLink } from "../services/matchService";
+import { inferProviderCodeFromUrl } from "../utils/matchMedia";
 import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
 
 const MEDIA_STATUS_OPTIONS = ["scheduled", "ready", "pending", "live", "halftime", "finished", "completed", "canceled"];
@@ -124,10 +125,12 @@ export default function MediaAdminPage() {
     setSaving(true);
     try {
       const updated = await updateMatchMediaLink(form.matchId, payload);
-      setResultMessage("Media link updated.");
       if (updated) {
+        setResultMessage("Media link updated.");
         setMatches((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
         setForm((prev) => syncFormWithMatch(prev, updated));
+      } else {
+        setResultError("No changes were saved. Please try again.");
       }
     } catch (err) {
       setResultError(err instanceof Error ? err.message : "Failed to save media link.");
@@ -146,10 +149,12 @@ export default function MediaAdminPage() {
     setSaving(true);
     try {
       const cleared = await updateMatchMediaLink(form.matchId, null);
-      setResultMessage("Media link removed.");
       if (cleared) {
+        setResultMessage("Media link removed.");
         setMatches((prev) => prev.map((row) => (row.id === cleared.id ? cleared : row)));
         setForm((prev) => syncFormWithMatch(prev, cleared));
+      } else {
+        setResultError("No changes were saved. Please try again.");
       }
     } catch (err) {
       setResultError(err instanceof Error ? err.message : "Failed to clear media link.");
@@ -405,7 +410,9 @@ function parseMediaLink(match) {
 }
 
 function buildMediaPayload(form) {
-  const provider = form.provider || undefined;
+  const inferredProvider = inferProviderCodeFromUrl(form.url);
+  const explicitProvider = form.provider && form.provider !== "custom" ? form.provider : undefined;
+  const provider = explicitProvider || inferredProvider || undefined;
   const status = form.mediaStatus || undefined;
   const trimmedEmbedUrl = (form.embedUrl || "").trim();
   const embedUrl = trimmedEmbedUrl ? trimmedEmbedUrl : undefined;
