@@ -138,3 +138,112 @@ export async function updateTableRow(
 
   return (data as Record<string, unknown>) ?? null;
 }
+
+export async function queryTableRowsExact(
+  tableName: string,
+  options: { column: string; value: string | number; limit?: number },
+): Promise<{ rows: Record<string, unknown>[]; count: number | null }> {
+  if (!options.column) {
+    throw new Error("Column is required to query rows.");
+  }
+  const columns = listTableColumns(tableName);
+  if (columns.length && !columns.includes(options.column)) {
+    throw new Error(`Column "${options.column}" not found on ${tableName}.`);
+  }
+
+  const { data, error, count } = await supabase
+    .from(getBaseTableName(tableName))
+    .select("*", { count: "exact" })
+    .eq(options.column, options.value)
+    .limit(options.limit ?? 200);
+
+  if (error) {
+    throw new Error(error.message || `Failed to load rows from ${tableName}`);
+  }
+
+  return { rows: (data ?? []) as Record<string, unknown>[], count };
+}
+
+export async function queryTableRowsByFilters(
+  tableName: string,
+  filters: { column: string; value: string | number }[],
+  options: { limit?: number } = {},
+): Promise<{ rows: Record<string, unknown>[]; count: number | null }> {
+  const columns = listTableColumns(tableName);
+  const validFilters = (filters || []).filter((filter) => filter.column);
+  if (!validFilters.length) {
+    throw new Error("At least one filter is required to query rows.");
+  }
+  validFilters.forEach((filter) => {
+    if (columns.length && !columns.includes(filter.column)) {
+      throw new Error(`Column "${filter.column}" not found on ${tableName}.`);
+    }
+  });
+
+  let query = supabase
+    .from(getBaseTableName(tableName))
+    .select("*", { count: "exact" })
+    .limit(options.limit ?? 200);
+
+  validFilters.forEach((filter) => {
+    query = query.eq(filter.column, filter.value);
+  });
+
+  const { data, error, count } = await query;
+  if (error) {
+    throw new Error(error.message || `Failed to load rows from ${tableName}`);
+  }
+
+  return { rows: (data ?? []) as Record<string, unknown>[], count };
+}
+
+export async function deleteTableRow(
+  tableName: string,
+  primaryKey: string,
+  recordId: string | number,
+): Promise<Record<string, unknown> | null> {
+  if (!primaryKey) {
+    throw new Error("Primary key column is required to delete a row.");
+  }
+
+  const { data, error } = await supabase
+    .from(getBaseTableName(tableName))
+    .delete()
+    .eq(primaryKey, recordId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || `Failed to delete row from ${tableName}`);
+  }
+
+  return (data as Record<string, unknown>) ?? null;
+}
+
+export async function deleteTableRowByFilters(
+  tableName: string,
+  filters: { column: string; value: string | number }[],
+): Promise<Record<string, unknown>[]> {
+  const columns = listTableColumns(tableName);
+  const validFilters = (filters || []).filter((filter) => filter.column);
+  if (!validFilters.length) {
+    throw new Error("At least one filter is required to delete rows.");
+  }
+  validFilters.forEach((filter) => {
+    if (columns.length && !columns.includes(filter.column)) {
+      throw new Error(`Column "${filter.column}" not found on ${tableName}.`);
+    }
+  });
+
+  let query = supabase.from(getBaseTableName(tableName)).delete();
+  validFilters.forEach((filter) => {
+    query = query.eq(filter.column, filter.value);
+  });
+
+  const { data, error } = await query.select("*");
+  if (error) {
+    throw new Error(error.message || `Failed to delete rows from ${tableName}`);
+  }
+
+  return (data ?? []) as Record<string, unknown>[];
+}

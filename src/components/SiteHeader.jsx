@@ -112,12 +112,14 @@ export default function SiteHeader() {
           >
             Install app
           </button>
-          <Link
-            to="/login"
-            className="hidden rounded-full border border-[var(--sc-border)] px-4 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:bg-white/10 lg:inline-flex"
-          >
-            Log in
-          </Link>
+          {!user && (
+            <Link
+              to="/login"
+              className="hidden rounded-full border border-[var(--sc-border)] px-4 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:bg-white/10 lg:inline-flex"
+            >
+              Log in
+            </Link>
+          )}
           <button
             type="button"
             className="inline-flex items-center justify-center rounded-full border border-[var(--sc-border)] px-4 py-3 text-base font-semibold text-[var(--sc-ink)] transition hover:bg-white/10 lg:hidden"
@@ -158,26 +160,28 @@ export default function SiteHeader() {
               >
                 Install app
               </button>
-              <Link
-                to="/login"
-                className="rounded-full border border-[var(--sc-border)] px-4 py-2 text-center text-sm font-semibold text-[var(--sc-ink)] transition hover:bg-white/10"
-              >
-                Log in
-              </Link>
+              {!user && (
+                <Link
+                  to="/login"
+                  className="rounded-full border border-[var(--sc-border)] px-4 py-2 text-center text-sm font-semibold text-[var(--sc-ink)] transition hover:bg-white/10"
+                >
+                  Log in
+                </Link>
+              )}
             </nav>
           </div>
         )}
       </header>
 
       {showInstallGuide && (
-        <div className="border-b border-[var(--sc-border)]/40 bg-white/95 text-ink">
-          <div className="sc-shell flex flex-col gap-3 py-4 text-sm text-ink-muted">
+        <div className="border-b border-amber-500/60 bg-amber-500/90 text-white">
+          <div className="sc-shell flex flex-col gap-3 py-4 text-sm text-white/90">
             <div className="flex items-start justify-between gap-4">
-              <p className="text-base font-semibold text-ink">Install StallCount</p>
+              <p className="text-base font-semibold text-white">Install StallCount</p>
               <button
                 type="button"
                 onClick={() => setShowInstallGuide(false)}
-                className="text-xs font-semibold uppercase tracking-wide text-ink-muted hover:text-ink"
+                className="text-xs font-semibold uppercase tracking-wide text-white/80 hover:text-white"
               >
                 Close
               </button>
@@ -191,7 +195,7 @@ export default function SiteHeader() {
               <li>Confirm the prompt to pin StallCount to your device.</li>
             </ol>
             {!canInstall && (
-              <p className="text-xs text-ink-muted">
+              <p className="text-xs text-white/80">
                 If you do not see the option, make sure you are using the latest version of Chrome, Edge, Safari,
                 or Firefox on a supported device.
               </p>

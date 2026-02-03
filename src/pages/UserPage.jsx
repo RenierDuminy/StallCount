@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Card, Chip, Panel, SectionShell, SectionHeader } from "../components/ui/primitives";
 import { getCurrentUser } from "../services/userService";
@@ -302,7 +303,11 @@ export default function UserPage() {
                 <button className="sc-button is-ghost" type="button" onClick={handleLogout}>
                   Sign out
                 </button>
-              ) : null
+              ) : (
+                <Link to="/login" className="sc-button">
+                  Log in
+                </Link>
+              )
             }
           />
           {profileLoading && (

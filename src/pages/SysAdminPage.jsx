@@ -2,13 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   getBaseTableName,
+  deleteTableRowByFilters,
+  deleteTableRow,
   insertTableRow,
   queryTableRows,
+  queryTableRowsByFilters,
+  queryTableRowsExact,
   updateTableRow,
 } from "../services/adminService";
 import { getAllTeams } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
-import { listSchemaTables, listTableColumns, pickRecencyColumn } from "../services/schemaService";
+import {
+  listForeignKeysByReferencedTable,
+  listPrimaryKeyColumns,
+  listSchemaTables,
+  listTableColumns,
+  pickRecencyColumn,
+} from "../services/schemaService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
 
 const LIMIT_OPTIONS = [20, 50, 100, 200];
@@ -76,9 +86,38 @@ export default function SysAdminPage() {
   const [matchMessage, setMatchMessage] = useState("");
   const [matchError, setMatchError] = useState("");
   const [matchSaving, setMatchSaving] = useState(false);
+  const [deleteKeyValues, setDeleteKeyValues] = useState({});
+  const [cascadePreview, setCascadePreview] = useState([]);
+  const [cascadeLoading, setCascadeLoading] = useState(false);
+  const [cascadeError, setCascadeError] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteMessage, setDeleteMessage] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [targetRowPreview, setTargetRowPreview] = useState(null);
+  const [targetRowCount, setTargetRowCount] = useState(null);
   const editTextareaRef = useRef(null);
 
   const columns = useMemo(() => listTableColumns(selectedTable), [selectedTable]);
+  const primaryKeyColumns = useMemo(() => listPrimaryKeyColumns(selectedTable), [selectedTable]);
+  const deleteKeyColumns = useMemo(() => {
+    if (primaryKeyColumns.length) return primaryKeyColumns;
+    const fromInput = (primaryKey || "")
+      .split(",")
+      .map((col) => col.trim())
+      .filter(Boolean);
+    return fromInput.length ? fromInput : ["id"];
+  }, [primaryKey, primaryKeyColumns]);
+  const selectedRowId =
+    selectedRow && deleteKeyColumns.length === 1 ? selectedRow[deleteKeyColumns[0]] ?? "" : "";
+  const deleteKeyEntries = useMemo(
+    () =>
+      deleteKeyColumns.map((column) => ({
+        column,
+        value: (deleteKeyValues?.[column] ?? "").toString().trim(),
+      })),
+    [deleteKeyColumns, deleteKeyValues],
+  );
+  const deleteKeysReady = deleteKeyEntries.every((entry) => entry.value);
 
   const filteredTables = useMemo(() => {
     if (!tableSearch.trim()) return tables;
@@ -91,12 +130,24 @@ export default function SysAdminPage() {
     setOrderBy(nextOrder || null);
     const cols = listTableColumns(selectedTable);
     setFilterColumn(cols[0] || "");
-    setPrimaryKey(cols.includes("id") ? "id" : cols[0] || "id");
+    const pkCols = listPrimaryKeyColumns(selectedTable);
+    const nextPrimaryKey = pkCols.length ? pkCols.join(", ") : cols.includes("id") ? "id" : cols[0] || "id";
+    setPrimaryKey(nextPrimaryKey);
     setDraftPayload(buildTemplate(selectedTable));
     setSelectedRow(null);
     setEditPayload("");
     setActionMessage("");
     setDraftError("");
+    setDeleteKeyValues(() => {
+      const nextKeys = pkCols.length ? pkCols : nextPrimaryKey.split(",").map((col) => col.trim()).filter(Boolean);
+      return nextKeys.reduce((acc, col) => ({ ...acc, [col]: "" }), {});
+    });
+    setCascadePreview([]);
+    setCascadeError("");
+    setDeleteMessage("");
+    setDeleteConfirm(false);
+    setTargetRowPreview(null);
+    setTargetRowCount(null);
   }, [selectedTable]);
 
   useEffect(() => {
@@ -142,6 +193,138 @@ export default function SysAdminPage() {
   useEffect(() => {
     loadRows();
   }, [loadRows]);
+
+  useEffect(() => {
+    setDeleteKeyValues((prev) => {
+      const next = {};
+      deleteKeyColumns.forEach((col) => {
+        next[col] = prev?.[col] ?? "";
+      });
+      return next;
+    });
+  }, [deleteKeyColumns]);
+
+  useEffect(() => {
+    if (!selectedTable || !deleteKeyColumns.length) {
+      setCascadePreview([]);
+      setCascadeError("");
+      setTargetRowPreview(null);
+      setTargetRowCount(null);
+      return;
+    }
+    if (!deleteKeysReady) {
+      setCascadePreview([]);
+      setCascadeError("");
+      setTargetRowPreview(null);
+      setTargetRowCount(null);
+      return;
+    }
+
+    let ignore = false;
+    const loadCascade = async () => {
+      setCascadeLoading(true);
+      setCascadeError("");
+      setDeleteMessage("");
+      try {
+        try {
+          const targetResult =
+            deleteKeyEntries.length === 1
+              ? await queryTableRowsExact(selectedTable, {
+                  column: deleteKeyEntries[0].column,
+                  value: deleteKeyEntries[0].value,
+                  limit: 1,
+                })
+              : await queryTableRowsByFilters(selectedTable, deleteKeyEntries, { limit: 1 });
+
+          if (!ignore) {
+            setTargetRowPreview(targetResult.rows[0] ?? null);
+            setTargetRowCount(targetResult.count ?? targetResult.rows.length);
+          }
+        } catch (err) {
+          if (!ignore) {
+            setTargetRowPreview(null);
+            setTargetRowCount(null);
+            setCascadeError(err instanceof Error ? err.message : "Unable to load target row.");
+          }
+        }
+
+        const refs = listForeignKeysByReferencedTable(selectedTable);
+        const results = await Promise.all(
+          refs.map(async (ref) => {
+            const isComposite =
+              (ref.columns?.length ?? 0) !== 1 || (ref.referencesColumns?.length ?? 0) !== 1;
+            if (isComposite) {
+              return {
+                ref,
+                rows: [],
+                count: 0,
+                composite: true,
+                error: "",
+              };
+            }
+
+            const refColumn = ref.referencesColumns?.[0];
+            const keyIndex = deleteKeyColumns.findIndex((col) => col === refColumn);
+            if (keyIndex === -1) {
+              return {
+                ref,
+                rows: [],
+                count: 0,
+                composite: true,
+                error: "",
+              };
+            }
+            const keyValue = deleteKeyEntries[keyIndex]?.value;
+            if (!keyValue) {
+              return {
+                ref,
+                rows: [],
+                count: 0,
+                composite: true,
+                error: "",
+              };
+            }
+
+            try {
+              const { rows, count } = await queryTableRowsExact(ref.table, {
+                column: ref.columns[0],
+                value: keyValue,
+                limit: 200,
+              });
+              return {
+                ref,
+                rows,
+                count: count ?? rows.length,
+                composite: false,
+                error: "",
+              };
+            } catch (err) {
+              return {
+                ref,
+                rows: [],
+                count: 0,
+                composite: false,
+                error: err instanceof Error ? err.message : "Unable to load related rows.",
+              };
+            }
+          }),
+        );
+
+        if (!ignore) {
+          setCascadePreview(results);
+        }
+      } finally {
+        if (!ignore) {
+          setCascadeLoading(false);
+        }
+      }
+    };
+
+    loadCascade();
+    return () => {
+      ignore = true;
+    };
+  }, [deleteKeyColumns, deleteKeyEntries, deleteKeysReady, selectedTable]);
 
   useEffect(() => {
     if (!editTextareaRef.current) return;
@@ -228,6 +411,45 @@ export default function SysAdminPage() {
     }
   };
 
+  const handleCascadeDelete = async () => {
+    setCascadeError("");
+    setDeleteMessage("");
+    if (!selectedTable) {
+      setCascadeError("Select a table to delete from.");
+      return;
+    }
+    if (!deleteKeysReady) {
+      setCascadeError("Provide values for all primary key fields.");
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      if (deleteKeyEntries.length === 1) {
+        await deleteTableRow(
+          selectedTable,
+          deleteKeyEntries[0].column,
+          deleteKeyEntries[0].value,
+        );
+      } else {
+        await deleteTableRowByFilters(selectedTable, deleteKeyEntries);
+      }
+      setDeleteMessage("Record deleted. Database cascade rules applied.");
+      setDeleteConfirm(false);
+      setDeleteKeyValues((prev) =>
+        deleteKeyColumns.reduce((acc, col) => ({ ...acc, [col]: "" }), {}),
+      );
+      setCascadePreview([]);
+      setTargetRowPreview(null);
+      setTargetRowCount(null);
+      loadRows();
+    } catch (err) {
+      setCascadeError(err instanceof Error ? err.message : "Delete failed.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-surface text-ink">
       <SectionShell as="header" className="py-8">
@@ -258,8 +480,8 @@ export default function SysAdminPage() {
       </SectionShell>
 
       <SectionShell as="main" className="pb-16">
-        <div className="grid gap-6 xl:grid-cols-[320px,minmax(0,1fr)]">
-          <Card className="space-y-5 p-5 xl:sticky xl:top-6">
+        <div className="grid gap-6 lg:gap-8 lg:grid-cols-[280px,minmax(0,1fr)] xl:grid-cols-[320px,minmax(0,1fr)]">
+          <Card className="space-y-5 p-4 sm:p-5 lg:sticky lg:top-6">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-ink">Tables</h2>
               <Chip variant="ghost" className="text-xs text-ink-muted">
@@ -286,7 +508,7 @@ export default function SysAdminPage() {
                 <p className="text-xl font-bold">{columns.length}</p>
               </Panel>
             </div>
-            <Panel className="max-h-[60vh] space-y-1 overflow-y-auto p-2 shadow-inner shadow-[rgba(8,25,21,0.04)]">
+            <Panel className="max-h-[40vh] space-y-1 overflow-y-auto p-2 shadow-inner shadow-[rgba(8,25,21,0.04)] sm:max-h-[50vh] lg:max-h-[60vh]">
               {filteredTables.map((table) => {
                 const isActive = table === selectedTable;
                 const cols = listTableColumns(table);
@@ -319,7 +541,7 @@ export default function SysAdminPage() {
 
           <div className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
-              <Card className="space-y-5 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+              <Card className="space-y-5 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
               <SectionHeader
                 eyebrow="Quick create"
                 eyebrowVariant="tag"
@@ -468,7 +690,7 @@ export default function SysAdminPage() {
               </div>
             </Card>
 
-            <Card className="space-y-5 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+            <Card className="space-y-5 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
               <SectionHeader
                 eyebrow="Table settings"
                 eyebrowVariant="tag"
@@ -591,7 +813,7 @@ export default function SysAdminPage() {
                   {rowsError}
                 </Panel>
               )}
-              <div className="max-h-[55vh] overflow-auto px-6 pb-6">
+              <div className="max-h-[45vh] overflow-auto px-6 pb-6 sm:max-h-[55vh] lg:max-h-[65vh]">
                 {rowsLoading && rows.length === 0 ? (
                   <p className="text-sm text-ink-muted">Loading rows...</p>
                 ) : rows.length === 0 ? (
@@ -638,7 +860,7 @@ export default function SysAdminPage() {
             </Card>
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <Card className="space-y-4 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+              <Card className="space-y-4 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
                 <SectionHeader
                   eyebrow="Create record"
                   eyebrowVariant="tag"
@@ -662,7 +884,7 @@ export default function SysAdminPage() {
                 </button>
               </Card>
 
-              <Card className="space-y-4 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+              <Card className="space-y-4 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
                 <SectionHeader
                   eyebrow="Edit selection"
                   eyebrowVariant="tag"
@@ -697,7 +919,7 @@ export default function SysAdminPage() {
             </div>
 
             {(draftError || actionMessage) && (
-              <Card className="space-y-2 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+              <Card className="space-y-2 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
                 {draftError && (
                   <Panel className="border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
                     {draftError}
@@ -710,6 +932,218 @@ export default function SysAdminPage() {
                 )}
               </Card>
             )}
+
+            <Card className="space-y-4 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+              <SectionHeader
+                eyebrow="Delete"
+                eyebrowVariant="tag"
+                title="Delete record (cascade)"
+                description="Preview related rows before deleting. Cascades follow database foreign key rules."
+                action={
+                  selectedRow ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteKeyValues((prev) => {
+                          const next = { ...prev };
+                          deleteKeyColumns.forEach((col) => {
+                            const value = selectedRow?.[col];
+                            next[col] = value !== undefined && value !== null ? String(value) : "";
+                          });
+                          return next;
+                        });
+                      }}
+                      className="sc-button"
+                    >
+                      Use selected row
+                    </button>
+                  ) : null
+                }
+              />
+
+              <div className="grid gap-4 lg:grid-cols-12">
+                <div className="lg:col-span-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Table</p>
+                  <input
+                    type="text"
+                    value={selectedTable || ""}
+                    disabled
+                    className={`${LIGHT_INPUT_CLASS} w-full opacity-80`}
+                  />
+                </div>
+                <div className="lg:col-span-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Primary key</p>
+                  <input
+                    type="text"
+                    value={primaryKey}
+                    onChange={(event) => setPrimaryKey(event.target.value)}
+                    className={`${LIGHT_INPUT_CLASS} w-full`}
+                  />
+                </div>
+                <div className="lg:col-span-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    {deleteKeyColumns.length > 1 ? "Primary key values" : "Record ID"}
+                  </p>
+                  <div className="space-y-2">
+                    {deleteKeyColumns.map((column) => (
+                      <div key={column} className="grid grid-cols-[100px,1fr] items-center gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                          {column}
+                        </span>
+                        <input
+                          type="text"
+                          value={deleteKeyValues?.[column] ?? ""}
+                          onChange={(event) =>
+                            setDeleteKeyValues((prev) => ({ ...prev, [column]: event.target.value }))
+                          }
+                          placeholder={`Enter ${column}`}
+                          className={`${LIGHT_INPUT_CLASS} w-full`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {deleteKeysReady && (
+                <Panel className="space-y-2 border border-border/70 bg-surface p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Target record</p>
+                    <Chip variant="ghost" className="text-xs">
+                      {targetRowCount === null ? "Checking..." : `${targetRowCount} found`}
+                    </Chip>
+                  </div>
+                  {targetRowPreview ? (
+                    <pre className="max-h-48 overflow-auto rounded-lg bg-surface-muted p-3 text-xs text-ink">
+                      {JSON.stringify(targetRowPreview, null, 2)}
+                    </pre>
+                  ) : targetRowCount === 0 ? (
+                    <p className="text-xs text-ink-muted">No record found for that ID.</p>
+                  ) : (
+                    <p className="text-xs text-ink-muted">Loading target row...</p>
+                  )}
+                </Panel>
+              )}
+
+              {deleteKeysReady && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                      Cascade preview
+                    </p>
+                    <Chip variant="ghost" className="text-xs">
+                      {cascadeLoading ? "Loading..." : `${cascadePreview.length} relationships`}
+                    </Chip>
+                  </div>
+                  {cascadeLoading ? (
+                    <Panel className="border border-dashed border-border bg-transparent p-3 text-xs text-ink-muted">
+                      Loading cascade preview...
+                    </Panel>
+                  ) : cascadePreview.length === 0 ? (
+                    <Panel className="border border-dashed border-border bg-transparent p-3 text-xs text-ink-muted">
+                      No foreign key relationships reference this table.
+                    </Panel>
+                  ) : (
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {cascadePreview.map((item) => {
+                        const previewRows = item.rows ?? [];
+                        const countLabel =
+                          item.composite
+                            ? "Composite key"
+                            : typeof item.count === "number"
+                              ? `${item.count} rows`
+                              : `${item.rows?.length ?? 0} rows`;
+                        return (
+                          <Panel
+                            key={`${item.ref.table}:${item.ref.columns?.join(",")}`}
+                            className="space-y-2 border border-border/70 bg-surface p-3"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                                  {item.ref.table}
+                                </p>
+                                <p className="text-xs text-ink-muted">
+                                  FK: {item.ref.columns?.join(", ")} ->{" "}
+                                  {item.ref.referencesTable}.{item.ref.referencesColumns?.join(", ")}
+                                </p>
+                                {item.ref.onDelete && (
+                                  <p className="text-[11px] text-ink-muted">
+                                    On delete: {item.ref.onDelete}
+                                  </p>
+                                )}
+                              </div>
+                              <Chip variant="ghost" className="text-xs">
+                                {countLabel}
+                              </Chip>
+                            </div>
+
+                            {item.composite ? (
+                              <p className="text-xs text-ink-muted">
+                                Composite keys are not auto-previewed.
+                              </p>
+                            ) : item.error ? (
+                              <p className="text-xs text-rose-600">{item.error}</p>
+                            ) : item.rows?.length ? (
+                              <>
+                                <div className="max-h-64 space-y-2 overflow-auto rounded-lg bg-surface-muted p-2">
+                                  {previewRows.map((row, index) => (
+                                    <pre
+                                      key={`${item.ref.table}-row-${index}`}
+                                      className="text-[11px] text-ink"
+                                    >
+                                      {JSON.stringify(row, null, 2)}
+                                    </pre>
+                                  ))}
+                                </div>
+                                {typeof item.count === "number" &&
+                                  item.count > previewRows.length && (
+                                    <p className="text-[11px] text-ink-muted">
+                                      Showing {previewRows.length} of {item.count} related rows.
+                                    </p>
+                                  )}
+                              </>
+                            ) : (
+                              <p className="text-xs text-ink-muted">No related rows found.</p>
+                            )}
+                          </Panel>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {cascadeError && (
+                <Panel className="border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                  {cascadeError}
+                </Panel>
+              )}
+              {deleteMessage && (
+                <Panel className="border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+                  {deleteMessage}
+                </Panel>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-xs font-semibold text-ink-muted">
+                  <input
+                    type="checkbox"
+                    checked={deleteConfirm}
+                    onChange={(event) => setDeleteConfirm(event.target.checked)}
+                  />
+                  I understand this will delete the record and any cascading dependencies.
+                </label>
+                <button
+                  type="button"
+                  onClick={handleCascadeDelete}
+                  disabled={deleteLoading || !deleteConfirm || !deleteKeysReady}
+                  className="sc-button"
+                >
+                  {deleteLoading ? "Deleting..." : "Delete with cascade"}
+                </button>
+              </div>
+            </Card>
           </div>
         </div>
       </SectionShell>

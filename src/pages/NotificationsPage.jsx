@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getDivisions, getEventsList, getEventsByIds } from "../services/leagueService";
 import { getRecentMatches } from "../services/matchService";
-import { getPlayerDirectory } from "../services/playerService";
+import { getPlayerDirectory, getPlayersByIds } from "../services/playerService";
 import { getAllTeams } from "../services/teamService";
 import { getRecentLiveEvents } from "../services/liveEventService";
 import { supabase } from "../services/supabaseClient";
@@ -74,6 +74,16 @@ function getEventDataValue(data, ...keys) {
     }
   }
   return "";
+}
+
+function formatPlayerLabel(player) {
+  if (!player) return "Unknown player";
+  const name = player.name || player.full_name || player.short_name || "Unknown player";
+  const jerseyNumber = player.jersey_number ?? player.jerseyNumber ?? null;
+  if (typeof jerseyNumber === "number") {
+    return `${name} #${jerseyNumber}`;
+  }
+  return name;
 }
 
 function topicMatchesEventType(topic, eventType) {
@@ -264,7 +274,10 @@ export default function NotificationsPage() {
       if (targetType === "match") {
         return formatMatchChoiceLabel(item);
       }
-      return item.name || item.full_name || item.short_name || item.id || "";
+      if (targetType === "player") {
+        return formatPlayerLabel(item);
+      }
+      return item.name || item.full_name || item.short_name || "";
     },
     [formatMatchChoiceLabel, targetType],
   );
@@ -293,7 +306,7 @@ export default function NotificationsPage() {
             setTargetLabels((prev) => {
               const next = { ...prev };
               nextRows.forEach((row) => {
-                const label = choiceDisplayLabel(row) || row.id;
+                const label = choiceDisplayLabel(row) || `Unknown ${targetType}`;
                 next[`${targetType}:${row.id}`] = label;
               });
               return next;
@@ -330,13 +343,39 @@ export default function NotificationsPage() {
         setTargetLabels((prev) => {
           const next = { ...prev };
           rows.forEach((row) => {
-            next[`event:${row.id}`] = row.name || row.id;
+            next[`event:${row.id}`] = row.name || "Unknown event";
           });
           return next;
         });
       })
       .catch((err) => {
         console.error("[Notifications] Failed to load event labels", err);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [subscriptions, targetLabels]);
+
+  useEffect(() => {
+    const missingPlayerIds = subscriptions
+      .filter((sub) => sub.target_type === "player")
+      .map((sub) => sub.target_id)
+      .filter((id) => id && !targetLabels[`player:${id}`]);
+    if (!missingPlayerIds.length) return undefined;
+    let ignore = false;
+    getPlayersByIds(missingPlayerIds)
+      .then((rows) => {
+        if (ignore || !rows?.length) return;
+        setTargetLabels((prev) => {
+          const next = { ...prev };
+          rows.forEach((row) => {
+            next[`player:${row.id}`] = formatPlayerLabel(row);
+          });
+          return next;
+        });
+      })
+      .catch((err) => {
+        console.error("[Notifications] Failed to load player labels", err);
       });
     return () => {
       ignore = true;
@@ -506,7 +545,7 @@ export default function NotificationsPage() {
 
   const getSubscriptionLabel = useCallback(
     (type, id) => {
-      return targetLabels[`${type}:${id}`] || id;
+      return targetLabels[`${type}:${id}`] || `Unknown ${type}`;
     },
     [targetLabels],
   );
@@ -765,7 +804,7 @@ export default function NotificationsPage() {
                 </label>
                 <Input
                   type="text"
-                  placeholder="Search by name, location, or ID"
+                  placeholder="Search by name or location"
                   value={choiceSearch}
                   onChange={(e) => setChoiceSearch(e.target.value)}
                   disabled={saving || isLoggedOut}
@@ -793,14 +832,16 @@ export default function NotificationsPage() {
                             disabled={saving || isLoggedOut}
                           >
                             <div>
-                              <p className="font-semibold text-ink">{choiceDisplayLabel(item)}</p>
+                              <p className="font-semibold text-ink">
+                                {choiceDisplayLabel(item) || `Unknown ${targetType}`}
+                              </p>
                               <p className="text-xs text-ink-muted">
                                 {item.location ||
                                   item.level ||
                                   item.start_time ||
                                   item.type ||
                                   item.short_name ||
-                                  "ID: " + item.id}
+                                  "Details unavailable"}
                               </p>
                             </div>
                               <span className="rounded-full bg-[var(--sc-accent)]/90 px-2 py-0.5 text-[10px] font-semibold text-[#041311]">
@@ -981,7 +1022,7 @@ export default function NotificationsPage() {
               No recent notifications match your current follows.
             </Panel>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-1 md:grid-cols-2 xl:grid-cols-3">
               {recentNotifications.map((event) => {
                 const data = (event.data && typeof event.data === "object" ? event.data : {}) ?? {};
                 const matchLabel =
@@ -998,27 +1039,26 @@ export default function NotificationsPage() {
                   (matchLabel ? `New activity for ${matchLabel}` : "");
                 const createdAt = event.created_at ? new Date(event.created_at).toLocaleString() : "";
                 return (
-                  <Panel key={event.id} variant="tinted" className="flex h-full flex-col gap-3 p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="space-y-1">
-                        <Chip variant="tag">{event.event_type.replace(/_/g, " ")}</Chip>
-                        <p className="text-base font-semibold text-ink">{title}</p>
+                  <Panel key={event.id} variant="tinted" className="flex h-full items-start gap-2 p-2">
+                    <Chip variant="tag" className="mt-0.5 px-2 py-0 text-[9px]">
+                      {event.event_type.replace(/_/g, " ")}
+                    </Chip>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-semibold text-ink line-clamp-1">{title}</p>
+                        <p className="whitespace-nowrap text-[9px] text-ink-muted">{createdAt}</p>
                       </div>
-                      <p className="text-xs text-ink-muted">{createdAt}</p>
-                    </div>
-                    {body && <p className="text-sm text-ink-muted">{body}</p>}
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-muted">
-                      <span className="font-semibold text-ink">Match</span>
-                      <span className="text-right text-ink-muted">{matchLabel || "Unknown match"}</span>
-                    </div>
-                    {event.match_id && (
-                      <div className="flex items-center justify-between gap-2 border-t border-border pt-3 text-xs">
-                        <span className="text-ink-muted">Jump into the tracker</span>
-                        <a href={`/matches/${event.match_id}`} className="sc-button is-ghost text-xs">
-                          View match
-                        </a>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] text-ink-muted line-clamp-1">
+                          {body || matchLabel || "Update"}
+                        </p>
+                        {event.match_id && (
+                          <a href={`/matches/${event.match_id}`} className="sc-button is-ghost text-[10px]">
+                            Open
+                          </a>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </Panel>
                 );
               })}

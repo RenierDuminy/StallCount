@@ -915,6 +915,7 @@ function PointLogTable({ rows, teamAName, teamBName }) {
     if (description.includes("timeout")) return "⏸️";
     if (description.includes("halftime")) return "⏱️";
     if (description.includes("stoppage")) return "⛔";
+    if (row.variant === "callahan") return "+1 🤩";
     if (
       row.variant === "goalA" ||
       row.variant === "goalB" ||
@@ -949,7 +950,7 @@ function PointLogTable({ rows, teamAName, teamBName }) {
                 : row.variant === "halftime"
                   ? "bg-[#269828]"
                 : row.variant === "callahan"
-                  ? "bg-[#fef9c3]"
+                  ? "bg-[#facc15]"
                 : row.variant === "goalA"
                   ? "bg-[#6591ff]"
                 : row.variant === "goalB"
@@ -1218,9 +1219,6 @@ function deriveMatchInsights(match, logs) {
       }
       const scorerName = log.actor?.name ?? log.scorer_name ?? "N/A";
       let assistName = log.secondary_actor?.name ?? log.assist_name ?? "";
-      if (code === MATCH_LOG_EVENT_CODES.CALAHAN && !assistName) {
-        assistName = "Callahan";
-      }
       pushSnapshot(timestamp);
       logRows.push({
         label: pointIndex.toString(),
