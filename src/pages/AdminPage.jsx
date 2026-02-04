@@ -10,6 +10,13 @@ const ADMIN_MODULES = [
     accent: "bg-brand/10 text-ink",
   },
   {
+    label: "Score keeper 5v5",
+    description:
+      "Use the 5v5 scorekeeping workspace for matches that run on the 5v5 ruleset.",
+    to: "/score-keeper-5v5",
+    accent: "bg-violet-100 text-violet-700",
+  },
+  {
     label: "Scrimmage",
     description:
       "Scrimmage console with the same live scoring workflow for test matches.",

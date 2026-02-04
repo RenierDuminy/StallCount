@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
-import { formatClock } from "./scrimmageUtils";
-import { useScrimmageData } from "./useScrimmageData";
-import { useScrimmageActions } from "./useScrimmageActions";
-import { deriveScrimmageReport } from "./scrimmageReport";
+import { formatClock, formatMatchLabel } from "./5v5scorekeeperUtils";
+import { useScoreKeeperData } from "./5v5useScoreKeeperData";
+import { useScoreKeeperActions } from "./5v5useScoreKeeperActions";
 import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
 import {
   BlockEventCard,
@@ -20,12 +19,12 @@ import {
   TimeoutStartEventCard,
   TurnoverEventCard,
   UnknownEventCard,
-} from "../scorekeeper/eventCards";
+} from "./eventCards";
 import {
   CALAHAN_ASSIST_VALUE,
   DEFAULT_DISCUSSION_SECONDS,
   SCORE_NA_PLAYER_VALUE,
-} from "./scrimmageConstants";
+} from "./5v5scorekeeperConstants";
 
 const BLOCK_EVENT_TYPE_ID = 19;
 const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([
@@ -35,11 +34,23 @@ const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([
   MATCH_LOG_EVENT_CODES.STOPPAGE_END,
 ]);
 
-export default function ScrimmageView() {
-  const data = useScrimmageData();
-  const actions = useScrimmageActions(data);
+export default function ScoreKeeperView() {
+  const data = useScoreKeeperData();
+  const actions = useScoreKeeperActions(data);
 
   const {
+    events,
+    eventsLoading,
+    eventsError,
+    selectedEventId,
+    setSelectedEventId,
+    matches,
+    matchesLoading,
+    matchesError,
+    selectedMatchId,
+    setSelectedMatchId,
+    selectedMatch,
+    activeMatch,
     initialising,
     setupForm,
     setSetupForm,
@@ -58,7 +69,6 @@ export default function ScrimmageView() {
     rosters,
     rostersLoading,
     rostersError,
-    setRosters,
     timeModalOpen,
     setTimeModalOpen,
     setupModalOpen,
@@ -85,7 +95,6 @@ export default function ScrimmageView() {
     venueName,
     statusLabel,
     getAbbaDescriptor,
-    matchStartingTeamKey,
     remainingTimeouts,
     canEndMatch,
     possessionLeader,
@@ -105,25 +114,86 @@ export default function ScrimmageView() {
     setSecondaryFlashActive,
     setSecondaryFlashPulse,
     updatePossession,
+    loadMatches,
     handleResumeSession,
     handleDiscardResume
   } = data;
 
   const safeTeamAName = displayTeamA || "Team A";
   const safeTeamBName = displayTeamB || "Team B";
-  const formatTeamLabel = (teamKey) => {
-    if (teamKey === "A") return safeTeamAName;
-    if (teamKey === "B") return safeTeamBName;
-    return null;
-  };
-  const possessionDisplay =
-    formatTeamLabel(possessionTeam) || possessionLeader || "Unassigned";
 
   const formatPlayerSelectLabel = (player) => {
     if (!player) return "Unassigned";
     const jersey = player.jersey_number ?? "-";
     const name = player.name || "Player";
-    return `${jersey} ${name}`;
+    return (
+      <span className="flex items-center gap-2">
+        <span className="font-extrabold">{jersey}</span>
+        <span>{name}</span>
+      </span>
+    );
+  };
+  const isMixedDivision = (rules.division || "").toLowerCase() === "mixed";
+  const spiritScoresUrl = activeMatch?.id
+    ? `/spirit-scores?matchId=${activeMatch.id}`
+    : selectedMatch?.id
+      ? `/spirit-scores?matchId=${selectedMatch.id}`
+      : "/spirit-scores";
+  const isStartMatchReady =
+    Boolean(setupForm.startingTeamId) &&
+    (!isMixedDivision || ["male", "female"].includes(setupForm.abbaPattern));
+  const renderMatchEventCard = (log, options) => {
+    const { chronologicalIndex, editIndex } = options;
+    const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
+    const normalizedEventDescription = `${log.eventDescription || ""}`.toLowerCase();
+    const isBlockLog =
+      (Number.isFinite(log.eventTypeId) && log.eventTypeId === BLOCK_EVENT_TYPE_ID) ||
+      normalizedEventCode.includes("block") ||
+      normalizedEventDescription.includes("block");
+
+    let CardComponent = UnknownEventCard;
+    if (isBlockLog) {
+      CardComponent = BlockEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.SCORE) {
+      CardComponent = ScoreEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.CALAHAN) {
+      CardComponent = CalahanEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TURNOVER) {
+      CardComponent = TurnoverEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START) {
+      CardComponent = TimeoutStartEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_END) {
+      CardComponent = TimeoutEndEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START) {
+      CardComponent = HalftimeStartEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
+      CardComponent = HalftimeEndEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START) {
+      CardComponent = StoppageStartEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_END) {
+      CardComponent = StoppageEndEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.MATCH_START) {
+      CardComponent = MatchStartEventCard;
+    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.MATCH_END) {
+      CardComponent = MatchEndEventCard;
+    }
+
+    return (
+      <CardComponent
+        key={log.id}
+        log={log}
+        chronologicalIndex={chronologicalIndex}
+        editIndex={editIndex}
+        displayTeamA={displayTeamA}
+        displayTeamB={displayTeamB}
+        displayTeamAShort={displayTeamAShort}
+        displayTeamBShort={displayTeamBShort}
+        getAbbaDescriptor={getAbbaDescriptor}
+        openScoreModal={openScoreModal}
+        openSimpleEventModal={openSimpleEventModal}
+        openPossessionEditModal={openPossessionEditModal}
+      />
+    );
   };
   const renderPlayerGridLabel = (player) => {
     const jerseyValue = player?.jersey_number;
@@ -132,197 +202,12 @@ export default function ScrimmageView() {
     return (
       <span className="flex flex-col items-center text-center leading-tight">
         {jerseyText && <span className="text-sm font-extrabold">{jerseyText}</span>}
-        <span
-          className={`${jerseyText ? "mt-0.5" : ""} w-full text-[0.7rem] font-semibold whitespace-normal break-words`}
-        >
+        <span className={`${jerseyText ? "mt-0.5" : ""} w-full text-[0.7rem] font-semibold whitespace-normal break-words`}>
           {name}
         </span>
       </span>
     );
   };
-
-  const [rosterEditorOpen, setRosterEditorOpen] = useState(false);
-  const [playerEditorForm, setPlayerEditorForm] = useState({
-    id: null,
-    name: "",
-    jersey: "",
-    assignment: "A",
-  });
-
-  const normalizeRosterAssignment = (assignment) => {
-    if (assignment === "both") return "both";
-    if (assignment === "B") return "B";
-    return "A";
-  };
-
-  const resetPlayerEditorForm = () => {
-    setPlayerEditorForm({
-      id: null,
-      name: "",
-      jersey: "",
-      assignment: "A",
-    });
-  };
-
-  const openRosterEditor = () => {
-    resetPlayerEditorForm();
-    setRosterEditorOpen(true);
-  };
-
-  const closeRosterEditor = () => {
-    setRosterEditorOpen(false);
-    resetPlayerEditorForm();
-  };
-
-  const upsertRosterPlayer = ({ id, name, jersey, assignment }) => {
-    const normalizedAssignment = normalizeRosterAssignment(assignment);
-    const shouldAssignLight = normalizedAssignment === "A" || normalizedAssignment === "both";
-    const shouldAssignDark = normalizedAssignment === "B" || normalizedAssignment === "both";
-
-    setRosters((prev) => {
-      const nextPlayer = {
-        id,
-        name,
-        jersey_number: jersey,
-      };
-
-      const upsertTeam = (players, includeTeam) => {
-        const safePlayers = players || [];
-        if (!includeTeam) {
-          return safePlayers.filter((player) => player?.id !== id);
-        }
-        const exists = safePlayers.some((player) => player?.id === id);
-        if (!exists) {
-          return [...safePlayers, nextPlayer];
-        }
-        return safePlayers.map((player) => (player?.id === id ? nextPlayer : player));
-      };
-
-      return {
-        ...prev,
-        teamA: upsertTeam(prev?.teamA, shouldAssignLight),
-        teamB: upsertTeam(prev?.teamB, shouldAssignDark),
-      };
-    });
-  };
-
-  const handleRosterPlayerSubmit = (event) => {
-    event.preventDefault();
-    const name = (playerEditorForm.name || "").trim();
-    if (!name) return;
-
-    const jerseyInput = `${playerEditorForm.jersey ?? ""}`.trim();
-    const parsedJersey = Number(jerseyInput);
-    const jersey =
-      jerseyInput.length > 0 && Number.isFinite(parsedJersey) && parsedJersey >= 0
-        ? parsedJersey
-        : undefined;
-    const id =
-      playerEditorForm.id ||
-      `player-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
-
-    upsertRosterPlayer({
-      id,
-      name,
-      jersey,
-      assignment: playerEditorForm.assignment,
-    });
-    resetPlayerEditorForm();
-  };
-
-  const startEditRosterPlayer = (player) => {
-    if (!player?.id) return;
-    setPlayerEditorForm({
-      id: player.id,
-      name: player.name || "",
-      jersey:
-        player.jersey_number === null || player.jersey_number === undefined
-          ? ""
-          : `${player.jersey_number}`,
-      assignment: normalizeRosterAssignment(player.side),
-    });
-    setRosterEditorOpen(true);
-  };
-
-  const deleteRosterPlayer = (playerId) => {
-    if (!playerId) return;
-    setRosters((prev) => ({
-      ...prev,
-      teamA: (prev?.teamA || []).filter((player) => player?.id !== playerId),
-      teamB: (prev?.teamB || []).filter((player) => player?.id !== playerId),
-    }));
-    setPlayerEditorForm((prev) =>
-      prev.id === playerId ? { id: null, name: "", jersey: "", assignment: "A" } : prev
-    );
-  };
-
-  const handleDeleteCurrentPlayer = () => {
-    if (!playerEditorForm.id) return;
-    deleteRosterPlayer(playerEditorForm.id);
-  };
-
-  const allRosterPlayers = useMemo(() => {
-    const playerMap = new Map();
-
-    const mergeTeamPlayers = (players, teamKey) => {
-      (players || []).forEach((player) => {
-        if (!player?.id) return;
-        const existing = playerMap.get(player.id);
-        if (existing) {
-          existing.teams.add(teamKey);
-          if (!existing.name && player.name) {
-            existing.name = player.name;
-          }
-          if ((existing.jersey_number === null || existing.jersey_number === undefined) && player.jersey_number !== undefined) {
-            existing.jersey_number = player.jersey_number;
-          }
-          return;
-        }
-        playerMap.set(player.id, {
-          id: player.id,
-          name: player.name || "Player",
-          jersey_number: player.jersey_number,
-          teams: new Set([teamKey]),
-        });
-      });
-    };
-
-    mergeTeamPlayers(sortedRosters.teamA, "A");
-    mergeTeamPlayers(sortedRosters.teamB, "B");
-
-    return [...playerMap.values()]
-      .map((player) => {
-        const inLight = player.teams.has("A");
-        const inDark = player.teams.has("B");
-        return {
-          id: player.id,
-          name: player.name,
-          jersey_number: player.jersey_number,
-          side: inLight && inDark ? "both" : inLight ? "A" : "B",
-        };
-      })
-      .sort((left, right) => {
-        const sideOrder = {
-          both: 0,
-          A: 1,
-          B: 2,
-        };
-        const leftOrder = sideOrder[left.side] ?? 99;
-        const rightOrder = sideOrder[right.side] ?? 99;
-        if (leftOrder !== rightOrder) {
-          return leftOrder - rightOrder;
-        }
-        const nameCompare = `${left.name || ""}`.localeCompare(`${right.name || ""}`, undefined, {
-          sensitivity: "base",
-        });
-        if (nameCompare !== 0) {
-          return nameCompare;
-        }
-        return `${left.id || ""}`.localeCompare(`${right.id || ""}`, undefined, {
-          sensitivity: "base",
-        });
-      });
-  }, [sortedRosters.teamA, sortedRosters.teamB]);
 
   const {
     cancelPrimaryHoldReset,
@@ -346,13 +231,10 @@ export default function ScrimmageView() {
     handleHalfTimeTrigger,
     handleGameStoppage,
     handleEndMatchNavigation,
-    logMatchStartEvent,
-    handleExportCsv
+    logMatchStartEvent
   } = actions;
 
   const POSSESSION_DRAG_THRESHOLD = 24;
-  const [endScrimmageModalOpen, setEndScrimmageModalOpen] = useState(false);
-  const [matchReportOpen, setMatchReportOpen] = useState(false);
   const [simpleEventEditState, setSimpleEventEditState] = useState({
     open: false,
     logIndex: null,
@@ -372,6 +254,9 @@ export default function ScrimmageView() {
   const [possessionPreviewTeam, setPossessionPreviewTeam] = useState(null);
   const [possessionEditIndex, setPossessionEditIndex] = useState(null);
   const [possessionDeleteModalOpen, setPossessionDeleteModalOpen] = useState(false);
+  const [endMatchModalOpen, setEndMatchModalOpen] = useState(false);
+  const [endMatchBusy, setEndMatchBusy] = useState(false);
+  const [endMatchSuccessMessage, setEndMatchSuccessMessage] = useState("");
   const updatePossessionFromCoordinate = (clientX) => {
     const track = possessionPadRef.current;
     if (!track || !Number.isFinite(clientX)) {
@@ -539,7 +424,6 @@ export default function ScrimmageView() {
           teamKey: eventTeamKey,
           scorerId: actorId || null,
           eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
-          eventTypeId: null,
         });
       }
       return;
@@ -613,7 +497,7 @@ export default function ScrimmageView() {
     setPendingPossessionTeam(nextTeam);
     setPossessionPreviewTeam(nextTeam);
     setPossessionResult(isBlockLog ? "block" : "throwaway");
-    setPossessionActorId(log?.scorerId || log?.actorId || "");
+    setPossessionActorId(log?.scorerId || "");
     setPossessionModalOpen(true);
     setPossessionEditIndex(index);
   };
@@ -659,9 +543,18 @@ export default function ScrimmageView() {
     resetPossessionModalState();
   };
 
-  const handleStartNewMatch = () => {
-    handleDiscardResume();
-    setSetupModalOpen(true);
+  const confirmEndMatch = async () => {
+    setEndMatchBusy(true);
+    setEndMatchSuccessMessage("");
+    try {
+      const ended = await handleEndMatchNavigation();
+      if (ended) {
+        setEndMatchSuccessMessage("Match ended successfully.");
+      }
+    } finally {
+      setEndMatchBusy(false);
+      setEndMatchModalOpen(false);
+    }
   };
 
   const handleStartDiscussionTimer = () => {
@@ -691,37 +584,12 @@ export default function ScrimmageView() {
     openScoreModal(teamKey);
   };
 
-  const scrimmageReport = useMemo(
-    () =>
-      deriveScrimmageReport({
-        logs,
-        teamAName: displayTeamA,
-        teamBName: displayTeamB,
-        startingTeamKey: matchStartingTeamKey,
-        startTime: setupForm.startTime,
-      }),
-    [logs, displayTeamA, displayTeamB, matchStartingTeamKey, setupForm.startTime]
-  );
-
   return (
     <ScorekeeperShell>
       <ScorekeeperCard as="header" className="w-full">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-col leading-tight">
-            <h1 className="text-xl font-semibold text-white">Scrimmage console</h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <ScorekeeperButton
-              type="button"
-              onClick={handleExportCsv}
-              variant="compactGhost"
-              className="text-xs"
-            >
-              Export CSV
-            </ScorekeeperButton>
-            <ScorekeeperButton as={Link} to="/" variant="compactGhost" className="text-xs">
-              Back to home
-            </ScorekeeperButton>
+            <h1 className="text-xl font-semibold text-white">5v5 Score keeper</h1>
           </div>
         </div>
       </ScorekeeperCard>
@@ -767,9 +635,9 @@ export default function ScrimmageView() {
                   <p className="text-[clamp(2.6rem,11vw,4.5rem)] font-semibold leading-none text-slate-900">
                     {formattedSecondaryClock}
                   </p>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    {secondaryLabel || "Inter point"}
-                  </p>
+                  <div className="flex items-center justify-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                    <span>{secondaryLabel || "Inter point"}</span>
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-2">
@@ -784,15 +652,10 @@ export default function ScrimmageView() {
                   onTouchCancel={cancelSecondaryHoldReset}
                   className="rounded-md bg-[#dc2626] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#b91c1c]"
                 >
-                  DISCUSSION-START/STOP (1min)
+                  DISCUSSION-START/STOP
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-center text-sm font-semibold text-slate-800">
-                <div className="flex items-center justify-center rounded border border-slate-400 bg-white px-2 py-1">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Timeout length:
-                  </span>
-                </div>
+              <div className="grid grid-cols-1 gap-2 text-center text-sm font-semibold text-slate-800">
                 <div className="rounded border border-slate-400 bg-white px-2 py-1">
                   <input
                     type="number"
@@ -820,53 +683,15 @@ export default function ScrimmageView() {
               </button>
             </div>
 
-            {matchStarted && (
-              <div className="rounded-3xl border border-slate-200 bg-white p-2 w-full">
-                <div className="mt-3 space-y-2">
-                  <div
-                    ref={possessionPadRef}
-                    role="group"
-                    aria-label="Select possession team"
-                    className="relative flex w-full items-stretch gap-1 rounded-2xl bg-[#b1b1b1] p-1 text-sm font-semibold text-slate-900"
-                    style={{ touchAction: "pan-y" }}
-                    onPointerDown={handlePossessionPadPointerDown}
-                    onPointerMove={handlePossessionPadPointerMove}
-                    onPointerUp={handlePossessionPadPointerUp}
-                    onPointerLeave={handlePossessionPadPointerLeave}
-                    onPointerCancel={handlePossessionPadPointerCancel}
-                  >
-                    <button
-                      type="button"
-                      className={`flex-1 rounded-2xl px-3 py-3 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${
-                        possessionTeam === "A" ? "bg-[#0f5132] text-white" : "bg-[#b1b1b1] text-slate-700"
-                      }`}
-                      aria-pressed={possessionTeam === "A"}
-                      tabIndex={-1}
-                    >
-                      {displayTeamA}
-                    </button>
-                    <button
-                      type="button"
-                      className={`flex-1 rounded-2xl px-3 py-3 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${
-                        possessionTeam === "B" ? "bg-[#0f5132] text-white" : "bg-[#b1b1b1] text-slate-700"
-                      }`}
-                      aria-pressed={possessionTeam === "B"}
-                      tabIndex={-1}
-                    >
-                      {displayTeamB}
-                    </button>
-                  </div>
-                  <div className="flex flex-col gap-1 text-slate-800 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="flex items-center gap-1 text-sm font-semibold text-slate-600">
-                      <span className="text-base font-semibold text-slate-900">Possession</span>
-                      <span>:</span>
-                      <span className="text-base text-slate-900">
-                        {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
-                      </span>
-                    </p>
-                  </div>
-                </div>
-              </div>
+            {consoleError && (
+              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {consoleError}
+              </p>
+            )}
+            {endMatchSuccessMessage && (
+              <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                {endMatchSuccessMessage}
+              </p>
             )}
 
             <div className="space-y-2 rounded-3xl border border-[#0f5132]/40 bg-white p-1.5">
@@ -880,9 +705,14 @@ export default function ScrimmageView() {
                     <button
                       type="button"
                       onClick={handleStartMatch}
-                      className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                      disabled={!isStartMatchReady}
+                      className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
+                        isStartMatchReady
+                          ? "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
+                          : "bg-slate-300 text-slate-600"
+                      } disabled:cursor-not-allowed`}
                     >
-                      Start match ({matchStartingTeamKey === "B" ? displayTeamB : displayTeamA} pulls)
+                      Start match
                     </button>
                   ) : (
                     <div className="space-y-1.5">
@@ -892,10 +722,18 @@ export default function ScrimmageView() {
                           onClick={() => openScoreModal("A")}
                         className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
                         >
-                          Add score - {displayTeamA}
+                          Add score - {displayTeamAShort}
                         </button>
                         <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
-                          <p>{nextAbbaDescriptor ? `ABBA: ${nextAbbaDescriptor}` : "ABBA disabled"}</p>
+                          <div className="flex justify-center">
+                            {nextAbbaDescriptor ? (
+                              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#0f5132] text-base font-extrabold text-white">
+                                {nextAbbaDescriptor}
+                              </span>
+                            ) : (
+                              <span>ABBA disabled</span>
+                            )}
+                          </div>
                           <p className="text-lg font-semibold text-[#0f5132]">
                             {score.a} - {score.b}
                           </p>
@@ -905,7 +743,7 @@ export default function ScrimmageView() {
                           onClick={() => openScoreModal("B")}
                         className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
                         >
-                          Add score - {displayTeamB}
+                          Add score - {displayTeamBShort}
                         </button>
                       </div>
                     </div>
@@ -938,32 +776,17 @@ export default function ScrimmageView() {
                           const chronologicalIndex = logs.findIndex((entry) => entry.id === log.id);
                           const editIndex =
                             chronologicalIndex >= 0 ? chronologicalIndex : logs.indexOf(log);
-                          return (
-                            <MatchLogCard
-                              key={log.id}
-                              log={log}
-                              chronologicalIndex={chronologicalIndex}
-                              editIndex={editIndex}
-                              displayTeamA={displayTeamA}
-                              displayTeamB={displayTeamB}
-                              displayTeamAShort={displayTeamAShort}
-                              displayTeamBShort={displayTeamBShort}
-                              getAbbaDescriptor={getAbbaDescriptor}
-                              openScoreModal={openScoreModal}
-                              openSimpleEventModal={openSimpleEventModal}
-                              openPossessionEditModal={openPossessionEditModal}
-                            />
-                          );
+                          return renderMatchEventCard(log, { chronologicalIndex, editIndex });
                         });
                     })()
                   )}
                 <button
                   type="button"
-                  onClick={() => setEndScrimmageModalOpen(true)}
+                  onClick={() => setEndMatchModalOpen(true)}
                   disabled={!canEndMatch}
                   className="block w-full rounded-full bg-[#0f5132] px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  End scrimmage
+                  End match
                 </button>
                 {pendingEntries.length > 0 && (
                   <div className="rounded-2xl border border-[#0f5132]/30 bg-white/90 p-2 text-sm text-[#0f5132]">
@@ -983,68 +806,70 @@ export default function ScrimmageView() {
                 {rostersError}
               </p>
             )}
-            <div className="space-y-2 rounded-3xl border border-[#0f5132]/30 bg-white p-1.5">
-              <div className="flex items-center justify-between gap-2">
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="space-y-2 rounded-3xl border border-[#0f5132]/30 bg-white p-1.5">
                 <h3 className="text-center text-lg font-semibold text-[#0f5132]">
-                  Player roster
+                  {safeTeamAName} Players
                 </h3>
-                <button
-                  type="button"
-                  onClick={openRosterEditor}
-                  aria-label="Edit roster"
-                  title="Edit roster"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#0f5132]/40 text-[#0f5132] transition hover:bg-[#ecfdf3]"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                  </svg>
-                </button>
+                <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2 text-sm text-[#0f5132]">
+                  {rostersLoading ? (
+                    <p className="text-center text-xs">Loading roster...</p>
+                  ) : sortedRosters.teamA.length === 0 ? (
+                    <p className="text-center text-xs text-slate-500">No players assigned.</p>
+                  ) : (
+                    sortedRosters.teamA.map((player) => (
+                      <p key={player.id} className="border-b border-white/40 pb-1 last:border-b-0">
+                        {formatPlayerSelectLabel(player)}
+                      </p>
+                    ))
+                  )}
+                </div>
               </div>
-              <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2 text-sm text-[#0f5132]">
-                {rostersLoading ? (
-                  <p className="text-center text-xs">Loading roster...</p>
-                ) : allRosterPlayers.length === 0 ? (
-                  <p className="text-center text-xs text-slate-500">No players assigned.</p>
-                ) : (
-                  allRosterPlayers.map((player) => (
-                    <div
-                      key={player.id}
-                      className="flex items-center gap-2 border-b border-white/40 pb-1 last:border-b-0"
-                    >
-                      <PlayerSideIcon side={player.side} />
-                      <p>{formatPlayerSelectLabel(player)}</p>
-                    </div>
-                  ))
-                )}
+              <div className="space-y-2 rounded-3xl border border-[#0f5132]/30 bg-white p-1.5">
+                <h3 className="text-center text-lg font-semibold text-[#0f5132]">
+                  {safeTeamBName} Players
+                </h3>
+                <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2 text-sm text-[#0f5132]">
+                  {rostersLoading ? (
+                    <p className="text-center text-xs">Loading roster...</p>
+                  ) : sortedRosters.teamB.length === 0 ? (
+                    <p className="text-center text-xs text-slate-500">No players assigned.</p>
+                  ) : (
+                    sortedRosters.teamB.map((player) => (
+                      <p key={player.id} className="border-b border-white/40 pb-1 last:border-b-0">
+                        {formatPlayerSelectLabel(player)}
+                      </p>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
 
-            {consoleError && (
-              <p className="text-center text-sm text-rose-600">{consoleError}</p>
-            )}
           </section>
         ) : (
-          <section className="space-y-2 rounded-3xl border border-slate-200 bg-white p-2 text-center">
+          <section
+            className="space-y-[var(--setup-button-size)] rounded-3xl border border-slate-200 bg-white p-2 text-center"
+            style={{ "--setup-button-size": "4.5rem" }}
+          >
             <button
               type="button"
               onClick={() => setSetupModalOpen(true)}
               disabled={initialising}
-              className="inline-flex w-full items-center justify-center rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
               {initialising ? "Initialising..." : "Match setup"}
             </button>
+            <Link
+              to={spiritScoresUrl}
+              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full border border-[#0f5132]/40 px-4 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
+            >
+              Enter spirit scores
+            </Link>
             {consoleError && (
               <p className="text-sm text-rose-600">{consoleError}</p>
+            )}
+            {endMatchSuccessMessage && (
+              <p className="text-sm text-emerald-700">{endMatchSuccessMessage}</p>
             )}
       </section>
       )}
@@ -1087,7 +912,7 @@ export default function ScrimmageView() {
               </button>
               <button
                 type="button"
-                onClick={handleStartNewMatch}
+                onClick={handleDiscardResume}
                 disabled={resumeBusy}
                 className="inline-flex items-center justify-center rounded-full border border-[#0f5132]/40 px-4 py-2 font-semibold text-[#0f5132] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -1101,13 +926,81 @@ export default function ScrimmageView() {
       {setupModalOpen && (
         <ActionModal title="Match setup" onClose={() => setSetupModalOpen(false)}>
           <form className="space-y-4" onSubmit={handleInitialiseMatch}>
-            <div className="rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] px-3 py-2 text-sm text-[#0f5132]">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
-                Local scrimmage
-              </p>
-              <p className="mt-1 text-xs text-[#0f5132]/80">
-                Scrimmage runs without events or matches. Teams are fixed to Light vs Dark and data stays on this device.
-              </p>
+            <div className="space-y-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Event
+                </p>
+                {eventsLoading ? (
+                  <div className="mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                    Loading events...
+                  </div>
+                ) : eventsError ? (
+                  <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {eventsError}
+                  </div>
+                ) : (
+                  <select
+                    value={selectedEventId || ""}
+                    onChange={(event) => {
+                      const value = event.target.value || null;
+                      setSelectedEventId(value);
+                      setSelectedMatchId(null);
+                    }}
+                    className="mt-2 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">Select an event...</option>
+                    {events.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {event.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span>Match</span>
+                    <button
+                    type="button"
+                    onClick={() => void loadMatches()}
+                    className="text-[11px] font-semibold text-[#0f5132] transition hover:text-[#083b24]"
+                    disabled={!selectedEventId}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                {matchesLoading ? (
+                  <div className="mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                    Loading matches...
+                  </div>
+                ) : matchesError ? (
+                  <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {matchesError}
+                  </div>
+                ) : (
+                  <select
+                    value={selectedMatchId || ""}
+                    onChange={(event) => setSelectedMatchId(event.target.value || null)}
+                    disabled={!selectedEventId || matches.length === 0}
+                    className="mt-2 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">
+                      {selectedEventId
+                        ? matches.length > 0
+                          ? "Select a match..."
+                          : "No matches for this event"
+                        : "Select an event first"}
+                    </option>
+                    {matches.map((match) => (
+                      <option key={match.id} value={match.id}>
+                        {formatMatchLabel(match)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-2 md:grid-cols-2">
@@ -1116,9 +1009,13 @@ export default function ScrimmageView() {
                 <input
                   type="number"
                   min="1"
-                  value={rules.matchDuration || ""}
-                  placeholder="No limit"
-                  disabled
+                  value={rules.matchDuration}
+                  onChange={(event) =>
+                    setRules((prev) => ({
+                      ...prev,
+                      matchDuration: Number(event.target.value) || 0,
+                    }))
+                  }
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
@@ -1214,27 +1111,29 @@ export default function ScrimmageView() {
                   {teamBId && <option value={teamBId}>{displayTeamB}</option>}
                 </select>
               </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">ABBA</span>
-                <select
-                  value={rules.abbaPattern}
-                  onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      abbaPattern: event.target.value,
-                    }))
-                  }
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="none">None</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                </select>
-              </label>
+              {isMixedDivision && (
+                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                  <span className="shrink-0">ABBA</span>
+                  <select
+                    value={setupForm.abbaPattern}
+                    onChange={(event) =>
+                      setSetupForm((prev) => ({
+                        ...prev,
+                        abbaPattern: event.target.value,
+                      }))
+                    }
+                    className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">Select line...</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </label>
+              )}
             </div>
             <button
               type="submit"
-              disabled={initialising}
+              disabled={initialising || !selectedMatch || !isStartMatchReady}
               className="w-full rounded-full bg-[#0f5132] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {initialising ? "Initialising..." : "Initialise"}
@@ -1372,6 +1271,46 @@ export default function ScrimmageView() {
         </ActionModal>
       )}
 
+      {endMatchModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px] px-4 py-3">
+          <div className="w-full max-w-sm rounded-[32px] border-4 border-[#b91c1c] bg-[#fee2e2] p-4">
+            <div className="mb-3 flex items-start justify-between">
+              <h3 className="text-2xl font-semibold text-[#7f1d1d]">End match?</h3>
+              <button
+                type="button"
+                onClick={() => setEndMatchModalOpen(false)}
+                disabled={endMatchBusy}
+                aria-label="Close modal"
+                className="text-2xl font-semibold text-[#7f1d1d] transition hover:text-[#5f1313] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                X
+              </button>
+            </div>
+            <p className="text-sm text-[#7f1d1d]">
+              End this match and clear local data.
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setEndMatchModalOpen(false)}
+                disabled={endMatchBusy}
+                className="inline-flex items-center justify-center rounded-full border border-[#7f1d1d]/40 bg-white/70 px-4 py-2 font-semibold text-[#7f1d1d] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmEndMatch}
+                disabled={endMatchBusy}
+                className="inline-flex items-center justify-center rounded-full bg-[#b91c1c] px-4 py-2 font-semibold text-white transition hover:bg-[#991b1b] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {endMatchBusy ? "Ending..." : "End match"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
   {timeModalOpen && (
     <ActionModal
       title="Time additions"
@@ -1388,7 +1327,12 @@ export default function ScrimmageView() {
           onClick={() => {
             handleHalfTimeTrigger();
           }}
-          className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+          disabled={stoppageActive}
+          className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
+            stoppageActive
+              ? "bg-slate-300 text-slate-600"
+              : "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
+          }`}
         >
           Half Time
         </button>
@@ -1401,10 +1345,10 @@ export default function ScrimmageView() {
               onClick={() => {
                 handleTimeoutTrigger("A");
               }}
-              disabled={remainingTimeouts.A === 0}
+              disabled={stoppageActive || remainingTimeouts.A === 0}
               className="mt-1.5 w-full rounded-full bg-[#162e6a] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1e4fd7] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Timeout {displayTeamA || "Team A"}
+              Timeout {displayTeamAShort || "A"}
             </button>
             <p className="mt-1 text-xs">
               Remaining (total): {remainingTimeouts.A}
@@ -1420,10 +1364,10 @@ export default function ScrimmageView() {
               onClick={() => {
                 handleTimeoutTrigger("B");
               }}
-              disabled={remainingTimeouts.B === 0}
+              disabled={stoppageActive || remainingTimeouts.B === 0}
               className="mt-1.5 w-full rounded-full bg-[#162e6a] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1e4fd7] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Timeout {displayTeamB || "Team B"}
+              Timeout {displayTeamBShort || "B"}
             </button>
             <p className="mt-1 text-xs">
               Remaining (total): {remainingTimeouts.B}
@@ -1435,17 +1379,25 @@ export default function ScrimmageView() {
 
         <button
           type="button"
-          onClick={handleGameStoppage}
+          onClick={() => {
+            if (stoppageActive) {
+              if (!timerRunning) {
+                handleToggleTimer();
+              }
+              return;
+            }
+            handleGameStoppage();
+          }}
           className="w-full rounded-full bg-[#b91c1c] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#991b1b]"
         >
-          Game stoppage
+          {stoppageActive ? "End stoppage" : "Game stoppage"}
         </button>
 
         {stoppageActive && (
-          <div className="space-y-2 rounded-2xl border border-[#a7f3d0]/60 bg-[#f0fff4] p-3 text-left">
-            <p className="text-base font-semibold text-[#0f5132]">Stoppage active</p>
-            <p className="text-xs text-[#0f5132]/80">
-              Resume match time to unlock this menu and log the stoppage end.
+          <div className="space-y-2 rounded-2xl border border-[#ef4444]/70 bg-[#fee2e2] p-3 text-left">
+            <p className="text-base font-semibold text-[#991b1b]">Stoppage active</p>
+            <p className="text-xs text-[#991b1b]/80">
+              Use the stoppage button above to end the stoppage and resume play.
             </p>
           </div>
         )}
@@ -1464,42 +1416,83 @@ export default function ScrimmageView() {
             </p>
             <label className="block text-base font-semibold text-[#0f5132]">
               Scorer:
-              <select
-                value={scoreForm.scorerId}
-                onChange={(event) =>
-                  setScoreForm((prev) => ({ ...prev, scorerId: event.target.value }))
-                }
-                required
-                className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
-              >
-                <option value="">Select Scorer</option>
-                <option value={SCORE_NA_PLAYER_VALUE}>N/A</option>
-                {rosterOptionsForModal.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {formatPlayerSelectLabel(player)}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-[#0f5132]/30 bg-white/70 p-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScoreForm((prev) => ({ ...prev, scorerId: SCORE_NA_PLAYER_VALUE }))}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                      scoreForm.scorerId === SCORE_NA_PLAYER_VALUE
+                        ? "border-[#0f5132] bg-[#0f5132] text-white"
+                        : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                    }`}
+                    aria-pressed={scoreForm.scorerId === SCORE_NA_PLAYER_VALUE}
+                  >
+                    N/A
+                  </button>
+                  {rosterOptionsForModal.map((player) => (
+                    <button
+                      key={player.id}
+                      type="button"
+                      onClick={() => setScoreForm((prev) => ({ ...prev, scorerId: player.id }))}
+                      className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                        scoreForm.scorerId === player.id
+                          ? "border-[#0f5132] bg-[#0f5132] text-white"
+                          : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                      }`}
+                      aria-pressed={scoreForm.scorerId === player.id}
+                    >
+                      {renderPlayerGridLabel(player)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </label>
             <label className="block text-base font-semibold text-[#0f5132]">
               Assist:
-              <select
-                value={scoreForm.assistId}
-                onChange={(event) =>
-                  setScoreForm((prev) => ({ ...prev, assistId: event.target.value }))
-                }
-                required
-                className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
-              >
-                <option value="">Select Assist</option>
-                <option value={SCORE_NA_PLAYER_VALUE}>N/A</option>
-                {rosterOptionsForModal.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {formatPlayerSelectLabel(player)}
-                  </option>
-                ))}
-                <option value={CALAHAN_ASSIST_VALUE}>CALLAHAN!!</option>
-              </select>
+              <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-[#0f5132]/30 bg-white/70 p-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScoreForm((prev) => ({ ...prev, assistId: SCORE_NA_PLAYER_VALUE }))}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                      scoreForm.assistId === SCORE_NA_PLAYER_VALUE
+                        ? "border-[#0f5132] bg-[#0f5132] text-white"
+                        : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                    }`}
+                    aria-pressed={scoreForm.assistId === SCORE_NA_PLAYER_VALUE}
+                  >
+                    N/A
+                  </button>
+                  {rosterOptionsForModal.map((player) => (
+                    <button
+                      key={player.id}
+                      type="button"
+                      onClick={() => setScoreForm((prev) => ({ ...prev, assistId: player.id }))}
+                      className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                        scoreForm.assistId === player.id
+                          ? "border-[#0f5132] bg-[#0f5132] text-white"
+                          : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                      }`}
+                      aria-pressed={scoreForm.assistId === player.id}
+                    >
+                      {renderPlayerGridLabel(player)}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setScoreForm((prev) => ({ ...prev, assistId: CALAHAN_ASSIST_VALUE }))}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                      scoreForm.assistId === CALAHAN_ASSIST_VALUE
+                        ? "border-[#0f5132] bg-[#0f5132] text-white"
+                        : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                    }`}
+                    aria-pressed={scoreForm.assistId === CALAHAN_ASSIST_VALUE}
+                  >
+                    CALLAHAN!!
+                  </button>
+                </div>
+              </div>
             </label>
             <div className="space-y-1.5">
               {!isScoreFormValid && (
@@ -1590,210 +1583,11 @@ export default function ScrimmageView() {
           </form>
         </ActionModal>
       )}
-
-      {rosterEditorOpen && (
-        <ActionModal title="Edit player roster" onClose={closeRosterEditor}>
-          <div className="space-y-3 text-sm text-[#0f5132]">
-            <form className="space-y-3" onSubmit={handleRosterPlayerSubmit}>
-              <label className="block text-sm font-semibold text-[#0f5132]">
-                Name
-                <input
-                  type="text"
-                  value={playerEditorForm.name}
-                  onChange={(event) =>
-                    setPlayerEditorForm((prev) => ({ ...prev, name: event.target.value }))
-                  }
-                  required
-                  className="mt-2 w-full rounded-xl border border-[#0f5132]/30 bg-white px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30"
-                />
-              </label>
-              <label className="block text-sm font-semibold text-[#0f5132]">
-                Jersey number (optional)
-                <input
-                  type="number"
-                  min="0"
-                  value={playerEditorForm.jersey}
-                  onChange={(event) =>
-                    setPlayerEditorForm((prev) => ({ ...prev, jersey: event.target.value }))
-                  }
-                  className="mt-2 w-full rounded-xl border border-[#0f5132]/30 bg-white px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30"
-                />
-              </label>
-              <label className="block text-sm font-semibold text-[#0f5132]">
-                Team icon
-                <select
-                  value={playerEditorForm.assignment}
-                  onChange={(event) =>
-                    setPlayerEditorForm((prev) => ({ ...prev, assignment: event.target.value }))
-                  }
-                  className="mt-2 w-full rounded-xl border border-[#0f5132]/30 bg-white px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30"
-                >
-                  <option value="A">{safeTeamAName} (L)</option>
-                  <option value="B">{safeTeamBName} (D)</option>
-                  <option value="both">Light + Dark (L+D)</option>
-                </select>
-              </label>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <button
-                  type="submit"
-                  className="w-full rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-                >
-                  {playerEditorForm.id ? "Update player" : "Add player"}
-                </button>
-                {playerEditorForm.id ? (
-                  <button
-                    type="button"
-                    onClick={handleDeleteCurrentPlayer}
-                    className="w-full rounded-full bg-[#22a06b] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#1f7a5a]"
-                  >
-                    Delete player
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={closeRosterEditor}
-                    className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
-                  >
-                    Done
-                  </button>
-                )}
-              </div>
-              {playerEditorForm.id && (
-                <button
-                  type="button"
-                  onClick={resetPlayerEditorForm}
-                  className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#0f5132] transition hover:bg-white"
-                >
-                  Add another player
-                </button>
-              )}
-            </form>
-
-            <div className="rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
-                Current players
-              </p>
-              {allRosterPlayers.length === 0 ? (
-                <p className="mt-2 text-xs text-slate-500">No players yet.</p>
-              ) : (
-                <div className="mt-2 space-y-1.5">
-                  {allRosterPlayers.map((player) => (
-                    <div
-                      key={`edit-${player.id}`}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-white/60 bg-white px-2 py-1.5"
-                    >
-                      <div className="flex items-center gap-2">
-                        <PlayerSideIcon side={player.side} />
-                        <p>{formatPlayerSelectLabel(player)}</p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => startEditRosterPlayer(player)}
-                          className="rounded-full border border-[#0f5132]/30 px-2 py-0.5 text-[11px] font-semibold text-[#0f5132] transition hover:bg-[#dcfce7]"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteRosterPlayer(player.id)}
-                          className="rounded-full border border-rose-300 px-2 py-0.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </ActionModal>
-      )}
-
-      {endScrimmageModalOpen && (
-        <ActionModal title="End scrimmage" onClose={() => setEndScrimmageModalOpen(false)}>
-          <div className="space-y-3 text-sm text-[#0f5132]">
-            <p>How would you like to wrap up this scrimmage?</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => {
-                  handleEndMatchNavigation();
-                  setEndScrimmageModalOpen(false);
-                  setMatchReportOpen(true);
-                }}
-                className="w-full rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-              >
-                Match report
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  handleExportCsv();
-                  setEndScrimmageModalOpen(false);
-                }}
-                className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
-              >
-                Download CSV
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => setEndScrimmageModalOpen(false)}
-              className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#0f5132] transition hover:bg-white"
-            >
-              Cancel
-            </button>
-          </div>
-        </ActionModal>
-      )}
-
-      {matchReportOpen && (
-        <ActionModal
-          title="Scrimmage report"
-          onClose={() => setMatchReportOpen(false)}
-          maxWidthClass="max-w-4xl"
-        >
-          <div className="max-h-[75vh] space-y-4 overflow-y-auto text-[#0f5132]">
-            <section className="space-y-3">
-              <div className="grid gap-3 lg:grid-cols-2">
-                <InsightTable title="Match insight" rows={scrimmageReport?.insights?.match} />
-                <InsightTable title="Tempo insight" rows={scrimmageReport?.insights?.tempo} />
-              </div>
-            </section>
-
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="sc-chip">Team production</span>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-2">
-                <TeamOverviewCard
-                  title={`${displayTeamA} overview`}
-                  stats={scrimmageReport?.summaries?.teamA}
-                />
-                <TeamOverviewCard
-                  title={`${displayTeamB} overview`}
-                  stats={scrimmageReport?.summaries?.teamB}
-                />
-              </div>
-            </section>
-          </div>
-        </ActionModal>
-      )}
     </ScorekeeperShell>
   );
 }
 
-function ActionModal({
-  title,
-  onClose,
-  children,
-  disableClose = false,
-  maxWidthClass = "max-w-sm",
-  alignTop = false,
-  scrollable = false,
-}) {
+function ActionModal({ title, onClose, children, disableClose = false, alignTop = false, scrollable = false }) {
   const handleClose = () => {
     if (!disableClose) {
       onClose();
@@ -1807,8 +1601,8 @@ function ActionModal({
       }`}
     >
       <div
-        className={`w-full ${maxWidthClass} rounded-[32px] bg-white p-3 ${
-          scrollable ? "max-h-[92vh] overflow-hidden" : ""
+        className={`w-full max-w-sm rounded-[32px] bg-white p-3 ${
+          scrollable ? "max-h-[85vh] overflow-y-auto" : ""
         }`}
       >
         <div className="mb-2 flex items-start justify-between">
@@ -1823,7 +1617,7 @@ function ActionModal({
             X
           </button>
         </div>
-        <div className={scrollable ? "max-h-[80vh] overflow-y-auto pr-1" : ""}>{children}</div>
+        {children}
       </div>
     </div>
   );
@@ -1842,223 +1636,254 @@ function MatchLogCard({
   openSimpleEventModal,
   openPossessionEditModal,
 }) {
+  const isScoreLog = log.eventCode === MATCH_LOG_EVENT_CODES.SCORE;
+  const isMatchStartLog = log.eventCode === MATCH_LOG_EVENT_CODES.MATCH_START;
+  const isTimeoutLog =
+    log.eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT ||
+    log.eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START;
   const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
   const normalizedEventDescription = `${log.eventDescription || ""}`.toLowerCase();
   const isBlockLog =
     (Number.isFinite(log.eventTypeId) && log.eventTypeId === BLOCK_EVENT_TYPE_ID) ||
     normalizedEventCode.includes("block") ||
     normalizedEventDescription.includes("block");
+  const isPossessionLog =
+    log.eventCode === MATCH_LOG_EVENT_CODES.TURNOVER ||
+    normalizedEventCode.includes("turnover") ||
+    normalizedEventDescription.includes("turnover") ||
+    isBlockLog;
+  const isHalftimeLog = log.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START;
+  const isStoppageStart = log.eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START;
+  const isCalahanLog = log.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
+  const shortTeamLabel =
+    log.team === "B" ? displayTeamBShort : log.team === "A" ? displayTeamAShort : null;
+  const fullTeamLabel =
+    log.team === "B" ? displayTeamB : log.team === "A" ? displayTeamA : null;
+  const abbaLineLabel = log.abbaLine && log.abbaLine !== "none" ? log.abbaLine : null;
+  const abbaDescriptor = isScoreLog || isCalahanLog ? abbaLineLabel : null;
+  const eventTime = new Date(log.timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const creditedPlayerLabel = isPossessionLog
+    ? log.scorerName || (log.scorerId ? "Unknown player" : "Unassigned")
+    : null;
+  const alignClass = (() => {
+    if (isPossessionLog) {
+      return log.team === "A" ? "text-right" : log.team === "B" ? "text-left" : "text-center";
+    }
+    return log.team === "A" ? "text-left" : log.team === "B" ? "text-right" : "text-center";
+  })();
+  let bannerBgClass = "bg-white";
+  let bannerBorderClass = "border-slate-300";
+  let bannerTextClass = "text-black";
 
-  let CardComponent = UnknownEventCard;
-  if (isBlockLog) {
-    CardComponent = BlockEventCard;
-  } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.SCORE) {
-    CardComponent = ScoreEventCard;
-  } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.CALAHAN) {
-    CardComponent = CalahanEventCard;
-  } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TURNOVER) {
-    CardComponent = TurnoverEventCard;
-  } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START) {
-    CardComponent = TimeoutStartEventCard;
-  } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_END) {
-    CardComponent = TimeoutEndEventCard;
-  } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START) {
-    CardComponent = HalftimeStartEventCard;
-  } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
-    CardComponent = HalftimeEndEventCard;
-  } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START) {
-    CardComponent = StoppageStartEventCard;
-  } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_END) {
-    CardComponent = StoppageEndEventCard;
-  } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.MATCH_START) {
-    CardComponent = MatchStartEventCard;
-  } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.MATCH_END) {
-    CardComponent = MatchEndEventCard;
+  if (isMatchStartLog || isTimeoutLog) {
+    bannerBgClass = "bg-[#d4f5e1]";
+    bannerBorderClass = "border-[#16a34a]/60";
+    bannerTextClass = "text-black";
+  } else if (isHalftimeLog) {
+    bannerBgClass = "bg-[#e0e7ff]";
+    bannerBorderClass = "border-[#4338ca]/50";
+    bannerTextClass = "text-black";
+  } else if (isCalahanLog) {
+    bannerBgClass = "bg-[#fff1e0]";
+    bannerBorderClass = "border-[#f59e0b]/60";
+    bannerTextClass = "text-black";
+  } else if (isScoreLog && log.team === "A") {
+    bannerBgClass = "bg-[#d1fae5]";
+    bannerBorderClass = "border-[#10b981]/70";
+    bannerTextClass = "text-black";
+  } else if (isScoreLog && log.team === "B") {
+    bannerBgClass = "bg-[#bbf7d0]";
+    bannerBorderClass = "border-[#059669]/70";
+    bannerTextClass = "text-black";
+  } else if (isStoppageStart) {
+    bannerBgClass = "bg-[#fecdd3]";
+    bannerBorderClass = "border-[#ef4444]/60";
+    bannerTextClass = "text-black";
   }
+
+  const isScoringDisplay = isScoreLog || isCalahanLog;
+
+  const eventStyles = (() => {
+    if (isCalahanLog) {
+      return { bg: "bg-[#f0fff4]", border: "border-[#c6f6d5]", label: "text-black" };
+    }
+    if (isScoreLog) {
+      return { bg: "bg-[#e5ffe8]", border: "border-[#16a34a]/70", label: "text-black" };
+    }
+    if (isTimeoutLog || isStoppageStart) {
+      return { bg: "bg-[#fef3c7]", border: "border-[#f59e0b]/60", label: "text-black" };
+    }
+    if (isHalftimeLog) {
+      return { bg: "bg-[#e0e7ff]", border: "border-[#4338ca]/50", label: "text-black" };
+    }
+    if (isPossessionLog) {
+      return { bg: "bg-[#cffafe]", border: "border-[#06b6d4]/60", label: "text-black" };
+    }
+    return { bg: "bg-white", border: "border-slate-300", label: "text-black" };
+  })();
+
+  const description = isMatchStartLog
+    ? `Pulling team: ${fullTeamLabel || "Unassigned"}`
+    : isTimeoutLog
+      ? `${shortTeamLabel || "Team"} timeout`
+      : isHalftimeLog
+        ? "Halftime reached"
+        : isStoppageStart
+          ? "Match stoppage"
+          : null;
+  const showDetachedEdit = isPossessionLog;
 
   return (
-    <CardComponent
-      log={log}
-      chronologicalIndex={chronologicalIndex}
-      editIndex={editIndex}
-      displayTeamA={displayTeamA}
-      displayTeamB={displayTeamB}
-      displayTeamAShort={displayTeamAShort}
-      displayTeamBShort={displayTeamBShort}
-      getAbbaDescriptor={getAbbaDescriptor}
-      openScoreModal={openScoreModal}
-      openSimpleEventModal={openSimpleEventModal}
-      openPossessionEditModal={openPossessionEditModal}
-    />
-  );
-}
-
-function PlayerSideIcon({ side }) {
-  if (side === "A") {
-    return (
-      <span
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-400 bg-white text-[9px] font-bold leading-none text-slate-800"
-        title="Light"
-        aria-label="Light"
-      >
-        L
-      </span>
-    );
-  }
-
-  if (side === "B") {
-    return (
-      <span
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-800 bg-slate-900 text-[9px] font-bold leading-none text-slate-100"
-        title="Dark"
-        aria-label="Dark"
-      >
-        D
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className="inline-flex items-center gap-1"
-      title="Light and Dark"
-      aria-label="Light and Dark"
+    <article
+      className={`rounded-2xl border px-4 py-3 text-sm transition ${eventStyles.bg} ${eventStyles.border} ${alignClass} ${
+        showDetachedEdit ? "relative pr-12" : ""
+      }`}
     >
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-500 bg-white text-[8px] font-bold leading-none text-slate-800">
-        L
-      </span>
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-800 bg-slate-900 text-[8px] font-bold leading-none text-slate-100">
-        D
-      </span>
-    </span>
-  );
-}
-
-function InsightTable({ title, rows }) {
-  if (!rows?.length) {
-    return (
-      <div className="rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-4 text-sm text-[#0f5132]/70">
-        No {title.toLowerCase()} available.
-      </div>
-    );
-  }
-  return (
-    <div className="rounded-2xl border border-[#0f5132]/20 bg-white">
-      <div className="border-b border-[#0f5132]/20 px-4 py-3">
-        <h3 className="text-sm font-semibold text-[#0f5132]">{title}</h3>
-      </div>
-      <table className="w-full text-sm text-[#0f5132]">
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.label} className="border-t border-[#0f5132]/10 text-sm">
-              <td className="px-4 py-2 font-medium text-[#0f5132]/70">{row.label}</td>
-              <td className="px-4 py-2 text-right font-semibold text-[#0f5132]">{row.value}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function TeamOverviewCard({ title, stats }) {
-  const goals = stats?.goals || [];
-  const assists = stats?.assists || [];
-  const turnovers = stats?.turnovers || [];
-  const connections = stats?.connections || [];
-  const production = stats?.production;
-  const summaryStats = [
-    { key: "holds", label: "Holds", value: production?.holds },
-    { key: "clean", label: "Clean holds", value: production?.cleanHolds },
-    { key: "turnovers", label: "Total turnovers", value: production?.totalTurnovers },
-    { key: "breaks", label: "Breaks", value: production?.breaks },
-    { key: "breakChances", label: "Break chances", value: production?.breakChances },
-  ];
-  const formatStatValue = (value) => (Number.isFinite(value) ? value : value === 0 ? 0 : "--");
-
-  const renderList = (label, rows, valueLabel) => (
-    <div className="rounded-2xl border border-[#0f5132]/15 bg-[#ecfdf3] p-3">
-      {rows.length ? (
-        <table className="w-full text-left text-sm text-[#0f5132]">
-          <thead>
-            <tr className="text-xs uppercase tracking-wide text-[#0f5132]/60">
-              <th className="py-0.5 pr-2">{valueLabel}</th>
-              <th className="py-0.5 text-right"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.slice(0, 8).map((row) => (
-              <tr key={`${label}-${row.player}`} className="border-t border-[#0f5132]/10 text-sm">
-                <td className="py-1 pr-2">{row.player}</td>
-                <td className="py-1 text-right font-semibold">{row.count}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <p className="mt-0.5 text-xs text-[#0f5132]/60 sm:mt-1.5">
-          No {label.toLowerCase()} recorded.
+      <div className={`w-full ${alignClass}`}>
+        <p className="text-xs font-semibold uppercase tracking-wide text-black">
+          {isMatchStartLog ? "Match start" : log.eventDescription || "Match event"}
+          {!isScoringDisplay && !isMatchStartLog && shortTeamLabel ? ` - ${shortTeamLabel}` : ""}
         </p>
-      )}
-    </div>
-  );
+        {abbaDescriptor && (
+          <p className="text-[30px] font-extrabold uppercase tracking-wide text-black">{abbaDescriptor}</p>
+        )}
+        {description && <p className="text-xs text-black">{description}</p>}
+        <p className="text-xs text-black">{eventTime}</p>
+      </div>
 
-  return (
-    <div className="rounded-2xl border border-[#0f5132]/20 bg-white p-3 sm:p-5">
-      <h3 className="mb-1.5 text-lg font-semibold text-[#0f5132] sm:mb-2.5">{title}</h3>
-      {production && (
-        <div className="mb-2 grid grid-cols-2 gap-2 text-center sm:mb-3 sm:grid-cols-5 sm:gap-3">
-          {summaryStats.map((item) => (
-            <div
-              key={item.key}
-              className="rounded-xl border border-[#0f5132]/15 bg-[#f8fffb] px-2 py-3"
-            >
-              <p className="text-lg font-semibold text-[#0f5132] sm:text-xl">
-                {formatStatValue(item.value)}
-              </p>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/60 sm:text-[11px]">
-                {item.label}
+      {isScoringDisplay ? (
+        <div className="mt-3 grid items-center gap-3 md:grid-cols-[1fr_auto_1fr]">
+          {log.team === "A" ? (
+            <div className="text-left text-xs text-black">
+              <p className="font-semibold text-black">{displayTeamA}</p>
+              <p className="font-semibold text-black">
+                {log.assistName ? `${log.assistName} -> ` : ""}
+                {log.scorerName || "Unassigned"}
               </p>
             </div>
-          ))}
+          ) : (
+            <div />
+          )}
+
+          <p className="text-center text-lg font-semibold text-black">
+            {log.totalA} - {log.totalB}
+          </p>
+
+          {log.team === "B" ? (
+            <div className="text-right text-xs text-black">
+              <p className="font-semibold text-black">{displayTeamB}</p>
+              <p className="font-semibold text-black">
+                {log.assistName ? `${log.assistName} -> ` : ""}
+                {log.scorerName || "Unassigned"}
+              </p>
+            </div>
+          ) : (
+            <div />
+          )}
+
+          {log.team && (
+            <div className="md:col-span-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => openScoreModal(log.team, "edit", editIndex)}
+                className="rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
+                aria-label="Edit event"
+                title="Edit event"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div
+          className={`mt-3 text-xs text-black ${
+            isPossessionLog
+              ? "flex flex-col items-start gap-1"
+              : `flex items-center ${description ? "justify-between" : "justify-end"}`
+          }`}
+        >
+          {(description || isPossessionLog) && (
+            <p>
+              {isPossessionLog
+                ? `${shortTeamLabel || "Team"} now has the disc`
+                : isTimeoutLog
+                  ? `${shortTeamLabel || "Team"} called a timeout`
+                  : isStoppageStart
+                    ? "Clock paused while stoppage is logged"
+                    : isHalftimeLog
+                      ? "Second-half prep underway"
+                      : ""}
+            </p>
+          )}
+          {isPossessionLog && (
+            <p className="text-[11px] font-semibold text-black/70">
+              Credited: {creditedPlayerLabel}
+            </p>
+          )}
+          {!showDetachedEdit && (
+            <button
+              type="button"
+              onClick={() => openSimpleEventModal(log, editIndex)}
+              className="rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
+              aria-label="Edit event"
+              title="Edit event"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
-      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 sm:gap-3">
-        {renderList("Goals", goals, "Goal")}
-        {renderList("Assists", assists, "Assist")}
-        {renderList("Turnovers", turnovers, "Turnover")}
-      </div>
-      <div className="mt-1.5 rounded-2xl border border-[#0f5132]/15 bg-[#ecfdf3] p-3 sm:mt-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/60">
-          Top connections
-        </p>
-        {connections.length ? (
-          <table className="mt-1 w-full text-left text-sm text-[#0f5132] sm:mt-1.5">
-            <thead>
-              <tr className="text-xs uppercase tracking-wide text-[#0f5132]/60">
-                <th className="py-0.5 pr-2">Assist</th>
-                <th className="py-0.5" />
-                <th className="py-0.5 pr-2">Scorer</th>
-                <th className="py-0.5 text-right">Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {connections.slice(0, 6).map((row) => (
-                <tr key={`${row.assist}-${row.scorer}`} className="border-t border-[#0f5132]/10 text-sm">
-                  <td className="py-1 pr-2">{row.assist}</td>
-                  <td className="py-1 text-center text-sm font-bold text-[#0f5132]/60">ƒ+'</td>
-                  <td className="py-1 pr-2">{row.scorer}</td>
-                  <td className="py-1 text-right font-semibold">{row.count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="mt-1 text-xs text-[#0f5132]/60 sm:mt-1.5">
-            No assisted goals recorded.
-          </p>
-        )}
-      </div>
-    </div>
+      {showDetachedEdit && (
+        <button
+          type="button"
+          onClick={() => openPossessionEditModal(log, editIndex)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
+          aria-label="Edit event"
+          title="Edit event"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+        </button>
+      )}
+    </article>
   );
 }

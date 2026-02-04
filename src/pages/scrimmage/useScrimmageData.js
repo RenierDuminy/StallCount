@@ -58,17 +58,13 @@ const DEFAULT_SETUP_FORM = { startTime: "", startingTeamId: "" };
 const DEFAULT_TIMEOUT_USAGE = { A: 0, B: 0 };
 
 function buildDummyRosters() {
+  const demoPlayers = [
+    { id: "demo-1", name: "Demo Player 1", jersey_number: 1 },
+    { id: "demo-2", name: "Demo Player 2", jersey_number: 2 },
+  ];
   return {
-    teamA: [
-      { id: "light-1", name: "Light Player 1", jersey_number: 1 },
-      { id: "light-2", name: "Light Player 2", jersey_number: 2 },
-      { id: "light-3", name: "Light Player 3", jersey_number: 3 },
-    ],
-    teamB: [
-      { id: "dark-1", name: "Dark Player 1", jersey_number: 1 },
-      { id: "dark-2", name: "Dark Player 2", jersey_number: 2 },
-      { id: "dark-3", name: "Dark Player 3", jersey_number: 3 },
-    ],
+    teamA: demoPlayers,
+    teamB: demoPlayers,
   };
 }
 
@@ -294,6 +290,8 @@ export function useScrimmageData() {
         timestamp: new Date().toISOString(),
         totalA: score.a,
         totalB: score.b,
+        scorerId: options.actorId || null,
+        scorerName: actorName || null,
         actorId: options.actorId || null,
         actorName,
       };

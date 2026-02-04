@@ -25,6 +25,7 @@ const MatchesPage = lazy(() => import("./pages/MatchesPage"));
 const EventsPage = lazy(() => import("./pages/EventsPage"));
 const EventSetupWizardPage = lazy(() => import("./pages/EventSetupWizard"));
 const ScoreKeeperPage = lazy(() => import("./pages/ScoreKeeperPage"));
+const ScoreKeeper5v5Page = lazy(() => import("./pages/ScoreKeeper5v5Page"));
 const ScrimmagePage = lazy(() => import("./pages/ScrimmagePage"));
 const CommunityPage = lazy(() => import("./pages/CommunityPage"));
 const CaptainPage = lazy(() => import("./pages/CaptainPage"));
@@ -182,6 +183,16 @@ export default function AppRoutes() {
             <ProtectedRoute allowedRoles={SCOREKEEPER_ACCESS_ROLES}>
               <Suspense fallback={routeFallback}>
                 <ScoreKeeperPage />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/score-keeper-5v5"
+          element={
+            <ProtectedRoute allowedRoles={SCOREKEEPER_ACCESS_ROLES}>
+              <Suspense fallback={routeFallback}>
+                <ScoreKeeper5v5Page />
               </Suspense>
             </ProtectedRoute>
           }

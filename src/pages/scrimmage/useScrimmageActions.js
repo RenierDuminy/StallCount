@@ -290,9 +290,27 @@ export function useScrimmageActions(controller) {
     const nextLogs = [...(controller.logs || [])];
     const existing = nextLogs[logIndex];
     if (!existing) return;
+    const nextScorerId = Object.prototype.hasOwnProperty.call(payload || {}, "scorerId")
+      ? payload?.scorerId ?? null
+      : existing.scorerId ?? null;
+    const normalizedEventCode =
+      payload?.eventCode ?? existing.eventCode ?? MATCH_LOG_EVENT_CODES.TURNOVER;
+    const isBlockLog =
+      (Number.isFinite(payload?.eventTypeId) && payload.eventTypeId === 19) ||
+      (Number.isFinite(existing.eventTypeId) && existing.eventTypeId === 19 && !Object.prototype.hasOwnProperty.call(payload || {}, "eventTypeId")) ||
+      `${normalizedEventCode || ""}`.toLowerCase().includes("block");
     nextLogs[logIndex] = {
       ...existing,
       team: payload?.teamKey ?? existing.team,
+      scorerId: nextScorerId,
+      scorerName: findPlayerName(nextScorerId),
+      actorId: nextScorerId,
+      actorName: findPlayerName(nextScorerId),
+      eventCode: normalizedEventCode,
+      eventTypeId: Object.prototype.hasOwnProperty.call(payload || {}, "eventTypeId")
+        ? payload?.eventTypeId ?? null
+        : existing.eventTypeId ?? null,
+      eventDescription: isBlockLog ? "Block" : normalizedEventCode === MATCH_LOG_EVENT_CODES.TURNOVER ? "Turnover" : (existing.eventDescription || "Match event"),
     };
     const { logs: updatedLogs, score: nextScore } = rebuildLogsWithTotals(nextLogs);
     controller.setLogs(updatedLogs);
