@@ -572,14 +572,7 @@ export default function ScrimmageView() {
     };
   }, []);
 
-  const scorerAssistClash =
-    scoreForm.assistId &&
-    scoreForm.assistId !== CALAHAN_ASSIST_VALUE &&
-    scoreForm.assistId !== SCORE_NA_PLAYER_VALUE &&
-    scoreForm.scorerId &&
-    scoreForm.scorerId !== SCORE_NA_PLAYER_VALUE &&
-    scoreForm.assistId === scoreForm.scorerId;
-  const isScoreFormValid = Boolean(scoreForm.scorerId && scoreForm.assistId && !scorerAssistClash);
+  const isScoreFormValid = Boolean(scoreForm.scorerId && scoreForm.assistId);
 
   const openSimpleEventModal = (log, index) => {
     setSimpleEventEditState({
@@ -1464,49 +1457,88 @@ export default function ScrimmageView() {
             </p>
             <label className="block text-base font-semibold text-[#0f5132]">
               Scorer:
-              <select
-                value={scoreForm.scorerId}
-                onChange={(event) =>
-                  setScoreForm((prev) => ({ ...prev, scorerId: event.target.value }))
-                }
-                required
-                className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
-              >
-                <option value="">Select Scorer</option>
-                <option value={SCORE_NA_PLAYER_VALUE}>N/A</option>
-                {rosterOptionsForModal.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {formatPlayerSelectLabel(player)}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-[#0f5132]/30 bg-white/70 p-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScoreForm((prev) => ({ ...prev, scorerId: SCORE_NA_PLAYER_VALUE }))}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                      scoreForm.scorerId === SCORE_NA_PLAYER_VALUE
+                        ? "border-[#0f5132] bg-[#0f5132] text-white"
+                        : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                    }`}
+                    aria-pressed={scoreForm.scorerId === SCORE_NA_PLAYER_VALUE}
+                  >
+                    N/A
+                  </button>
+                  {rosterOptionsForModal.map((player) => (
+                    <button
+                      key={player.id}
+                      type="button"
+                      onClick={() => setScoreForm((prev) => ({ ...prev, scorerId: player.id }))}
+                      className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                        scoreForm.scorerId === player.id
+                          ? "border-[#0f5132] bg-[#0f5132] text-white"
+                          : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                      }`}
+                      aria-pressed={scoreForm.scorerId === player.id}
+                    >
+                      {renderPlayerGridLabel(player)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </label>
             <label className="block text-base font-semibold text-[#0f5132]">
               Assist:
-              <select
-                value={scoreForm.assistId}
-                onChange={(event) =>
-                  setScoreForm((prev) => ({ ...prev, assistId: event.target.value }))
-                }
-                required
-                className="mt-2 w-full rounded-full border border-[#0f5132]/40 bg-[#d4f4e2] px-4 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none"
-              >
-                <option value="">Select Assist</option>
-                <option value={SCORE_NA_PLAYER_VALUE}>N/A</option>
+              <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-[#0f5132]/30 bg-white/70 p-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setScoreForm((prev) => ({ ...prev, assistId: SCORE_NA_PLAYER_VALUE }))}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                      scoreForm.assistId === SCORE_NA_PLAYER_VALUE
+                        ? "border-[#0f5132] bg-[#0f5132] text-white"
+                        : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                    }`}
+                    aria-pressed={scoreForm.assistId === SCORE_NA_PLAYER_VALUE}
+                  >
+                    N/A
+                  </button>
                 {rosterOptionsForModal.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {formatPlayerSelectLabel(player)}
-                  </option>
+                  <button
+                    key={player.id}
+                    type="button"
+                    onClick={() => setScoreForm((prev) => ({ ...prev, assistId: player.id }))}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                      scoreForm.assistId === player.id
+                        ? "border-[#0f5132] bg-[#0f5132] text-white"
+                        : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                    }`}
+                    aria-pressed={scoreForm.assistId === player.id}
+                  >
+                    {renderPlayerGridLabel(player)}
+                  </button>
                 ))}
-                <option value={CALAHAN_ASSIST_VALUE}>CALLAHAN!!</option>
-              </select>
+                  <button
+                    type="button"
+                    onClick={() => setScoreForm((prev) => ({ ...prev, assistId: CALAHAN_ASSIST_VALUE }))}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold transition ${
+                      scoreForm.assistId === CALAHAN_ASSIST_VALUE
+                        ? "border-[#0f5132] bg-[#0f5132] text-white"
+                        : "border-[#0f5132]/30 bg-white text-[#0f5132] hover:border-[#0f5132]/60"
+                    }`}
+                    aria-pressed={scoreForm.assistId === CALAHAN_ASSIST_VALUE}
+                  >
+                    CALLAHAN!!
+                  </button>
+                </div>
+              </div>
             </label>
             <div className="space-y-1.5">
               {!isScoreFormValid && (
                 <p className="text-xs font-semibold text-rose-600">
-                  {scorerAssistClash
-                    ? "Scorer and assist must be different players."
-                    : "Choose both a scorer and an assist to log this score."}
+                  Choose both a scorer and an assist to log this score.
                 </p>
               )}
               <button
