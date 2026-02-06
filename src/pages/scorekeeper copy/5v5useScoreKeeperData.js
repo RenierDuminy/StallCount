@@ -1904,7 +1904,7 @@ const rosterNameLookup = useMemo(() => {
       return;
     }
     setHalftimeBreakActive(false);
-    const nextTeam = matchStartingTeamKey === "A" ? "A" : matchStartingTeamKey === "B" ? "B" : null;
+    const nextTeam = matchStartingTeamKey === "A" ? "B" : matchStartingTeamKey === "B" ? "A" : null;
     if (!nextTeam) return;
     void updatePossession(nextTeam, { logTurnover: false });
   }, [
@@ -2072,7 +2072,9 @@ const rosterNameLookup = useMemo(() => {
               Math.floor((Date.now() - new Date(matchStartLog.timestamp).getTime()) / 1000)
             );
             const remainingSeconds = Math.max(0, durationSeconds - elapsedSeconds);
-            commitPrimaryTimerState(remainingSeconds, remainingSeconds > 0);
+            const shouldRunPrimary =
+              remainingSeconds > 0 && !stoppageActiveRef.current;
+            commitPrimaryTimerState(remainingSeconds, shouldRunPrimary);
             setTimerLabel("Game time");
             setMatchStarted(true);
           }
@@ -2144,7 +2146,9 @@ const rosterNameLookup = useMemo(() => {
       ((snapshot.rules?.matchDuration ?? rules.matchDuration ?? DEFAULT_DURATION) || DEFAULT_DURATION) * 60,
       snapshot.timer?.label || DEFAULT_TIMER_LABEL
     );
-    commitPrimaryTimerState(restoredPrimary.seconds, restoredPrimary.running);
+    const shouldRunPrimary =
+      restoredPrimary.running && !Boolean(snapshot.stoppageActive);
+    commitPrimaryTimerState(restoredPrimary.seconds, shouldRunPrimary);
     setTimerLabel(restoredPrimary.label || DEFAULT_TIMER_LABEL);
 
     const secondaryFallback =

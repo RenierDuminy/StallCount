@@ -2,11 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getEventsList } from "../services/leagueService";
 import { getMatchesByEvent, updateMatchMediaLink } from "../services/matchService";
-import { inferProviderCodeFromUrl } from "../utils/matchMedia";
 import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
-
-const MEDIA_STATUS_OPTIONS = ["scheduled", "ready", "pending", "live", "halftime", "finished", "completed", "canceled"];
-const MEDIA_PROVIDER_PRESETS = ["youtube", "twitch", "ultiworld", "fan_seat", "custom"];
 
 export default function MediaAdminPage() {
   const [events, setEvents] = useState([]);
@@ -70,6 +66,10 @@ export default function MediaAdminPage() {
     return matches.find((match) => match.id === form.matchId) || null;
   }, [form.matchId, matches]);
 
+  const selectedMedia = useMemo(() => {
+    return selectedMatch ? parseMediaLink(selectedMatch) : null;
+  }, [selectedMatch]);
+
   const handleSelectMatch = (matchId) => {
     const match = matches.find((m) => m.id === matchId) || null;
     setForm(() => {
@@ -80,7 +80,6 @@ export default function MediaAdminPage() {
       return {
         ...baseForm,
         matchId: match.id,
-        defaultStartTime: match.start_time ? toDateTimeLocal(match.start_time) : "",
       };
     });
     setResultMessage("");
@@ -100,7 +99,6 @@ export default function MediaAdminPage() {
     setForm((prev) => ({
       ...createEmptyForm(),
       matchId: prev.matchId,
-      defaultStartTime: prev.defaultStartTime,
     }));
     setResultMessage("");
     setResultError("");
@@ -170,7 +168,7 @@ export default function MediaAdminPage() {
           <SectionHeader
             eyebrow="Admin tools"
             title="Match media control"
-            description="Select any scheduled match and attach or edit its streaming metadata. The database normalizer will tidy the payload automatically."
+            description="Select any scheduled match and attach or edit its stream URL."
             action={
               <div className="flex flex-wrap gap-2">
                 <Link to="/admin" className="sc-button is-ghost">
@@ -190,7 +188,7 @@ export default function MediaAdminPage() {
           <SectionHeader
             eyebrow="Update media"
             title="Attach stream to an existing match"
-            description="Pick the event and match, confirm the existing status, then drop in the stream details."
+            description="Pick the event and match, then drop in the stream URL."
             action={
               <button type="button" onClick={handleClearForm} className="sc-button is-ghost">
                 Clear fields
@@ -224,16 +222,6 @@ export default function MediaAdminPage() {
                 ))}
               </Select>
             </Field>
-            <Field label="Provider" htmlFor="media-provider">
-              <Select id="media-provider" value={form.provider} onChange={handleInput("provider")}>
-                <option value="">Use auto-detect</option>
-                {MEDIA_PROVIDER_PRESETS.map((provider) => (
-                  <option key={provider} value={provider}>
-                    {provider}
-                  </option>
-                ))}
-              </Select>
-            </Field>
             <Field label="Media URL" htmlFor="media-url">
               <Input
                 id="media-url"
@@ -242,37 +230,6 @@ export default function MediaAdminPage() {
                 onChange={handleInput("url")}
                 placeholder="https://youtu.be/stream-id"
               />
-            </Field>
-            <Field label="Embed URL (optional)" htmlFor="media-embed">
-              <Input
-                id="media-embed"
-                type="url"
-                value={form.embedUrl}
-                onChange={handleInput("embedUrl")}
-                placeholder="https://www.youtube.com/embed/..."
-              />
-            </Field>
-            <Field label="Media status" htmlFor="media-status" hint={`Mirror match status (${selectedMatch?.status || "N/A"})`}>
-              <Select id="media-status" value={form.mediaStatus} onChange={handleInput("mediaStatus")}>
-                <option value="">Mirror match status ({selectedMatch?.status || "N/A"})</option>
-                {MEDIA_STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Stream start time" htmlFor="media-start">
-              <Input id="media-start" type="datetime-local" value={form.startTime} onChange={handleInput("startTime")} />
-              {form.defaultStartTime && (
-                <button
-                  type="button"
-                  onClick={() => setForm((prev) => ({ ...prev, startTime: prev.defaultStartTime }))}
-                  className="text-xs text-ink-muted underline decoration-dotted underline-offset-4"
-                >
-                  Use match start
-                </button>
-              )}
             </Field>
             <Field label="Replay / VOD URLs" className="md:col-span-2 lg:col-span-3" htmlFor="media-vod">
               <Textarea id="media-vod" value={form.vodText} onChange={handleVodChange} rows={3} placeholder="One URL per line" />
@@ -322,11 +279,12 @@ export default function MediaAdminPage() {
               </Panel>
               <Panel variant="muted" className="space-y-1 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Current media snapshot</p>
-                {selectedMatch.media_url ? (
+                {selectedMedia?.url ? (
                   <>
-                    <p className="text-sm font-semibold text-ink">{selectedMatch.media_provider || "custom"}</p>
-                    <p className="break-all text-xs text-ink-muted">{selectedMatch.media_url}</p>
-                    {selectedMatch.media_status && <p className="text-xs text-ink-muted">Status: {selectedMatch.media_status}</p>}
+                    <p className="break-all text-xs text-ink-muted">{selectedMedia.url}</p>
+                    {selectedMedia.vod.length ? (
+                      <p className="text-xs text-ink-muted">VOD links: {selectedMedia.vod.length}</p>
+                    ) : null}
                   </>
                 ) : (
                   <p className="text-sm text-ink-muted">No media link stored.</p>
@@ -360,30 +318,19 @@ function formatMatchLabel(match) {
 function createEmptyForm() {
   return {
     matchId: "",
-    provider: "",
     url: "",
-    embedUrl: "",
-    mediaStatus: "",
-    startTime: "",
-    defaultStartTime: "",
     vodText: "",
   };
 }
 
 function syncFormWithMatch(prevForm, match) {
   if (!match) {
-    return { ...prevForm, matchId: "", defaultStartTime: "" };
+    return { ...prevForm, matchId: "" };
   }
   const parsed = parseMediaLink(match);
-  const defaultStart = match.start_time ? toDateTimeLocal(match.start_time) : "";
   return {
     matchId: match.id,
-    provider: parsed.provider,
     url: parsed.url,
-    embedUrl: parsed.embedUrl,
-    mediaStatus: parsed.status,
-    startTime: parsed.startTime || defaultStart,
-    defaultStartTime: defaultStart,
     vodText: parsed.vod.join("\n"),
   };
 }
@@ -393,11 +340,7 @@ function parseMediaLink(match) {
   const primary = (mediaLink && mediaLink.primary) || {};
   const vodArray = Array.isArray(mediaLink?.vod) ? mediaLink.vod : [];
   return {
-    provider: match?.media_provider || primary.provider || "",
     url: match?.media_url || primary.url || "",
-    embedUrl: primary.embed_url || "",
-    status: match?.media_status || primary.status || "",
-    startTime: primary.start_time ? toDateTimeLocal(primary.start_time) : "",
     vod: vodArray
       .map((entry) => {
         if (entry && typeof entry === "object" && typeof entry.url === "string") {
@@ -410,13 +353,6 @@ function parseMediaLink(match) {
 }
 
 function buildMediaPayload(form) {
-  const inferredProvider = inferProviderCodeFromUrl(form.url);
-  const explicitProvider = form.provider && form.provider !== "custom" ? form.provider : undefined;
-  const provider = explicitProvider || inferredProvider || undefined;
-  const status = form.mediaStatus || undefined;
-  const trimmedEmbedUrl = (form.embedUrl || "").trim();
-  const embedUrl = trimmedEmbedUrl ? trimmedEmbedUrl : undefined;
-  const startTimeIso = form.startTime ? new Date(form.startTime).toISOString() : undefined;
   const vodEntries = form.vodText
     .split("\n")
     .map((line) => line.trim())
@@ -424,34 +360,13 @@ function buildMediaPayload(form) {
 
   const payload = {
     primary: {
-      provider: provider || "custom",
       url: form.url.trim(),
     },
   };
 
-  if (status) {
-    payload.primary.status = status;
-  }
-  if (embedUrl) {
-    payload.primary.embed_url = embedUrl;
-  }
-  if (startTimeIso) {
-    payload.primary.start_time = startTimeIso;
-  }
   if (vodEntries.length) {
     payload.vod = vodEntries.map((url) => ({ url }));
   }
 
   return payload;
-}
-
-function toDateTimeLocal(value) {
-  try {
-    const date = new Date(value);
-    const offset = date.getTimezoneOffset();
-    const localDate = new Date(date.getTime() - offset * 60 * 1000);
-    return localDate.toISOString().slice(0, 16);
-  } catch {
-    return "";
-  }
 }

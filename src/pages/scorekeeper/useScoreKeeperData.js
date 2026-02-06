@@ -17,6 +17,15 @@ import {
   clearScorekeeperSession,
 } from "../../services/scorekeeperSessionStore";
 import {
+  createQueueId,
+  enqueueMatchLogEntry,
+  listOfflineQueue,
+  markOfflineQueueFailure,
+  processOfflineQueue,
+  removeOfflineQueueItem,
+  upsertScoreUpdate,
+} from "../../services/offlineQueue";
+import {
   deriveShortName,
   formatClock,
   formatMatchTime,
@@ -41,7 +50,6 @@ import {
 const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
-const MAX_OVERTIME_SECONDS = 30 * 60;
 
 const OPTIMISTIC_PREFIX = "local-";
 
@@ -649,7 +657,7 @@ useEffect(() => {
 const getPrimaryRemainingSeconds = useCallback(
   () =>
     computeRemainingSeconds(primaryTimerAnchorRef.current, timerRunning, 0, {
-      minSeconds: -MAX_OVERTIME_SECONDS,
+      minSeconds: null,
     }),
   [timerRunning]
 );
@@ -661,7 +669,7 @@ const getSecondaryRemainingSeconds = useCallback(
 
 const commitPrimaryTimerState = useCallback(
   (seconds, running) => {
-    const normalized = normalizeSeconds(seconds, 0, { min: -MAX_OVERTIME_SECONDS });
+  const normalized = normalizeSeconds(seconds, 0, { min: null });
     primaryTimerAnchorRef.current = {
       baseSeconds: normalized,
       anchorTimestamp: running ? Date.now() : null,
@@ -690,6 +698,36 @@ const commitSecondaryTimerState = useCallback(
 const markRulesManuallyEdited = useCallback(() => {
   setRulesManuallyEdited(true);
 }, []);
+
+const refreshPendingEntries = useCallback(async () => {
+  try {
+    const items = await listOfflineQueue();
+    setPendingEntries(items);
+  } catch (err) {
+    console.error("[ScoreKeeper] Failed to load offline queue:", err);
+  }
+}, []);
+
+const queueScoreUpdate = useCallback(
+  async (matchId, nextScore) => {
+    if (!matchId || !nextScore) return;
+    try {
+      await upsertScoreUpdate({
+        matchId,
+        scoreA: nextScore.a ?? 0,
+        scoreB: nextScore.b ?? 0,
+      }, { lastAttemptAt: Date.now() });
+      await refreshPendingEntries();
+    } catch (err) {
+      console.error("[ScoreKeeper] Failed to queue score update:", err);
+    }
+  },
+  [refreshPendingEntries]
+);
+
+useEffect(() => {
+  void refreshPendingEntries();
+}, [refreshPendingEntries]);
 
 const clearLocalMatchState = useCallback(() => {
   setActiveMatch(null);
@@ -959,9 +997,6 @@ useEffect(() => {
         if (!allowOvertime && remainingPrimary <= 0) {
           setTimerSeconds(0);
           commitPrimaryTimerState(0, false);
-        } else if (allowOvertime && remainingPrimary <= -MAX_OVERTIME_SECONDS) {
-          setTimerSeconds(-MAX_OVERTIME_SECONDS);
-          commitPrimaryTimerState(-MAX_OVERTIME_SECONDS, false);
         } else {
           setTimerSeconds(remainingPrimary);
         }
@@ -1053,10 +1088,19 @@ useEffect(() => {
     }
     return;
   }
-  if (hardCapReached) return;
   const hasScoreCapWinner = Boolean(
     scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget)
   );
+  const softCapMode = rules.gameSoftCapMode || "none";
+  const softCapTarget = Math.max(score.a, score.b) + 1;
+  if (timerSeconds <= 0 && softCapMode === "addOneToHighest" && !hasScoreCapWinner) {
+    const nextLabel = `SOFT CAP, TARGET: ${softCapTarget}`;
+    if (timerLabel !== nextLabel) {
+      setTimerLabel(nextLabel);
+    }
+    return;
+  }
+  if (hardCapReached) return;
   const overtimeActive = timerSeconds < 0 && !hasScoreCapWinner;
   if (overtimeActive) {
     if (timerLabel !== "Over time (highest + 1)") {
@@ -1067,7 +1111,16 @@ useEffect(() => {
   if (timerLabel !== DEFAULT_TIMER_LABEL) {
     setTimerLabel(DEFAULT_TIMER_LABEL);
   }
-}, [matchStarted, hardCapReached, timerSeconds, scoreTarget, score.a, score.b, timerLabel]);
+}, [
+  matchStarted,
+  hardCapReached,
+  timerSeconds,
+  scoreTarget,
+  score.a,
+  score.b,
+  timerLabel,
+  rules.gameSoftCapMode,
+]);
 
 useEffect(() => {
   const matchSource = activeMatch || selectedMatch || null;
@@ -1311,6 +1364,8 @@ useEffect(() => {
       setupForm: { ...setupForm },
       rules: { ...rules },
       score: { ...score },
+      logs: Array.isArray(logs) ? [...logs] : [],
+      pendingEntries: Array.isArray(pendingEntries) ? [...pendingEntries] : [],
       timer: {
         seconds: primarySeconds,
         running: timerRunning,
@@ -1356,6 +1411,8 @@ useEffect(() => {
     softCapApplied,
     hardCapReached,
     userId,
+    logs,
+    pendingEntries,
     getPrimaryRemainingSeconds,
     getSecondaryRemainingSeconds,
   ]);
@@ -1414,7 +1471,11 @@ const cleanupOptimisticLog = useCallback(
 const recordPendingEntry = useCallback(
   (entry) => {
     const matchId = entry?.matchId;
-    const eventTypeId = Number.isFinite(entry?.eventTypeId) ? entry.eventTypeId : null;
+    const resolvedEventTypeId = Number.isFinite(entry?.eventTypeId) ? entry.eventTypeId : null;
+    const eventTypeId =
+      typeof resolvedEventTypeId === "number" && resolvedEventTypeId > 0
+        ? resolvedEventTypeId
+        : null;
     const eventTypeCode = entry?.eventCode || entry?.eventTypeCode || null;
     const optimisticId = entry?.optimisticId || null;
     if (!matchId) {
@@ -1453,34 +1514,39 @@ const recordPendingEntry = useCallback(
       dbPayload.eventTypeCode = normalizedEntry.eventCode;
     }
 
-    const supabasePayload = {
-      match_id: dbPayload.matchId,
-      event_type_id: dbPayload.eventTypeId ?? null,
-      team_id: dbPayload.teamId,
-      actor_id: dbPayload.actorId,
-      secondary_actor_id: dbPayload.secondaryActorId,
-      abba_line: dbPayload.abbaLine,
-      created_at: dbPayload.createdAt,
-      optimisticId: optimisticId || null,
-    };
-    if (!supabasePayload.event_type_id && dbPayload.eventTypeCode) {
-      supabasePayload.event_type_code = dbPayload.eventTypeCode;
-    }
-
-    setPendingEntries((prev) => [...prev, supabasePayload]);
-
-    if (DB_WRITES_DISABLED) {
-      console.warn("[ScoreKeeper] DB writes are temporarily disabled. Skipping save.", supabasePayload);
-      setConsoleError((prev) => prev || "Scorekeeper is in offline mode; changes aren't being saved.");
-      return;
-    }
+    const queueId = optimisticId || createQueueId("match-log");
 
     void (async () => {
+      try {
+        await enqueueMatchLogEntry(dbPayload, {
+          id: queueId,
+          lastAttemptAt: Date.now(),
+        });
+        await refreshPendingEntries();
+      } catch (err) {
+        console.error("[ScoreKeeper] Failed to queue match log entry:", err);
+      }
+
+      if (DB_WRITES_DISABLED) {
+        console.warn("[ScoreKeeper] DB writes are temporarily disabled. Skipping save.", dbPayload);
+        setConsoleError((prev) => prev || "Scorekeeper is in offline mode; changes aren't being saved.");
+        return;
+      }
+
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setConsoleError(
+          (prev) =>
+            prev || "Scorekeeper is offline; changes are queued and will sync when online."
+        );
+        return;
+      }
+
       try {
         const created = await createMatchLogEntry(dbPayload);
         // Replace any optimistic placeholder with the confirmed DB row once the server echoes the optimistic_id.
         cleanupOptimisticLog(created?.optimistic_id || optimisticId);
-        setPendingEntries((prev) => prev.filter((item) => item !== supabasePayload));
+        await removeOfflineQueueItem(queueId);
+        await refreshPendingEntries();
         const refresh = refreshMatchLogsRef.current;
         if (refresh) {
           void refresh(matchId, currentMatchScoreRef.current);
@@ -1490,10 +1556,11 @@ const recordPendingEntry = useCallback(
         setConsoleError((prev) =>
           prev || (err instanceof Error ? err.message : "Failed to submit match log entry.")
         );
+        await markOfflineQueueFailure(queueId);
       }
     })();
   },
-  [setPendingEntries, setConsoleError, normalizeAbbaLine, cleanupOptimisticLog]
+  [setConsoleError, normalizeAbbaLine, cleanupOptimisticLog, refreshPendingEntries]
 );
 const normalizedSecondaryLabel =
   typeof secondaryLabel === "string" ? secondaryLabel.toLowerCase() : "";
@@ -1856,6 +1923,7 @@ const rosterNameLookup = useMemo(() => {
         }
 
         const timestamp = new Date().toISOString();
+        const optimisticId = `${OPTIMISTIC_PREFIX}${Date.now()}`;
         const totalsSnapshot = score;
         const appended = appendLocalLog({
           team: derivedEventTeamKey,
@@ -1865,6 +1933,7 @@ const rosterNameLookup = useMemo(() => {
           totals: totalsSnapshot,
           eventDescription: describeEvent(resolvedEventTypeId),
           eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
+          optimisticId,
         });
         const entry = {
           matchId: activeMatch.id,
@@ -1874,6 +1943,7 @@ const rosterNameLookup = useMemo(() => {
           scorerId: actorId || null,
           createdAt: timestamp,
           abbaLine: appended.scoreOrderIndex !== null ? appended.abbaLine : null,
+          optimisticId,
         };
         recordPendingEntry(entry);
       } catch (err) {
@@ -1904,7 +1974,7 @@ const rosterNameLookup = useMemo(() => {
       return;
     }
     setHalftimeBreakActive(false);
-    const nextTeam = matchStartingTeamKey === "A" ? "A" : matchStartingTeamKey === "B" ? "B" : null;
+    const nextTeam = matchStartingTeamKey === "A" ? "B" : matchStartingTeamKey === "B" ? "A" : null;
     if (!nextTeam) return;
     void updatePossession(nextTeam, { logTurnover: false });
   }, [
@@ -1926,6 +1996,34 @@ const rosterNameLookup = useMemo(() => {
   useEffect(() => {
     currentMatchScoreRef.current = currentMatchScore;
   }, [currentMatchScore]);
+
+  const processQueueAndRefresh = useCallback(async () => {
+    let shouldRefreshLogs = false;
+    const result = await processOfflineQueue({
+      onItemSuccess: (item) => {
+        if (item.kind === "match_log" && item.payload.matchId === matchLogMatchId) {
+          shouldRefreshLogs = true;
+        }
+      },
+    });
+    if (shouldRefreshLogs && refreshMatchLogsRef.current) {
+      void refreshMatchLogsRef.current(matchLogMatchId, currentMatchScoreRef.current);
+    }
+    await refreshPendingEntries();
+    return result;
+  }, [matchLogMatchId, refreshPendingEntries]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    void processQueueAndRefresh();
+    const handleOnline = () => {
+      void processQueueAndRefresh();
+    };
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [processQueueAndRefresh]);
 
   const deriveLogsFromRows = useCallback(
     (rows, matchScore) => {
@@ -2072,7 +2170,9 @@ const rosterNameLookup = useMemo(() => {
               Math.floor((Date.now() - new Date(matchStartLog.timestamp).getTime()) / 1000)
             );
             const remainingSeconds = Math.max(0, durationSeconds - elapsedSeconds);
-            commitPrimaryTimerState(remainingSeconds, remainingSeconds > 0);
+            const shouldRunPrimary =
+              remainingSeconds > 0 && !stoppageActiveRef.current;
+            commitPrimaryTimerState(remainingSeconds, shouldRunPrimary);
             setTimerLabel("Game time");
             setMatchStarted(true);
           }
@@ -2125,6 +2225,8 @@ const rosterNameLookup = useMemo(() => {
     }));
     setRulesManuallyEdited(Boolean(snapshot.rules));
     setScore(snapshot.score ?? { a: 0, b: 0 });
+    setLogs(Array.isArray(snapshot.logs) ? snapshot.logs : []);
+    setPendingEntries(Array.isArray(snapshot.pendingEntries) ? snapshot.pendingEntries : []);
     setTimeoutUsage(snapshot.timeoutUsage ?? { ...DEFAULT_TIMEOUT_USAGE });
     setPossessionTeam(snapshot.possessionTeam ?? null);
     setHalftimeTriggered(Boolean(snapshot.halftimeTriggered));
@@ -2144,7 +2246,9 @@ const rosterNameLookup = useMemo(() => {
       ((snapshot.rules?.matchDuration ?? rules.matchDuration ?? DEFAULT_DURATION) || DEFAULT_DURATION) * 60,
       snapshot.timer?.label || DEFAULT_TIMER_LABEL
     );
-    commitPrimaryTimerState(restoredPrimary.seconds, restoredPrimary.running);
+    const shouldRunPrimary =
+      restoredPrimary.running && !Boolean(snapshot.stoppageActive);
+    commitPrimaryTimerState(restoredPrimary.seconds, shouldRunPrimary);
     setTimerLabel(restoredPrimary.label || DEFAULT_TIMER_LABEL);
 
     const secondaryFallback =
@@ -2387,6 +2491,7 @@ const rosterNameLookup = useMemo(() => {
     commitSecondaryTimerState,
     buildSessionSnapshot,
     recordPendingEntry,
+    queueScoreUpdate,
     startSecondaryTimer,
     startTrackedSecondaryTimer,
     describeEvent,

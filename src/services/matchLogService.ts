@@ -28,6 +28,93 @@ export const DEFAULT_MATCH_EVENT_DEFINITIONS = [
   { code: MATCH_LOG_EVENT_CODES.CALAHAN, description: "Callahan goal" },
 ] as const;
 
+type MatchEventDefinitionRow = {
+  id?: number | null;
+  code: string;
+  description: string | null;
+};
+
+const MATCH_EVENTS_CACHE_KEY = "sc:matchEvents:v1";
+const FALLBACK_MATCH_EVENT_DEFINITIONS: MatchEventDefinitionRow[] = DEFAULT_MATCH_EVENT_DEFINITIONS.map(
+  (entry, index) => ({
+    id: -(index + 1),
+    code: entry.code,
+    description: entry.description ?? null,
+  }),
+);
+
+function getStorage() {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeMatchEventDefinitions(
+  rows: Array<Partial<MatchEventDefinitionRow>> | null | undefined,
+) {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => {
+      const code = typeof row?.code === "string" ? row.code : "";
+      if (!code.trim()) return null;
+      const id = Number.isFinite(row?.id) ? (row?.id as number) : null;
+      const description =
+        typeof row?.description === "string" ? row.description : row?.description ?? null;
+      return {
+        id,
+        code,
+        description,
+      } as MatchEventDefinitionRow;
+    })
+    .filter((row): row is MatchEventDefinitionRow => Boolean(row));
+}
+
+function readCachedMatchEvents() {
+  const storage = getStorage();
+  if (!storage) return [];
+  try {
+    const raw = storage.getItem(MATCH_EVENTS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const rows = normalizeMatchEventDefinitions(parsed?.items);
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedMatchEvents(rows: MatchEventDefinitionRow[]) {
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(
+      MATCH_EVENTS_CACHE_KEY,
+      JSON.stringify({ updatedAt: Date.now(), items: rows }),
+    );
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function mergeMatchEventDefinitions(
+  primary: MatchEventDefinitionRow[],
+  fallback: MatchEventDefinitionRow[],
+) {
+  const merged = new Map<string, MatchEventDefinitionRow>();
+  primary.forEach((row) => {
+    merged.set(row.code, row);
+  });
+  fallback.forEach((row) => {
+    if (!merged.has(row.code)) {
+      merged.set(row.code, row);
+    }
+  });
+  return Array.from(merged.values());
+}
+
 export type MatchLogInput = {
   matchId: string;
   eventTypeCode?: keyof typeof MATCH_LOG_EVENT_CODES | string;
@@ -321,6 +408,9 @@ export async function deleteMatchLogEntry(logId: string) {
 }
 
 export async function getMatchEventDefinitions() {
+  const cached = readCachedMatchEvents();
+  const fallback = mergeMatchEventDefinitions(cached, FALLBACK_MATCH_EVENT_DEFINITIONS);
+
   const load = async () => {
     const { data, error } = await supabase
       .from("match_events")
@@ -331,8 +421,19 @@ export async function getMatchEventDefinitions() {
       throw new Error(error.message || "Failed to load match event definitions");
     }
 
-    return data ?? [];
+    const normalized = normalizeMatchEventDefinitions(data);
+    if (normalized.length > 0) {
+      writeCachedMatchEvents(normalized);
+      return mergeMatchEventDefinitions(normalized, FALLBACK_MATCH_EVENT_DEFINITIONS);
+    }
+
+    return fallback;
   };
 
-  return load();
+  try {
+    return await load();
+  } catch (error) {
+    console.warn("[MatchLogService] Falling back to cached/default match events.", error);
+    return fallback;
+  }
 }

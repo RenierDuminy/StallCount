@@ -38,8 +38,8 @@ export default function ConnectionBanner() {
     </div>
   ) : (
     <div className="w-full bg-amber-500/90 px-4 py-2 text-center text-sm font-semibold text-white">
-      Connection lost. You can keep entering scores offline—changes will sync when you're
-      back online.
+      Offline. You can keep entering scores - changes are queued and sync when you're back online.
     </div>
   );
 }
+

@@ -228,6 +228,7 @@ export function useScoreKeeperActions(controller) {
     const teamKey =
       pullTeamId === controller.teamAId ? "A" : pullTeamId === controller.teamBId ? "B" : null;
     const timestamp = new Date().toISOString();
+    const optimisticId = `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const appended = controller.appendLocalLog({
       team: teamKey,
       timestamp,
@@ -236,6 +237,7 @@ export function useScoreKeeperActions(controller) {
       totals: controller.score,
       eventDescription: controller.describeEvent(eventTypeId),
       eventCode: MATCH_LOG_EVENT_CODES.MATCH_START,
+      optimisticId,
     });
     const entry = {
       matchId: controller.activeMatch.id,
@@ -244,6 +246,7 @@ export function useScoreKeeperActions(controller) {
       teamId: teamKey ? pullTeamId : null,
       createdAt: timestamp,
       abbaLine: null,
+      optimisticId,
     };
     controller.recordPendingEntry(entry);
   }
@@ -345,6 +348,9 @@ export function useScoreKeeperActions(controller) {
     } catch (err) {
       const message = err instanceof Error ? err.message : err;
       console.error("Failed to sync score:", message);
+      if (typeof controller.queueScoreUpdate === "function") {
+        await controller.queueScoreUpdate(matchId, nextScore);
+      }
     }
   }
 

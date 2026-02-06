@@ -8,6 +8,34 @@ import { resolveMediaProviderLabel } from "../utils/matchMedia";
 import { getEventWorkspacePath } from "./eventWorkspaces";
 
 const EVENT_WORKSPACE_LABEL = "Open event overview";
+const MATCHES_REFRESH_INTERVAL_MS = 30 * 1000;
+const RULE_FORMAT_LABELS = {
+  wfdfChampionship: "WFDF Championship",
+  localSimple: "Local Simple",
+};
+const DIVISION_LABELS = {
+  mixed: "Mixed",
+  open: "Open",
+  women: "Women",
+};
+
+const parseEventRules = (rawRules) => {
+  if (!rawRules) return null;
+  if (typeof rawRules === "string") {
+    try {
+      return JSON.parse(rawRules);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof rawRules === "object") return rawRules;
+  return null;
+};
+
+const coerceNumber = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
 
 export default function EventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -77,28 +105,50 @@ export default function EventsPage() {
       return;
     }
     let ignore = false;
-    async function loadMatches() {
-      setMatchesLoading(true);
+    async function loadMatches({ background = false, forceRefresh = false } = {}) {
+      if (!background) {
+        setMatchesLoading(true);
+      }
       setMatchesError(null);
       try {
-        const list = await getMatchesByEvent(selectedEventId, 200, { includeFinished: true });
+        const list = await getMatchesByEvent(selectedEventId, 200, {
+          includeFinished: true,
+          forceRefresh,
+        });
         if (!ignore) {
           setMatches(list || []);
         }
       } catch (err) {
         if (!ignore) {
           setMatchesError(err.message || "Unable to load matches for this event.");
-          setMatches([]);
+          if (!background) {
+            setMatches([]);
+          }
         }
       } finally {
-        if (!ignore) {
+        if (!ignore && !background) {
           setMatchesLoading(false);
         }
       }
     }
-    loadMatches();
+    void loadMatches();
+
+    const refreshMatches = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      void loadMatches({ background: true, forceRefresh: true });
+    };
+
+    const intervalId = window.setInterval(refreshMatches, MATCHES_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshMatches);
+    document.addEventListener("visibilitychange", refreshMatches);
+
     return () => {
       ignore = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshMatches);
+      document.removeEventListener("visibilitychange", refreshMatches);
     };
   }, [selectedEventId]);
 
@@ -184,8 +234,45 @@ export default function EventsPage() {
   const resolveVenueName = (match) =>
     match.venue?.name || (match.venue_id && venueLookup[match.venue_id]) || "Venue TBD";
 
+  const selectedEventRules = useMemo(
+    () => parseEventRules(selectedEvent?.rules),
+    [selectedEvent?.rules],
+  );
+
+  const formatLabel = useMemo(() => {
+    const format = selectedEventRules?.format;
+    if (!format) return null;
+    const normalized = `${format}`.trim();
+    if (!normalized) return null;
+    return RULE_FORMAT_LABELS[normalized] || normalized;
+  }, [selectedEventRules]);
+
+  const divisionLabel = useMemo(() => {
+    const division = selectedEventRules?.division;
+    if (!division) return null;
+    const normalized = `${division}`.trim().toLowerCase();
+    if (!normalized) return null;
+    return DIVISION_LABELS[normalized] || normalized[0].toUpperCase() + normalized.slice(1);
+  }, [selectedEventRules]);
+
+  const timeoutsLabel = useMemo(() => {
+    const timeouts = selectedEventRules?.timeouts;
+    if (!timeouts || typeof timeouts !== "object") return null;
+    const perTeam = coerceNumber(timeouts.perTeamPerGame);
+    const duration = coerceNumber(timeouts.durationSeconds);
+    const parts = [];
+    if (perTeam !== null) {
+      parts.push(`${perTeam} per team`);
+    }
+    if (duration !== null) {
+      parts.push(`${duration} sec`);
+    }
+    if (!parts.length) return null;
+    return parts.join(", ");
+  }, [selectedEventRules]);
+
   const rulesSummary = useMemo(() => {
-    const rules = selectedEvent?.rules;
+    const rules = selectedEventRules;
     if (!rules || typeof rules !== "object") return null;
     const game = rules.game || {};
     const half = rules.half || {};
@@ -213,7 +300,7 @@ export default function EventsPage() {
     ].filter((row) => row.value !== null && row.value !== undefined && row.value !== "");
 
     return rows.length ? rows : null;
-  }, [selectedEvent?.rules]);
+  }, [selectedEventRules]);
 
   const selectedEventWorkspacePath = selectedEvent ? getEventWorkspacePath(selectedEvent.id) : null;
 
@@ -298,14 +385,30 @@ export default function EventsPage() {
                     <p className="font-semibold text-ink">{formatDate(selectedEvent.end_date)}</p>
                   </Panel>
                 </div>
-                <Panel variant="muted" className="p-3">
-                  <p className="text-xs uppercase tracking-wide text-ink-muted">Event type</p>
-                  <p className="font-semibold text-ink">{selectedEvent.type || "Not specified"}</p>
-                </Panel>
-                <Panel variant="muted" className="p-3">
-                  <p className="text-xs uppercase tracking-wide text-ink-muted">Location</p>
-                  <p className="font-semibold text-ink">{selectedEvent.location || "TBD"}</p>
-                </Panel>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Panel variant="muted" className="p-3">
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">Event type</p>
+                    <p className="font-semibold text-ink">{selectedEvent.type || "Not specified"}</p>
+                  </Panel>
+                  <Panel variant="muted" className="p-3">
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">Location</p>
+                    <p className="font-semibold text-ink">{selectedEvent.location || "TBD"}</p>
+                  </Panel>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Panel variant="muted" className="p-3">
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">Format</p>
+                    <p className="font-semibold text-ink">{formatLabel || "Not specified"}</p>
+                  </Panel>
+                  <Panel variant="muted" className="p-3">
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">Division</p>
+                    <p className="font-semibold text-ink">{divisionLabel || "Not specified"}</p>
+                  </Panel>
+                  <Panel variant="muted" className="p-3">
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">Timeouts</p>
+                    <p className="font-semibold text-ink">{timeoutsLabel || "Not specified"}</p>
+                  </Panel>
+                </div>
                 {rulesSummary && (
                   <Panel variant="muted" className="space-y-2 p-3">
                     <p className="text-xs uppercase tracking-wide text-ink-muted">Rules snapshot</p>

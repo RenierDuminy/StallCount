@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES, getMatchLogs } from "../services/matchLogService";
 import { getMatchById, getMatchesByEvent } from "../services/matchService";
 import { getEventsList } from "../services/leagueService";
+import { getSpiritScoresForMatches } from "../services/teamService";
 import { MatchMediaButton } from "../components/MatchMediaButton";
 import { getMatchMediaDetails } from "../utils/matchMedia";
 import { useAuth } from "../context/AuthContext";
@@ -24,6 +25,14 @@ const MATCH_EVENT_ID_HINTS = {
   MATCH_END: 9,
 };
 const LIVE_MATCH_STATUSES = new Set(["live", "halftime"]);
+const SPIRIT_DIMENSIONS = [
+  { key: "rules_knowledge", label: "Rules knowledge & use" },
+  { key: "fouls_contact", label: "Fouls & body contact" },
+  { key: "self_control", label: "Fair-mindedness" },
+  { key: "positive_attitude", label: "Positive attitude" },
+  { key: "communication", label: "Communication" },
+];
+const SPIRIT_MAX_SCORE = 4;
 
 const isMatchLive = (status) => LIVE_MATCH_STATUSES.has((status || "").toLowerCase());
 
@@ -41,6 +50,9 @@ export default function MatchesPage() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState(null);
   const [matchLogs, setMatchLogs] = useState([]);
+  const [spiritScores, setSpiritScores] = useState([]);
+  const [spiritLoading, setSpiritLoading] = useState(false);
+  const [spiritError, setSpiritError] = useState(null);
 
   useEffect(() => {
     let ignore = false;
@@ -133,6 +145,8 @@ export default function MatchesPage() {
     if (!selectedMatchId) {
       setSelectedMatch(null);
       setMatchLogs([]);
+      setSpiritScores([]);
+      setSpiritError(null);
       return;
     }
     let ignore = false;
@@ -157,6 +171,38 @@ export default function MatchesPage() {
       }
     }
     loadMatchData();
+    return () => {
+      ignore = true;
+    };
+  }, [selectedMatchId]);
+
+  useEffect(() => {
+    if (!selectedMatchId) {
+      setSpiritScores([]);
+      setSpiritError(null);
+      return;
+    }
+    let ignore = false;
+    async function loadSpiritScores() {
+      setSpiritLoading(true);
+      setSpiritError(null);
+      try {
+        const scores = await getSpiritScoresForMatches([selectedMatchId]);
+        if (!ignore) {
+          setSpiritScores(scores ?? []);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setSpiritError(err instanceof Error ? err.message : "Unable to load spirit scores.");
+          setSpiritScores([]);
+        }
+      } finally {
+        if (!ignore) {
+          setSpiritLoading(false);
+        }
+      }
+    }
+    loadSpiritScores();
     return () => {
       ignore = true;
     };
@@ -223,6 +269,10 @@ export default function MatchesPage() {
 
   const matchMediaDetails = useMemo(() => getMatchMediaDetails(selectedMatch), [selectedMatch]);
   const derived = useMemo(() => deriveMatchInsights(selectedMatch, matchLogs), [selectedMatch, matchLogs]);
+  const spiritReport = useMemo(
+    () => buildSpiritReport(spiritScores, selectedMatch),
+    [spiritScores, selectedMatch],
+  );
   const showLoginBanner = !session && selectedMatchId && !logsLoading && !derived?.timeline;
 
   return (
@@ -428,6 +478,47 @@ export default function MatchesPage() {
                 </div>
               </section>
             )}
+
+            {spiritReport?.entries?.length ? (
+              <section className="sc-card-base space-y-3 p-4 sm:p-6">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="sc-chip">Spirit score report</span>
+                  {spiritReport.totalLabel && (
+                    <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                      {spiritReport.totalLabel}
+                    </span>
+                  )}
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {spiritReport.entries.map((entry) => (
+                    <SpiritRadarCard
+                      key={entry.teamId}
+                      title={entry.teamName}
+                      data={entry}
+                      tone={entry.tone}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : spiritLoading ? (
+              <section className="sc-card-base space-y-2 p-4 sm:p-6">
+                <div className="flex items-center gap-2">
+                  <span className="sc-chip">Spirit score report</span>
+                </div>
+                <div className="sc-card-muted p-4 text-center text-sm text-ink-muted">
+                  Loading spirit scores...
+                </div>
+              </section>
+            ) : spiritError ? (
+              <section className="sc-card-base space-y-2 p-4 sm:p-6">
+                <div className="flex items-center gap-2">
+                  <span className="sc-chip">Spirit score report</span>
+                </div>
+                <div className="sc-card-muted p-4 text-center text-sm text-rose-600">
+                  {spiritError}
+                </div>
+              </section>
+            ) : null}
 
             <section className="sc-card-base space-y-3 p-4 sm:p-6">
               <div className="flex items-center gap-2">
@@ -896,6 +987,321 @@ function TeamOverviewCard({ title, stats }) {
         )}
       </div>
     </div>
+  );
+}
+
+function buildSpiritReport(scores, match) {
+  if (!scores?.length || !match) return null;
+
+  const byTeam = new Map();
+  scores.forEach((row) => {
+    if (!row?.rated_team_id) return;
+    const list = byTeam.get(row.rated_team_id) || [];
+    list.push(row);
+    byTeam.set(row.rated_team_id, list);
+  });
+
+  const buildEntry = (teamId, teamName, tone) => {
+    if (!teamId) return null;
+    const rows = byTeam.get(teamId) || [];
+    if (!rows.length) return null;
+    const values = {};
+    let total = 0;
+    let totalCount = 0;
+
+    SPIRIT_DIMENSIONS.forEach((dim) => {
+      let sum = 0;
+      let count = 0;
+      rows.forEach((row) => {
+        const value = Number(row?.[dim.key]);
+        if (Number.isFinite(value)) {
+          sum += value;
+          count += 1;
+        }
+      });
+      if (count > 0) {
+        const avg = sum / count;
+        values[dim.key] = avg;
+        total += avg;
+        totalCount += 1;
+      } else {
+        values[dim.key] = null;
+      }
+    });
+
+    const maxTotal = totalCount * SPIRIT_MAX_SCORE;
+    const hasData = totalCount > 0;
+
+    if (!hasData) return null;
+
+    return {
+      teamId,
+      teamName,
+      tone,
+      values,
+      total,
+      maxTotal,
+      totalCount,
+    };
+  };
+
+  const entries = [
+    buildEntry(match?.team_a?.id, match?.team_a?.name || "Team A", "teamA"),
+    buildEntry(match?.team_b?.id, match?.team_b?.name || "Team B", "teamB"),
+  ].filter(Boolean);
+
+  if (!entries.length) return null;
+
+  return {
+    entries,
+    totalLabel: `Scores recieved`,
+  };
+}
+
+function SpiritRadarCard({ title, data, tone }) {
+  const toneColor = tone === "teamB" ? SERIES_COLORS.teamB : SERIES_COLORS.teamA;
+  const totalLabel =
+    Number.isFinite(data?.total) && Number.isFinite(data?.maxTotal)
+      ? Math.round(data.total).toString()
+      : "--";
+
+  return (
+    <div className="sc-card-base border border-border bg-white px-4 py-2">
+      <div className="mt-0">
+        <div className="rounded-2xl border border-border bg-white p-1">
+          <SpiritRadarChart values={data.values} tone={tone} title={title} totalLabel={totalLabel} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SpiritRadarChart({ values, tone, title, totalLabel }) {
+  const width = 330;
+  const height = 280;
+  const centerX = width / 2;
+  const centerY = height / 2 + 8;
+  const radius = 86;
+  const levels = 4;
+  const count = SPIRIT_DIMENSIONS.length;
+  const toneColor = tone === "teamB" ? SERIES_COLORS.teamB : SERIES_COLORS.teamA;
+  const fillColor = tone === "teamB" ? "rgba(185, 28, 28, 0.18)" : "rgba(29, 78, 216, 0.18)";
+  const gridColor = "#e2e8f0";
+  const emphasisColor = "#00a30e";
+  const axisColor = "#cbd5f5";
+  const labelColor = "#475569";
+  const labelMaxChars = 14;
+  const labelMaxLines = 3;
+  const valueLabelColor = toneColor;
+  const titleMaxChars = 18;
+
+  const rotationStep = (Math.PI * 2) / count;
+  const getAngle = (index) => (Math.PI * 2 * index) / count - Math.PI / 2 + rotationStep;
+  const getPoint = (angle, ratio) => ({
+    x: centerX + Math.cos(angle) * radius * ratio,
+    y: centerY + Math.sin(angle) * radius * ratio,
+  });
+
+  const buildPolygon = (ratio) =>
+    SPIRIT_DIMENSIONS.map((_, index) => {
+      const angle = getAngle(index);
+      const point = getPoint(angle, ratio);
+      return `${point.x},${point.y}`;
+    }).join(" ");
+
+  const wrapLabel = (label) => {
+    if (!label) return [""];
+    const words = label.split(" ");
+    const lines = [];
+    let current = "";
+    words.forEach((word) => {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length <= labelMaxChars || current.length === 0) {
+        current = next;
+      } else {
+        lines.push(current);
+        current = word;
+      }
+    });
+    if (current) lines.push(current);
+    if (lines.length <= labelMaxLines) return lines;
+    const trimmed = lines.slice(0, labelMaxLines);
+    const overflow = lines.slice(labelMaxLines).join(" ");
+    const last = `${trimmed[labelMaxLines - 1]} ${overflow}`.trim();
+    if (last.length <= labelMaxChars) {
+      trimmed[labelMaxLines - 1] = last;
+      return trimmed;
+    }
+    trimmed[labelMaxLines - 1] = `${last.slice(0, Math.max(0, labelMaxChars - 3))}...`;
+    return trimmed;
+  };
+
+  const dataPolygon = SPIRIT_DIMENSIONS.map((dim, index) => {
+    const raw = values?.[dim.key];
+    const value = Number.isFinite(raw) ? raw : 0;
+    const ratio = Math.max(0, Math.min(1, value / SPIRIT_MAX_SCORE));
+    const angle = getAngle(index);
+    const point = getPoint(angle, ratio);
+    return `${point.x},${point.y}`;
+  }).join(" ");
+
+  const wrapTitle = (text) => {
+    if (!text) return [""];
+    const words = text.split(" ");
+    const lines = [];
+    let current = "";
+    words.forEach((word) => {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length <= titleMaxChars || current.length === 0) {
+        current = next;
+      } else {
+        lines.push(current);
+        current = word;
+      }
+    });
+    if (current) lines.push(current);
+    return lines.slice(0, 2);
+  };
+
+  const titleLines = wrapTitle(title);
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" preserveAspectRatio="xMidYMid meet">
+      <rect x="0" y="0" width={width} height={height} fill="white" rx="16" />
+      <g>
+        {titleLines.map((line, index) => (
+          <text
+            key={`title-${index}`}
+            x={12}
+            y={16 + index * 12}
+            fontSize="10.5"
+            fontWeight="600"
+            fill="#0f172a"
+            textAnchor="start"
+          >
+            {line}
+          </text>
+        ))}
+      </g>
+      {Array.from({ length: levels }).map((_, index) => {
+        const ratio = (index + 1) / levels;
+        const isEmphasis = index === 1;
+        return (
+          <polygon
+            key={`grid-${ratio}`}
+            points={buildPolygon(ratio)}
+            fill="none"
+            stroke={isEmphasis ? emphasisColor : gridColor}
+            strokeWidth={isEmphasis ? 1 : 1}
+          />
+        );
+      })}
+      {SPIRIT_DIMENSIONS.map((dim, index) => {
+        const angle = getAngle(index);
+        const end = getPoint(angle, 1);
+        const label = getPoint(angle, 1.08);
+        const margin = 10;
+        let labelX = label.x;
+        let labelY = label.y;
+        let anchor =
+          Math.cos(angle) > 0.2 ? "start" : Math.cos(angle) < -0.2 ? "end" : "middle";
+        if (labelX > width - margin) {
+          labelX = width - margin;
+          anchor = "end";
+        } else if (labelX < margin) {
+          labelX = margin;
+          anchor = "start";
+        }
+        if (labelY < margin) {
+          labelY = margin;
+        } else if (labelY > height - margin) {
+          labelY = height - margin;
+        }
+        const lines = wrapLabel(dim.label);
+        return (
+          <g key={dim.key}>
+            <line
+              x1={centerX}
+              y1={centerY}
+              x2={end.x}
+              y2={end.y}
+              stroke={axisColor}
+              strokeWidth="1"
+            />
+            <text
+              x={labelX}
+              y={labelY}
+              fontSize="10"
+              fill={labelColor}
+              textAnchor={anchor}
+            >
+              {lines.map((line, lineIndex) => (
+                <tspan
+                  key={`${dim.key}-line-${lineIndex}`}
+                  x={labelX}
+                  dy={lineIndex === 0 ? "0" : "11"}
+                >
+                  {line}
+                </tspan>
+              ))}
+            </text>
+          </g>
+        );
+      })}
+      <polygon
+        points={dataPolygon}
+        fill={fillColor}
+        stroke={toneColor}
+        strokeWidth="2"
+      />
+      <g>
+        <circle cx={centerX} cy={centerY} r="16" fill="white" stroke={axisColor} strokeWidth="1" />
+        <text
+          x={centerX}
+          y={centerY}
+          fontSize="11"
+          fontWeight="600"
+          fill={toneColor}
+          textAnchor="middle"
+          dominantBaseline="central"
+          dy="0.0em"
+        >
+          {totalLabel}
+        </text>
+      </g>
+      {SPIRIT_DIMENSIONS.map((dim, index) => {
+        const raw = values?.[dim.key];
+        const value = Number.isFinite(raw) ? raw : 0;
+        const ratio = Math.max(0, Math.min(1, value / SPIRIT_MAX_SCORE));
+        const angle = getAngle(index);
+        const point = getPoint(angle, ratio);
+        const labelPoint = getPoint(angle, Math.min(1.08, ratio + 0.12));
+        const anchor =
+          Math.cos(angle) > 0.2 ? "start" : Math.cos(angle) < -0.2 ? "end" : "middle";
+        return (
+          <g key={`dot-${dim.key}`}>
+            <circle
+              cx={point.x}
+              cy={point.y}
+              r="3"
+              fill={toneColor}
+              stroke="white"
+              strokeWidth="1"
+            />
+            <text
+              x={labelPoint.x}
+              y={labelPoint.y}
+              fontSize="9.5"
+              fill={valueLabelColor}
+              textAnchor={anchor}
+              dominantBaseline="middle"
+            >
+              {Number.isFinite(raw) ? Math.round(raw) : "--"}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 

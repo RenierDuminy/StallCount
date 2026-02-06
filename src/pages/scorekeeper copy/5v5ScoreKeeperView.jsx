@@ -256,6 +256,25 @@ export default function ScoreKeeperView() {
   const [possessionDeleteModalOpen, setPossessionDeleteModalOpen] = useState(false);
   const [endMatchModalOpen, setEndMatchModalOpen] = useState(false);
   const [endMatchBusy, setEndMatchBusy] = useState(false);
+  const [online, setOnline] = useState(
+    typeof navigator !== "undefined" ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    function handleOnline() {
+      setOnline(true);
+    }
+    function handleOffline() {
+      setOnline(false);
+    }
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
   const [endMatchSuccessMessage, setEndMatchSuccessMessage] = useState("");
   const updatePossessionFromCoordinate = (clientX) => {
     const track = possessionPadRef.current;
@@ -790,9 +809,17 @@ export default function ScoreKeeperView() {
                 </button>
                 {pendingEntries.length > 0 && (
                   <div className="rounded-2xl border border-[#0f5132]/30 bg-white/90 p-2 text-sm text-[#0f5132]">
-                    <h4 className="text-base font-semibold text-[#0f5132]">
-                      Pending database payloads
-                    </h4>
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-base font-semibold text-[#0f5132]">
+                        Pending sync ({pendingEntries.length})
+                      </h4>
+                      <span className="rounded-full border border-[#0f5132]/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]">
+                        {online ? "Online" : "Offline"}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-[#0f5132]/80">
+                      Queued updates will send automatically when you're online.
+                    </p>
                     <pre className="mt-3 max-h-64 overflow-y-auto rounded-xl bg-[#ecfdf3] p-3 text-xs text-[#0f5132]">
                       {JSON.stringify(pendingEntries, null, 2)}
                     </pre>
@@ -884,37 +911,37 @@ export default function ScoreKeeperView() {
                 ? new Date(resumeCandidate.updatedAt).toLocaleString()
                 : "recently"}.
             </p>
-            <div className="rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-3 text-xs">
-              <p className="font-semibold uppercase tracking-wide text-[#0f5132]/70">
-                Snapshot
-              </p>
-              <p>
-                Score: {resumeCandidate?.score?.a ?? 0} - {resumeCandidate?.score?.b ?? 0}
-              </p>
-              <p>
-                Game clock: {formatClock(resumeCandidate?.timer?.seconds ?? 0)}
-                {resumeCandidate?.timer?.running ? " (running)" : ""}
-              </p>
-            </div>
             {resumeError && (
               <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
                 {resumeError}
               </p>
             )}
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="space-y-4">
               <button
                 type="button"
                 onClick={handleResumeSession}
                 disabled={resumeBusy}
-                className="inline-flex items-center justify-center rounded-full bg-[#0f5132] px-4 py-2 text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center rounded-full bg-[#0f5132] px-4 py-2 text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {resumeBusy ? "Loading..." : "Resume session"}
               </button>
+              <div className="rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-3 text-xs">
+                <p className="font-semibold uppercase tracking-wide text-[#0f5132]/70">
+                  Snapshot
+                </p>
+                <p>
+                  Score: {resumeCandidate?.score?.a ?? 0} - {resumeCandidate?.score?.b ?? 0}
+                </p>
+                <p>
+                  Game clock: {formatClock(resumeCandidate?.timer?.seconds ?? 0)}
+                  {resumeCandidate?.timer?.running ? " (running)" : ""}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={handleDiscardResume}
                 disabled={resumeBusy}
-                className="inline-flex items-center justify-center rounded-full border border-[#0f5132]/40 px-4 py-2 font-semibold text-[#0f5132] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center rounded-full border border-[#0f5132]/40 px-4 py-2 font-semibold text-[#0f5132] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Start new
               </button>
@@ -1502,22 +1529,34 @@ export default function ScoreKeeperView() {
                     : "Choose both a scorer and an assist to log this score."}
                 </p>
               )}
-              <button
-                type="submit"
-                disabled={!isScoreFormValid}
-                className={`w-full rounded-full px-3 py-1.5 text-sm font-semibold text-white transition ${
-                  isScoreFormValid ? "bg-[#0f5132] hover:bg-[#0a3b24]" : "bg-slate-400 opacity-70"
-                }`}
-              >
-                {scoreModalState.mode === "edit" ? "Update score" : "Add score"}
-              </button>
-              {scoreModalState.mode === "edit" && (
+              {scoreModalState.mode === "edit" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteLog(scoreModalState.logIndex)}
+                    className="w-full rounded-full bg-[#b91c1c] px-3 py-3 text-sm font-semibold text-white transition hover:bg-[#991b1b]"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!isScoreFormValid}
+                    className={`w-full rounded-full px-3 py-3 text-sm font-semibold text-white transition ${
+                      isScoreFormValid ? "bg-[#0f5132] hover:bg-[#0a3b24]" : "bg-slate-400 opacity-70"
+                    }`}
+                  >
+                    Update score
+                  </button>
+                </div>
+              ) : (
                 <button
-                  type="button"
-                  onClick={() => handleDeleteLog(scoreModalState.logIndex)}
-                  className="w-full rounded-full bg-[#22a06b] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1f7a5a]"
+                  type="submit"
+                  disabled={!isScoreFormValid}
+                  className={`w-full rounded-full px-3 py-1.5 text-sm font-semibold text-white transition ${
+                    isScoreFormValid ? "bg-[#0f5132] hover:bg-[#0a3b24]" : "bg-slate-400 opacity-70"
+                  }`}
                 >
-                  Delete
+                  Add score
                 </button>
               )}
             </div>
@@ -1574,7 +1613,7 @@ export default function ScoreKeeperView() {
                 <button
                   type="button"
                   onClick={handleSimpleEventDelete}
-                  className="w-full rounded-full bg-[#22a06b] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1f7a5a]"
+                  className="w-full rounded-full bg-[#b91c1c] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#991b1b]"
                 >
                   Delete
                 </button>

@@ -1054,69 +1054,83 @@ export default function HomePage() {
         </SectionShell>
 
         {renderStreaming && (
-          <SectionShell as="section" className="grid gap-6 lg:grid-cols-2">
-            <Card className="space-y-3 p-5 sm:p-6">
-              <SectionHeader eyebrow="Streaming" title="Featured broadcast" />
-              {upcomingStreamMatches.length > 0 ? (
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Next with media</p>
-                  {upcomingStreamMatches.map((match) => (
-                    <Card key={match.id} variant="muted" className="p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-ink">{formatMatchup(match)}</p>
-                          <p className="text-xs text-ink-muted">{formatMatchTime(match.start_time)}</p>
-                          <p className="text-xs text-ink-muted">Provider: {formatMediaProvider(match)}</p>
-                        </div>
-                        {resolveStreamUrl(match) && (
-                          <a
-                            href={resolveStreamUrl(match)}
-                            target="_blank"
-                            rel="noreferrer"
-                            aria-label="Open stream"
-                            className="inline-flex items-center justify-center pr-2"
-                          >
-                            <img src="/youtube.png" alt="" className="h-8 w-8" aria-hidden="true" />
-                          </a>
-                        )}
-                      </div>
-                    </Card>
-                  ))}
+          <SectionShell as="section" className="space-y-6">
+            <SectionHeader
+              eyebrow="Streaming"
+              title="Featured broadcasts"
+              description="Upcoming streams and recently completed matches with media."
+            />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card className="space-y-4 p-5 sm:p-6">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Upcoming with media</p>
+                  <h3 className="text-lg font-semibold text-ink">Next to stream</h3>
                 </div>
-              ) : (
-                <p className="text-sm text-ink-muted">No upcoming matches with media linked.</p>
-              )}
+                {upcomingStreamMatches.length > 0 ? (
+                  <div className="space-y-3">
+                    {upcomingStreamMatches.map((match) => (
+                      <Card key={match.id} variant="muted" className="p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-ink">{formatMatchup(match)}</p>
+                            <p className="text-xs text-ink-muted">{formatMatchTime(match.start_time)}</p>
+                            <p className="text-xs text-ink-muted">Provider: {formatMediaProvider(match)}</p>
+                          </div>
+                          {resolveStreamUrl(match) && (
+                            <a
+                              href={resolveStreamUrl(match)}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label="Open stream"
+                              className="inline-flex items-center justify-center pr-2"
+                            >
+                              <img src="/youtube.png" alt="" className="h-8 w-8" aria-hidden="true" />
+                            </a>
+                          )}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink-muted">No upcoming matches with media linked.</p>
+                )}
+              </Card>
 
-              {recentStreamMatches.length > 0 ? (
-                <div className="space-y-3 pt-3">
+              <Card className="space-y-4 p-5 sm:p-6">
+                <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Recent with media</p>
-                  {recentStreamMatches.map((match) => (
-                    <Card key={match.id} variant="muted" className="p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-ink">{formatMatchup(match)}</p>
-                          <p className="text-xs text-ink-muted">{formatMatchTime(match.start_time)}</p>
-                          <p className="text-xs text-ink-muted">Provider: {formatMediaProvider(match)}</p>
-                        </div>
-                        {resolveStreamUrl(match) && (
-                          <a
-                            href={resolveStreamUrl(match)}
-                            target="_blank"
-                            rel="noreferrer"
-                            aria-label="Open stream"
-                            className="inline-flex items-center justify-center pr-2"
-                          >
-                            <img src="/youtube.png" alt="" className="h-8 w-8" aria-hidden="true" />
-                          </a>
-                        )}
-                      </div>
-                    </Card>
-                  ))}
+                  <h3 className="text-lg font-semibold text-ink">Latest replays</h3>
                 </div>
-              ) : (
-                <p className="text-sm text-ink-muted pt-3">No recent matches with media linked.</p>
-              )}
-            </Card>
+                {recentStreamMatches.length > 0 ? (
+                  <div className="space-y-3">
+                    {recentStreamMatches.map((match) => (
+                      <Card key={match.id} variant="muted" className="p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-ink">{formatMatchup(match)}</p>
+                            <p className="text-xs text-ink-muted">{formatMatchTime(match.start_time)}</p>
+                            <p className="text-xs text-ink-muted">Provider: {formatMediaProvider(match)}</p>
+                          </div>
+                          {resolveStreamUrl(match) && (
+                            <a
+                              href={resolveStreamUrl(match)}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label="Open stream"
+                              className="inline-flex items-center justify-center pr-2"
+                            >
+                              <img src="/youtube.png" alt="" className="h-8 w-8" aria-hidden="true" />
+                            </a>
+                          )}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink-muted">No recent matches with media linked.</p>
+                )}
+              </Card>
+            </div>
           </SectionShell>
         )}
 

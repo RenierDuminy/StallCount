@@ -72,7 +72,7 @@ export async function getOpenMatches(limit = 12) {
 }
 
 export async function getMatchesByEvent(eventId, limit = 24, options = {}) {
-  const { includeFinished = true } = options;
+  const { includeFinished = true, forceRefresh = false } = options;
 
   return getCachedQuery(
     `matches:event:${eventId}:limit=${limit}:includeFinished=${includeFinished}`,
@@ -96,7 +96,7 @@ export async function getMatchesByEvent(eventId, limit = 24, options = {}) {
 
       return data ?? [];
     },
-    { ttlMs: EVENT_MATCHES_CACHE_TTL_MS },
+    forceRefresh ? { ttlMs: 0, staleWhileRevalidate: false } : { ttlMs: EVENT_MATCHES_CACHE_TTL_MS },
   );
 }
 
