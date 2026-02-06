@@ -16,6 +16,7 @@ const RULE_FORMAT_LABELS = {
 const DIVISION_LABELS = {
   mixed: "Mixed",
   open: "Open",
+  openwomen: "Open/Women",
   women: "Women",
 };
 
@@ -281,22 +282,12 @@ export default function EventsPage() {
 
     const rows = [
       { label: "Game to", value: game.pointTarget },
-      { label: "Soft cap (min)", value: game.softCapMinutes },
-      { label: "Hard cap (min)", value: game.hardCapMinutes },
-      { label: "Half at", value: half.pointTarget },
-      { label: "Half time cap (min)", value: half.timeCapMinutes },
-      { label: "Half break (min)", value: half.breakMinutes },
+      { label: "Game time cap (min)", value: game.timeCapMinutes },
+      { label: "Game soft cap (min)", value: game.softCapMinutes },
+      { label: "Halftime at", value: half.halftimePointTarget },
+      { label: "Halftime cap (min)", value: half.halftimeCapMinutes },
+      { label: "Halftime break (min)", value: half.halftimeBreakMinutes },
       { label: "Timeouts per team", value: timeouts.perTeamPerGame },
-      { label: "Timeout length (sec)", value: timeouts.durationSeconds },
-      {
-        label: "Running clock",
-        value:
-          typeof clock.isRunningClockEnabled === "boolean"
-            ? clock.isRunningClockEnabled
-              ? "Enabled"
-              : "Disabled"
-            : null,
-      },
     ].filter((row) => row.value !== null && row.value !== undefined && row.value !== "");
 
     return rows.length ? rows : null;

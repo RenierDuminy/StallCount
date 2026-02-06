@@ -37,56 +37,96 @@ const INITIAL_EVENT = {
 };
 
 const DEFAULT_RULES = {
-  division: "mixed",
   format: "wfdfChampionship",
+  division: "mixed",
+  clock: {
+    isRunningGameClockEnabled: true,
+  },
   game: {
     pointTarget: 15,
+    timeCapMinutes: 100,
+    timeCapEndMode: "afterPoint",
+    timeCapTargetMode: "addOneToHighest",
     softCapMinutes: null,
-    softCapMode: "addOneToHighest",
-    hardCapMinutes: 100,
-    hardCapEndMode: "afterPoint",
+    softCapMode: null,
   },
   half: {
-    pointTarget: 8,
-    timeCapMinutes: 55,
-    breakMinutes: 7,
-  },
-  clock: {
-    isRunningClockEnabled: true,
-  },
-  interPoint: {
-    offenceOnLineSeconds: 45,
-    offenceReadySeconds: 60,
-    pullDeadlineSeconds: 75,
-    timeoutAddsSeconds: 75,
-    areTimeoutsStacked: true,
+    halftimePointTarget: 8,
+    halftimeBreakMinutes: 7,
+    halftimeCapMinutes: 55,
+    halftimeCapEndMode: "afterPoint",
+    halftimeCapTargetMode: "addOneToHighest",
   },
   timeouts: {
     perTeamPerGame: 2,
     durationSeconds: 75,
   },
-  inPointTimeout: {
-    offenceSetSeconds: 75,
-    defenceCheckMaxSeconds: 90,
+  interPoint: {
+    offenceOnGoalLineBySeconds: 45,
+    offenceReadyBySeconds: 60,
+    defencePullBySeconds: 75,
+    pullAllowedLaterIfOffenceReadyLate: true,
+    defencePullWithinSecondsAfterOffenceReady: 15,
+    prePullTimeoutAddsSeconds: 75,
+    areTimeoutsStackedBeforePull: true,
+    mixedRatioAnnouncementDeadlineSeconds: 15,
+  },
+  discInPlay: {
+    pivotCentralZoneMaxSeconds: 10,
+    pivotEndZoneMaxSeconds: 20,
+    postPullDiscToRestRetrievalMaxSeconds: 20,
+    oobTurnoverDiscToRestRetrievalMaxSeconds: 20,
   },
   discussions: {
     captainInterventionSeconds: 15,
     autoContestSeconds: 45,
     restartPlayMaxSeconds: 60,
   },
-  discInPlay: {
-    pivotCentralZoneMaxSeconds: 10,
-    pivotEndZoneMaxSeconds: 20,
-    newDiscRetrievalMaxSeconds: 20,
+  inPointTimeout: {
+    offenceSetSeconds: 75,
+    defenceCheckMaxSeconds: 90,
+    defenceCheckWithinSecondsAfterOffenceSet: 15,
   },
   mixedRatio: {
     isEnabled: true,
     ratioRule: "A",
-    initialRatioChoosingTeam: "home",
+    ratioRuleA: {
+      chooser: "secondDiscFlipWinner",
+      pattern: "AA-BB repeating in 2-point blocks",
+      halftimeAffectsPattern: false,
+    },
+    prescribedPullRule: {
+      isEnabled: true,
+      fourFemaleMeansFemalePull: true,
+      fourMaleMeansMalePull: true,
+    },
   },
 };
 
 const cloneDefaultRules = () => JSON.parse(JSON.stringify(DEFAULT_RULES));
+const mergeRuleDefaults = (base, overrides) => {
+  if (!overrides || typeof overrides !== "object") {
+    return base;
+  }
+  const next = Array.isArray(base) ? [...base] : { ...base };
+  Object.entries(overrides).forEach(([key, value]) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const baseValue =
+        base && typeof base === "object" && !Array.isArray(base)
+          ? base[key]
+          : {};
+      next[key] = mergeRuleDefaults(
+        baseValue && typeof baseValue === "object" && !Array.isArray(baseValue)
+          ? baseValue
+          : {},
+        value,
+      );
+    } else {
+      next[key] = value;
+    }
+  });
+  return next;
+};
 const INITIAL_VENUE_FORM = {
   id: null,
   venueId: "",
@@ -386,7 +426,7 @@ export default function EventSetupWizardPage() {
     }
     const sourceRules =
       payload.event.rules && typeof payload.event.rules === "object"
-        ? payload.event.rules
+        ? mergeRuleDefaults(cloneDefaultRules(), payload.event.rules)
         : cloneDefaultRules();
     setEvent({
       name: payload.event.name || "",
@@ -1231,6 +1271,18 @@ export default function EventSetupWizardPage() {
   }, [rules.format]);
 
   useEffect(() => {
+    if (rules.division === "mixed") {
+      if (!rules.mixedRatio?.isEnabled) {
+        setRuleValue(["mixedRatio", "isEnabled"], true);
+      }
+      return;
+    }
+    if (rules.mixedRatio?.isEnabled) {
+      setRuleValue(["mixedRatio", "isEnabled"], false);
+    }
+  }, [rules.division, rules.mixedRatio?.isEnabled]);
+
+  useEffect(() => {
     setDivisions((prev) => {
       if (!prev.length) {
         return prev;
@@ -1339,6 +1391,7 @@ export default function EventSetupWizardPage() {
   const renderEventStep = () => {
     const eventFieldsDisabled = eventMode === "edit" && !selectedEventId;
     const isRulesLocked = rules.format === "wfdfChampionship";
+    const isMixedDivision = rules.division === "mixed";
     return (
       <div className="wizard-stack-lg">
       <Panel variant="tinted" className="wizard-stack-md wizard-pad-md">
@@ -1731,9 +1784,202 @@ export default function EventSetupWizardPage() {
             >
               <option value="mixed">Mixed</option>
               <option value="open">Open</option>
+              <option value="openWomen">Open/Women</option>
               <option value="women">Women</option>
             </select>
           </label>
+        </div>
+        <div className="wizard-divider" />
+        <div>
+          <p className="wizard-kicker-strong">
+            Mixed ratio
+          </p>
+          <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Mixed ratio enabled
+              </span>
+              <span className="sc-field-hint">
+                Toggles gender-ratio tracking for mixed play.
+              </span>
+            <select
+              className="sc-input"
+              value={rules.mixedRatio.isEnabled ? "true" : "false"}
+              onChange={handleRuleBooleanInput(["mixedRatio", "isEnabled"])}
+              disabled={!isMixedDivision}
+            >
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Ratio rule
+              </span>
+              <span className="sc-field-hint">
+                Selects the WFDF-style ratio application rule.
+              </span>
+            <select
+              className="sc-input"
+              value={rules.mixedRatio.ratioRule || ""}
+              onChange={(event) =>
+                setRuleValue(
+                  ["mixedRatio", "ratioRule"],
+                  event.target.value || null,
+                )
+              }
+              disabled={!isMixedDivision}
+            >
+              <option value="">Not set</option>
+              <option value="A">A (ABBA)</option>
+              <option value="B">B (Custom)</option>
+            </select>
+          </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Rule A chooser
+              </span>
+              <span className="sc-field-hint">
+                Team that chooses the initial ratio under rule A.
+              </span>
+            <select
+              className="sc-input"
+              value={rules.mixedRatio.ratioRuleA.chooser || ""}
+              onChange={(event) =>
+                setRuleValue(
+                  ["mixedRatio", "ratioRuleA", "chooser"],
+                  event.target.value || null,
+                )
+              }
+              disabled={!isMixedDivision}
+            >
+                <option value="">Not set</option>
+                <option value="secondDiscFlipWinner">Second disc flip winner</option>
+                <option value="home">Home</option>
+                <option value="away">Away</option>
+              </select>
+            </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Rule A pattern
+              </span>
+              <span className="sc-field-hint">
+                Describes the alternating pattern for rule A.
+              </span>
+              <input
+                type="text"
+                className="sc-input"
+                value={rules.mixedRatio.ratioRuleA.pattern || ""}
+                onChange={(event) =>
+                  setRuleValue(
+                    ["mixedRatio", "ratioRuleA", "pattern"],
+                    event.target.value || "",
+                  )
+                }
+                disabled={!isMixedDivision}
+              />
+            </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Rule A halftime affects pattern
+              </span>
+              <span className="sc-field-hint">
+                Whether halftime resets or alters the pattern.
+              </span>
+              <select
+                className="sc-input"
+                value={
+                  rules.mixedRatio.ratioRuleA.halftimeAffectsPattern
+                    ? "true"
+                    : "false"
+                }
+                onChange={handleRuleBooleanInput([
+                  "mixedRatio",
+                  "ratioRuleA",
+                  "halftimeAffectsPattern",
+                ])}
+                disabled={!isMixedDivision}
+              >
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Prescribed pull rule enabled
+              </span>
+              <span className="sc-field-hint">
+                Enable prescribed pull rules for mixed ratio.
+              </span>
+              <select
+                className="sc-input"
+                value={
+                  rules.mixedRatio.prescribedPullRule.isEnabled
+                    ? "true"
+                    : "false"
+                }
+                onChange={handleRuleBooleanInput([
+                  "mixedRatio",
+                  "prescribedPullRule",
+                  "isEnabled",
+                ])}
+                disabled={!isMixedDivision}
+              >
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                4F means female pull
+              </span>
+              <span className="sc-field-hint">
+                Requires a female puller if four female-matching players line up.
+              </span>
+              <select
+                className="sc-input"
+                value={
+                  rules.mixedRatio.prescribedPullRule.fourFemaleMeansFemalePull
+                    ? "true"
+                    : "false"
+                }
+                onChange={handleRuleBooleanInput([
+                  "mixedRatio",
+                  "prescribedPullRule",
+                  "fourFemaleMeansFemalePull",
+                ])}
+                disabled={!isMixedDivision}
+              >
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                4M means male pull
+              </span>
+              <span className="sc-field-hint">
+                Requires a male puller if four male-matching players line up.
+              </span>
+              <select
+                className="sc-input"
+                value={
+                  rules.mixedRatio.prescribedPullRule.fourMaleMeansMalePull
+                    ? "true"
+                    : "false"
+                }
+                onChange={handleRuleBooleanInput([
+                  "mixedRatio",
+                  "prescribedPullRule",
+                  "fourMaleMeansMalePull",
+                ])}
+                disabled={!isMixedDivision}
+              >
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+          </div>
         </div>
         <div className="wizard-divider" />
         <div>
@@ -1755,6 +2001,63 @@ export default function EventSetupWizardPage() {
                 onChange={handleRuleNumberInput(["game", "pointTarget"])}
                 disabled={isRulesLocked}
               />
+            </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Time cap (min)
+              </span>
+              <span className="sc-field-hint">
+                Absolute game time limit.
+              </span>
+              <input
+                type="number"
+                className="sc-input"
+                value={rules.game.timeCapMinutes ?? ""}
+                onChange={handleRuleNumberInput(["game", "timeCapMinutes"])}
+                disabled={isRulesLocked}
+              />
+            </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Time cap end mode
+              </span>
+              <span className="sc-field-hint">
+                Defines how play stops when the time cap arrives.
+              </span>
+              <select
+                className="sc-input"
+                value={rules.game.timeCapEndMode}
+                onChange={(event) =>
+                  setRuleValue(["game", "timeCapEndMode"], event.target.value)
+                }
+                disabled={isRulesLocked}
+              >
+                <option value="afterPoint">After point</option>
+                <option value="immediate">Immediate</option>
+              </select>
+            </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Time cap target mode
+              </span>
+              <span className="sc-field-hint">
+                Adjusts the target score when the time cap hits.
+              </span>
+              <select
+                className="sc-input"
+                value={rules.game.timeCapTargetMode || ""}
+                onChange={(event) =>
+                  setRuleValue(
+                    ["game", "timeCapTargetMode"],
+                    event.target.value || null,
+                  )
+                }
+                disabled={isRulesLocked}
+              >
+                <option value="">Not set</option>
+                <option value="addOneToHighest">Add one to highest</option>
+                <option value="addTwoToHighest">Add two to highest</option>
+              </select>
             </label>
             <label className="sc-fieldset">
               <span className="sc-field-label">
@@ -1780,49 +2083,18 @@ export default function EventSetupWizardPage() {
               </span>
               <select
                 className="sc-input"
-                value={rules.game.softCapMode}
+                value={rules.game.softCapMode || ""}
                 onChange={(event) =>
-                  setRuleValue(["game", "softCapMode"], event.target.value)
+                  setRuleValue(
+                    ["game", "softCapMode"],
+                    event.target.value || null,
+                  )
                 }
                 disabled={isRulesLocked}
               >
+                <option value="">Not set</option>
                 <option value="addOneToHighest">Add one to highest</option>
                 <option value="addTwoToHighest">Add two to highest</option>
-                <option value="none">None</option>
-              </select>
-            </label>
-            <label className="sc-fieldset">
-              <span className="sc-field-label">
-                Hard cap (min)
-              </span>
-              <span className="sc-field-hint">
-                Absolute game time limit.
-              </span>
-              <input
-                type="number"
-                className="sc-input"
-                value={rules.game.hardCapMinutes ?? ""}
-                onChange={handleRuleNumberInput(["game", "hardCapMinutes"])}
-                disabled={isRulesLocked}
-              />
-            </label>
-            <label className="sc-fieldset">
-              <span className="sc-field-label">
-                Hard cap end mode
-              </span>
-              <span className="sc-field-hint">
-                Defines how play stops when the hard cap arrives.
-              </span>
-              <select
-                className="sc-input"
-                value={rules.game.hardCapEndMode}
-                onChange={(event) =>
-                  setRuleValue(["game", "hardCapEndMode"], event.target.value)
-                }
-                disabled={isRulesLocked}
-              >
-                <option value="afterPoint">After point</option>
-                <option value="immediate">Immediate</option>
               </select>
             </label>
           </div>
@@ -1835,7 +2107,7 @@ export default function EventSetupWizardPage() {
           <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
             <label className="sc-fieldset">
               <span className="sc-field-label">
-                Point target
+                Halftime point target
               </span>
               <span className="sc-field-hint">
                 Points needed to reach halftime.
@@ -1843,29 +2115,75 @@ export default function EventSetupWizardPage() {
               <input
                 type="number"
                 className="sc-input"
-                value={rules.half.pointTarget ?? ""}
-                onChange={handleRuleNumberInput(["half", "pointTarget"])}
+                value={rules.half.halftimePointTarget ?? ""}
+                onChange={handleRuleNumberInput(["half", "halftimePointTarget"])}
                 disabled={isRulesLocked}
               />
             </label>
             <label className="sc-fieldset">
               <span className="sc-field-label">
-                Time cap (min)
+                Halftime cap (min)
               </span>
               <span className="sc-field-hint">
-                Minutes allowed before the half time cap.
+                Minutes allowed before the halftime cap.
               </span>
               <input
                 type="number"
                 className="sc-input"
-                value={rules.half.timeCapMinutes ?? ""}
-                onChange={handleRuleNumberInput(["half", "timeCapMinutes"])}
+                value={rules.half.halftimeCapMinutes ?? ""}
+                onChange={handleRuleNumberInput(["half", "halftimeCapMinutes"])}
                 disabled={isRulesLocked}
               />
             </label>
             <label className="sc-fieldset">
               <span className="sc-field-label">
-                Break (min)
+                Halftime cap end mode
+              </span>
+              <span className="sc-field-hint">
+                Defines how play stops when the halftime cap arrives.
+              </span>
+              <select
+                className="sc-input"
+                value={rules.half.halftimeCapEndMode}
+                onChange={(event) =>
+                  setRuleValue(
+                    ["half", "halftimeCapEndMode"],
+                    event.target.value,
+                  )
+                }
+                disabled={isRulesLocked}
+              >
+                <option value="afterPoint">After point</option>
+                <option value="immediate">Immediate</option>
+              </select>
+            </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Halftime cap target mode
+              </span>
+              <span className="sc-field-hint">
+                Adjusts the target score when the halftime cap hits.
+              </span>
+              <select
+                className="sc-input"
+                value={rules.half.halftimeCapTargetMode || ""}
+                onChange={(event) =>
+                  setRuleValue(
+                    ["half", "halftimeCapTargetMode"],
+                    event.target.value || null,
+                  )
+                }
+                disabled={isRulesLocked}
+              >
+                <option value="">Not set</option>
+                <option value="addOneToHighest">Add one to highest</option>
+                <option value="addTwoToHighest">Add two to highest</option>
+                <option value="none">None</option>
+              </select>
+            </label>
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Halftime break (min)
               </span>
               <span className="sc-field-hint">
                 Length of the halftime break.
@@ -1873,8 +2191,8 @@ export default function EventSetupWizardPage() {
               <input
                 type="number"
                 className="sc-input"
-                value={rules.half.breakMinutes ?? ""}
-                onChange={handleRuleNumberInput(["half", "breakMinutes"])}
+                value={rules.half.halftimeBreakMinutes ?? ""}
+                onChange={handleRuleNumberInput(["half", "halftimeBreakMinutes"])}
                 disabled={isRulesLocked}
               />
             </label>
@@ -1884,15 +2202,18 @@ export default function EventSetupWizardPage() {
       <div className="wizard-grid wizard-gap-md wizard-grid-cols-123">
         <label className="sc-fieldset">
           <span className="sc-field-label">
-            Running clock
+            Running game clock
           </span>
           <span className="sc-field-hint">
             Controls whether the clock pauses between points.
           </span>
           <select
             className="sc-input"
-            value={rules.clock.isRunningClockEnabled ? "true" : "false"}
-            onChange={handleRuleBooleanInput(["clock", "isRunningClockEnabled"])}
+            value={rules.clock.isRunningGameClockEnabled ? "true" : "false"}
+            onChange={handleRuleBooleanInput([
+              "clock",
+              "isRunningGameClockEnabled",
+            ])}
             disabled={isRulesLocked}
           >
             <option value="true">Enabled</option>
@@ -1901,17 +2222,43 @@ export default function EventSetupWizardPage() {
         </label>
         <label className="sc-fieldset">
           <span className="sc-field-label">
-            Inter-point timeouts stack
+            Pull allowed late
           </span>
           <span className="sc-field-hint">
-            Allow unused inter-point timeouts to accumulate.
+            Allow the defence to pull late if offence is late.
           </span>
           <select
             className="sc-input"
-            value={rules.interPoint.areTimeoutsStacked ? "true" : "false"}
+            value={
+              rules.interPoint.pullAllowedLaterIfOffenceReadyLate
+                ? "true"
+                : "false"
+            }
             onChange={handleRuleBooleanInput([
               "interPoint",
-              "areTimeoutsStacked",
+              "pullAllowedLaterIfOffenceReadyLate",
+            ])}
+            disabled={isRulesLocked}
+          >
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        </label>
+        <label className="sc-fieldset">
+          <span className="sc-field-label">
+            Pre-pull timeouts stack
+          </span>
+          <span className="sc-field-hint">
+            Allow unused pre-pull timeouts to accumulate.
+          </span>
+          <select
+            className="sc-input"
+            value={
+              rules.interPoint.areTimeoutsStackedBeforePull ? "true" : "false"
+            }
+            onChange={handleRuleBooleanInput([
+              "interPoint",
+              "areTimeoutsStackedBeforePull",
             ])}
             disabled={isRulesLocked}
           >
@@ -1927,23 +2274,43 @@ export default function EventSetupWizardPage() {
         </p>
         <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
           {[
-            ["Offence on line", ["interPoint", "offenceOnLineSeconds"]],
-            ["Offence ready", ["interPoint", "offenceReadySeconds"]],
-            ["Pull deadline", ["interPoint", "pullDeadlineSeconds"]],
-            ["Timeout adds", ["interPoint", "timeoutAddsSeconds"]],
-          ].map(([label, path]) => (
+            {
+              label: "Offence on goal line",
+              path: ["interPoint", "offenceOnGoalLineBySeconds"],
+              hint: "Seconds offence has to reach the goal line.",
+            },
+            {
+              label: "Offence ready by",
+              path: ["interPoint", "offenceReadyBySeconds"],
+              hint: "Seconds offence gets to signal ready.",
+            },
+            {
+              label: "Defence pull by",
+              path: ["interPoint", "defencePullBySeconds"],
+              hint: "Deadline for the defence pull after lining up.",
+            },
+            {
+              label: "Defence pull within",
+              path: ["interPoint", "defencePullWithinSecondsAfterOffenceReady"],
+              hint: "Seconds defence has after offence signals ready.",
+            },
+            {
+              label: "Pre-pull timeout adds",
+              path: ["interPoint", "prePullTimeoutAddsSeconds"],
+              hint: "Extra time granted after a timeout before the pull.",
+            },
+            {
+              label: "Mixed ratio announce",
+              path: ["interPoint", "mixedRatioAnnouncementDeadlineSeconds"],
+              hint: "Seconds to announce mixed ratio before the pull.",
+            },
+          ].map(({ label, path, hint }) => (
             <label key={label} className="sc-fieldset">
               <span className="sc-field-label">
                 {label} (s)
               </span>
               <span className="sc-field-hint">
-                {label === "Offence on line"
-                  ? "Seconds offence has to reach the line."
-                  : label === "Offence ready"
-                    ? "Seconds offence gets to signal ready."
-                    : label === "Pull deadline"
-                      ? "Deadline for the pull after lining up."
-                      : "Extra time granted after a timeout."}
+                {hint}
               </span>
               <input
                 type="number"
@@ -2028,6 +2395,27 @@ export default function EventSetupWizardPage() {
               disabled={isRulesLocked}
             />
           </label>
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
+              Defence check within (s)
+            </span>
+            <span className="sc-field-hint">
+              Seconds defence has to check in after offence sets.
+            </span>
+            <input
+              type="number"
+              className="sc-input"
+              value={
+                rules.inPointTimeout.defenceCheckWithinSecondsAfterOffenceSet ??
+                ""
+              }
+              onChange={handleRuleNumberInput([
+                "inPointTimeout",
+                "defenceCheckWithinSecondsAfterOffenceSet",
+              ])}
+              disabled={isRulesLocked}
+            />
+          </label>
         </div>
       </div>
       <div className="wizard-divider" />
@@ -2070,26 +2458,36 @@ export default function EventSetupWizardPage() {
         </p>
         <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
           {[
-            [
-              "Pivot central zone",
-              ["discInPlay", "pivotCentralZoneMaxSeconds"],
-            ],
-            ["Pivot end zone", ["discInPlay", "pivotEndZoneMaxSeconds"]],
-            [
-              "New disc retrieval",
-              ["discInPlay", "newDiscRetrievalMaxSeconds"],
-            ],
-          ].map(([label, path]) => (
+            {
+              label: "Pivot central zone",
+              path: ["discInPlay", "pivotCentralZoneMaxSeconds"],
+              hint: "Maximal stall time for a pivot in the central zone.",
+            },
+            {
+              label: "Pivot end zone",
+              path: ["discInPlay", "pivotEndZoneMaxSeconds"],
+              hint: "Maximal stall time for a pivot inside the end zone.",
+            },
+            {
+              label: "Post-pull disc retrieval",
+              path: ["discInPlay", "postPullDiscToRestRetrievalMaxSeconds"],
+              hint: "Seconds allowed to fetch the disc after a pull.",
+            },
+            {
+              label: "OOB turnover retrieval",
+              path: [
+                "discInPlay",
+                "oobTurnoverDiscToRestRetrievalMaxSeconds",
+              ],
+              hint: "Seconds allowed to retrieve a disc after an OOB turnover.",
+            },
+          ].map(({ label, path, hint }) => (
             <label key={label} className="sc-fieldset">
               <span className="sc-field-label">
                 {label} (s)
               </span>
               <span className="sc-field-hint">
-                {label === "Pivot central zone"
-                  ? "Maximal stall time for a pivot in the central zone."
-                  : label === "Pivot end zone"
-                    ? "Maximal stall time for a pivot inside the end zone."
-                    : "Seconds allowed to fetch a replacement disc."}
+                {hint}
               </span>
               <input
                 type="number"
@@ -2103,76 +2501,6 @@ export default function EventSetupWizardPage() {
         </div>
       </div>
       <div className="wizard-divider" />
-      <div>
-        <p className="wizard-kicker-strong">
-          Mixed ratio
-        </p>
-        <div className="wizard-mt-sm wizard-grid wizard-gap-md wizard-grid-cols-123">
-          <label className="sc-fieldset">
-            <span className="sc-field-label">
-              Mixed ratio enabled
-            </span>
-            <span className="sc-field-hint">
-              Toggles gender-ratio tracking for mixed play.
-            </span>
-          <select
-            className="sc-input"
-            value={rules.mixedRatio.isEnabled ? "true" : "false"}
-            onChange={handleRuleBooleanInput(["mixedRatio", "isEnabled"])}
-            disabled={isRulesLocked}
-          >
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
-          </label>
-          <label className="sc-fieldset">
-            <span className="sc-field-label">
-              Ratio rule
-            </span>
-            <span className="sc-field-hint">
-              Selects the WFDF-style ratio application rule.
-            </span>
-          <select
-            className="sc-input"
-            value={rules.mixedRatio.ratioRule || ""}
-            onChange={(event) =>
-              setRuleValue(
-                ["mixedRatio", "ratioRule"],
-                event.target.value || null,
-              )
-            }
-            disabled={isRulesLocked}
-          >
-              <option value="">Not set</option>
-              <option value="A">Rule A</option>
-              <option value="B">Rule B</option>
-            </select>
-          </label>
-          <label className="sc-fieldset">
-            <span className="sc-field-label">
-              Initial chooser
-            </span>
-            <span className="sc-field-hint">
-              Determines the team that sets the first ratio.
-            </span>
-          <select
-            className="sc-input"
-            value={rules.mixedRatio.initialRatioChoosingTeam || ""}
-            onChange={(event) =>
-              setRuleValue(
-                ["mixedRatio", "initialRatioChoosingTeam"],
-                event.target.value || null,
-              )
-            }
-            disabled={isRulesLocked}
-          >
-              <option value="">Not set</option>
-              <option value="home">Home</option>
-              <option value="away">Away</option>
-            </select>
-          </label>
-        </div>
-      </div>
       </Panel>
       </div>
     );

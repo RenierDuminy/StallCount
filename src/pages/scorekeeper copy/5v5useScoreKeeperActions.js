@@ -58,11 +58,12 @@ export function useScoreKeeperActions(controller) {
       return;
     }
     const isMixedDivision = (controller.rules.division || "").toLowerCase() === "mixed";
+    const isAbbaEnabled = isMixedDivision && controller.rules.mixedRatioRule !== "B";
     if (!controller.setupForm.startingTeamId) {
       controller.setConsoleError("Select a pulling team before initialising the match.");
       return;
     }
-    if (isMixedDivision && !["male", "female"].includes(controller.setupForm.abbaPattern)) {
+    if (isAbbaEnabled && !["male", "female"].includes(controller.setupForm.abbaPattern)) {
       controller.setConsoleError("Select an ABBA line before initialising the match.");
       return;
     }
@@ -80,7 +81,7 @@ export function useScoreKeeperActions(controller) {
           ? new Date(controller.setupForm.startTime).toISOString()
           : new Date().toISOString(),
         starting_team_id: controller.setupForm.startingTeamId,
-        abba_pattern: isMixedDivision ? controller.setupForm.abbaPattern : "none",
+        abba_pattern: isAbbaEnabled ? controller.setupForm.abbaPattern : "none",
         scorekeeper: controller.userId,
       };
 

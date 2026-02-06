@@ -60,11 +60,12 @@ export function useScoreKeeperActions(controller) {
       return;
     }
     const isMixedDivision = (controller.rules.division || "").toLowerCase() === "mixed";
+    const isAbbaEnabled = isMixedDivision && controller.rules.mixedRatioRule !== "B";
     if (!controller.setupForm.startingTeamId) {
       controller.setConsoleError("Select a pulling team before initialising the match.");
       return;
     }
-    if (isMixedDivision && !["male", "female"].includes(controller.setupForm.abbaPattern)) {
+    if (isAbbaEnabled && !["male", "female"].includes(controller.setupForm.abbaPattern)) {
       controller.setConsoleError("Select an ABBA line before initialising the match.");
       return;
     }
@@ -82,7 +83,7 @@ export function useScoreKeeperActions(controller) {
           ? new Date(controller.setupForm.startTime).toISOString()
           : new Date().toISOString(),
         starting_team_id: controller.setupForm.startingTeamId,
-        abba_pattern: isMixedDivision ? controller.setupForm.abbaPattern : "none",
+        abba_pattern: isAbbaEnabled ? controller.setupForm.abbaPattern : "none",
         scorekeeper: controller.userId,
       };
 
@@ -310,9 +311,12 @@ export function useScoreKeeperActions(controller) {
     if (receivingTeam) {
       void controller.updatePossession(receivingTeam, { logTurnover: false });
     }
+    const halftimeTarget =
+      controller.halftimeCapTargetScore ??
+      controller.rules.halftimeScoreThreshold ??
+      HALFTIME_SCORE_THRESHOLD;
     const reachedHalftimeScore =
-      Math.max(nextTotals.a, nextTotals.b) >=
-      (controller.rules.halftimeScoreThreshold || HALFTIME_SCORE_THRESHOLD);
+      Math.max(nextTotals.a, nextTotals.b) >= halftimeTarget;
     let halftimeStarted = false;
     if (
       !controller.halftimeTriggered &&
@@ -522,7 +526,101 @@ export function useScoreKeeperActions(controller) {
     if (!targetLog) return;
 
     try {
-      await deleteMatchLogEntry(targetLog.id);
+      const timeoutCodes = new Set([
+        MATCH_LOG_EVENT_CODES.TIMEOUT_START,
+        MATCH_LOG_EVENT_CODES.TIMEOUT_END,
+      ]);
+      const halftimeCodes = new Set([
+        MATCH_LOG_EVENT_CODES.HALFTIME_START,
+        MATCH_LOG_EVENT_CODES.HALFTIME_END,
+      ]);
+      const isTimeoutLog = timeoutCodes.has(targetLog.eventCode);
+      const isHalftimeLog = halftimeCodes.has(targetLog.eventCode);
+      const logs = controller.logs;
+
+      const findPair = (startCode, endCode, restrictTeam) => {
+        if (targetLog.eventCode === startCode) {
+          for (let i = index + 1; i < logs.length; i += 1) {
+            const candidate = logs[i];
+            if (!candidate) continue;
+            if (candidate.eventCode !== endCode) continue;
+            if (restrictTeam && candidate.team !== targetLog.team) continue;
+            return candidate;
+          }
+        } else if (targetLog.eventCode === endCode) {
+          for (let i = index - 1; i >= 0; i -= 1) {
+            const candidate = logs[i];
+            if (!candidate) continue;
+            if (candidate.eventCode !== startCode) continue;
+            if (restrictTeam && candidate.team !== targetLog.team) continue;
+            return candidate;
+          }
+        }
+        return null;
+      };
+
+      let pairedLog = null;
+      if (isTimeoutLog) {
+        pairedLog = findPair(
+          MATCH_LOG_EVENT_CODES.TIMEOUT_START,
+          MATCH_LOG_EVENT_CODES.TIMEOUT_END,
+          Boolean(targetLog.team)
+        );
+      } else if (isHalftimeLog) {
+        pairedLog = findPair(
+          MATCH_LOG_EVENT_CODES.HALFTIME_START,
+          MATCH_LOG_EVENT_CODES.HALFTIME_END,
+          false
+        );
+      }
+
+      const logsToDelete = [targetLog];
+      if (pairedLog && pairedLog !== targetLog) {
+        logsToDelete.push(pairedLog);
+      }
+
+      const serverIds = new Set();
+      const localIds = new Set();
+      const optimisticIds = new Set();
+      logsToDelete.forEach((log) => {
+        if (!log) return;
+        const id = log.id;
+        const isLocal =
+          log.isOptimistic ||
+          (typeof id === "string" && id.startsWith("local-"));
+        if (isLocal) {
+          if (id) {
+            localIds.add(id);
+          }
+          if (log.optimisticId) {
+            optimisticIds.add(log.optimisticId);
+          }
+        } else if (id) {
+          serverIds.add(id);
+        }
+      });
+
+      if (localIds.size > 0 || optimisticIds.size > 0) {
+        controller.setLogs((prev) =>
+          prev.filter((entry) => {
+            if (localIds.has(entry.id)) return false;
+            if (entry.optimisticId && optimisticIds.has(entry.optimisticId)) return false;
+            return true;
+          })
+        );
+        if (typeof controller.setPendingEntries === "function") {
+          controller.setPendingEntries((prev) =>
+            prev.filter((entry) => {
+              const optimisticId = entry?.optimisticId;
+              return !(optimisticId && optimisticIds.has(optimisticId));
+            })
+          );
+        }
+      }
+
+      for (const id of serverIds) {
+        await deleteMatchLogEntry(id);
+      }
       const isScoreLog =
         targetLog.eventCode === MATCH_LOG_EVENT_CODES.SCORE ||
         targetLog.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
@@ -542,6 +640,20 @@ export function useScoreKeeperActions(controller) {
       if (totals) {
         await syncActiveMatchScore(totals);
       }
+      if (isTimeoutLog) {
+        const teamKey = targetLog.team || pairedLog?.team;
+        if (teamKey) {
+          controller.setTimeoutUsage((prev) => ({
+            ...prev,
+            [teamKey]: Math.max((prev[teamKey] || 0) - 1, 0),
+          }));
+        }
+      }
+      if (isHalftimeLog) {
+        controller.setHalftimeTriggered(false);
+        controller.setHalftimeTimeCapArmed(false);
+        controller.setHalftimeCapTargetScore(null);
+      }
       closeScoreModal();
     } catch (err) {
       controller.setConsoleError(
@@ -556,17 +668,42 @@ export function useScoreKeeperActions(controller) {
     if (remaining === 0) return;
     controller.setTimeoutUsage((prev) => ({ ...prev, [team]: prev[team] + 1 }));
     const timeoutSeconds = controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
+    const interPointTimeoutAddsSeconds =
+      controller.rules.interPointTimeoutAddsSeconds || timeoutSeconds;
+    const areTimeoutsStacked = Boolean(controller.rules.interPointAreTimeoutsStacked);
     let stackedDuration = timeoutSeconds;
     let timeoutLabel =
       `${team === "A" ? controller.displayTeamA : controller.displayTeamB} timeout`.trim();
     const normalizedSecondaryLabel = (controller.secondaryLabel || "").toLowerCase();
     const isInterPointWindow =
       controller.secondaryRunning && normalizedSecondaryLabel === "inter point";
+    let followUp = null;
+
     if (isInterPointWindow) {
-      const remainingInterPoint = Math.max(controller.getSecondaryRemainingSeconds(), 0);
-      stackedDuration += remainingInterPoint;
-      timeoutLabel = "Inter point timeout";
+      stackedDuration = interPointTimeoutAddsSeconds;
+      timeoutLabel = areTimeoutsStacked ? "Inter point timeout" : "Pre-pull timeout";
+    } else {
+      const defenceCheckMax = controller.rules.inPointDefenceCheckMaxSeconds || 0;
+      const offenceSetSeconds = controller.rules.inPointOffenceSetSeconds || 0;
+      const withinSeconds =
+        controller.rules.inPointDefenceCheckWithinSecondsAfterOffenceSet || 0;
+      const followUpSeconds = defenceCheckMax || offenceSetSeconds;
+      if (followUpSeconds > 0) {
+        const detailParts = [];
+        if (offenceSetSeconds > 0) {
+          detailParts.push(`offence set ${offenceSetSeconds}s`);
+        }
+        if (withinSeconds > 0) {
+          detailParts.push(`check within ${withinSeconds}s`);
+        }
+        const labelDetails = detailParts.length ? ` (${detailParts.join(" · ")})` : "";
+        followUp = {
+          seconds: followUpSeconds,
+          label: `Defence check${labelDetails}`,
+        };
+      }
     }
+
     await controller.startTrackedSecondaryTimer(
       stackedDuration,
       timeoutLabel,
@@ -574,6 +711,8 @@ export function useScoreKeeperActions(controller) {
         teamKey: team,
         eventStartCode: MATCH_LOG_EVENT_CODES.TIMEOUT_START,
         eventEndCode: MATCH_LOG_EVENT_CODES.TIMEOUT_END,
+        replace: isInterPointWindow && !areTimeoutsStacked,
+        followUp,
       }
     );
     if (!controller.stoppageActive) {

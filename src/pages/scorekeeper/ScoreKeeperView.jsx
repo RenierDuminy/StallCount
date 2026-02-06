@@ -125,6 +125,13 @@ export default function ScoreKeeperView() {
     if (teamKey === "B") return safeTeamBName;
     return null;
   };
+  const halftimeStartLogged = logs.some(
+    (entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START
+  );
+  const halftimeEndLogged = logs.some(
+    (entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
+  );
+  const halftimeButtonDisabled = halftimeStartLogged && halftimeEndLogged;
   const possessionDisplay =
     formatTeamLabel(possessionTeam) || possessionLeader || "Unassigned";
 
@@ -140,6 +147,7 @@ export default function ScoreKeeperView() {
     );
   };
   const isMixedDivision = (rules.division || "").toLowerCase() === "mixed";
+  const isAbbaEnabled = isMixedDivision && rules.mixedRatioRule !== "B";
   const spiritScoresUrl = activeMatch?.id
     ? `/spirit-scores?matchId=${activeMatch.id}`
     : selectedMatch?.id
@@ -147,7 +155,7 @@ export default function ScoreKeeperView() {
       : "/spirit-scores";
   const isStartMatchReady =
     Boolean(setupForm.startingTeamId) &&
-    (!isMixedDivision || ["male", "female"].includes(setupForm.abbaPattern));
+    (!isAbbaEnabled || ["male", "female"].includes(setupForm.abbaPattern));
   const renderMatchEventCard = (log, options) => {
     const { chronologicalIndex, editIndex } = options;
     const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
@@ -983,7 +991,7 @@ export default function ScoreKeeperView() {
           teamBId,
           displayTeamA,
           displayTeamB,
-          isMixedDivision,
+          isAbbaEnabled,
           initialising,
           selectedMatch,
           isStartMatchReady,
@@ -1018,6 +1026,7 @@ export default function ScoreKeeperView() {
           open: timeModalOpen,
           onClose: () => setTimeModalOpen(false),
           stoppageActive,
+          halftimeDisabled: halftimeButtonDisabled,
           onHalfTime: handleHalfTimeTrigger,
           onTimeout: handleTimeoutTrigger,
           remainingTimeouts,

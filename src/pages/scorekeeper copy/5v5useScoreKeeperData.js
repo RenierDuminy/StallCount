@@ -41,57 +41,75 @@ import {
 const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
-const MAX_OVERTIME_SECONDS = 30 * 60;
 
 const OPTIMISTIC_PREFIX = "local-";
 
+const MAX_OVERTIME_SECONDS = 30 * 60;
+
 const DEFAULT_EVENT_RULES = {
-  division: "mixed",
   format: "wfdfChampionship",
+  division: "mixed",
+  clock: {
+    isRunningGameClockEnabled: true,
+  },
   game: {
     pointTarget: 15,
+    timeCapMinutes: 100,
+    timeCapEndMode: "afterPoint",
+    timeCapTargetMode: "addOneToHighest",
     softCapMinutes: null,
-    softCapMode: "addOneToHighest",
-    hardCapMinutes: 100,
-    hardCapEndMode: "afterPoint",
+    softCapMode: null,
   },
   half: {
-    pointTarget: 8,
-    timeCapMinutes: 55,
-    breakMinutes: 7,
-  },
-  clock: {
-    isRunningClockEnabled: true,
-  },
-  interPoint: {
-    offenceOnLineSeconds: 45,
-    offenceReadySeconds: 60,
-    pullDeadlineSeconds: 75,
-    timeoutAddsSeconds: 75,
-    areTimeoutsStacked: true,
+    halftimePointTarget: 8,
+    halftimeBreakMinutes: 7,
+    halftimeCapMinutes: 55,
+    halftimeCapEndMode: "afterPoint",
+    halftimeCapTargetMode: "addOneToHighest",
   },
   timeouts: {
     perTeamPerGame: 2,
     durationSeconds: 75,
   },
-  inPointTimeout: {
-    offenceSetSeconds: 75,
-    defenceCheckMaxSeconds: 90,
+  interPoint: {
+    offenceOnGoalLineBySeconds: 45,
+    offenceReadyBySeconds: 60,
+    defencePullBySeconds: 75,
+    pullAllowedLaterIfOffenceReadyLate: true,
+    defencePullWithinSecondsAfterOffenceReady: 15,
+    prePullTimeoutAddsSeconds: 75,
+    areTimeoutsStackedBeforePull: true,
+    mixedRatioAnnouncementDeadlineSeconds: 15,
+  },
+  discInPlay: {
+    pivotCentralZoneMaxSeconds: 10,
+    pivotEndZoneMaxSeconds: 20,
+    postPullDiscToRestRetrievalMaxSeconds: 20,
+    oobTurnoverDiscToRestRetrievalMaxSeconds: 20,
   },
   discussions: {
     captainInterventionSeconds: 15,
     autoContestSeconds: 45,
     restartPlayMaxSeconds: 60,
   },
-  discInPlay: {
-    pivotCentralZoneMaxSeconds: 10,
-    pivotEndZoneMaxSeconds: 20,
-    newDiscRetrievalMaxSeconds: 20,
+  inPointTimeout: {
+    offenceSetSeconds: 75,
+    defenceCheckMaxSeconds: 90,
+    defenceCheckWithinSecondsAfterOffenceSet: 15,
   },
   mixedRatio: {
     isEnabled: true,
     ratioRule: "A",
-    initialRatioChoosingTeam: "home",
+    ratioRuleA: {
+      chooser: "secondDiscFlipWinner",
+      pattern: "AA-BB repeating in 2-point blocks",
+      halftimeAffectsPattern: false,
+    },
+    prescribedPullRule: {
+      isEnabled: true,
+      fourFemaleMeansFemalePull: true,
+      fourMaleMeansMalePull: true,
+    },
   },
 };
 
@@ -125,6 +143,7 @@ function normalizeDivision(input) {
   const candidate = input.trim().toLowerCase();
   if (!candidate) return null;
   if (candidate === "mixed" || candidate === "open" || candidate === "women") return candidate;
+  if (candidate === "openwomen" || candidate === "open/women") return "openwomen";
   if (candidate === "men" || candidate === "mens" || candidate === "male") return "open";
   if (candidate === "woman" || candidate === "womens" || candidate === "female") return "women";
   return candidate;
@@ -149,46 +168,86 @@ function normalizeHardCapEndMode(input) {
   return "afterPoint";
 }
 
+const getGameTimeCapMinutes = (rules) =>
+  rules?.game?.timeCapMinutes ?? rules?.game?.hardCapMinutes;
+const getGameTimeCapEndMode = (rules) =>
+  rules?.game?.timeCapEndMode ?? rules?.game?.hardCapEndMode;
+const getGameTimeCapTargetMode = (rules) =>
+  rules?.game?.timeCapTargetMode ?? rules?.game?.hardCapTargetMode;
+const getHalfPointTarget = (rules) =>
+  rules?.half?.halftimePointTarget ?? rules?.half?.pointTarget;
+const getHalfBreakMinutes = (rules) =>
+  rules?.half?.halftimeBreakMinutes ?? rules?.half?.breakMinutes;
+const getHalfCapMinutes = (rules) =>
+  rules?.half?.halftimeCapMinutes ?? rules?.half?.timeCapMinutes;
+const getHalfCapEndMode = (rules) =>
+  rules?.half?.halftimeCapEndMode ?? rules?.half?.timeCapEndMode;
+const getHalfCapTargetMode = (rules) =>
+  rules?.half?.halftimeCapTargetMode ?? rules?.half?.timeCapTargetMode;
+const getClockRunningEnabled = (rules) =>
+  rules?.clock?.isRunningGameClockEnabled ?? rules?.clock?.isRunningClockEnabled;
+const getInterPointPullDeadlineSeconds = (rules) =>
+  rules?.interPoint?.defencePullBySeconds ?? rules?.interPoint?.pullDeadlineSeconds;
+const getInterPointTimeoutAddsSeconds = (rules) =>
+  rules?.interPoint?.prePullTimeoutAddsSeconds ?? rules?.interPoint?.timeoutAddsSeconds;
+const getInterPointAreTimeoutsStacked = (rules) =>
+  rules?.interPoint?.areTimeoutsStackedBeforePull ?? rules?.interPoint?.areTimeoutsStacked;
+const getDiscInPlayNewDiscSeconds = (rules) =>
+  rules?.discInPlay?.postPullDiscToRestRetrievalMaxSeconds ??
+  rules?.discInPlay?.oobTurnoverDiscToRestRetrievalMaxSeconds ??
+  rules?.discInPlay?.newDiscRetrievalMaxSeconds;
+
 function normalizeEventRules(rawRules) {
   const baseRaw = DEFAULT_EVENT_RULES;
   if (!rawRules) {
     const division = normalizeDivision(baseRaw.division) || "mixed";
+    const mixedRatioRule = baseRaw.mixedRatio?.ratioRule || null;
     return {
       division,
-      matchDuration: coerceRuleNumber(baseRaw.game.hardCapMinutes, DEFAULT_DURATION),
-      halftimeMinutes: coerceRuleNumber(baseRaw.half.timeCapMinutes, 0),
-      halftimeBreakMinutes: coerceRuleNumber(baseRaw.half.breakMinutes, 0),
-      halftimeScoreThreshold: coerceRuleNumber(baseRaw.half.pointTarget, HALFTIME_SCORE_THRESHOLD),
+      matchDuration: coerceRuleNumber(getGameTimeCapMinutes(baseRaw), DEFAULT_DURATION),
+      halftimeMinutes: coerceRuleNumber(getHalfCapMinutes(baseRaw), 0),
+      halftimeBreakMinutes: coerceRuleNumber(getHalfBreakMinutes(baseRaw), 0),
+      halftimeScoreThreshold: coerceRuleNumber(getHalfPointTarget(baseRaw), HALFTIME_SCORE_THRESHOLD),
       timeoutSeconds: coerceRuleNumber(baseRaw.timeouts.durationSeconds, DEFAULT_TIMEOUT_SECONDS),
       timeoutsTotal: coerceRuleNumber(baseRaw.timeouts.perTeamPerGame, 0),
       timeoutsPerHalf: 0,
       interPointSeconds: coerceRuleNumber(
-        baseRaw.interPoint.pullDeadlineSeconds ?? baseRaw.interPoint.timeoutAddsSeconds,
+        getInterPointPullDeadlineSeconds(baseRaw) ?? getInterPointTimeoutAddsSeconds(baseRaw),
         DEFAULT_INTERPOINT_SECONDS
       ),
       discussionSeconds: coerceRuleNumber(
         baseRaw.discussions.restartPlayMaxSeconds,
         DEFAULT_DISCUSSION_SECONDS
       ),
-      abbaPattern: baseRaw.mixedRatio?.isEnabled ? DEFAULT_ABBA_PATTERN_WHEN_ENABLED : "none",
-      runningClockEnabled: Boolean(baseRaw.clock?.isRunningClockEnabled),
+      abbaPattern:
+        baseRaw.mixedRatio?.isEnabled && mixedRatioRule !== "B"
+          ? DEFAULT_ABBA_PATTERN_WHEN_ENABLED
+          : "none",
+      runningClockEnabled: Boolean(getClockRunningEnabled(baseRaw)),
       gamePointTarget: coerceOptionalNumber(baseRaw.game.pointTarget),
       gameSoftCapMinutes: coerceOptionalNumber(baseRaw.game.softCapMinutes),
       gameSoftCapMode: normalizeSoftCapMode(baseRaw.game.softCapMode),
-      gameHardCapMinutes: coerceOptionalNumber(baseRaw.game.hardCapMinutes),
-      gameHardCapEndMode: normalizeHardCapEndMode(baseRaw.game.hardCapEndMode),
+      gameHardCapMinutes: coerceOptionalNumber(getGameTimeCapMinutes(baseRaw)),
+      gameHardCapEndMode: normalizeHardCapEndMode(getGameTimeCapEndMode(baseRaw)),
+      gameTimeCapTargetMode: getGameTimeCapTargetMode(baseRaw) || null,
+      halftimeCapEndMode: normalizeHardCapEndMode(getHalfCapEndMode(baseRaw)),
+      halftimeCapTargetMode: getHalfCapTargetMode(baseRaw) || null,
       interPointPullDeadlineSeconds: coerceRuleNumber(
-        baseRaw.interPoint.pullDeadlineSeconds,
+        getInterPointPullDeadlineSeconds(baseRaw),
         DEFAULT_INTERPOINT_SECONDS
       ),
       interPointTimeoutAddsSeconds: coerceRuleNumber(
-        baseRaw.interPoint.timeoutAddsSeconds,
+        getInterPointTimeoutAddsSeconds(baseRaw),
         DEFAULT_TIMEOUT_SECONDS
       ),
-      interPointAreTimeoutsStacked: Boolean(baseRaw.interPoint.areTimeoutsStacked),
+      interPointAreTimeoutsStacked: Boolean(getInterPointAreTimeoutsStacked(baseRaw)),
       inPointOffenceSetSeconds: coerceRuleNumber(baseRaw.inPointTimeout.offenceSetSeconds, 0),
       inPointDefenceCheckMaxSeconds: coerceRuleNumber(
         baseRaw.inPointTimeout.defenceCheckMaxSeconds,
+        0
+      ),
+      inPointDefenceCheckWithinSecondsAfterOffenceSet: coerceRuleNumber(
+        baseRaw.inPointTimeout.defenceCheckWithinSecondsAfterOffenceSet,
         0
       ),
       discussionAutoContestSeconds: coerceRuleNumber(
@@ -203,10 +262,13 @@ function normalizeEventRules(rawRules) {
         baseRaw.discInPlay.pivotEndZoneMaxSeconds,
         0
       ),
-      discInPlayNewDiscSeconds: coerceRuleNumber(baseRaw.discInPlay.newDiscRetrievalMaxSeconds, 0),
+      discInPlayNewDiscSeconds: coerceRuleNumber(getDiscInPlayNewDiscSeconds(baseRaw), 0),
       mixedRatioEnabled: division === "mixed" && Boolean(baseRaw.mixedRatio?.isEnabled),
-      mixedRatioRule: baseRaw.mixedRatio?.ratioRule || null,
-      mixedRatioChooser: baseRaw.mixedRatio?.initialRatioChoosingTeam || null,
+      mixedRatioRule,
+      mixedRatioChooser:
+        baseRaw.mixedRatio?.ratioRuleA?.chooser ||
+        baseRaw.mixedRatio?.initialRatioChoosingTeam ||
+        null,
       raw: baseRaw,
     };
   }
@@ -239,6 +301,7 @@ function normalizeEventRules(rawRules) {
 
   const division = normalizeDivision(mergedRaw.division) || normalizeDivision(baseRaw.division) || "mixed";
   const abbaPattern = normalizeAbbaPattern(parsed.abbaPattern);
+  const mixedRatioRule = mergedRaw.mixedRatio?.ratioRule || null;
   const mixedRatioEnabled =
     division === "mixed" && Boolean(mergedRaw.mixedRatio?.isEnabled);
   let derivedAbbaPattern =
@@ -250,7 +313,7 @@ function normalizeEventRules(rawRules) {
       : mixedRatioEnabled
         ? DEFAULT_ABBA_PATTERN_WHEN_ENABLED
         : "none");
-  if (!mixedRatioEnabled) {
+  if (!mixedRatioEnabled || mixedRatioRule === "B") {
     derivedAbbaPattern = "none";
   }
 
@@ -258,26 +321,26 @@ function normalizeEventRules(rawRules) {
   const gameSoftCapMinutes = coerceOptionalNumber(mergedRaw.game?.softCapMinutes);
   const gameSoftCapMode = normalizeSoftCapMode(mergedRaw.game?.softCapMode);
   const gameHardCapMinutes =
-    coerceOptionalNumber(mergedRaw.game?.hardCapMinutes) ??
-    coerceRuleNumber(baseRaw.game.hardCapMinutes, DEFAULT_DURATION);
+    coerceOptionalNumber(getGameTimeCapMinutes(mergedRaw)) ??
+    coerceRuleNumber(getGameTimeCapMinutes(baseRaw), DEFAULT_DURATION);
 
   return {
     division,
     matchDuration: coerceRuleNumber(
-      mergedRaw.game?.hardCapMinutes,
-      coerceRuleNumber(baseRaw.game.hardCapMinutes, DEFAULT_DURATION)
+      getGameTimeCapMinutes(mergedRaw),
+      coerceRuleNumber(getGameTimeCapMinutes(baseRaw), DEFAULT_DURATION)
     ),
     halftimeMinutes: coerceRuleNumber(
-      mergedRaw.half?.timeCapMinutes,
-      coerceRuleNumber(baseRaw.half.timeCapMinutes, 0)
+      getHalfCapMinutes(mergedRaw),
+      coerceRuleNumber(getHalfCapMinutes(baseRaw), 0)
     ),
     halftimeBreakMinutes: coerceRuleNumber(
-      mergedRaw.half?.breakMinutes,
-      coerceRuleNumber(baseRaw.half.breakMinutes, 0)
+      getHalfBreakMinutes(mergedRaw),
+      coerceRuleNumber(getHalfBreakMinutes(baseRaw), 0)
     ),
     halftimeScoreThreshold: coerceRuleNumber(
-      mergedRaw.half?.pointTarget,
-      coerceRuleNumber(baseRaw.half.pointTarget, HALFTIME_SCORE_THRESHOLD)
+      getHalfPointTarget(mergedRaw),
+      coerceRuleNumber(getHalfPointTarget(baseRaw), HALFTIME_SCORE_THRESHOLD)
     ),
     timeoutSeconds: coerceRuleNumber(
       mergedRaw.timeouts?.durationSeconds,
@@ -289,9 +352,10 @@ function normalizeEventRules(rawRules) {
     ),
     timeoutsPerHalf: coerceRuleNumber(mergedRaw.timeouts?.perHalf, 0),
     interPointSeconds: coerceRuleNumber(
-      mergedRaw.interPoint?.pullDeadlineSeconds ?? mergedRaw.interPoint?.timeoutAddsSeconds,
+      getInterPointPullDeadlineSeconds(mergedRaw) ??
+        getInterPointTimeoutAddsSeconds(mergedRaw),
       coerceRuleNumber(
-        baseRaw.interPoint.pullDeadlineSeconds ?? baseRaw.interPoint.timeoutAddsSeconds,
+        getInterPointPullDeadlineSeconds(baseRaw) ?? getInterPointTimeoutAddsSeconds(baseRaw),
         DEFAULT_INTERPOINT_SECONDS
       )
     ),
@@ -300,21 +364,24 @@ function normalizeEventRules(rawRules) {
       coerceRuleNumber(baseRaw.discussions.restartPlayMaxSeconds, DEFAULT_DISCUSSION_SECONDS)
     ),
     abbaPattern: derivedAbbaPattern,
-    runningClockEnabled: Boolean(mergedRaw.clock?.isRunningClockEnabled),
+    runningClockEnabled: Boolean(getClockRunningEnabled(mergedRaw)),
     gamePointTarget,
     gameSoftCapMinutes,
-    gameSoftCapMode,
+    gameSoftCapMode: normalizeSoftCapMode(mergedRaw.game?.softCapMode),
     gameHardCapMinutes: gameHardCapMinutes ?? DEFAULT_DURATION,
-    gameHardCapEndMode: normalizeHardCapEndMode(mergedRaw.game?.hardCapEndMode),
+    gameHardCapEndMode: normalizeHardCapEndMode(getGameTimeCapEndMode(mergedRaw)),
+    gameTimeCapTargetMode: getGameTimeCapTargetMode(mergedRaw) || null,
+    halftimeCapEndMode: normalizeHardCapEndMode(getHalfCapEndMode(mergedRaw)),
+    halftimeCapTargetMode: getHalfCapTargetMode(mergedRaw) || null,
     interPointPullDeadlineSeconds: coerceRuleNumber(
-      mergedRaw.interPoint?.pullDeadlineSeconds,
-      coerceRuleNumber(baseRaw.interPoint.pullDeadlineSeconds, DEFAULT_INTERPOINT_SECONDS)
+      getInterPointPullDeadlineSeconds(mergedRaw),
+      coerceRuleNumber(getInterPointPullDeadlineSeconds(baseRaw), DEFAULT_INTERPOINT_SECONDS)
     ),
     interPointTimeoutAddsSeconds: coerceRuleNumber(
-      mergedRaw.interPoint?.timeoutAddsSeconds,
-      coerceRuleNumber(baseRaw.interPoint.timeoutAddsSeconds, DEFAULT_TIMEOUT_SECONDS)
+      getInterPointTimeoutAddsSeconds(mergedRaw),
+      coerceRuleNumber(getInterPointTimeoutAddsSeconds(baseRaw), DEFAULT_TIMEOUT_SECONDS)
     ),
-    interPointAreTimeoutsStacked: Boolean(mergedRaw.interPoint?.areTimeoutsStacked),
+    interPointAreTimeoutsStacked: Boolean(getInterPointAreTimeoutsStacked(mergedRaw)),
     inPointOffenceSetSeconds: coerceRuleNumber(
       mergedRaw.inPointTimeout?.offenceSetSeconds,
       coerceRuleNumber(baseRaw.inPointTimeout.offenceSetSeconds, 0)
@@ -322,6 +389,10 @@ function normalizeEventRules(rawRules) {
     inPointDefenceCheckMaxSeconds: coerceRuleNumber(
       mergedRaw.inPointTimeout?.defenceCheckMaxSeconds,
       coerceRuleNumber(baseRaw.inPointTimeout.defenceCheckMaxSeconds, 0)
+    ),
+    inPointDefenceCheckWithinSecondsAfterOffenceSet: coerceRuleNumber(
+      mergedRaw.inPointTimeout?.defenceCheckWithinSecondsAfterOffenceSet,
+      coerceRuleNumber(baseRaw.inPointTimeout.defenceCheckWithinSecondsAfterOffenceSet, 0)
     ),
     discussionAutoContestSeconds: coerceRuleNumber(
       mergedRaw.discussions?.autoContestSeconds,
@@ -339,12 +410,15 @@ function normalizeEventRules(rawRules) {
       coerceRuleNumber(baseRaw.discInPlay.pivotEndZoneMaxSeconds, 0)
     ),
     discInPlayNewDiscSeconds: coerceRuleNumber(
-      mergedRaw.discInPlay?.newDiscRetrievalMaxSeconds,
-      coerceRuleNumber(baseRaw.discInPlay.newDiscRetrievalMaxSeconds, 0)
+      getDiscInPlayNewDiscSeconds(mergedRaw),
+      coerceRuleNumber(getDiscInPlayNewDiscSeconds(baseRaw), 0)
     ),
     mixedRatioEnabled,
-    mixedRatioRule: mergedRaw.mixedRatio?.ratioRule || null,
-    mixedRatioChooser: mergedRaw.mixedRatio?.initialRatioChoosingTeam || null,
+    mixedRatioRule,
+    mixedRatioChooser:
+      mergedRaw.mixedRatio?.ratioRuleA?.chooser ||
+      mergedRaw.mixedRatio?.initialRatioChoosingTeam ||
+      null,
     raw: mergedRaw,
   };
 }
@@ -465,6 +539,7 @@ const [secondaryTotalSeconds, setSecondaryTotalSeconds] = useState(
   const [scoreTarget, setScoreTarget] = useState(DEFAULT_RULES.gamePointTarget || null);
   const [softCapApplied, setSoftCapApplied] = useState(false);
   const [hardCapReached, setHardCapReached] = useState(false);
+  const [timeCapTargetApplied, setTimeCapTargetApplied] = useState(false);
 const [secondaryFlashActive, setSecondaryFlashActive] = useState(false);
 const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
 const [secondaryFlashRateMs, setSecondaryFlashRateMs] = useState(400);
@@ -472,6 +547,7 @@ const [possessionTeam, setPossessionTeam] = useState(null);
 const [halftimeTriggered, setHalftimeTriggered] = useState(false);
 const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
 const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
+const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
   const [resumeCandidate, setResumeCandidate] = useState(null);
   const [resumeHandled, setResumeHandled] = useState(false);
   const [resumeBusy, setResumeBusy] = useState(false);
@@ -712,6 +788,8 @@ const clearLocalMatchState = useCallback(() => {
     setScoreTarget(DEFAULT_RULES.gamePointTarget || null);
     setSoftCapApplied(false);
     setHardCapReached(false);
+    setTimeCapTargetApplied(false);
+    setHalftimeCapTargetScore(null);
     commitPrimaryTimerState((DEFAULT_RULES.matchDuration || DEFAULT_DURATION) * 60, false);
     commitSecondaryTimerState(DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS, false);
     setTimerLabel(DEFAULT_TIMER_LABEL);
@@ -747,6 +825,8 @@ const clearLocalMatchState = useCallback(() => {
       setScoreTarget(nextRules.gamePointTarget || null);
       setSoftCapApplied(false);
       setHardCapReached(false);
+      setTimeCapTargetApplied(false);
+      setHalftimeCapTargetScore(null);
     },
     [commitPrimaryTimerState, commitSecondaryTimerState, rulesManuallyEdited]
   );
@@ -995,6 +1075,8 @@ useEffect(() => {
   if (!matchStarted) {
     setSoftCapApplied(false);
     setHardCapReached(false);
+    setTimeCapTargetApplied(false);
+    setHalftimeCapTargetScore(null);
     setScoreTarget(rules.gamePointTarget || null);
       return;
     }
@@ -1041,10 +1123,26 @@ useEffect(() => {
   if (!matchStarted || hardCapReached) return;
   if (timerSeconds > 0) return;
   setHardCapReached(true);
-  if (rules.gameHardCapEndMode === "immediate") {
-    setTimerLabel("Hard cap reached");
+  const timeCapTargetMode = rules.gameTimeCapTargetMode;
+  if (timeCapTargetMode === "addOneToHighest" && !timeCapTargetApplied) {
+    const nextTarget = Math.max(score.a, score.b) + 1;
+    setScoreTarget(nextTarget);
+    setTimeCapTargetApplied(true);
   }
-}, [matchStarted, hardCapReached, timerSeconds, rules.gameHardCapEndMode]);
+  if (rules.gameHardCapEndMode === "immediate") {
+    setTimerLabel("Time cap reached");
+    setTimerRunning(false);
+  }
+}, [
+  matchStarted,
+  hardCapReached,
+  timerSeconds,
+  rules.gameHardCapEndMode,
+  rules.gameTimeCapTargetMode,
+  score.a,
+  score.b,
+  timeCapTargetApplied,
+]);
 
 useEffect(() => {
   if (!matchStarted) {
@@ -1332,6 +1430,8 @@ useEffect(() => {
       scoreTarget,
       softCapApplied,
       hardCapReached,
+      timeCapTargetApplied,
+      halftimeCapTargetScore,
     };
 
     return snapshot;
@@ -1355,6 +1455,8 @@ useEffect(() => {
     scoreTarget,
     softCapApplied,
     hardCapReached,
+    timeCapTargetApplied,
+    halftimeCapTargetScore,
     userId,
     getPrimaryRemainingSeconds,
     getSecondaryRemainingSeconds,
@@ -1796,6 +1898,9 @@ const rosterNameLookup = useMemo(() => {
       if (halftimeTimeCapArmed) {
         setHalftimeTimeCapArmed(false);
       }
+      if (halftimeCapTargetScore !== null) {
+        setHalftimeCapTargetScore(null);
+      }
       return;
     }
     const halftimeMinutes = rules.halftimeMinutes || 0;
@@ -1803,11 +1908,28 @@ const rosterNameLookup = useMemo(() => {
       if (halftimeTimeCapArmed) {
         setHalftimeTimeCapArmed(false);
       }
+      if (halftimeCapTargetScore !== null) {
+        setHalftimeCapTargetScore(null);
+      }
       return;
     }
     const elapsedSeconds = matchDuration * 60 - timerSeconds;
-    if (elapsedSeconds >= halftimeMinutes * 60 && !halftimeTimeCapArmed) {
-      setHalftimeTimeCapArmed(true);
+    if (elapsedSeconds >= halftimeMinutes * 60) {
+      const halftimeCapEndMode = rules.halftimeCapEndMode || "afterPoint";
+      if (halftimeCapEndMode === "immediate") {
+        if (halftimeTimeCapArmed) {
+          setHalftimeTimeCapArmed(false);
+        }
+        void triggerHalftime();
+      } else if (!halftimeTimeCapArmed) {
+        setHalftimeTimeCapArmed(true);
+      }
+      if (
+        rules.halftimeCapTargetMode === "addOneToHighest" &&
+        halftimeCapTargetScore === null
+      ) {
+        setHalftimeCapTargetScore(Math.max(score.a, score.b) + 1);
+      }
     }
   }, [
     matchStarted,
@@ -1817,6 +1939,12 @@ const rosterNameLookup = useMemo(() => {
     matchDuration,
     timerSeconds,
     halftimeTimeCapArmed,
+    rules.halftimeCapEndMode,
+    rules.halftimeCapTargetMode,
+    halftimeCapTargetScore,
+    score.a,
+    score.b,
+    triggerHalftime,
   ]);
 
   const updatePossession = useCallback(
@@ -2140,6 +2268,12 @@ const rosterNameLookup = useMemo(() => {
     );
     setSoftCapApplied(Boolean(snapshot.softCapApplied));
     setHardCapReached(Boolean(snapshot.hardCapReached));
+    setTimeCapTargetApplied(Boolean(snapshot.timeCapTargetApplied));
+    setHalftimeCapTargetScore(
+      Number.isFinite(snapshot.halftimeCapTargetScore)
+        ? snapshot.halftimeCapTargetScore
+        : null
+    );
 
     const restoredPrimary = deriveTimerStateFromSnapshot(
       snapshot.timer,
@@ -2343,6 +2477,8 @@ const rosterNameLookup = useMemo(() => {
     setHalftimeTriggered,
     halftimeTimeCapArmed,
     setHalftimeTimeCapArmed,
+    halftimeCapTargetScore,
+    setHalftimeCapTargetScore,
     resumeCandidate,
     setResumeCandidate,
     resumeHandled,
@@ -2420,6 +2556,7 @@ const rosterNameLookup = useMemo(() => {
     scoreTarget,
     softCapApplied,
     hardCapReached,
+    timeCapTargetApplied,
     reachedPointTarget,
     clearLocalMatchState,
   };

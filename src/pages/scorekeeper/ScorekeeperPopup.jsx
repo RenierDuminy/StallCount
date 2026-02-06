@@ -44,7 +44,7 @@ export function ScorekeeperPopups({
     teamBId,
     displayTeamA: setupDisplayTeamA,
     displayTeamB: setupDisplayTeamB,
-    isMixedDivision,
+    isAbbaEnabled,
     initialising,
     selectedMatch,
     isStartMatchReady,
@@ -79,6 +79,7 @@ export function ScorekeeperPopups({
     open: timeOpen,
     onClose: onTimeClose,
     stoppageActive,
+    halftimeDisabled,
     onHalfTime,
     onTimeout,
     remainingTimeouts = { A: 0, B: 0 },
@@ -262,7 +263,7 @@ export function ScorekeeperPopups({
 
             <div className="grid gap-2 md:grid-cols-2">
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Match duration</span>
+                <span className="shrink-0">Time cap (min)</span>
                 <input
                   type="number"
                   min="1"
@@ -278,7 +279,41 @@ export function ScorekeeperPopups({
                 />
               </label>
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Halftime (min)</span>
+                <span className="shrink-0">Time cap end mode</span>
+                <select
+                  value={rules.gameHardCapEndMode || "afterPoint"}
+                  onChange={(event) => {
+                    if (!setRules) return;
+                    setRules((prev) => ({
+                      ...prev,
+                      gameHardCapEndMode: event.target.value,
+                    }));
+                  }}
+                  className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="afterPoint">After point</option>
+                  <option value="immediate">Immediate</option>
+                </select>
+              </label>
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                <span className="shrink-0">Time cap target</span>
+                <select
+                  value={rules.gameTimeCapTargetMode || "none"}
+                  onChange={(event) => {
+                    if (!setRules) return;
+                    setRules((prev) => ({
+                      ...prev,
+                      gameTimeCapTargetMode: event.target.value,
+                    }));
+                  }}
+                  className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="none">None</option>
+                  <option value="addOneToHighest">Highest + 1</option>
+                </select>
+              </label>
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                <span className="shrink-0">Halftime cap (min)</span>
                 <input
                   type="number"
                   min="0"
@@ -294,7 +329,41 @@ export function ScorekeeperPopups({
                 />
               </label>
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Halftime duration (min)</span>
+                <span className="shrink-0">Halftime cap end mode</span>
+                <select
+                  value={rules.halftimeCapEndMode || "afterPoint"}
+                  onChange={(event) => {
+                    if (!setRules) return;
+                    setRules((prev) => ({
+                      ...prev,
+                      halftimeCapEndMode: event.target.value,
+                    }));
+                  }}
+                  className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="afterPoint">After point</option>
+                  <option value="immediate">Immediate</option>
+                </select>
+              </label>
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                <span className="shrink-0">Halftime cap target</span>
+                <select
+                  value={rules.halftimeCapTargetMode || "none"}
+                  onChange={(event) => {
+                    if (!setRules) return;
+                    setRules((prev) => ({
+                      ...prev,
+                      halftimeCapTargetMode: event.target.value,
+                    }));
+                  }}
+                  className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="none">None</option>
+                  <option value="addOneToHighest">Highest + 1</option>
+                </select>
+              </label>
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                <span className="shrink-0">Halftime break (min)</span>
                 <input
                   type="number"
                   min="0"
@@ -375,7 +444,7 @@ export function ScorekeeperPopups({
                   {teamBId && <option value={teamBId}>{setupDisplayTeamB}</option>}
                 </select>
               </label>
-              {isMixedDivision && (
+              {isAbbaEnabled && (
                 <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                   <span className="shrink-0">ABBA</span>
                   <select
@@ -610,9 +679,9 @@ export function ScorekeeperPopups({
                   onHalfTime();
                 }
               }}
-              disabled={stoppageActive}
+              disabled={stoppageActive || halftimeDisabled}
               className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
-                stoppageActive
+                stoppageActive || halftimeDisabled
                   ? "bg-slate-300 text-slate-600"
                   : "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
               }`}
@@ -637,9 +706,18 @@ export function ScorekeeperPopups({
                 </button>
                 <p className="mt-1 text-xs">
                   Remaining (total): {remainingTimeouts.A}
-                  <br />
-                  Remaining (half): {halfRemainingLabel ? halfRemainingLabel("A") : 0}
+                  {remainingTimeouts.A > 0 && (
+                    <>
+                      <br />
+                      Remaining (half): {halfRemainingLabel ? halfRemainingLabel("A") : 0}
+                    </>
+                  )}
                 </p>
+                {remainingTimeouts.A === 0 && (
+                  <p className="mt-1 text-[11px] font-semibold text-[#991b1b]">
+                    If called, +2 on the stall count
+                  </p>
+                )}
               </div>
 
               <div>
@@ -658,9 +736,18 @@ export function ScorekeeperPopups({
                 </button>
                 <p className="mt-1 text-xs">
                   Remaining (total): {remainingTimeouts.B}
-                  <br />
-                  Remaining (half): {halfRemainingLabel ? halfRemainingLabel("B") : 0}
+                  {remainingTimeouts.B > 0 && (
+                    <>
+                      <br />
+                      Remaining (half): {halfRemainingLabel ? halfRemainingLabel("B") : 0}
+                    </>
+                  )}
                 </p>
+                {remainingTimeouts.B === 0 && (
+                  <p className="mt-1 text-[11px] font-semibold text-[#991b1b]">
+                    If called, +2 on the stall count
+                  </p>
+                )}
               </div>
             </div>
 

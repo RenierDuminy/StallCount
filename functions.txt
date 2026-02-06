@@ -1,0 +1,974 @@
+[
+  {
+    "schema_name": "auth",
+    "function_name": "email",
+    "args": "",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "auth",
+    "function_name": "jwt",
+    "args": "",
+    "return_type": "jsonb"
+  },
+  {
+    "schema_name": "auth",
+    "function_name": "role",
+    "args": "",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "auth",
+    "function_name": "uid",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "armor",
+    "args": "bytea",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "armor",
+    "args": "bytea, text[], text[]",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "crypt",
+    "args": "text, text",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "dearmor",
+    "args": "text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "decrypt",
+    "args": "bytea, bytea, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "decrypt_iv",
+    "args": "bytea, bytea, bytea, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "digest",
+    "args": "bytea, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "digest",
+    "args": "text, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "encrypt",
+    "args": "bytea, bytea, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "encrypt_iv",
+    "args": "bytea, bytea, bytea, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "gen_random_bytes",
+    "args": "integer",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "gen_random_uuid",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "gen_salt",
+    "args": "text",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "gen_salt",
+    "args": "text, integer",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "grant_pg_cron_access",
+    "args": "",
+    "return_type": "event_trigger"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "grant_pg_graphql_access",
+    "args": "",
+    "return_type": "event_trigger"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "grant_pg_net_access",
+    "args": "",
+    "return_type": "event_trigger"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hmac",
+    "args": "bytea, bytea, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hmac",
+    "args": "text, text, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hypopg",
+    "args": "OUT indexname text, OUT indexrelid oid, OUT indrelid oid, OUT innatts integer, OUT indisunique boolean, OUT indkey int2vector, OUT indcollation oidvector, OUT indclass oidvector, OUT indoption oidvector, OUT indexprs pg_node_tree, OUT indpred pg_node_tree, OUT amid oid",
+    "return_type": "SETOF record"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hypopg_create_index",
+    "args": "sql_order text, OUT indexrelid oid, OUT indexname text",
+    "return_type": "SETOF record"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hypopg_drop_index",
+    "args": "indexid oid",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hypopg_get_indexdef",
+    "args": "indexid oid",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hypopg_hidden_indexes",
+    "args": "",
+    "return_type": "TABLE(indexid oid)"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hypopg_hide_index",
+    "args": "indexid oid",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hypopg_relation_size",
+    "args": "indexid oid",
+    "return_type": "bigint"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hypopg_reset",
+    "args": "",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hypopg_reset_index",
+    "args": "",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hypopg_unhide_all_indexes",
+    "args": "",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "hypopg_unhide_index",
+    "args": "indexid oid",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "index_advisor",
+    "args": "query text",
+    "return_type": "TABLE(startup_cost_before jsonb, startup_cost_after jsonb, total_cost_before jsonb, total_cost_after jsonb, index_statements text[], errors text[])"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pg_stat_statements",
+    "args": "showtext boolean, OUT userid oid, OUT dbid oid, OUT toplevel boolean, OUT queryid bigint, OUT query text, OUT plans bigint, OUT total_plan_time double precision, OUT min_plan_time double precision, OUT max_plan_time double precision, OUT mean_plan_time double precision, OUT stddev_plan_time double precision, OUT calls bigint, OUT total_exec_time double precision, OUT min_exec_time double precision, OUT max_exec_time double precision, OUT mean_exec_time double precision, OUT stddev_exec_time double precision, OUT rows bigint, OUT shared_blks_hit bigint, OUT shared_blks_read bigint, OUT shared_blks_dirtied bigint, OUT shared_blks_written bigint, OUT local_blks_hit bigint, OUT local_blks_read bigint, OUT local_blks_dirtied bigint, OUT local_blks_written bigint, OUT temp_blks_read bigint, OUT temp_blks_written bigint, OUT shared_blk_read_time double precision, OUT shared_blk_write_time double precision, OUT local_blk_read_time double precision, OUT local_blk_write_time double precision, OUT temp_blk_read_time double precision, OUT temp_blk_write_time double precision, OUT wal_records bigint, OUT wal_fpi bigint, OUT wal_bytes numeric, OUT jit_functions bigint, OUT jit_generation_time double precision, OUT jit_inlining_count bigint, OUT jit_inlining_time double precision, OUT jit_optimization_count bigint, OUT jit_optimization_time double precision, OUT jit_emission_count bigint, OUT jit_emission_time double precision, OUT jit_deform_count bigint, OUT jit_deform_time double precision, OUT stats_since timestamp with time zone, OUT minmax_stats_since timestamp with time zone",
+    "return_type": "SETOF record"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pg_stat_statements_info",
+    "args": "OUT dealloc bigint, OUT stats_reset timestamp with time zone",
+    "return_type": "record"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pg_stat_statements_reset",
+    "args": "userid oid, dbid oid, queryid bigint, minmax_only boolean",
+    "return_type": "timestamp with time zone"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_armor_headers",
+    "args": "text, OUT key text, OUT value text",
+    "return_type": "SETOF record"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_key_id",
+    "args": "bytea",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_pub_decrypt",
+    "args": "bytea, bytea",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_pub_decrypt",
+    "args": "bytea, bytea, text",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_pub_decrypt",
+    "args": "bytea, bytea, text, text",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_pub_decrypt_bytea",
+    "args": "bytea, bytea",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_pub_decrypt_bytea",
+    "args": "bytea, bytea, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_pub_decrypt_bytea",
+    "args": "bytea, bytea, text, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_pub_encrypt",
+    "args": "text, bytea",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_pub_encrypt",
+    "args": "text, bytea, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_pub_encrypt_bytea",
+    "args": "bytea, bytea",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_pub_encrypt_bytea",
+    "args": "bytea, bytea, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_sym_decrypt",
+    "args": "bytea, text",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_sym_decrypt",
+    "args": "bytea, text, text",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_sym_decrypt_bytea",
+    "args": "bytea, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_sym_decrypt_bytea",
+    "args": "bytea, text, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_sym_encrypt",
+    "args": "text, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_sym_encrypt",
+    "args": "text, text, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_sym_encrypt_bytea",
+    "args": "bytea, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgp_sym_encrypt_bytea",
+    "args": "bytea, text, text",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgrst_ddl_watch",
+    "args": "",
+    "return_type": "event_trigger"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "pgrst_drop_watch",
+    "args": "",
+    "return_type": "event_trigger"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "set_graphql_placeholder",
+    "args": "",
+    "return_type": "event_trigger"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "uuid_generate_v1",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "uuid_generate_v1mc",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "uuid_generate_v3",
+    "args": "namespace uuid, name text",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "uuid_generate_v4",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "uuid_generate_v5",
+    "args": "namespace uuid, name text",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "uuid_nil",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "uuid_ns_dns",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "uuid_ns_oid",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "uuid_ns_url",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "extensions",
+    "function_name": "uuid_ns_x500",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "graphql",
+    "function_name": "_internal_resolve",
+    "args": "query text, variables jsonb, \"operationName\" text, extensions jsonb",
+    "return_type": "jsonb"
+  },
+  {
+    "schema_name": "graphql",
+    "function_name": "comment_directive",
+    "args": "comment_ text",
+    "return_type": "jsonb"
+  },
+  {
+    "schema_name": "graphql",
+    "function_name": "exception",
+    "args": "message text",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "graphql",
+    "function_name": "get_schema_version",
+    "args": "",
+    "return_type": "integer"
+  },
+  {
+    "schema_name": "graphql",
+    "function_name": "increment_schema_version",
+    "args": "",
+    "return_type": "event_trigger"
+  },
+  {
+    "schema_name": "graphql",
+    "function_name": "resolve",
+    "args": "query text, variables jsonb, \"operationName\" text, extensions jsonb",
+    "return_type": "jsonb"
+  },
+  {
+    "schema_name": "graphql_public",
+    "function_name": "graphql",
+    "args": "\"operationName\" text, query text, variables jsonb, extensions jsonb",
+    "return_type": "jsonb"
+  },
+  {
+    "schema_name": "pgbouncer",
+    "function_name": "get_auth",
+    "args": "p_usename text",
+    "return_type": "TABLE(username text, password text)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "_current_actor_id",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "_rebuild_stats_after_log",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "apply_match_log_delta",
+    "args": "p_match_id uuid, p_team_id uuid, p_actor_id uuid, p_secondary_actor_id uuid, p_event_type_id smallint, p_direction integer",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "apply_player_stat_delta",
+    "args": "p_match_id uuid, p_player_id uuid, p_team_hint uuid, p_goal_delta integer, p_assist_delta integer, p_block_delta integer, p_turnover_delta integer",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "assign_default_viewer_role",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "audit_row",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "can_write_match_logs",
+    "args": "_match_id uuid",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "enqueue_live_event_from_log",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "fetch_pending_live_event_payloads",
+    "args": "batch_size integer",
+    "return_type": "TABLE(id uuid, match_id uuid, event_type text, data jsonb, created_at timestamp with time zone, push_subscribers jsonb)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gen_jersey_3digit",
+    "args": "p_event text, p_team text, p_player text",
+    "return_type": "integer"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "gen_jersey_3digit",
+    "args": "p_event uuid, p_team uuid, p_player uuid",
+    "return_type": "integer"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_scoreboard_snapshot",
+    "args": "p_match_id uuid",
+    "return_type": "jsonb"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "grant_role",
+    "args": "p_user_id uuid, p_role_name text",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "grant_role",
+    "args": "p_user_id uuid, p_role_name text, p_granted_by uuid",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "handle_match_log_player_stats",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "handle_new_user",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "has_event_permission",
+    "args": "permission_key text, target_event_id uuid",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "has_permission",
+    "args": "permission_key text",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "has_role",
+    "args": "target_role text",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "players_tsv_trigger",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "rebuild_player_match_stats",
+    "args": "target_match_id uuid",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "recompute_player_gender",
+    "args": "p_player_id uuid",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "register_scoreboard_device",
+    "args": "p_device jsonb, p_targets jsonb",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "register_scoreboard_device",
+    "args": "p_device_label text, p_hardware_id text, p_metadata jsonb, p_venue uuid, p_match uuid",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "resolve_match_player_team",
+    "args": "p_match_id uuid, p_player_id uuid, p_hint uuid",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "revoke_role",
+    "args": "p_user_id uuid, p_role_name text",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "sync_scoreboard_device_subscriptions",
+    "args": "p_device_id uuid, p_targets jsonb",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "touch_scoreboard_device_subscriptions_updated_at",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "touch_scoreboard_device_updated_at",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "touch_scoreboard_devices_updated_at",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "touch_scoreboard_match_snapshots",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "touch_updated_at",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "trg_player_stats_from_match_logs",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "trg_roster_gender_sync",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "uid",
+    "args": "",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "upsert_scoreboard_match_snapshot",
+    "args": "p_match_id uuid, p_payload jsonb, p_last_log_id uuid",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "upsert_scoreboard_offset",
+    "args": "p_device_id uuid, p_match_id uuid, p_last_log_id uuid, p_last_log_created_at timestamp with time zone, p_cached_snapshot jsonb",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "apply_rls",
+    "args": "wal jsonb, max_record_bytes integer",
+    "return_type": "SETOF realtime.wal_rls"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "broadcast_changes",
+    "args": "topic_name text, event_name text, operation text, table_name text, table_schema text, new record, old record, level text",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "build_prepared_statement_sql",
+    "args": "prepared_statement_name text, entity regclass, columns realtime.wal_column[]",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "cast",
+    "args": "val text, type_ regtype",
+    "return_type": "jsonb"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "check_equality_op",
+    "args": "op realtime.equality_op, type_ regtype, val_1 text, val_2 text",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "is_visible_through_filters",
+    "args": "columns realtime.wal_column[], filters realtime.user_defined_filter[]",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "list_changes",
+    "args": "publication name, slot_name name, max_changes integer, max_record_bytes integer",
+    "return_type": "SETOF realtime.wal_rls"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "quote_wal2json",
+    "args": "entity regclass",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "send",
+    "args": "payload jsonb, event text, topic text, private boolean",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "subscription_check_filters",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "to_regrole",
+    "args": "role_name text",
+    "return_type": "regrole"
+  },
+  {
+    "schema_name": "realtime",
+    "function_name": "topic",
+    "args": "",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "add_prefixes",
+    "args": "_bucket_id text, _name text",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "can_insert_object",
+    "args": "bucketid text, name text, owner uuid, metadata jsonb",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "delete_leaf_prefixes",
+    "args": "bucket_ids text[], names text[]",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "delete_prefix",
+    "args": "_bucket_id text, _name text",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "delete_prefix_hierarchy_trigger",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "enforce_bucket_name_length",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "extension",
+    "args": "name text",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "filename",
+    "args": "name text",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "foldername",
+    "args": "name text",
+    "return_type": "text[]"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "get_level",
+    "args": "name text",
+    "return_type": "integer"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "get_prefix",
+    "args": "name text",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "get_prefixes",
+    "args": "name text",
+    "return_type": "text[]"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "get_size_by_bucket",
+    "args": "",
+    "return_type": "TABLE(size bigint, bucket_id text)"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "list_multipart_uploads_with_delimiter",
+    "args": "bucket_id text, prefix_param text, delimiter_param text, max_keys integer, next_key_token text, next_upload_token text",
+    "return_type": "TABLE(key text, id text, created_at timestamp with time zone)"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "list_objects_with_delimiter",
+    "args": "bucket_id text, prefix_param text, delimiter_param text, max_keys integer, start_after text, next_token text",
+    "return_type": "TABLE(name text, id uuid, metadata jsonb, updated_at timestamp with time zone)"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "lock_top_prefixes",
+    "args": "bucket_ids text[], names text[]",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "objects_delete_cleanup",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "objects_insert_prefix_trigger",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "objects_update_cleanup",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "objects_update_level_trigger",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "objects_update_prefix_trigger",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "operation",
+    "args": "",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "prefixes_delete_cleanup",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "prefixes_insert_trigger",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "search",
+    "args": "prefix text, bucketname text, limits integer, levels integer, offsets integer, search text, sortcolumn text, sortorder text",
+    "return_type": "TABLE(name text, id uuid, updated_at timestamp with time zone, created_at timestamp with time zone, last_accessed_at timestamp with time zone, metadata jsonb)"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "search_legacy_v1",
+    "args": "prefix text, bucketname text, limits integer, levels integer, offsets integer, search text, sortcolumn text, sortorder text",
+    "return_type": "TABLE(name text, id uuid, updated_at timestamp with time zone, created_at timestamp with time zone, last_accessed_at timestamp with time zone, metadata jsonb)"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "search_v1_optimised",
+    "args": "prefix text, bucketname text, limits integer, levels integer, offsets integer, search text, sortcolumn text, sortorder text",
+    "return_type": "TABLE(name text, id uuid, updated_at timestamp with time zone, created_at timestamp with time zone, last_accessed_at timestamp with time zone, metadata jsonb)"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "search_v2",
+    "args": "prefix text, bucket_name text, limits integer, levels integer, start_after text, sort_order text, sort_column text, sort_column_after text",
+    "return_type": "TABLE(key text, name text, id uuid, updated_at timestamp with time zone, created_at timestamp with time zone, last_accessed_at timestamp with time zone, metadata jsonb)"
+  },
+  {
+    "schema_name": "storage",
+    "function_name": "update_updated_at_column",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "vault",
+    "function_name": "_crypto_aead_det_decrypt",
+    "args": "message bytea, additional bytea, key_id bigint, context bytea, nonce bytea",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "vault",
+    "function_name": "_crypto_aead_det_encrypt",
+    "args": "message bytea, additional bytea, key_id bigint, context bytea, nonce bytea",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "vault",
+    "function_name": "_crypto_aead_det_noncegen",
+    "args": "",
+    "return_type": "bytea"
+  },
+  {
+    "schema_name": "vault",
+    "function_name": "create_secret",
+    "args": "new_secret text, new_name text, new_description text, new_key_id uuid",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "vault",
+    "function_name": "update_secret",
+    "args": "secret_id uuid, new_secret text, new_name text, new_description text, new_key_id uuid",
+    "return_type": "void"
+  }
+]

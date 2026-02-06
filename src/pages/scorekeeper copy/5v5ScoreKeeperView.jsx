@@ -134,6 +134,7 @@ export default function ScoreKeeperView() {
     );
   };
   const isMixedDivision = (rules.division || "").toLowerCase() === "mixed";
+  const isAbbaEnabled = isMixedDivision && rules.mixedRatioRule !== "B";
   const spiritScoresUrl = activeMatch?.id
     ? `/spirit-scores?matchId=${activeMatch.id}`
     : selectedMatch?.id
@@ -141,7 +142,7 @@ export default function ScoreKeeperView() {
       : "/spirit-scores";
   const isStartMatchReady =
     Boolean(setupForm.startingTeamId) &&
-    (!isMixedDivision || ["male", "female"].includes(setupForm.abbaPattern));
+    (!isAbbaEnabled || ["male", "female"].includes(setupForm.abbaPattern));
   const renderMatchEventCard = (log, options) => {
     const { chronologicalIndex, editIndex } = options;
     const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
@@ -1138,7 +1139,7 @@ export default function ScoreKeeperView() {
                   {teamBId && <option value={teamBId}>{displayTeamB}</option>}
                 </select>
               </label>
-              {isMixedDivision && (
+              {isAbbaEnabled && (
                 <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                   <span className="shrink-0">ABBA</span>
                   <select
