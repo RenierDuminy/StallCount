@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import { formatClock, formatMatchLabel } from "./5v5scorekeeperUtils";
 import { useScoreKeeperData } from "./5v5useScoreKeeperData";
@@ -141,11 +140,6 @@ export default function ScoreKeeperView() {
   };
   const isMixedDivision = (rules.division || "").toLowerCase() === "mixed";
   const isAbbaEnabled = isMixedDivision && rules.mixedRatioRule !== "B";
-  const spiritScoresUrl = activeMatch?.id
-    ? `/spirit-scores?matchId=${activeMatch.id}`
-    : selectedMatch?.id
-      ? `/spirit-scores?matchId=${selectedMatch.id}`
-      : "/spirit-scores";
   const isStartMatchReady =
     Boolean(setupForm.startingTeamId) &&
     (!isAbbaEnabled || ["male", "female"].includes(setupForm.abbaPattern));
@@ -893,12 +887,6 @@ export default function ScoreKeeperView() {
             >
               {initialising ? "Initialising..." : "Match setup"}
             </button>
-            <Link
-              to={spiritScoresUrl}
-              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full border border-[#0f5132]/40 px-4 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
-            >
-              Enter spirit scores
-            </Link>
             {consoleError && (
               <p className="text-sm text-rose-600">{consoleError}</p>
             )}

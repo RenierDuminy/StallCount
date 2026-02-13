@@ -445,7 +445,7 @@ export default function AdminAccessPage() {
               <div>
                 <p className="text-sm font-semibold text-ink">Role manager</p>
                 <p className="text-xs text-ink-muted">
-                  Assign admin access globally and event roles by event.
+                  Assign admin access globally and event roles in this order: user, role, event.
                 </p>
               </div>
               {selectedUser ? (
@@ -455,6 +455,7 @@ export default function AdminAccessPage() {
                   onClick={() => {
                     setSelectedUserId("");
                     setRoleManagerQuery("");
+                    setSelectedEventId("");
                     setRoleManagerError("");
                     setPendingRoleId("");
                     setPendingAdminRoleId("");
@@ -463,36 +464,6 @@ export default function AdminAccessPage() {
                   Clear selection
                 </button>
               ) : null}
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Event" hint="Events with existing role assignments">
-                <Select
-                  value={selectedEventId}
-                  onChange={(event) => {
-                    setSelectedEventId(event.target.value);
-                    setRoleManagerError("");
-                    setPendingRoleId("");
-                  }}
-                  disabled={eventOptions.length === 0}
-                >
-                  <option value="">
-                    {eventOptions.length === 0 ? "No linked events" : "Select an event"}
-                  </option>
-                  {eventOptions.map((event) => (
-                    <option key={event.id} value={event.id}>
-                      {formatEventOptionLabel(event)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Panel className="flex flex-col justify-center gap-1 p-4 text-xs md:col-span-2">
-                <span className="font-semibold uppercase tracking-wide text-ink-muted">Event focus</span>
-                <span className="text-ink">
-                  {selectedEventId
-                    ? formatEventOptionLabel(eventOptions.find((event) => event.id === selectedEventId))
-                    : "Select an event to unlock event role management"}
-                </span>
-              </Panel>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
               <Field label="Search user" hint="Name, email, or UUID">
@@ -508,6 +479,7 @@ export default function AdminAccessPage() {
                   value={selectedUserId}
                   onChange={(event) => {
                     setSelectedUserId(event.target.value);
+                    setSelectedEventId("");
                     setRoleManagerError("");
                     setPendingRoleId("");
                     setPendingAdminRoleId("");
@@ -532,6 +504,69 @@ export default function AdminAccessPage() {
                 {selectedUser ? (
                   <span className="text-[11px] text-ink-muted">{selectedUser.email || selectedUser.id}</span>
                 ) : null}
+              </Panel>
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Field label="Role" hint="Select event role first">
+                <Select
+                  value={pendingRoleId}
+                  onChange={(event) => {
+                    setPendingRoleId(event.target.value);
+                    setSelectedEventId("");
+                    setRoleManagerError("");
+                  }}
+                  disabled={!selectedUser || roleManagerBusy || eventRoles.length === 0}
+                >
+                  <option value="">
+                    {!selectedUser
+                      ? "Select a user first"
+                      : eventRoles.length === 0
+                        ? "No event roles available"
+                        : "Select a role"}
+                  </option>
+                  {eventRoles.map((role) => (
+                    <option key={role.id} value={String(role.id)}>
+                      {role.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Event" hint="Select after role">
+                <Select
+                  value={selectedEventId}
+                  onChange={(event) => {
+                    setSelectedEventId(event.target.value);
+                    setRoleManagerError("");
+                  }}
+                  disabled={!selectedUser || !pendingRoleId || eventOptions.length === 0}
+                >
+                  <option value="">
+                    {!selectedUser
+                      ? "Select a user first"
+                      : !pendingRoleId
+                        ? "Select a role first"
+                        : eventOptions.length === 0
+                          ? "No linked events"
+                          : "Select an event"}
+                  </option>
+                  {eventOptions.map((event) => (
+                    <option key={event.id} value={event.id}>
+                      {formatEventOptionLabel(event)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Panel className="flex flex-col justify-center gap-1 p-4 text-xs">
+                <span className="font-semibold uppercase tracking-wide text-ink-muted">Sequence</span>
+                <span className="text-ink">
+                  {selectedUser
+                    ? pendingRoleId
+                      ? selectedEventId
+                        ? "Ready to add event role"
+                        : "Step 3: select event"
+                      : "Step 2: select role"
+                    : "Step 1: select user"}
+                </span>
               </Panel>
             </div>
             {selectedUser ? (
@@ -648,25 +683,16 @@ export default function AdminAccessPage() {
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Select
-                    value={pendingRoleId}
-                    onChange={(event) => setPendingRoleId(event.target.value)}
-                    disabled={roleManagerBusy || availableEventRoles.length === 0 || !selectedEventId}
-                  >
-                    <option value="">
-                      {availableEventRoles.length === 0 ? "All roles assigned" : "Add event role..."}
-                    </option>
-                    {availableEventRoles.map((role) => (
-                      <option key={role.id} value={String(role.id)}>
-                        {role.name}
-                      </option>
-                    ))}
-                  </Select>
                   <button
                     type="button"
                     className="sc-button is-ghost text-xs"
                     onClick={() => handleAddEventRole(selectedUser.id)}
-                    disabled={roleManagerBusy || !pendingRoleId || !selectedEventId}
+                    disabled={
+                      roleManagerBusy ||
+                      !pendingRoleId ||
+                      !selectedEventId ||
+                      !availableEventRoles.some((role) => String(role.id) === String(pendingRoleId))
+                    }
                   >
                     Add role
                   </button>

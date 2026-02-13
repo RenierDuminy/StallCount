@@ -148,7 +148,10 @@ const toDateTimeLocalValue = (value) => {
   if (Number.isNaN(date.getTime())) {
     return "";
   }
-  return date.toISOString().slice(0, 16);
+  const pad = (segment) => String(segment).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
 };
 
 const formatTeamOptionLabel = (team) => {
