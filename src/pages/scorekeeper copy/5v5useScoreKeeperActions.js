@@ -351,10 +351,19 @@ export function useScoreKeeperActions(controller) {
     if (typeof controller.markRulesManuallyEdited === "function") {
       controller.markRulesManuallyEdited();
     }
-    controller.setRules((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    controller.setRules((prev) => {
+      const next = {
+        ...prev,
+        [field]: value,
+      };
+      if (field === "matchDuration") {
+        next.gameHardCapMinutes = value;
+      }
+      if (field === "interPointPullDeadlineSeconds") {
+        next.interPointSeconds = value;
+      }
+      return next;
+    });
     if (field === "matchDuration") {
       controller.commitPrimaryTimerState((value || DEFAULT_DURATION) * 60, false);
     }

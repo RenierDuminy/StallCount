@@ -1124,8 +1124,13 @@ useEffect(() => {
   if (timerSeconds > 0) return;
   setHardCapReached(true);
   const timeCapTargetMode = rules.gameTimeCapTargetMode;
-  if (timeCapTargetMode === "addOneToHighest" && !timeCapTargetApplied) {
-    const nextTarget = Math.max(score.a, score.b) + 1;
+  if (
+    !timeCapTargetApplied &&
+    (timeCapTargetMode === "addOneToHighest" ||
+      timeCapTargetMode === "addTwoToHighest")
+  ) {
+    const increment = timeCapTargetMode === "addTwoToHighest" ? 2 : 1;
+    const nextTarget = Math.max(score.a, score.b) + increment;
     setScoreTarget(nextTarget);
     setTimeCapTargetApplied(true);
   }
@@ -1925,10 +1930,12 @@ const rosterNameLookup = useMemo(() => {
         setHalftimeTimeCapArmed(true);
       }
       if (
-        rules.halftimeCapTargetMode === "addOneToHighest" &&
+        (rules.halftimeCapTargetMode === "addOneToHighest" ||
+          rules.halftimeCapTargetMode === "addTwoToHighest") &&
         halftimeCapTargetScore === null
       ) {
-        setHalftimeCapTargetScore(Math.max(score.a, score.b) + 1);
+        const increment = rules.halftimeCapTargetMode === "addTwoToHighest" ? 2 : 1;
+        setHalftimeCapTargetScore(Math.max(score.a, score.b) + increment);
       }
     }
   }, [

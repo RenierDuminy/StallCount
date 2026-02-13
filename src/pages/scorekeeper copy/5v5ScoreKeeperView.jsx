@@ -121,6 +121,12 @@ export default function ScoreKeeperView() {
 
   const safeTeamAName = displayTeamA || "Team A";
   const safeTeamBName = displayTeamB || "Team B";
+  const formatDisplayValue = (value, emptyLabel = "Not set") => {
+    if (value === "" || value === null || value === undefined) {
+      return emptyLabel;
+    }
+    return String(value);
+  };
 
   const formatPlayerSelectLabel = (player) => {
     if (!player) return "Unassigned";
@@ -952,7 +958,7 @@ export default function ScoreKeeperView() {
       )}
 
       {setupModalOpen && (
-        <ActionModal title="Match setup" onClose={() => setSetupModalOpen(false)}>
+        <ActionModal title="Match setup" onClose={() => setSetupModalOpen(false)} alignTop scrollable>
           <form className="space-y-4" onSubmit={handleInitialiseMatch}>
             <div className="space-y-2">
               <div>
@@ -1031,133 +1037,226 @@ export default function ScoreKeeperView() {
               </div>
             </div>
 
-            <div className="grid gap-2 md:grid-cols-2">
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Match duration</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={rules.matchDuration}
-                  onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      matchDuration: Number(event.target.value) || 0,
-                    }))
-                  }
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Halftime (min)</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={rules.halftimeMinutes}
-                  onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      halftimeMinutes: Number(event.target.value) || 0,
-                    }))
-                  }
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Halftime duration (min)</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={rules.halftimeBreakMinutes}
-                  onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      halftimeBreakMinutes: Number(event.target.value) || 0,
-                    }))
-                  }
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Timeout duration (sec)</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={rules.timeoutSeconds}
-                  onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      timeoutSeconds: Number(event.target.value) || 0,
-                    }))
-                  }
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Timeouts total</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={rules.timeoutsTotal}
-                  onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      timeoutsTotal: Number(event.target.value) || 0,
-                    }))
-                  }
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Timeouts per half</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={rules.timeoutsPerHalf}
-                  onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      timeoutsPerHalf: Number(event.target.value) || 0,
-                    }))
-                  }
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Pulling team</span>
-                <select
-                  value={setupForm.startingTeamId || ""}
-                  onChange={(event) =>
-                    setSetupForm((prev) => ({
-                      ...prev,
-                      startingTeamId: event.target.value || "",
-                    }))
-                  }
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="">Select team...</option>
-                  {teamAId && <option value={teamAId}>{displayTeamA}</option>}
-                  {teamBId && <option value={teamBId}>{displayTeamB}</option>}
-                </select>
-              </label>
-              {isAbbaEnabled && (
-                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                  <span className="shrink-0">ABBA</span>
-                  <select
-                    value={setupForm.abbaPattern}
-                    onChange={(event) =>
-                      setSetupForm((prev) => ({
-                        ...prev,
-                        abbaPattern: event.target.value,
-                      }))
-                    }
-                    className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <option value="">Select line...</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                  </select>
-                </label>
-              )}
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-[#0f5132]/20 bg-white/70 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Editable values
+                </p>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                    <span className="shrink-0">Time cap (min)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={rules.matchDuration}
+                      onChange={(event) =>
+                        handleRuleChange(
+                          "matchDuration",
+                          Math.max(1, Number(event.target.value) || 0)
+                        )
+                      }
+                      className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                  </label>
+                  <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                    <span className="shrink-0">Halftime cap (min)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={rules.halftimeMinutes}
+                      onChange={(event) =>
+                        handleRuleChange(
+                          "halftimeMinutes",
+                          Math.max(0, Number(event.target.value) || 0)
+                        )
+                      }
+                      className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                  </label>
+                  <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                    <span className="shrink-0">Halftime break (min)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={rules.halftimeBreakMinutes}
+                      onChange={(event) =>
+                        handleRuleChange(
+                          "halftimeBreakMinutes",
+                          Math.max(0, Number(event.target.value) || 0)
+                        )
+                      }
+                      className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                  </label>
+                  <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                    <span className="shrink-0">Timeouts per team (game)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={rules.timeoutsTotal}
+                      onChange={(event) =>
+                        handleRuleChange(
+                          "timeoutsTotal",
+                          Math.max(0, Number(event.target.value) || 0)
+                        )
+                      }
+                      className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                  </label>
+                  <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                    <span className="shrink-0">Pulling team</span>
+                    <select
+                      value={setupForm.startingTeamId || ""}
+                      onChange={(event) =>
+                        setSetupForm((prev) => ({
+                          ...prev,
+                          startingTeamId: event.target.value || "",
+                        }))
+                      }
+                      className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <option value="">Select team...</option>
+                      {teamAId && <option value={teamAId}>{displayTeamA}</option>}
+                      {teamBId && <option value={teamBId}>{displayTeamB}</option>}
+                    </select>
+                  </label>
+                  {isAbbaEnabled && (
+                    <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                      <span className="shrink-0">ABBA</span>
+                      <select
+                        value={setupForm.abbaPattern}
+                        onChange={(event) =>
+                          setSetupForm((prev) => ({
+                            ...prev,
+                            abbaPattern: event.target.value,
+                          }))
+                        }
+                        className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <option value="">Select line...</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                      </select>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+                            <div className="rounded-2xl border border-[#0f5132]/20 bg-white/70 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Set values
+                </p>
+                <div className="mt-2 space-y-3 text-sm text-[#0f5132]">
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
+                      Game
+                    </p>
+                    <div className="mt-1 space-y-1 border-t border-[#0f5132]/10 pt-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Point target</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.gamePointTarget)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Time cap end mode</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.gameHardCapEndMode, "afterPoint")}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Time cap target mode</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.gameTimeCapTargetMode)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Soft cap (min)</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.gameSoftCapMinutes)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Soft cap mode</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.gameSoftCapMode)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
+                      Half
+                    </p>
+                    <div className="mt-1 space-y-1 border-t border-[#0f5132]/10 pt-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Halftime point target</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.halftimeScoreThreshold)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Halftime cap end mode</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.halftimeCapEndMode, "afterPoint")}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Halftime cap target mode</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.halftimeCapTargetMode)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
+                      Timeouts
+                    </p>
+                    <div className="mt-1 space-y-1 border-t border-[#0f5132]/10 pt-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Timeout duration (sec)</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.timeoutSeconds)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Timeouts per half</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.timeoutsPerHalf)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
+                      Inter-point
+                    </p>
+                    <div className="mt-1 space-y-1 border-t border-[#0f5132]/10 pt-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Pull deadline (sec)</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.interPointPullDeadlineSeconds)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Timeout adds (sec)</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.interPointTimeoutAddsSeconds)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Timeouts stacked</span>
+                        <span className="font-semibold">{rules.interPointAreTimeoutsStacked ? "Yes" : "No"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
+                      Discussions
+                    </p>
+                    <div className="mt-1 space-y-1 border-t border-[#0f5132]/10 pt-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Discussion max (sec)</span>
+                        <span className="font-semibold">{formatDisplayValue(rules.discussionSeconds)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
+                      Clock
+                    </p>
+                    <div className="mt-1 space-y-1 border-t border-[#0f5132]/10 pt-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Running game clock</span>
+                        <span className="font-semibold">{rules.runningClockEnabled ? "Yes" : "No"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
             </div>
             <button
               type="submit"

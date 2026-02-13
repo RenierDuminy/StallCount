@@ -12,19 +12,37 @@ import {
 } from "../components/ui/primitives";
 import {
   addUserRoleAssignment,
+  addEventUserRoleAssignment,
   getAccessControlUsers,
   getRoleCatalog,
   removeUserRoleAssignment,
+  removeEventUserRoleAssignment,
 } from "../services/userService";
 
-function formatRoleCounts(users) {
+function formatRoleCounts(users, adminRoleIds) {
   return users.reduce((acc, user) => {
     const assignments = Array.isArray(user.roles) ? user.roles : [];
-    if (assignments.length === 0) {
+    const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
+    const adminAssignments = assignments.filter((assignment) => {
+      if (!assignment) return false;
+      if (assignment.roleId !== null && assignment.roleId !== undefined) {
+        return adminRoleIds.has(String(assignment.roleId));
+      }
+      const name = String(assignment.roleName || "").toLowerCase();
+      return name === "admin" || name === "administrator";
+    });
+    if (adminAssignments.length === 0 && eventRoles.length === 0) {
       acc.set("none", (acc.get("none") || 0) + 1);
       return acc;
     }
-    assignments.forEach((assignment) => {
+    adminAssignments.forEach((assignment) => {
+      if (assignment.roleId === null || assignment.roleId === undefined) {
+        return;
+      }
+      const key = String(assignment.roleId);
+      acc.set(key, (acc.get(key) || 0) + 1);
+    });
+    eventRoles.forEach((assignment) => {
       if (assignment.roleId === null || assignment.roleId === undefined) {
         return;
       }
@@ -48,6 +66,27 @@ function formatEventRoleLabel(entry) {
   return `${eventLabel} - ${roleLabel}`;
 }
 
+function formatEventOptionLabel(event) {
+  if (!event) return "Event";
+  const name = event.name || event.id || "Event";
+  const range = [event.startDate, event.endDate].filter(Boolean).join(" - ");
+  return range ? `${name} (${range})` : name;
+}
+
+function isAdminRole(role) {
+  const name = String(role?.name || role?.roleName || "").toLowerCase();
+  return name === "admin" || name === "administrator";
+}
+
+function isAdminAssignment(assignment, adminRoleIds) {
+  if (!assignment) return false;
+  if (assignment.roleId !== null && assignment.roleId !== undefined) {
+    return adminRoleIds.has(String(assignment.roleId));
+  }
+  const name = String(assignment.roleName || "").toLowerCase();
+  return name === "admin" || name === "administrator";
+}
+
 export default function AdminAccessPage() {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -58,9 +97,11 @@ export default function AdminAccessPage() {
   const [page, setPage] = useState(1);
   const [roleManagerQuery, setRoleManagerQuery] = useState("");
   const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedEventId, setSelectedEventId] = useState("");
   const [roleManagerBusy, setRoleManagerBusy] = useState(false);
   const [roleManagerError, setRoleManagerError] = useState("");
   const [pendingRoleId, setPendingRoleId] = useState("");
+  const [pendingAdminRoleId, setPendingAdminRoleId] = useState("");
 
   useEffect(() => {
     loadData();
@@ -78,8 +119,10 @@ export default function AdminAccessPage() {
       setRoles(roleRows);
       setRoleManagerQuery("");
       setSelectedUserId("");
+      setSelectedEventId("");
       setRoleManagerError("");
       setPendingRoleId("");
+      setPendingAdminRoleId("");
       setPage(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load access control data.");
@@ -88,8 +131,12 @@ export default function AdminAccessPage() {
     }
   }
 
-  async function handleAddRole(userId) {
+  async function handleAddEventRole(userId) {
     if (!userId) return;
+    if (!selectedEventId) {
+      setRoleManagerError("Select an event to manage roles.");
+      return;
+    }
     if (!pendingRoleId) {
       setRoleManagerError("Select a role to add.");
       return;
@@ -98,12 +145,12 @@ export default function AdminAccessPage() {
     setRoleManagerError("");
     setRoleManagerBusy(true);
     try {
-      const assignment = await addUserRoleAssignment(userId, pendingRoleId);
+      const assignment = await addEventUserRoleAssignment(userId, pendingRoleId, selectedEventId);
       setUsers((prev) =>
         prev.map((user) => {
           if (user.id !== userId) return user;
-          const roles = Array.isArray(user.roles) ? user.roles : [];
-          return { ...user, roles: [...roles, assignment] };
+          const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
+          return { ...user, eventRoles: [...eventRoles, assignment] };
         }),
       );
       setPendingRoleId("");
@@ -114,7 +161,71 @@ export default function AdminAccessPage() {
     }
   }
 
-  async function handleRemoveRole(userId, assignment) {
+  async function handleRemoveEventRole(userId, assignment) {
+    if (!userId) return;
+    if (!selectedEventId) {
+      setRoleManagerError("Select an event to manage roles.");
+      return;
+    }
+    setRoleManagerError("");
+    setRoleManagerBusy(true);
+    try {
+      await removeEventUserRoleAssignment(
+        assignment.assignmentId,
+        userId,
+        assignment.roleId,
+        selectedEventId,
+      );
+      setUsers((prev) =>
+        prev.map((user) => {
+          if (user.id !== userId) return user;
+          const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
+          const nextEventRoles = eventRoles.filter((role) => {
+            if (assignment.assignmentId) {
+              return role.assignmentId !== assignment.assignmentId;
+            }
+            if (assignment.eventId) {
+              return role.roleId !== assignment.roleId || role.eventId !== assignment.eventId;
+            }
+            return role.roleId !== assignment.roleId;
+          });
+          return { ...user, eventRoles: nextEventRoles };
+        }),
+      );
+    } catch (err) {
+      setRoleManagerError(err instanceof Error ? err.message : "Unable to remove role.");
+    } finally {
+      setRoleManagerBusy(false);
+    }
+  }
+
+  async function handleAddAdminRole(userId) {
+    if (!userId) return;
+    if (!pendingAdminRoleId) {
+      setRoleManagerError("Select an admin role to add.");
+      return;
+    }
+
+    setRoleManagerError("");
+    setRoleManagerBusy(true);
+    try {
+      const assignment = await addUserRoleAssignment(userId, pendingAdminRoleId);
+      setUsers((prev) =>
+        prev.map((user) => {
+          if (user.id !== userId) return user;
+          const roles = Array.isArray(user.roles) ? user.roles : [];
+          return { ...user, roles: [...roles, assignment] };
+        }),
+      );
+      setPendingAdminRoleId("");
+    } catch (err) {
+      setRoleManagerError(err instanceof Error ? err.message : "Unable to add admin role.");
+    } finally {
+      setRoleManagerBusy(false);
+    }
+  }
+
+  async function handleRemoveAdminRole(userId, assignment) {
     if (!userId) return;
     setRoleManagerError("");
     setRoleManagerBusy(true);
@@ -134,11 +245,18 @@ export default function AdminAccessPage() {
         }),
       );
     } catch (err) {
-      setRoleManagerError(err instanceof Error ? err.message : "Unable to remove role.");
+      setRoleManagerError(err instanceof Error ? err.message : "Unable to remove admin role.");
     } finally {
       setRoleManagerBusy(false);
     }
   }
+
+  const adminRoleIds = useMemo(() => {
+    const adminRoles = roles.filter((role) => isAdminRole(role));
+    return new Set(adminRoles.map((role) => String(role.id)));
+  }, [roles]);
+  const adminRoles = useMemo(() => roles.filter((role) => isAdminRole(role)), [roles]);
+  const eventRoles = useMemo(() => roles.filter((role) => !isAdminRole(role)), [roles]);
 
   const filteredUsers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -151,16 +269,27 @@ export default function AdminAccessPage() {
           })
         : true;
       const assignments = Array.isArray(user.roles) ? user.roles : [];
+      const eventAssignments = Array.isArray(user.eventRoles) ? user.eventRoles : [];
+      const adminAssignments = assignments.filter((assignment) =>
+        isAdminAssignment(assignment, adminRoleIds),
+      );
       const matchesRole = (() => {
         if (roleKey === null) return true;
-        if (roleKey === "none") return assignments.length === 0;
-        return assignments.some((assignment) => assignment.roleId !== null && String(assignment.roleId) === roleKey);
+        if (roleKey === "none") return adminAssignments.length === 0 && eventAssignments.length === 0;
+        if (adminRoleIds.has(String(roleKey))) {
+          return adminAssignments.some(
+            (assignment) => assignment.roleId !== null && String(assignment.roleId) === roleKey,
+          );
+        }
+        return eventAssignments.some(
+          (assignment) => assignment.roleId !== null && String(assignment.roleId) === roleKey,
+        );
       })();
       return matchesQuery && matchesRole;
     });
-  }, [users, search, roleFilter]);
+  }, [users, search, roleFilter, adminRoleIds]);
 
-  const roleCounts = useMemo(() => formatRoleCounts(users), [users]);
+  const roleCounts = useMemo(() => formatRoleCounts(users, adminRoleIds), [users, adminRoleIds]);
   const rolesWithPermissions = useMemo(
     () =>
       roles.map((role) => ({
@@ -202,13 +331,60 @@ export default function AdminAccessPage() {
 
   const selectedAssignments = Array.isArray(selectedUser?.roles) ? selectedUser.roles : [];
   const selectedEventRoles = Array.isArray(selectedUser?.eventRoles) ? selectedUser.eventRoles : [];
-  const assignedRoleIds = new Set(
-    selectedAssignments
+  const adminAssignments = selectedAssignments.filter((assignment) =>
+    isAdminAssignment(assignment, adminRoleIds),
+  );
+  const legacyAssignments = selectedAssignments.filter(
+    (assignment) => !isAdminAssignment(assignment, adminRoleIds),
+  );
+
+  const eventOptions = useMemo(() => {
+    const map = new Map();
+    users.forEach((user) => {
+      const entries = Array.isArray(user.eventRoles) ? user.eventRoles : [];
+      entries.forEach((entry) => {
+        if (!entry.eventId) return;
+        if (!map.has(entry.eventId)) {
+          map.set(entry.eventId, {
+            id: entry.eventId,
+            name: entry.eventName || "Event",
+            startDate: entry.eventStartDate,
+            endDate: entry.eventEndDate,
+          });
+        }
+      });
+    });
+    return Array.from(map.values());
+  }, [users]);
+
+  useEffect(() => {
+    if (!selectedEventId) return;
+    if (!eventOptions.some((event) => event.id === selectedEventId)) {
+      setSelectedEventId("");
+    }
+  }, [selectedEventId, eventOptions]);
+
+  const selectedEventRolesForEvent = selectedEventId
+    ? selectedEventRoles.filter((entry) => entry.eventId === selectedEventId)
+    : [];
+  const assignedEventRoleIds = new Set(
+    selectedEventRolesForEvent
       .map((assignment) => assignment.roleId)
       .filter((value) => value !== null && value !== undefined)
       .map((value) => String(value)),
   );
-  const availableRoles = roles.filter((role) => !assignedRoleIds.has(String(role.id)));
+  const availableEventRoles = eventRoles.filter(
+    (role) => !assignedEventRoleIds.has(String(role.id)),
+  );
+  const assignedAdminRoleIds = new Set(
+    adminAssignments
+      .map((assignment) => assignment.roleId)
+      .filter((value) => value !== null && value !== undefined)
+      .map((value) => String(value)),
+  );
+  const availableAdminRoles = adminRoles.filter(
+    (role) => !assignedAdminRoleIds.has(String(role.id)),
+  );
 
   const pageSize = 20;
   const totalResults = filteredUsers.length;
@@ -250,7 +426,10 @@ export default function AdminAccessPage() {
               Users: {users.length}
             </Chip>
             <Chip variant="ghost" className="text-xs text-ink-muted">
-              Roles: {roles.length}
+              Event roles: {eventRoles.length}
+            </Chip>
+            <Chip variant="ghost" className="text-xs text-ink-muted">
+              Admin roles: {adminRoles.length}
             </Chip>
             <Chip variant="ghost" className="text-xs text-ink-muted">
               Unassigned: {roleCounts.get("none") || 0}
@@ -266,7 +445,7 @@ export default function AdminAccessPage() {
               <div>
                 <p className="text-sm font-semibold text-ink">Role manager</p>
                 <p className="text-xs text-ink-muted">
-                  Search for a user, review their current roles, then add or remove assignments.
+                  Assign admin access globally and event roles by event.
                 </p>
               </div>
               {selectedUser ? (
@@ -278,11 +457,42 @@ export default function AdminAccessPage() {
                     setRoleManagerQuery("");
                     setRoleManagerError("");
                     setPendingRoleId("");
+                    setPendingAdminRoleId("");
                   }}
                 >
                   Clear selection
                 </button>
               ) : null}
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Field label="Event" hint="Events with existing role assignments">
+                <Select
+                  value={selectedEventId}
+                  onChange={(event) => {
+                    setSelectedEventId(event.target.value);
+                    setRoleManagerError("");
+                    setPendingRoleId("");
+                  }}
+                  disabled={eventOptions.length === 0}
+                >
+                  <option value="">
+                    {eventOptions.length === 0 ? "No linked events" : "Select an event"}
+                  </option>
+                  {eventOptions.map((event) => (
+                    <option key={event.id} value={event.id}>
+                      {formatEventOptionLabel(event)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Panel className="flex flex-col justify-center gap-1 p-4 text-xs md:col-span-2">
+                <span className="font-semibold uppercase tracking-wide text-ink-muted">Event focus</span>
+                <span className="text-ink">
+                  {selectedEventId
+                    ? formatEventOptionLabel(eventOptions.find((event) => event.id === selectedEventId))
+                    : "Select an event to unlock event role management"}
+                </span>
+              </Panel>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
               <Field label="Search user" hint="Name, email, or UUID">
@@ -300,6 +510,7 @@ export default function AdminAccessPage() {
                     setSelectedUserId(event.target.value);
                     setRoleManagerError("");
                     setPendingRoleId("");
+                    setPendingAdminRoleId("");
                   }}
                   disabled={matchingUsers.length === 0}
                 >
@@ -327,8 +538,8 @@ export default function AdminAccessPage() {
               <div className="space-y-3 rounded-xl border border-border/60 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-ink">Current roles</p>
-                    <p className="text-xs text-ink-muted">Tap remove to revoke a role.</p>
+                    <p className="text-sm font-semibold text-ink">Admin access</p>
+                    <p className="text-xs text-ink-muted">Admin roles are global, all other roles are event-linked.</p>
                   </div>
                   {roleManagerBusy ? (
                     <Chip variant="ghost" className="text-[11px] text-ink-muted">
@@ -336,11 +547,11 @@ export default function AdminAccessPage() {
                     </Chip>
                   ) : null}
                 </div>
-                {selectedAssignments.length === 0 ? (
-                  <span className="text-xs text-ink-muted">No role assigned</span>
+                {adminAssignments.length === 0 ? (
+                  <span className="text-xs text-ink-muted">No admin role assigned</span>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {selectedAssignments.map((assignment) => (
+                    {adminAssignments.map((assignment) => (
                       <div
                         key={assignment.assignmentId || assignment.roleId}
                         className="flex items-center gap-1"
@@ -349,7 +560,7 @@ export default function AdminAccessPage() {
                         <button
                           type="button"
                           className="text-[10px] uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                          onClick={() => handleRemoveRole(selectedUser.id, assignment)}
+                          onClick={() => handleRemoveAdminRole(selectedUser.id, assignment)}
                           disabled={roleManagerBusy}
                         >
                           Remove
@@ -358,32 +569,41 @@ export default function AdminAccessPage() {
                     ))}
                   </div>
                 )}
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                    Event roles
-                  </p>
-                  {selectedEventRoles.length === 0 ? (
-                    <span className="text-xs text-ink-muted">No event roles assigned</span>
-                  ) : (
+                {legacyAssignments.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">
+                      Legacy global roles
+                    </p>
                     <div className="flex flex-wrap gap-2">
-                      {selectedEventRoles.map((entry) => (
-                        <Chip key={entry.assignmentId || `${entry.eventId}-${entry.roleId}`} variant="ghost">
-                          {formatEventRoleLabel(entry)}
-                        </Chip>
+                      {legacyAssignments.map((assignment) => (
+                        <div
+                          key={assignment.assignmentId || assignment.roleId}
+                          className="flex items-center gap-1"
+                        >
+                          <Chip variant="tag">{assignment.roleName || "Role"}</Chip>
+                          <button
+                            type="button"
+                            className="text-[10px] uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => handleRemoveAdminRole(selectedUser.id, assignment)}
+                            disabled={roleManagerBusy}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap items-center gap-2">
                   <Select
-                    value={pendingRoleId}
-                    onChange={(event) => setPendingRoleId(event.target.value)}
-                    disabled={roleManagerBusy || availableRoles.length === 0}
+                    value={pendingAdminRoleId}
+                    onChange={(event) => setPendingAdminRoleId(event.target.value)}
+                    disabled={roleManagerBusy || availableAdminRoles.length === 0}
                   >
                     <option value="">
-                      {availableRoles.length === 0 ? "All roles assigned" : "Add role..."}
+                      {availableAdminRoles.length === 0 ? "Admin already assigned" : "Grant admin..."}
                     </option>
-                    {availableRoles.map((role) => (
+                    {availableAdminRoles.map((role) => (
                       <option key={role.id} value={String(role.id)}>
                         {role.name}
                       </option>
@@ -392,8 +612,61 @@ export default function AdminAccessPage() {
                   <button
                     type="button"
                     className="sc-button is-ghost text-xs"
-                    onClick={() => handleAddRole(selectedUser.id)}
-                    disabled={roleManagerBusy || !pendingRoleId}
+                    onClick={() => handleAddAdminRole(selectedUser.id)}
+                    disabled={roleManagerBusy || !pendingAdminRoleId}
+                  >
+                    Add admin
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    Event roles (selected event)
+                  </p>
+                  {!selectedEventId ? (
+                    <span className="text-xs text-ink-muted">Select an event to view roles.</span>
+                  ) : selectedEventRolesForEvent.length === 0 ? (
+                    <span className="text-xs text-ink-muted">No event roles assigned for this event.</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedEventRolesForEvent.map((entry) => (
+                        <div
+                          key={entry.assignmentId || `${entry.eventId}-${entry.roleId}`}
+                          className="flex items-center gap-1"
+                        >
+                          <Chip variant="ghost">{formatEventRoleLabel(entry)}</Chip>
+                          <button
+                            type="button"
+                            className="text-[10px] uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => handleRemoveEventRole(selectedUser.id, entry)}
+                            disabled={roleManagerBusy || !selectedEventId}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={pendingRoleId}
+                    onChange={(event) => setPendingRoleId(event.target.value)}
+                    disabled={roleManagerBusy || availableEventRoles.length === 0 || !selectedEventId}
+                  >
+                    <option value="">
+                      {availableEventRoles.length === 0 ? "All roles assigned" : "Add event role..."}
+                    </option>
+                    {availableEventRoles.map((role) => (
+                      <option key={role.id} value={String(role.id)}>
+                        {role.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <button
+                    type="button"
+                    className="sc-button is-ghost text-xs"
+                    onClick={() => handleAddEventRole(selectedUser.id)}
+                    disabled={roleManagerBusy || !pendingRoleId || !selectedEventId}
                   >
                     Add role
                   </button>
@@ -503,7 +776,7 @@ export default function AdminAccessPage() {
                         Email
                       </th>
                       <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-ink-muted">
-                        Access levels
+                        Admin access
                       </th>
                       <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-ink-muted">
                         Event roles
@@ -513,6 +786,9 @@ export default function AdminAccessPage() {
                   <tbody className="divide-y divide-border/70">
                     {pagedUsers.map((user) => {
                       const assignments = Array.isArray(user.roles) ? user.roles : [];
+                      const adminAssignments = assignments.filter((assignment) =>
+                        isAdminAssignment(assignment, adminRoleIds),
+                      );
                       const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
                       return (
                         <tr key={user.id} className="hover:bg-surface-muted">
@@ -522,11 +798,11 @@ export default function AdminAccessPage() {
                           </td>
                           <td className="px-3 py-2 text-[13px] text-ink-muted">{user.email || "-"}</td>
                           <td className="px-3 py-2">
-                            {assignments.length === 0 ? (
-                              <span className="text-xs text-ink-muted">No role assigned</span>
+                            {adminAssignments.length === 0 ? (
+                              <span className="text-xs text-ink-muted">No admin role assigned</span>
                             ) : (
                               <div className="flex flex-wrap gap-1">
-                                {assignments.map((assignment) => (
+                                {adminAssignments.map((assignment) => (
                                   <Chip key={assignment.assignmentId || assignment.roleId} variant="tag">
                                     {assignment.roleName || "Role"}
                                   </Chip>
