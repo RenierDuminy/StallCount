@@ -6,6 +6,12 @@ import {
   DEFAULT_TIMER_LABEL,
   SCORE_NA_PLAYER_VALUE,
 } from "./scrimmageConstants";
+import {
+  getRuleHalftimeBreakMinutes,
+  getRuleTimeoutSeconds,
+  setRuleMatchDurationMinutes,
+  setRuleTimeoutSeconds,
+} from "./scrimmageRules";
 
 function createLocalId(prefix) {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -109,7 +115,7 @@ export function useScrimmageActions(controller) {
     const overrideLabel = normalizeSecondaryLabel(label);
     const resolvedLabel = overrideLabel || controller.secondaryLabel || DEFAULT_SECONDARY_LABEL;
     if (!controller.secondaryRunning && controller.secondarySeconds === 0) {
-      const duration = controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
+      const duration = getRuleTimeoutSeconds(controller.rules);
       controller.commitSecondaryTimerState(duration, true);
       controller.setSecondaryLabel(resolvedLabel);
       controller.setSecondaryTotalSeconds(duration);
@@ -126,7 +132,7 @@ export function useScrimmageActions(controller) {
     const base =
       controller.secondarySeconds > 0
         ? controller.secondarySeconds
-        : controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
+        : getRuleTimeoutSeconds(controller.rules);
     controller.setSecondaryTotalSeconds(base);
     controller.commitSecondaryTimerState(base, true);
   }
@@ -134,7 +140,7 @@ export function useScrimmageActions(controller) {
   function handleSecondaryReset() {
     const fallback = Number.isFinite(controller.secondaryTotalSeconds)
       ? controller.secondaryTotalSeconds
-      : controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
+      : getRuleTimeoutSeconds(controller.rules);
     controller.commitSecondaryTimerState(fallback, false);
     controller.setSecondaryTotalSeconds(fallback);
     controller.setSecondaryFlashActive(false);
@@ -273,13 +279,18 @@ export function useScrimmageActions(controller) {
   function handleRuleChange(field, value) {
     controller.setRules((prev) => {
       if (field === "matchDuration") {
-        return { ...prev, matchDuration: 0 };
+        return setRuleMatchDurationMinutes(prev, 0);
       }
-      return { ...prev, [field]: value };
+      if (field === "timeoutSeconds") {
+        return setRuleTimeoutSeconds(prev, value);
+      }
+      return prev;
     });
 
     if (field === "timeoutSeconds" && !controller.secondaryRunning) {
-      const nextValue = Number.isFinite(value) ? value : DEFAULT_TIMEOUT_SECONDS;
+      const nextValue = Number.isFinite(value)
+        ? Math.max(0, Math.round(value))
+        : DEFAULT_TIMEOUT_SECONDS;
       controller.setSecondaryTotalSeconds(nextValue);
       controller.commitSecondaryTimerState(nextValue, false);
     }
@@ -384,7 +395,7 @@ export function useScrimmageActions(controller) {
     };
     controller.appendLocalLog(logEntry);
 
-    const timeoutSeconds = controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
+    const timeoutSeconds = getRuleTimeoutSeconds(controller.rules);
     controller.commitSecondaryTimerState(timeoutSeconds, true);
     controller.setSecondaryTotalSeconds(timeoutSeconds);
     controller.setSecondaryLabel("Timeout");
@@ -404,7 +415,7 @@ export function useScrimmageActions(controller) {
     const elapsed = controller.getPrimaryRemainingSeconds();
     controller.commitPrimaryTimerState(elapsed, false);
 
-    const breakSeconds = Math.max(0, Number(controller.rules.halftimeBreakMinutes || 0) * 60);
+    const breakSeconds = Math.max(0, getRuleHalftimeBreakMinutes(controller.rules) * 60);
     if (breakSeconds > 0) {
       controller.commitSecondaryTimerState(breakSeconds, true);
       controller.setSecondaryTotalSeconds(breakSeconds);

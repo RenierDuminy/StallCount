@@ -21,6 +21,61 @@ const EMPTY_PLAYER_FORM = {
   description: "",
 };
 
+function normalizeName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function tokenizeName(value) {
+  const normalized = normalizeName(value);
+  if (!normalized) return [];
+  return normalized.split(" ").filter(Boolean);
+}
+
+function levenshteinDistance(left, right) {
+  const source = String(left || "");
+  const target = String(right || "");
+  if (!source) return target.length;
+  if (!target) return source.length;
+
+  const previous = Array.from({ length: target.length + 1 }, (_, index) => index);
+  const current = new Array(target.length + 1);
+
+  for (let i = 1; i <= source.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= target.length; j += 1) {
+      const substitutionCost = source[i - 1] === target[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + substitutionCost
+      );
+    }
+    for (let j = 0; j <= target.length; j += 1) {
+      previous[j] = current[j];
+    }
+  }
+
+  return previous[target.length];
+}
+
+function nameSimilarity(left, right) {
+  const source = String(left || "");
+  const target = String(right || "");
+  if (!source || !target) return 0;
+  if (source === target) return 1;
+
+  const maxLength = Math.max(source.length, target.length);
+  if (maxLength === 0) return 0;
+
+  const distance = levenshteinDistance(source, target);
+  return Math.max(0, 1 - distance / maxLength);
+}
+
 export default function CaptainPage() {
   const [playerDirectory, setPlayerDirectory] = useState([]);
   const [playerFilter, setPlayerFilter] = useState("");
@@ -57,11 +112,6 @@ export default function CaptainPage() {
     loadRoster(selectedTeamId, selectedEventId);
   }, [selectedTeamId, selectedEventId]);
 
-  const selectedPlayer = useMemo(
-    () => playerDirectory.find((player) => player.id === playerForm.id),
-    [playerDirectory, playerForm.id]
-  );
-
   const filteredPlayers = useMemo(() => {
     const term = playerFilter.trim().toLowerCase();
     if (!term) return playerDirectory;
@@ -73,6 +123,127 @@ export default function CaptainPage() {
       return haystack.includes(term);
     });
   }, [playerDirectory, playerFilter]);
+
+  const possibleDuplicates = useMemo(() => {
+    if (!playerForm.name.trim()) return [];
+
+    const formName = normalizeName(playerForm.name);
+    const formBirthday = playerForm.birthday || "";
+    const formGender = playerForm.gender_code || "";
+    const formTokens = new Set(tokenizeName(playerForm.name));
+    const jerseyValue =
+      playerForm.jersey_number !== "" && Number.isFinite(Number(playerForm.jersey_number))
+        ? Number(playerForm.jersey_number)
+        : null;
+
+    const candidates = playerDirectory
+      .filter((player) => player.id !== playerForm.id)
+      .map((player) => {
+        const playerName = normalizeName(player.name);
+        const playerTokens = tokenizeName(player.name);
+        const similarity = nameSimilarity(formName, playerName);
+        const sharedTokens = playerTokens.filter((token) => formTokens.has(token)).length;
+        const birthdaysMatch =
+          Boolean(formBirthday) && Boolean(player.birthday) && player.birthday === formBirthday;
+        const namesEqual = Boolean(formName) && Boolean(playerName) && formName === playerName;
+        const jerseyMatches = jerseyValue !== null && player.jersey_number === jerseyValue;
+        const genderMatches = formGender && player.gender_code && player.gender_code === formGender;
+
+        let score = 0;
+        if (namesEqual) score += 12;
+        if (birthdaysMatch) score += 8;
+        if (sharedTokens > 0) score += Math.min(sharedTokens * 2, 6);
+        if (similarity >= 0.85) score += 6;
+        else if (similarity >= 0.7) score += 4;
+        else if (similarity >= 0.55) score += 2;
+        else if (similarity >= 0.4) score += 1;
+        if (jerseyMatches) score += 2;
+        if (genderMatches) score += 1;
+
+        const includeBySignal =
+          namesEqual ||
+          birthdaysMatch ||
+          sharedTokens > 0 ||
+          similarity >= 0.45 ||
+          (jerseyMatches && similarity >= 0.3);
+
+        let matchLabel = "Closest option";
+        if (namesEqual && birthdaysMatch) {
+          matchLabel = "Exact name + DOB";
+        } else if (namesEqual) {
+          matchLabel = "Exact name";
+        } else if (birthdaysMatch && (sharedTokens > 0 || similarity >= 0.45)) {
+          matchLabel = "DOB + similar name";
+        } else if (birthdaysMatch) {
+          matchLabel = "Same DOB";
+        } else if (sharedTokens >= 2 || similarity >= 0.7) {
+          matchLabel = "Likely duplicate";
+        } else if (sharedTokens > 0 || similarity >= 0.45) {
+          matchLabel = "Similar name";
+        }
+
+        return {
+          player,
+          score,
+          similarity,
+          includeBySignal,
+          matchLabel,
+        };
+      })
+      .sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score;
+        if (right.similarity !== left.similarity) return right.similarity - left.similarity;
+        return `${left.player.name || ""}`.localeCompare(`${right.player.name || ""}`);
+      });
+
+    const primary = candidates.filter((entry) => entry.includeBySignal).slice(0, 6);
+    if (primary.length >= 6) return primary;
+
+    const fallback = candidates
+      .filter((entry) => !entry.includeBySignal && entry.similarity > 0)
+      .slice(0, 6 - primary.length)
+      .map((entry) => ({
+        ...entry,
+        matchLabel: "Closest option",
+      }));
+
+    return [...primary, ...fallback];
+  }, [
+    playerDirectory,
+    playerForm.birthday,
+    playerForm.gender_code,
+    playerForm.id,
+    playerForm.jersey_number,
+    playerForm.name,
+  ]);
+
+  const playerOptions = useMemo(() => {
+    const entries = [];
+    const seen = new Set();
+
+    for (const entry of possibleDuplicates) {
+      if (!entry?.player?.id) continue;
+      if (entry.player.id === playerForm.id) continue;
+      if (seen.has(entry.player.id)) continue;
+      seen.add(entry.player.id);
+      entries.push(entry);
+    }
+
+    if (playerFilter.trim()) {
+      for (const player of filteredPlayers) {
+        if (!player?.id) continue;
+        if (player.id === playerForm.id) continue;
+        if (seen.has(player.id)) continue;
+        seen.add(player.id);
+        entries.push({
+          player,
+          matchLabel: "Search result",
+        });
+      }
+    }
+
+    return entries.slice(0, 12);
+  }, [filteredPlayers, playerFilter, playerForm.id, possibleDuplicates]);
 
   async function loadDirectory() {
     try {
@@ -332,32 +503,51 @@ export default function CaptainPage() {
               />
             </Field>
 
-            {filteredPlayers.length === 0 ? (
-              <Panel variant="muted" className="border border-dashed border-border bg-transparent p-4 text-center text-sm text-ink-muted">
-                {playerDirectory.length === 0
-                  ? "No players yet. Use the form to add your first athlete."
-                  : "No players match your search."}
-              </Panel>
-            ) : (
-              <Select
-                value={playerForm.id}
-                onChange={(event) => {
-                  const player = playerDirectory.find((p) => p.id === event.target.value);
-                  if (player) {
-                    handleSelectPlayer(player);
-                  } else {
-                    resetPlayerForm();
-                  }
-                }}
-              >
-                <option value="">Select player to edit</option>
-                {filteredPlayers.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {player.name} {player.jersey_number != null ? `#${player.jersey_number}` : ""} ({player.gender_code || "-"})
-                  </option>
-                ))}
-              </Select>
-            )}
+            <div className="space-y-2 rounded-xl border border-border/70 bg-surface p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                Possible duplicates
+              </p>
+              {playerDirectory.length === 0 ? (
+                <p className="text-xs text-ink-muted">
+                  No players yet. Use the form to add your first athlete.
+                </p>
+              ) : playerOptions.length === 0 ? (
+                <p className="text-xs text-ink-muted">
+                  {playerFilter.trim()
+                    ? "No players match your search."
+                    : playerForm.name.trim()
+                      ? "No likely duplicates for the current form values."
+                      : "Start typing a name or use search to find existing players."}
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {playerOptions.map((entry) => (
+                    <li
+                      key={`dup-${entry.player.id}`}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-2 py-1.5"
+                    >
+                      <div className="min-w-0 text-xs">
+                        <p className="truncate font-semibold text-ink">
+                          {entry.player.name}
+                          {entry.player.jersey_number != null ? ` #${entry.player.jersey_number}` : ""}
+                        </p>
+                        <p className="truncate text-ink-muted">
+                          {entry.player.birthday || "DOB unknown"} - {entry.player.gender_code || "-"}
+                        </p>
+                        <p className="truncate text-[11px] text-ink-muted/90">{entry.matchLabel}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectPlayer(entry.player)}
+                        className="sc-button is-ghost text-xs"
+                      >
+                        Load
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </Panel>
         </Card>
 

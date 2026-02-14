@@ -59,6 +59,7 @@ export type EventRosterEntry = {
     name: string;
     jersey_number: number | null;
     gender_code: "M" | "W" | null;
+    birthday: string | null;
   } | null;
   team: {
     id: string;
@@ -267,7 +268,7 @@ export async function getEventRosters(eventId: string): Promise<EventRosterEntry
         team_id,
         is_captain,
         is_spirit_captain,
-        player:player(id, name, jersey_number, gender_code),
+        player:player(id, name, jersey_number, gender_code, birthday),
         team:teams(id, name, short_name)
       `
     )

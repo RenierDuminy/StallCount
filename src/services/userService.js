@@ -122,6 +122,36 @@ export async function getUserRoleAssignments(userId) {
   return mapRoleAssignments(data);
 }
 
+export async function getUserEventRoleAssignments(userId) {
+  if (!userId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("event_user_roles")
+    .select(
+      `
+        id,
+        user_id,
+        role_id,
+        event_id,
+        created_at,
+        granted_by,
+        role:roles(id, name, description),
+        event:events(id, name, start_date, end_date)
+      `,
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("[getUserEventRoleAssignments] Unable to load event roles:", error);
+    throw new Error(error.message || "Failed to load user event roles");
+  }
+
+  return mapEventRoleAssignments(data);
+}
+
 export async function getAccessControlUsers(limit = 500) {
   let query = supabase
     .from("profiles")

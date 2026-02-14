@@ -8,51 +8,26 @@ import {
 import { deriveShortName, formatClock, sortRoster, toDateTimeLocal } from "./scrimmageUtils";
 import {
   ABBA_LINE_SEQUENCE,
-  DEFAULT_DISCUSSION_SECONDS,
-  DEFAULT_INTERPOINT_SECONDS,
-  DEFAULT_TIMEOUT_SECONDS,
   DEFAULT_TIMER_LABEL,
   DEFAULT_SECONDARY_LABEL,
   SESSION_SAVE_DEBOUNCE_MS,
   TIMER_TICK_INTERVAL_MS,
 } from "./scrimmageConstants";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
+import {
+  cloneScrimmageRules,
+  getRuleAbbaPattern,
+  getRuleMatchDurationMinutes,
+  getRuleTimeoutSeconds,
+  getRuleTimeoutsPerHalf,
+  getRuleTimeoutsTotal,
+  normalizeScrimmageRules,
+} from "./scrimmageRules";
 
 const SCRIMMAGE_MATCH_ID = "scrimmage-local";
 const TEAM_A = { id: "scrimmage-light", name: "Light" };
 const TEAM_B = { id: "scrimmage-dark", name: "Dark" };
-
-const DEFAULT_RULES = {
-  matchDuration: 0,
-  halftimeMinutes: 30,
-  halftimeBreakMinutes: 7,
-  halftimeScoreThreshold: 0,
-  timeoutSeconds: DEFAULT_TIMEOUT_SECONDS,
-  timeoutsTotal: 2,
-  timeoutsPerHalf: 0,
-  interPointSeconds: DEFAULT_INTERPOINT_SECONDS,
-  discussionSeconds: DEFAULT_DISCUSSION_SECONDS,
-  abbaPattern: "none",
-  runningClockEnabled: true,
-  gamePointTarget: null,
-  gameSoftCapMinutes: null,
-  gameSoftCapMode: "none",
-  gameHardCapMinutes: null,
-  gameHardCapEndMode: "afterPoint",
-  interPointPullDeadlineSeconds: DEFAULT_INTERPOINT_SECONDS,
-  interPointTimeoutAddsSeconds: DEFAULT_TIMEOUT_SECONDS,
-  interPointAreTimeoutsStacked: true,
-  inPointOffenceSetSeconds: 0,
-  inPointDefenceCheckMaxSeconds: 0,
-  discussionAutoContestSeconds: DEFAULT_DISCUSSION_SECONDS,
-  discInPlayPivotCentralSeconds: 0,
-  discInPlayPivotEndzoneSeconds: 0,
-  discInPlayNewDiscSeconds: 0,
-  mixedRatioEnabled: false,
-  mixedRatioRule: "A",
-  mixedRatioChooser: "home",
-  raw: null,
-};
+const DEFAULT_RULES = cloneScrimmageRules();
 
 const DEFAULT_SETUP_FORM = { startTime: "", startingTeamId: "" };
 const DEFAULT_TIMEOUT_USAGE = { A: 0, B: 0 };
@@ -135,7 +110,7 @@ export function useScrimmageData() {
     startTime: toDateTimeLocal(),
     startingTeamId: TEAM_A.id,
   }));
-  const [rules, setRules] = useState(() => ({ ...DEFAULT_RULES }));
+  const [rules, setRules] = useState(() => cloneScrimmageRules());
 
   const [score, setScore] = useState({ a: 0, b: 0 });
   const [logs, setLogs] = useState([]);
@@ -145,11 +120,11 @@ export function useScrimmageData() {
 
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
-  const [secondarySeconds, setSecondarySeconds] = useState(DEFAULT_RULES.timeoutSeconds);
+  const [secondarySeconds, setSecondarySeconds] = useState(getRuleTimeoutSeconds(DEFAULT_RULES));
   const [secondaryRunning, setSecondaryRunning] = useState(false);
   const [secondaryLabel, setSecondaryLabel] = useState(DEFAULT_SECONDARY_LABEL);
   const [secondaryTotalSeconds, setSecondaryTotalSeconds] = useState(
-    DEFAULT_RULES.timeoutSeconds
+    getRuleTimeoutSeconds(DEFAULT_RULES)
   );
   const [secondaryFlashActive, setSecondaryFlashActive] = useState(false);
   const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
@@ -183,9 +158,11 @@ export function useScrimmageData() {
   const secondaryResetTriggeredRef = useRef(false);
   const primaryTimerAnchorRef = useRef({ baseSeconds: 0, anchorTimestamp: null });
   const secondaryTimerAnchorRef = useRef({
-    baseSeconds: DEFAULT_RULES.timeoutSeconds,
+    baseSeconds: getRuleTimeoutSeconds(DEFAULT_RULES),
     anchorTimestamp: null,
   });
+
+  const abbaPattern = useMemo(() => getRuleAbbaPattern(rules), [rules]);
 
   const selectedMatch = useMemo(
     () => ({
@@ -202,9 +179,9 @@ export function useScrimmageData() {
       },
       start_time: setupForm.startTime ? new Date(setupForm.startTime).toISOString() : null,
       status: matchStarted ? "live" : "pending",
-      abba_pattern: rules.abbaPattern,
+      abba_pattern: abbaPattern,
     }),
-    [setupForm.startTime, matchStarted, rules.abbaPattern]
+    [setupForm.startTime, matchStarted, abbaPattern]
   );
 
   const getPrimaryRemainingSeconds = useCallback(() => {
@@ -303,8 +280,8 @@ export function useScrimmageData() {
   const getAbbaDescriptor = useCallback(
     (orderIndex) => {
       if (!Number.isFinite(orderIndex) || orderIndex < 0) return null;
-      if (!["male", "female"].includes(rules.abbaPattern)) return null;
-      const startGender = rules.abbaPattern === "male" ? "Male" : "Female";
+      if (!["male", "female"].includes(abbaPattern)) return null;
+      const startGender = abbaPattern === "male" ? "Male" : "Female";
       const alternateGender = startGender === "Male" ? "Female" : "Male";
 
       if (orderIndex === 0) {
@@ -318,14 +295,14 @@ export function useScrimmageData() {
       const occurrenceLabel = normalizedIndex % 2 === 0 ? "1st" : "2nd";
       return `${genderLabel} ${occurrenceLabel}`;
     },
-    [rules.abbaPattern]
+    [abbaPattern]
   );
 
   const getAbbaLineCode = useCallback(
     (orderIndex) => {
       if (!Number.isFinite(orderIndex) || orderIndex < 0) return "none";
-      if (!["male", "female"].includes(rules.abbaPattern)) return "none";
-      const startCode = rules.abbaPattern === "male" ? "M" : "F";
+      if (!["male", "female"].includes(abbaPattern)) return "none";
+      const startCode = abbaPattern === "male" ? "M" : "F";
       const alternateCode = startCode === "M" ? "F" : "M";
       const step = orderIndex % ABBA_LINE_SEQUENCE.length;
       const suffix = ABBA_LINE_SEQUENCE[step] ?? "1";
@@ -334,7 +311,7 @@ export function useScrimmageData() {
       const prefix = useStartCode ? startCode : alternateCode;
       return `${prefix}${suffix}`;
     },
-    [rules.abbaPattern]
+    [abbaPattern]
   );
 
   useEffect(() => {
@@ -389,8 +366,8 @@ export function useScrimmageData() {
     setResumeError(null);
 
     try {
-      const snapshotRules = resumeCandidate.rules || DEFAULT_RULES;
-      setRules({ ...DEFAULT_RULES, ...snapshotRules });
+      const snapshotRules = normalizeScrimmageRules(resumeCandidate.rules || DEFAULT_RULES);
+      setRules(snapshotRules);
       setSetupForm((prev) => ({
         ...prev,
         ...resumeCandidate.setupForm,
@@ -414,7 +391,7 @@ export function useScrimmageData() {
         ? { baseSeconds: primaryTimer.seconds, anchorTimestamp: Date.now() }
         : { baseSeconds: primaryTimer.seconds, anchorTimestamp: null };
 
-      const secondaryFallback = snapshotRules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
+      const secondaryFallback = getRuleTimeoutSeconds(snapshotRules);
       const secondaryTimer = deriveCountdownTimerSnapshot(
         resumeCandidate.secondaryTimer,
         secondaryFallback,
@@ -446,15 +423,15 @@ export function useScrimmageData() {
     setTimerSeconds(0);
     setTimerLabel(DEFAULT_TIMER_LABEL);
     setSecondaryRunning(false);
-    setSecondarySeconds(DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS);
-    setSecondaryTotalSeconds(DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS);
+    setSecondarySeconds(getRuleTimeoutSeconds(DEFAULT_RULES));
+    setSecondaryTotalSeconds(getRuleTimeoutSeconds(DEFAULT_RULES));
     setSecondaryLabel(DEFAULT_SECONDARY_LABEL);
     setTimeoutUsage({ ...DEFAULT_TIMEOUT_USAGE });
     setPossessionTeam(null);
     setConsoleError(null);
     setScoreModalState({ open: false, team: null, mode: "add", logIndex: null });
     setScoreForm({ scorerId: "", assistId: "" });
-    setRules({ ...DEFAULT_RULES });
+    setRules(cloneScrimmageRules());
     setSetupForm({
       ...DEFAULT_SETUP_FORM,
       startTime: toDateTimeLocal(),
@@ -462,7 +439,7 @@ export function useScrimmageData() {
     });
     primaryTimerAnchorRef.current = { baseSeconds: 0, anchorTimestamp: null };
     secondaryTimerAnchorRef.current = {
-      baseSeconds: DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS,
+      baseSeconds: getRuleTimeoutSeconds(DEFAULT_RULES),
       anchorTimestamp: null,
     };
     clearScrimmageSession(sessionKey);
@@ -474,7 +451,7 @@ export function useScrimmageData() {
     setResumeError(null);
     setResumeBusy(false);
     clearLocalMatchState();
-  }, [clearLocalMatchState, sessionKey]);
+  }, [clearLocalMatchState]);
 
   const buildSessionSnapshot = useCallback(() => {
     if (!sessionKey) return null;
@@ -484,7 +461,7 @@ export function useScrimmageData() {
       selectedMatchId: SCRIMMAGE_MATCH_ID,
       matchStarted,
       setupForm: { ...setupForm },
-      rules: { ...rules },
+      rules: JSON.parse(JSON.stringify(rules)),
       score: { ...score },
       logs,
       timer: {
@@ -546,10 +523,10 @@ export function useScrimmageData() {
 
   const startingTeamId = setupForm.startingTeamId || TEAM_A.id;
   const matchStartingTeamKey = startingTeamId === TEAM_B.id ? "B" : "A";
-  const matchDuration = rules.matchDuration || 0;
+  const matchDuration = getRuleMatchDurationMinutes(rules);
   const remainingTimeouts = {
-    A: Math.max(rules.timeoutsTotal - timeoutUsage.A, 0),
-    B: Math.max(rules.timeoutsTotal - timeoutUsage.B, 0),
+    A: Math.max(getRuleTimeoutsTotal(rules) - timeoutUsage.A, 0),
+    B: Math.max(getRuleTimeoutsTotal(rules) - timeoutUsage.B, 0),
   };
   const canEndMatch = matchStarted;
   const possessionValue = possessionTeam === "A" ? 0 : possessionTeam === "B" ? 100 : 50;
@@ -560,8 +537,8 @@ export function useScrimmageData() {
         ? displayTeamB
         : "Contested";
   const halfRemainingLabel = (teamKey) =>
-    rules.timeoutsPerHalf > 0
-      ? Math.max(rules.timeoutsPerHalf - timeoutUsage[teamKey], 0)
+    getRuleTimeoutsPerHalf(rules) > 0
+      ? Math.max(getRuleTimeoutsPerHalf(rules) - timeoutUsage[teamKey], 0)
       : "N/A";
 
   const sortedRosters = useMemo(

@@ -59,6 +59,13 @@ const ADMIN_MODULES = [
     accent: "bg-teal-100 text-teal-700",
   },
   {
+    label: "Signup management",
+    description:
+      "Compare event roster players with an imported external signup CSV using name and date of birth.",
+    to: "/admin/signup-management",
+    accent: "bg-cyan-100 text-cyan-700",
+  },
+  {
     label: "Tournament director",
     description:
       "Desktop command center to view, create, and alter tournament data across every table.",

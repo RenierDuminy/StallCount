@@ -23,9 +23,24 @@ import {
 } from "../scorekeeper/eventCards";
 import {
   CALAHAN_ASSIST_VALUE,
-  DEFAULT_DISCUSSION_SECONDS,
   SCORE_NA_PLAYER_VALUE,
 } from "./scrimmageConstants";
+import {
+  getRuleAbbaPattern,
+  getRuleDiscussionSeconds,
+  getRuleHalftimeBreakMinutes,
+  getRuleHalftimeCapMinutes,
+  getRuleMatchDurationMinutes,
+  getRuleTimeoutSeconds,
+  getRuleTimeoutsPerHalf,
+  getRuleTimeoutsTotal,
+  setRuleAbbaPattern,
+  setRuleHalftimeBreakMinutes,
+  setRuleHalftimeCapMinutes,
+  setRuleTimeoutSeconds,
+  setRuleTimeoutsPerHalf,
+  setRuleTimeoutsTotal,
+} from "./scrimmageRules";
 
 const BLOCK_EVENT_TYPE_ID = 19;
 const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([
@@ -111,6 +126,14 @@ export default function ScrimmageView() {
 
   const safeTeamAName = displayTeamA || "Team A";
   const safeTeamBName = displayTeamB || "Team B";
+  const discussionSeconds = getRuleDiscussionSeconds(rules);
+  const timeoutSeconds = getRuleTimeoutSeconds(rules);
+  const matchDurationMinutes = getRuleMatchDurationMinutes(rules);
+  const halftimeCapMinutes = getRuleHalftimeCapMinutes(rules);
+  const halftimeBreakMinutes = getRuleHalftimeBreakMinutes(rules);
+  const timeoutsTotal = getRuleTimeoutsTotal(rules);
+  const timeoutsPerHalf = getRuleTimeoutsPerHalf(rules);
+  const abbaPattern = getRuleAbbaPattern(rules);
   const formatTeamLabel = (teamKey) => {
     if (teamKey === "A") return safeTeamAName;
     if (teamKey === "B") return safeTeamBName;
@@ -672,7 +695,7 @@ export default function ScrimmageView() {
       setSecondaryFlashPulse(false);
       return;
     }
-    const duration = rules.discussionSeconds || DEFAULT_DISCUSSION_SECONDS;
+    const duration = discussionSeconds;
     commitSecondaryTimerState(duration, true);
     setSecondaryTotalSeconds(duration);
     setSecondaryLabel("Discussion");
@@ -791,7 +814,7 @@ export default function ScrimmageView() {
                     type="number"
                     min={0}
                     step={1}
-                    value={rules.timeoutSeconds ?? ""}
+                    value={timeoutSeconds}
                     onChange={(event) =>
                       handleRuleChange("timeoutSeconds", Math.max(0, Number(event.target.value) || 0))
                     }
@@ -1109,7 +1132,7 @@ export default function ScrimmageView() {
                 <input
                   type="number"
                   min="1"
-                  value={rules.matchDuration || ""}
+                  value={matchDurationMinutes || ""}
                   placeholder="No limit"
                   disabled
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1120,12 +1143,11 @@ export default function ScrimmageView() {
                 <input
                   type="number"
                   min="0"
-                  value={rules.halftimeMinutes}
+                  value={halftimeCapMinutes}
                   onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      halftimeMinutes: Number(event.target.value) || 0,
-                    }))
+                    setRules((prev) =>
+                      setRuleHalftimeCapMinutes(prev, Number(event.target.value) || 0)
+                    )
                   }
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
@@ -1135,12 +1157,11 @@ export default function ScrimmageView() {
                 <input
                   type="number"
                   min="0"
-                  value={rules.halftimeBreakMinutes}
+                  value={halftimeBreakMinutes}
                   onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      halftimeBreakMinutes: Number(event.target.value) || 0,
-                    }))
+                    setRules((prev) =>
+                      setRuleHalftimeBreakMinutes(prev, Number(event.target.value) || 0)
+                    )
                   }
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
@@ -1150,12 +1171,11 @@ export default function ScrimmageView() {
                 <input
                   type="number"
                   min="0"
-                  value={rules.timeoutSeconds}
+                  value={timeoutSeconds}
                   onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      timeoutSeconds: Number(event.target.value) || 0,
-                    }))
+                    setRules((prev) =>
+                      setRuleTimeoutSeconds(prev, Number(event.target.value) || 0)
+                    )
                   }
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
@@ -1165,12 +1185,11 @@ export default function ScrimmageView() {
                 <input
                   type="number"
                   min="0"
-                  value={rules.timeoutsTotal}
+                  value={timeoutsTotal}
                   onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      timeoutsTotal: Number(event.target.value) || 0,
-                    }))
+                    setRules((prev) =>
+                      setRuleTimeoutsTotal(prev, Number(event.target.value) || 0)
+                    )
                   }
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
@@ -1180,12 +1199,11 @@ export default function ScrimmageView() {
                 <input
                   type="number"
                   min="0"
-                  value={rules.timeoutsPerHalf}
+                  value={timeoutsPerHalf}
                   onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      timeoutsPerHalf: Number(event.target.value) || 0,
-                    }))
+                    setRules((prev) =>
+                      setRuleTimeoutsPerHalf(prev, Number(event.target.value) || 0)
+                    )
                   }
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
@@ -1210,12 +1228,9 @@ export default function ScrimmageView() {
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                 <span className="shrink-0">ABBA</span>
                 <select
-                  value={rules.abbaPattern}
+                  value={abbaPattern}
                   onChange={(event) =>
-                    setRules((prev) => ({
-                      ...prev,
-                      abbaPattern: event.target.value,
-                    }))
+                    setRules((prev) => setRuleAbbaPattern(prev, event.target.value))
                   }
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 >

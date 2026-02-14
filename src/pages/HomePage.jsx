@@ -1072,7 +1072,12 @@ export default function HomePage() {
                       <Card key={match.id} variant="muted" className="p-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <p className="text-sm font-semibold text-ink">{formatMatchup(match)}</p>
+                            <Link
+                              to={`/matches?matchId=${match.id}`}
+                              className="text-sm font-semibold text-ink hover:text-accent"
+                            >
+                              {formatMatchup(match)}
+                            </Link>
                             <p className="text-xs text-ink-muted">{formatMatchTime(match.start_time)}</p>
                             <p className="text-xs text-ink-muted">Provider: {formatMediaProvider(match)}</p>
                           </div>
@@ -1107,7 +1112,12 @@ export default function HomePage() {
                       <Card key={match.id} variant="muted" className="p-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <p className="text-sm font-semibold text-ink">{formatMatchup(match)}</p>
+                            <Link
+                              to={`/matches?matchId=${match.id}`}
+                              className="text-sm font-semibold text-ink hover:text-accent"
+                            >
+                              {formatMatchup(match)}
+                            </Link>
                             <p className="text-xs text-ink-muted">{formatMatchTime(match.start_time)}</p>
                             <p className="text-xs text-ink-muted">Provider: {formatMediaProvider(match)}</p>
                           </div>
