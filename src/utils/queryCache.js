@@ -5,6 +5,22 @@ const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const memoryCache = new Map();
 const inflight = new Map();
 
+function didPageLoadFromManualReload() {
+  if (typeof window === "undefined") return false;
+  try {
+    const entries = window.performance?.getEntriesByType?.("navigation");
+    if (Array.isArray(entries) && entries.length > 0) {
+      return entries.some((entry) => entry?.type === "reload");
+    }
+    // Legacy fallback for browsers without Navigation Timing Level 2.
+    return window.performance?.navigation?.type === 1;
+  } catch {
+    return false;
+  }
+}
+
+const FORCE_FRESH_FETCH_ON_PAGE_RELOAD = didPageLoadFromManualReload();
+
 function getStorage() {
   if (typeof window === "undefined") return null;
   try {
@@ -82,9 +98,20 @@ function fetchAndCache(key, fetcher) {
 }
 
 export async function getCachedQuery(rawKey, fetcher, options = {}) {
-  const { ttlMs = DEFAULT_TTL_MS, staleWhileRevalidate = true } = options;
+  const { ttlMs = DEFAULT_TTL_MS, staleWhileRevalidate = true, forceRefresh = false } = options;
   const key = buildKey(rawKey);
   const cached = readCacheEntry(key);
+
+  if (forceRefresh || FORCE_FRESH_FETCH_ON_PAGE_RELOAD) {
+    try {
+      return await fetchAndCache(key, fetcher);
+    } catch (error) {
+      if (cached) {
+        return cached.value;
+      }
+      throw error;
+    }
+  }
 
   if (cached) {
     const fresh = isFresh(cached, ttlMs);
