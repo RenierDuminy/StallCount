@@ -17,6 +17,14 @@ import {
   clearScorekeeperSession,
 } from "../../services/scorekeeperSessionStore";
 import {
+  createQueueId,
+  enqueueMatchLogEntry,
+  listOfflineQueue,
+  markOfflineQueueFailure,
+  processOfflineQueue,
+  removeOfflineQueueItem,
+} from "../../services/offlineQueue";
+import {
   deriveShortName,
   formatClock,
   formatMatchTime,
@@ -767,6 +775,19 @@ const markRulesManuallyEdited = useCallback(() => {
   setRulesManuallyEdited(true);
 }, []);
 
+const refreshPendingEntries = useCallback(async () => {
+  try {
+    const items = await listOfflineQueue();
+    setPendingEntries(items);
+  } catch (err) {
+    console.error("[5v5ScoreKeeper] Failed to load offline queue:", err);
+  }
+}, []);
+
+useEffect(() => {
+  void refreshPendingEntries();
+}, [refreshPendingEntries]);
+
 const clearLocalMatchState = useCallback(() => {
   setActiveMatch(null);
   setSelectedMatchId(null);
@@ -1414,6 +1435,7 @@ useEffect(() => {
       setupForm: { ...setupForm },
       rules: { ...rules },
       score: { ...score },
+      pendingEntries: Array.isArray(pendingEntries) ? [...pendingEntries] : [],
       timer: {
         seconds: primarySeconds,
         running: timerRunning,
@@ -1448,6 +1470,7 @@ useEffect(() => {
     setupForm,
     rules,
     score,
+    pendingEntries,
     timerRunning,
     timerLabel,
     secondaryRunning,
@@ -1521,7 +1544,11 @@ const cleanupOptimisticLog = useCallback(
 const recordPendingEntry = useCallback(
   (entry) => {
     const matchId = entry?.matchId;
-    const eventTypeId = Number.isFinite(entry?.eventTypeId) ? entry.eventTypeId : null;
+    const resolvedEventTypeId = Number.isFinite(entry?.eventTypeId) ? entry.eventTypeId : null;
+    const eventTypeId =
+      typeof resolvedEventTypeId === "number" && resolvedEventTypeId > 0
+        ? resolvedEventTypeId
+        : null;
     const eventTypeCode = entry?.eventCode || entry?.eventTypeCode || null;
     const optimisticId = entry?.optimisticId || null;
     if (!matchId) {
@@ -1560,47 +1587,52 @@ const recordPendingEntry = useCallback(
       dbPayload.eventTypeCode = normalizedEntry.eventCode;
     }
 
-    const supabasePayload = {
-      match_id: dbPayload.matchId,
-      event_type_id: dbPayload.eventTypeId ?? null,
-      team_id: dbPayload.teamId,
-      actor_id: dbPayload.actorId,
-      secondary_actor_id: dbPayload.secondaryActorId,
-      abba_line: dbPayload.abbaLine,
-      created_at: dbPayload.createdAt,
-      optimisticId: optimisticId || null,
-    };
-    if (!supabasePayload.event_type_id && dbPayload.eventTypeCode) {
-      supabasePayload.event_type_code = dbPayload.eventTypeCode;
-    }
-
-    setPendingEntries((prev) => [...prev, supabasePayload]);
-
-    if (DB_WRITES_DISABLED) {
-      console.warn("[ScoreKeeper] DB writes are temporarily disabled. Skipping save.", supabasePayload);
-      setConsoleError((prev) => prev || "Scorekeeper is in offline mode; changes aren't being saved.");
-      return;
-    }
+    const queueId = optimisticId || createQueueId("match-log");
 
     void (async () => {
+      try {
+        await enqueueMatchLogEntry(dbPayload, {
+          id: queueId,
+          lastAttemptAt: Date.now(),
+        });
+        await refreshPendingEntries();
+      } catch (err) {
+        console.error("[5v5ScoreKeeper] Failed to queue match log entry:", err);
+      }
+
+      if (DB_WRITES_DISABLED) {
+        console.warn("[5v5ScoreKeeper] DB writes are temporarily disabled. Skipping save.", dbPayload);
+        setConsoleError((prev) => prev || "Scorekeeper is in offline mode; changes aren't being saved.");
+        return;
+      }
+
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setConsoleError(
+          (prev) => prev || "Scorekeeper is offline; changes are queued and will sync when online."
+        );
+        return;
+      }
+
       try {
         const created = await createMatchLogEntry(dbPayload);
         // Replace any optimistic placeholder with the confirmed DB row once the server echoes the optimistic_id.
         cleanupOptimisticLog(created?.optimistic_id || optimisticId);
-        setPendingEntries((prev) => prev.filter((item) => item !== supabasePayload));
+        await removeOfflineQueueItem(queueId);
+        await refreshPendingEntries();
         const refresh = refreshMatchLogsRef.current;
         if (refresh) {
           void refresh(matchId, currentMatchScoreRef.current);
         }
       } catch (err) {
-        console.error("[ScoreKeeper] Failed to persist match log entry:", err);
+        console.error("[5v5ScoreKeeper] Failed to persist match log entry:", err);
         setConsoleError((prev) =>
           prev || (err instanceof Error ? err.message : "Failed to submit match log entry.")
         );
+        await markOfflineQueueFailure(queueId);
       }
     })();
   },
-  [setPendingEntries, setConsoleError, normalizeAbbaLine, cleanupOptimisticLog]
+  [setConsoleError, normalizeAbbaLine, cleanupOptimisticLog, refreshPendingEntries]
 );
 const normalizedSecondaryLabel =
   typeof secondaryLabel === "string" ? secondaryLabel.toLowerCase() : "";
@@ -2062,6 +2094,33 @@ const rosterNameLookup = useMemo(() => {
     currentMatchScoreRef.current = currentMatchScore;
   }, [currentMatchScore]);
 
+  const processQueueAndRefresh = useCallback(async () => {
+    let shouldRefreshLogs = false;
+    await processOfflineQueue({
+      onItemSuccess: (item) => {
+        if (item.kind === "match_log" && item.payload.matchId === matchLogMatchId) {
+          shouldRefreshLogs = true;
+        }
+      },
+    });
+    if (shouldRefreshLogs && refreshMatchLogsRef.current) {
+      void refreshMatchLogsRef.current(matchLogMatchId, currentMatchScoreRef.current);
+    }
+    await refreshPendingEntries();
+  }, [matchLogMatchId, refreshPendingEntries]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    void processQueueAndRefresh();
+    const handleOnline = () => {
+      void processQueueAndRefresh();
+    };
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [processQueueAndRefresh]);
+
   const deriveLogsFromRows = useCallback(
     (rows, matchScore) => {
       let rawA = 0;
@@ -2262,6 +2321,7 @@ const rosterNameLookup = useMemo(() => {
     }));
     setRulesManuallyEdited(Boolean(snapshot.rules));
     setScore(snapshot.score ?? { a: 0, b: 0 });
+    setPendingEntries(Array.isArray(snapshot.pendingEntries) ? snapshot.pendingEntries : []);
     setTimeoutUsage(snapshot.timeoutUsage ?? { ...DEFAULT_TIMEOUT_USAGE });
     setPossessionTeam(snapshot.possessionTeam ?? null);
     setHalftimeTriggered(Boolean(snapshot.halftimeTriggered));

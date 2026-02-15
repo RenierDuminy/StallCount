@@ -36,6 +36,69 @@ export async function getAllTeams(limit?: number): Promise<TeamRow[]> {
   );
 }
 
+type DivisionIdRow = {
+  id: string;
+};
+
+type DivisionTeamLinkRow = {
+  team: TeamRow | null;
+};
+
+export async function getTeamsLinkedToEvent(eventId: string): Promise<TeamRow[]> {
+  const normalizedEventId = typeof eventId === "string" ? eventId.trim() : "";
+  if (!normalizedEventId) {
+    return [];
+  }
+
+  const { data: divisionRows, error: divisionError } = await supabase
+    .from("divisions")
+    .select("id")
+    .eq("event_id", normalizedEventId);
+
+  if (divisionError) {
+    throw new Error(divisionError.message || "Failed to load divisions for event.");
+  }
+
+  const divisionIds = ((divisionRows ?? []) as DivisionIdRow[])
+    .map((row) => row.id)
+    .filter((id) => typeof id === "string" && id.length > 0);
+
+  if (divisionIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("division_teams")
+    .select(
+      `
+        team:teams(id, name, short_name, created_at)
+      `,
+    )
+    .in("division_id", divisionIds);
+
+  if (error) {
+    throw new Error(error.message || "Failed to load teams linked to event.");
+  }
+
+  const unique = new Map<string, TeamRow>();
+  ((data ?? []) as DivisionTeamLinkRow[]).forEach((row) => {
+    if (!row?.team?.id) {
+      return;
+    }
+
+    if (!unique.has(row.team.id)) {
+      unique.set(row.team.id, {
+        id: row.team.id,
+        name: row.team.name,
+        short_name: row.team.short_name ?? null,
+        created_at: row.team.created_at,
+      });
+    }
+  });
+
+  return Array.from(unique.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function createTeam(payload: {
   name: string;
   shortName?: string | null;

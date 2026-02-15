@@ -8,7 +8,7 @@ import {
   removePlayerFromRoster,
   updateRosterCaptainRole,
 } from "../services/playerService";
-import { getAllTeams } from "../services/teamService";
+import { getTeamsLinkedToEvent } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
 import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
 
@@ -83,7 +83,8 @@ export default function CaptainPage() {
   const [playerSaving, setPlayerSaving] = useState(false);
   const [playerAlert, setPlayerAlert] = useState(null);
 
-  const [teams, setTeams] = useState([]);
+  const [eventTeams, setEventTeams] = useState([]);
+  const [eventTeamsLoading, setEventTeamsLoading] = useState(false);
   const [events, setEvents] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [selectedEventId, setSelectedEventId] = useState("");
@@ -91,21 +92,58 @@ export default function CaptainPage() {
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterAlert, setRosterAlert] = useState(null);
   const [assignPlayerId, setAssignPlayerId] = useState("");
+  const [assignPlayerFilter, setAssignPlayerFilter] = useState("");
   const [assignCaptainRole, setAssignCaptainRole] = useState("");
   const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
     loadDirectory();
-    getAllTeams()
-      .then((data) => setTeams(data ?? []))
-      .catch(() => setTeams([]));
     getEventsList(50)
       .then((data) => setEvents(data ?? []))
       .catch(() => setEvents([]));
   }, []);
 
   useEffect(() => {
-    if (!selectedTeamId) {
+    setSelectedTeamId("");
+    setRosterEntries([]);
+    setAssignPlayerId("");
+    setAssignPlayerFilter("");
+
+    if (!selectedEventId) {
+      setEventTeams([]);
+      setEventTeamsLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setEventTeamsLoading(true);
+
+    getTeamsLinkedToEvent(selectedEventId)
+      .then((data) => {
+        if (isCancelled) return;
+        setEventTeams(data ?? []);
+      })
+      .catch((err) => {
+        if (isCancelled) return;
+        setEventTeams([]);
+        setRosterAlert({
+          tone: "error",
+          message: err.message || "Unable to load event teams.",
+        });
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setEventTeamsLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    if (!selectedEventId || !selectedTeamId) {
       setRosterEntries([]);
       return;
     }
@@ -245,6 +283,46 @@ export default function CaptainPage() {
     return entries.slice(0, 12);
   }, [filteredPlayers, playerFilter, playerForm.id, possibleDuplicates]);
 
+  const rosterPlayerIds = useMemo(() => {
+    const ids = new Set();
+    for (const entry of rosterEntries) {
+      const playerId = entry?.player?.id;
+      if (playerId) {
+        ids.add(playerId);
+      }
+    }
+    return ids;
+  }, [rosterEntries]);
+
+  const assignPlayerOptions = useMemo(() => {
+    if (!selectedEventId || !selectedTeamId) {
+      return [];
+    }
+
+    const term = assignPlayerFilter.trim().toLowerCase();
+
+    const options = playerDirectory
+      .filter((player) => player?.id && !rosterPlayerIds.has(player.id))
+      .filter((player) => {
+        if (!term) {
+          return true;
+        }
+        const haystack = [player.name, player.gender_code, player.jersey_number, player.birthday]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(term);
+      })
+      .sort((left, right) => `${left.name || ""}`.localeCompare(`${right.name || ""}`));
+
+    return options.slice(0, 12);
+  }, [assignPlayerFilter, playerDirectory, rosterPlayerIds, selectedEventId, selectedTeamId]);
+
+  const selectedAssignPlayer = useMemo(
+    () => playerDirectory.find((player) => player.id === assignPlayerId) || null,
+    [assignPlayerId, playerDirectory],
+  );
+
   async function loadDirectory() {
     try {
       const data = await getPlayerDirectory();
@@ -293,8 +371,20 @@ export default function CaptainPage() {
 
   async function handlePlayerSubmit(event) {
     event.preventDefault();
-    if (!playerForm.name.trim()) {
+    const normalizedName = playerForm.name.trim();
+    const normalizedGender = String(playerForm.gender_code || "").trim();
+    const normalizedBirthday = String(playerForm.birthday || "").trim();
+
+    if (!normalizedName) {
       setPlayerAlert({ tone: "error", message: "Player name is required." });
+      return;
+    }
+    if (!normalizedGender) {
+      setPlayerAlert({ tone: "error", message: "Gender is required." });
+      return;
+    }
+    if (!normalizedBirthday) {
+      setPlayerAlert({ tone: "error", message: "Birthday is required." });
       return;
     }
 
@@ -307,9 +397,9 @@ export default function CaptainPage() {
 
       await upsertPlayer({
         id: playerForm.id || undefined,
-        name: playerForm.name,
-        gender_code: playerForm.gender_code || null,
-        birthday: playerForm.birthday || null,
+        name: normalizedName,
+        gender_code: normalizedGender,
+        birthday: normalizedBirthday,
         description: playerForm.description || null,
         jersey_number: jerseyNumber ?? null,
       });
@@ -354,6 +444,7 @@ export default function CaptainPage() {
       });
       setRosterAlert({ tone: "success", message: "Player added to roster." });
       setAssignPlayerId("");
+      setAssignPlayerFilter("");
       setAssignCaptainRole("");
       await loadRoster(selectedTeamId, selectedEventId);
     } catch (err) {
@@ -453,6 +544,7 @@ export default function CaptainPage() {
                     id="player-gender"
                     value={playerForm.gender_code}
                     onChange={(event) => handlePlayerFieldChange("gender_code", event.target.value)}
+                    required
                   >
                     <option value="">Select</option>
                     <option value="M">M</option>
@@ -465,6 +557,7 @@ export default function CaptainPage() {
                     type="date"
                     value={playerForm.birthday}
                     onChange={(event) => handlePlayerFieldChange("birthday", event.target.value)}
+                    required
                   />
                 </Field>
               </div>
@@ -555,31 +648,15 @@ export default function CaptainPage() {
           <SectionHeader
             eyebrow="Assignments"
             title="Team roster control"
-            description="Link players to specific events and teams via public.team_roster. Pick the team and event, then add or remove assignments."
+            description="Link players to specific events and teams via public.team_roster. Pick an event first, then choose one of that event's linked teams."
           />
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <Field label="Select team" htmlFor="roster-team">
-              <Select
-                id="roster-team"
-                value={selectedTeamId}
-                onChange={(event) => setSelectedTeamId(event.target.value)}
-              >
-                <option value="">Choose a team</option>
-                {teams.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {team.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-
+          <div className="grid gap-4 md:grid-cols-2">
             <Field label="Select event" htmlFor="roster-event">
               <Select
                 id="roster-event"
                 value={selectedEventId}
                 onChange={(event) => setSelectedEventId(event.target.value)}
-                disabled={!selectedTeamId}
               >
                 <option value="">Choose an event</option>
                 {events.map((eventItem) => (
@@ -590,22 +667,105 @@ export default function CaptainPage() {
               </Select>
             </Field>
 
-            <Field label="Player to assign" htmlFor="roster-player">
+            <Field label="Select team" htmlFor="roster-team">
               <Select
-                id="roster-player"
-                value={assignPlayerId}
-                onChange={(event) => setAssignPlayerId(event.target.value)}
-                disabled={!selectedTeamId || !selectedEventId}
+                id="roster-team"
+                value={selectedTeamId}
+                onChange={(event) => {
+                  setSelectedTeamId(event.target.value);
+                  setRosterEntries([]);
+                  setAssignPlayerId("");
+                  setAssignPlayerFilter("");
+                }}
+                disabled={!selectedEventId || eventTeamsLoading}
               >
-                <option value="">Select player</option>
-                {playerDirectory.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {player.name} {player.jersey_number != null ? `#${player.jersey_number}` : ""}
+                <option value="">
+                  {!selectedEventId
+                    ? "Choose an event first"
+                    : eventTeamsLoading
+                      ? "Loading teams..."
+                      : "Choose a team"}
+                </option>
+                {eventTeams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
                   </option>
                 ))}
               </Select>
             </Field>
           </div>
+
+          <Panel variant="muted" className="space-y-4 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Available players</h3>
+              <span className="text-xs text-ink-muted">{assignPlayerOptions.length} shown</span>
+            </div>
+
+            <Field label="Search players" htmlFor="assign-player-search">
+              <Input
+                id="assign-player-search"
+                type="search"
+                placeholder="Search by name, jersey, birthday, or gender"
+                value={assignPlayerFilter}
+                onChange={(event) => setAssignPlayerFilter(event.target.value)}
+                className="is-compact"
+                disabled={!selectedEventId || !selectedTeamId}
+              />
+            </Field>
+
+            <div className="space-y-2 rounded-xl border border-border/70 bg-surface p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Players to assign</p>
+              {!selectedEventId || !selectedTeamId ? (
+                <p className="text-xs text-ink-muted">Select an event and team first.</p>
+              ) : rosterLoading ? (
+                <p className="text-xs text-ink-muted">Loading roster players...</p>
+              ) : playerDirectory.length === 0 ? (
+                <p className="text-xs text-ink-muted">No players in directory yet.</p>
+              ) : assignPlayerOptions.length === 0 ? (
+                <p className="text-xs text-ink-muted">
+                  {assignPlayerFilter.trim()
+                    ? "No players match your search."
+                    : "All directory players are already assigned for this team/event."}
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {assignPlayerOptions.map((player) => (
+                    <li
+                      key={`assign-${player.id}`}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-2 py-1.5"
+                    >
+                      <div className="min-w-0 text-xs">
+                        <p className="truncate font-semibold text-ink">
+                          {player.name}
+                          {player.jersey_number != null ? ` #${player.jersey_number}` : ""}
+                        </p>
+                        <p className="truncate text-ink-muted">
+                          {player.birthday || "DOB unknown"} - {player.gender_code || "-"}
+                        </p>
+                        <p className="truncate text-[11px] text-ink-muted/90">Available to assign</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAssignPlayerId(player.id)}
+                        className="sc-button is-ghost text-xs"
+                      >
+                        {assignPlayerId === player.id ? "Selected" : "Select"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <p className="text-xs text-ink-muted">
+              Selected:{" "}
+              {selectedAssignPlayer
+                ? `${selectedAssignPlayer.name || "Unnamed player"}${
+                    selectedAssignPlayer.jersey_number != null ? ` #${selectedAssignPlayer.jersey_number}` : ""
+                  }`
+                : "None"}
+            </p>
+          </Panel>
 
           <form className="flex flex-wrap items-end gap-4 text-sm" onSubmit={handleAddToRoster}>
             <Field label="Captain role" htmlFor="captain-role">
@@ -623,7 +783,7 @@ export default function CaptainPage() {
             </Field>
             <button
               type="submit"
-              disabled={assigning || !selectedTeamId || !selectedEventId}
+              disabled={assigning || !selectedTeamId || !selectedEventId || !assignPlayerId}
               className="sc-button disabled:cursor-not-allowed"
             >
               {assigning ? "Adding..." : "Add to roster"}
@@ -641,7 +801,9 @@ export default function CaptainPage() {
               <div className="p-6 text-center text-sm text-ink-muted">Loading roster...</div>
             ) : rosterEntries.length === 0 ? (
               <div className="p-6 text-center text-sm text-ink-muted">
-                {selectedTeamId ? "No roster entries for this filter yet." : "Select a team to view its roster."}
+                {selectedTeamId
+                  ? "No roster entries for this filter yet."
+                  : "Select an event and team to view its roster."}
               </div>
             ) : (
               <ul className="divide-y divide-border">
