@@ -70,6 +70,23 @@ export type EventRosterEntry = {
 
 const PLAYER_SELECT = "id, name, gender_code, jersey_number, birthday, description";
 
+function normalizePlayerWriteError(error: unknown, fallback: string) {
+  const message =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message || "")
+      : "";
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("row-level security") &&
+    normalized.includes("player")
+  ) {
+    return "Your account cannot create or update `public.player` rows. Event-scoped roles in `event_user_roles` are not enough here because `player` has no `event_id`. Ask an admin to grant `manage_users`, or add a player-write policy/function that checks event access.";
+  }
+
+  return message || fallback;
+}
+
 export async function getAllPlayers(): Promise<PlayerRow[]> {
   const { data, error } = await supabase
     .from("team_roster")
@@ -202,7 +219,7 @@ export async function upsertPlayer(payload: UpsertPlayerPayload) {
   if (payload.id) {
     const { error } = await supabase.from("player").update(base).eq("id", payload.id);
     if (error) {
-      throw new Error(error.message || "Unable to update player");
+      throw new Error(normalizePlayerWriteError(error, "Unable to update player"));
     }
     invalidateCachedQuery("players:directory");
     return payload.id;
@@ -215,7 +232,7 @@ export async function upsertPlayer(payload: UpsertPlayerPayload) {
     .single();
 
   if (error) {
-    throw new Error(error.message || "Unable to create player");
+    throw new Error(normalizePlayerWriteError(error, "Unable to create player"));
   }
 
   invalidateCachedQuery("players:directory");

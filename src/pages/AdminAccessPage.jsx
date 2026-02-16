@@ -13,6 +13,7 @@ import {
 import {
   addUserRoleAssignment,
   addEventUserRoleAssignment,
+  getAccessControlEvents,
   getAccessControlUsers,
   getRoleCatalog,
   removeUserRoleAssignment,
@@ -90,6 +91,7 @@ function isAdminAssignment(assignment, adminRoleIds) {
 export default function AdminAccessPage() {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -111,12 +113,14 @@ export default function AdminAccessPage() {
     setLoading(true);
     setError("");
     try {
-      const [userRows, roleRows] = await Promise.all([
+      const [userRows, roleRows, eventRows] = await Promise.all([
         getAccessControlUsers(),
         getRoleCatalog(),
+        getAccessControlEvents(),
       ]);
       setUsers(userRows);
       setRoles(roleRows);
+      setEvents(eventRows);
       setRoleManagerQuery("");
       setSelectedUserId("");
       setSelectedEventId("");
@@ -340,6 +344,15 @@ export default function AdminAccessPage() {
 
   const eventOptions = useMemo(() => {
     const map = new Map();
+    events.forEach((event) => {
+      if (!event?.id) return;
+      map.set(event.id, {
+        id: event.id,
+        name: event.name || "Event",
+        startDate: event.startDate,
+        endDate: event.endDate,
+      });
+    });
     users.forEach((user) => {
       const entries = Array.isArray(user.eventRoles) ? user.eventRoles : [];
       entries.forEach((entry) => {
@@ -355,7 +368,7 @@ export default function AdminAccessPage() {
       });
     });
     return Array.from(map.values());
-  }, [users]);
+  }, [events, users]);
 
   useEffect(() => {
     if (!selectedEventId) return;

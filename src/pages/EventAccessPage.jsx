@@ -12,6 +12,7 @@ import {
 } from "../components/ui/primitives";
 import {
   addEventUserRoleAssignment,
+  getAccessControlEvents,
   getAccessControlUsers,
   getRoleCatalog,
   removeEventUserRoleAssignment,
@@ -58,6 +59,7 @@ function formatEventOptionLabel(event) {
 export default function EventAccessPage() {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -78,12 +80,14 @@ export default function EventAccessPage() {
     setLoading(true);
     setError("");
     try {
-      const [userRows, roleRows] = await Promise.all([
+      const [userRows, roleRows, eventRows] = await Promise.all([
         getAccessControlUsers(),
         getRoleCatalog(),
+        getAccessControlEvents(),
       ]);
       setUsers(userRows);
       setRoles(roleRows);
+      setEvents(eventRows);
       setRoleManagerQuery("");
       setSelectedUserId("");
       setSelectedEventId("");
@@ -243,12 +247,21 @@ export default function EventAccessPage() {
       return [selectedUser, ...trimmed].slice(0, 20);
     }
     return trimmed;
-  }, [users, roleManagerQuery, selectedUser]);
+  }, [users, roleManagerQuery, selectedEventId, selectedUser]);
 
   const selectedAssignments = Array.isArray(selectedUser?.roles) ? selectedUser.roles : [];
   const selectedEventRoles = Array.isArray(selectedUser?.eventRoles) ? selectedUser.eventRoles : [];
   const eventOptions = useMemo(() => {
     const map = new Map();
+    events.forEach((event) => {
+      if (!event?.id) return;
+      map.set(event.id, {
+        id: event.id,
+        name: event.name || "Event",
+        startDate: event.startDate,
+        endDate: event.endDate,
+      });
+    });
     users.forEach((user) => {
       const entries = Array.isArray(user.eventRoles) ? user.eventRoles : [];
       entries.forEach((entry) => {
@@ -264,7 +277,7 @@ export default function EventAccessPage() {
       });
     });
     return Array.from(map.values());
-  }, [users]);
+  }, [events, users]);
 
   useEffect(() => {
     if (!selectedEventId) return;

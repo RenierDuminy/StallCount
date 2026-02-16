@@ -257,6 +257,32 @@ export async function getAccessControlUsers(limit = 500) {
   });
 }
 
+export async function getAccessControlEvents(limit = 500) {
+  let query = supabase
+    .from("events")
+    .select("id, name, start_date, end_date, created_at")
+    .order("start_date", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (typeof limit === "number") {
+    query = query.limit(limit);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(error.message || "Failed to load events");
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    name: row.name || "Event",
+    startDate: row.start_date ?? null,
+    endDate: row.end_date ?? null,
+    createdAt: row.created_at ?? null,
+  }));
+}
+
 export async function getRoleCatalog() {
   const { data, error } = await supabase
     .from("roles")
