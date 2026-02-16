@@ -173,7 +173,7 @@ CREATE TABLE public.matches (
   confirmed_at timestamp with time zone,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   scorekeeper uuid,
-  media_link jsonb CHECK (is_valid_media_link(media_link)),
+  media_link jsonb,
   media_provider text DEFAULT ((media_link -> 'primary'::text) ->> 'provider'::text),
   media_url text DEFAULT ((media_link -> 'primary'::text) ->> 'url'::text),
   media_status text DEFAULT NULLIF(((media_link -> 'primary'::text) ->> 'status'::text), ''::text),
@@ -367,6 +367,7 @@ CREATE TABLE public.teams (
   name text NOT NULL UNIQUE,
   short_name text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  attributes jsonb,
   CONSTRAINT teams_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.user_roles (
@@ -387,7 +388,7 @@ CREATE TABLE public.venues (
   notes text,
   latitude double precision CHECK (latitude IS NULL OR latitude >= '-90'::integer::double precision AND latitude <= 90::double precision),
   longitude double precision CHECK (longitude IS NULL OR longitude >= '-180'::integer::double precision AND longitude <= 180::double precision),
-  City text,
+  city text,
   CONSTRAINT venues_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.webhook_deliveries (

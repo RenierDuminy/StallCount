@@ -4,27 +4,77 @@ import { useAuth } from "../context/AuthContext";
 import { Card, Chip, Panel, SectionShell, SectionHeader } from "../components/ui/primitives";
 import { getCurrentUser } from "../services/userService";
 import { supabase } from "../services/supabaseClient";
-import { ROLE_NAME_BY_ID, getUserRoleSlugs, normaliseRoleList } from "../utils/accessControl";
+import { getUserRoleSlugs, normaliseRoleList } from "../utils/accessControl";
 
 const ROLE_LABELS = {
   admin: "Administrator",
+  user: "User",
   authenticated: "Authenticated user",
 };
 
 const ACCESS_LEVELS = {
   admin: "Full access",
+  user: "Viewer access",
   authenticated: "Standard access",
 };
 
+const NON_ELEVATED_ROLE_SLUGS = new Set(["user"]);
+
 const ROLE_LIBRARY = {
+  user: {
+    label: "User",
+    description:
+      "Base account access for reading schedules, scores, and public event information.",
+    actions: [],
+  },
   admin: {
-    label: "Administration",
+    label: "Administrator",
     description:
       "Configure tournaments, control user access, and manage the master data that powers StallCount.",
     actions: [
       "Approve and manage official crew accounts.",
       "Edit league settings, divisions, and event timelines.",
       "Review audit logs for score adjustments.",
+    ],
+  },
+  tournament_director: {
+    label: "Tournament director",
+    description:
+      "Oversee event operations, setup workflows, and administrative controls across assigned events.",
+    actions: [
+      "Configure event structure, divisions, pools, and fixtures.",
+      "Manage operational pages for tournament workflows.",
+      "Coordinate officiating and event-level access.",
+    ],
+  },
+  scorekeeper: {
+    label: "Scorekeeper",
+    description:
+      "Operate live scoring workflows and keep match state synchronized during games.",
+    actions: [
+      "Run live scorekeeping during matches.",
+      "Capture game events with consistent timelines.",
+      "Sync tracked outcomes into shared match records.",
+    ],
+  },
+  field_assistant: {
+    label: "Field assistant",
+    description:
+      "Support on-field operations and score capture workflows.",
+    actions: [
+      "Assist scorekeeping crews with live operations.",
+      "Help maintain accurate field-side game records.",
+      "Support tournament control room procedures.",
+    ],
+  },
+  team_manager: {
+    label: "Team manager",
+    description:
+      "Manage team-level operations and roster-related workflows.",
+    actions: [
+      "Coordinate roster readiness for events.",
+      "Support team administrative submissions.",
+      "Assist captains with event operations.",
     ],
   },
   media: {
@@ -35,16 +85,6 @@ const ROLE_LIBRARY = {
       "Queue social posts and match summaries.",
       "Upload photography or video assets.",
       "Coordinate post-match interviews and press briefs.",
-    ],
-  },
-  score_capture: {
-    label: "Score Capture",
-    description:
-      "Operate live tables, sync offline scorepads, and keep crews aligned during play.",
-    actions: [
-      "Run the live scoreboard monitor.",
-      "Reconcile offline submissions from field devices.",
-      "Flag dispute reports for head officials.",
     ],
   },
   captain: {
@@ -66,9 +106,14 @@ const ACCESS_GUIDE = [
     description: "General read-only access to live data and schedules.",
   },
   {
-    key: "score_capture",
+    key: "field_assistant",
     label: "Field assistant",
     description: "Scorekeeper tools to run live tables and reconcile offline submissions.",
+  },
+  {
+    key: "scorekeeper",
+    label: "Scorekeeper",
+    description: "Full scorekeeper workflow access for live match operations.",
   },
   {
     key: "captain",
@@ -76,13 +121,23 @@ const ACCESS_GUIDE = [
     description: "Field assistant capabilities plus team management (rosters and spirit submissions).",
   },
   {
+    key: "team_manager",
+    label: "Team manager",
+    description: "Team operations support, including event administration and coordination.",
+  },
+  {
     key: "media",
     label: "Media",
     description: "Ability to modify match media entries and surface highlights for the community site.",
   },
   {
-    key: "admin",
+    key: "tournament_director",
     label: "Tournament director",
+    description: "Administrative control for event setup, scheduling, and staff workflows.",
+  },
+  {
+    key: "admin",
+    label: "Administrator",
     description: "Field assistant + captain + media capabilities, along with event management controls.",
   },
 ];
@@ -99,15 +154,20 @@ function formatDate(value) {
 function resolveAccessLevel(user) {
   if (!user) return { role: "Unknown", level: "Unknown" };
 
-  const metaRole = user.role || "authenticated";
+  const userMeta = user.user_metadata || {};
+  const appMeta = user.app_metadata || {};
+  const metaRole = userMeta.role || appMeta.role || "authenticated";
   const profileRole =
-    user.app_metadata?.role ||
-    ROLE_NAME_BY_ID[user.user_metadata?.role_id] ||
+    appMeta.role ||
     ROLE_LABELS[metaRole] ||
     "Authenticated user";
-  const accessLevel = ACCESS_LEVELS[metaRole] || ACCESS_LEVELS[user.app_metadata?.role] || "Standard access";
+  const accessLevel = ACCESS_LEVELS[metaRole] || ACCESS_LEVELS[appMeta.role] || "Standard access";
 
   return { role: profileRole, level: accessLevel };
+}
+
+function isElevatedRole(role) {
+  return Boolean(role) && !NON_ELEVATED_ROLE_SLUGS.has(role);
 }
 
 export default function UserPage() {
@@ -152,33 +212,66 @@ export default function UserPage() {
     };
   }, [user]);
 
-  const assignmentSource = useMemo(() => {
+  const globalAssignmentSource = useMemo(() => {
     if (Array.isArray(profile?.roles) && profile.roles.length > 0) {
       return profile.roles;
     }
     if (Array.isArray(sessionRoles) && sessionRoles.length > 0) {
-      return sessionRoles;
+      const globalAssignments = sessionRoles.filter(
+        (assignment) => (assignment?.scope || "global") === "global",
+      );
+      if (globalAssignments.length > 0) {
+        return globalAssignments;
+      }
     }
     return undefined;
   }, [profile?.roles, sessionRoles]);
+
+  const eventAssignmentSource = useMemo(() => {
+    if (Array.isArray(profile?.eventRoles) && profile.eventRoles.length > 0) {
+      return profile.eventRoles;
+    }
+    if (Array.isArray(sessionRoles) && sessionRoles.length > 0) {
+      return sessionRoles.filter((assignment) => assignment?.scope === "event");
+    }
+    return [];
+  }, [profile?.eventRoles, sessionRoles]);
 
   const fallbackRoleSource =
     profile?.role ||
     user?.app_metadata?.role ||
     user?.user_metadata?.role ||
     user?.user_metadata?.roles ||
-    "";
+    "user";
 
   const normalizedRoles = useMemo(() => {
-    if (assignmentSource) {
-      return getUserRoleSlugs(user, assignmentSource);
+    const collected = new Set();
+
+    if (globalAssignmentSource) {
+      getUserRoleSlugs(user, globalAssignmentSource).forEach((role) =>
+        collected.add(role),
+      );
+    } else {
+      normaliseRoleList(fallbackRoleSource).forEach((role) => collected.add(role));
     }
-    return normaliseRoleList(fallbackRoleSource);
-  }, [assignmentSource, fallbackRoleSource, user]);
+
+    eventAssignmentSource.forEach((assignment) => {
+      const roleValue =
+        assignment?.roleName || assignment?.role?.name || assignment?.roleId || "";
+      normaliseRoleList(roleValue).forEach((role) => collected.add(role));
+    });
+
+    return Array.from(collected);
+  }, [globalAssignmentSource, fallbackRoleSource, eventAssignmentSource, user]);
 
   const recognisedRoles = useMemo(
     () => normalizedRoles.filter((role) => Boolean(ROLE_LIBRARY[role])),
     [normalizedRoles]
+  );
+
+  const elevatedRoles = useMemo(
+    () => normalizedRoles.filter((role) => isElevatedRole(role)),
+    [normalizedRoles],
   );
 
   const fallbackRoles = useMemo(
@@ -187,14 +280,33 @@ export default function UserPage() {
   );
 
   const accessLevelLabels = useMemo(() => {
-    if (Array.isArray(assignmentSource)) {
-      const labels = assignmentSource
+    const labels = [];
+
+    if (Array.isArray(globalAssignmentSource)) {
+      const globalLabels = globalAssignmentSource
         .map((assignment) => assignment?.roleName || assignment?.role?.name || null)
+        .filter(Boolean)
+        .map((name) => `${name} (Global)`)
         .filter(Boolean);
-      if (labels.length > 0) {
-        return Array.from(new Set(labels));
-      }
+      labels.push(...globalLabels);
     }
+
+    if (Array.isArray(eventAssignmentSource) && eventAssignmentSource.length > 0) {
+      const eventLabels = eventAssignmentSource
+        .map((assignment) => {
+          const roleLabel = assignment?.roleName || assignment?.role?.name || "Role";
+          const eventLabel = assignment?.eventName || assignment?.eventId || "Event";
+          return `${roleLabel} (${eventLabel})`;
+        })
+        .filter(Boolean);
+      labels.push(...eventLabels);
+    }
+
+    const uniqueLabels = Array.from(new Set(labels));
+    if (uniqueLabels.length > 0) {
+      return uniqueLabels;
+    }
+
     if (recognisedRoles.length > 0) {
       return recognisedRoles.map((role) => ROLE_LIBRARY[role]?.label || role);
     }
@@ -203,7 +315,7 @@ export default function UserPage() {
     }
     const fallbackAccess = `${accessInfo.role} - ${accessInfo.level}`;
     return fallbackAccess.trim() ? [fallbackAccess] : [];
-  }, [assignmentSource, recognisedRoles, fallbackRoles, accessInfo]);
+  }, [globalAssignmentSource, eventAssignmentSource, recognisedRoles, fallbackRoles, accessInfo]);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -220,38 +332,66 @@ export default function UserPage() {
 
   const accessLevelsValue = accessLevelLabels.length > 0 ? accessLevelLabels.join(", ") : `${accessInfo.role} - ${accessInfo.level}`;
   const accessGuideEntries = useMemo(() => {
-    const roleSet = new Set(recognisedRoles);
+    const roleSet = new Set(elevatedRoles);
     const entries = ACCESS_GUIDE.filter((entry) => {
       if (entry.key === "viewer") {
-        return roleSet.size === 0;
+        return elevatedRoles.length === 0;
       }
       return roleSet.has(entry.key);
     });
     return entries;
-  }, [recognisedRoles]);
+  }, [elevatedRoles]);
 
   const moduleRoles = useMemo(
-    () => recognisedRoles.filter((role) => role !== "admin"),
+    () => recognisedRoles.filter((role) => role !== "admin" && isElevatedRole(role)),
     [recognisedRoles],
   );
   
   const roleDetails = useMemo(() => {
-    if (Array.isArray(assignmentSource) && assignmentSource.length > 0) {
+    const details = [];
+    const seenKeys = new Set();
+
+    if (Array.isArray(globalAssignmentSource) && globalAssignmentSource.length > 0) {
       const map = new Map();
-      assignmentSource.forEach((assignment) => {
+      globalAssignmentSource.forEach((assignment) => {
         const name = assignment?.roleName || assignment?.role?.name || "Role";
         if (map.has(name)) return;
         const slug = normaliseRoleList(name)[0];
         map.set(name, {
-          key: assignment?.assignmentId || assignment?.roleId || name,
-          name,
+          key: `global:${assignment?.assignmentId || assignment?.roleId || name}`,
+          name: `${name} (Global)`,
           description:
             assignment?.roleDescription ||
             (slug && ROLE_LIBRARY[slug]?.description) ||
             "No description available.",
         });
       });
-      return Array.from(map.values());
+      Array.from(map.values()).forEach((entry) => {
+        if (seenKeys.has(entry.key)) return;
+        seenKeys.add(entry.key);
+        details.push(entry);
+      });
+    }
+
+    if (Array.isArray(eventAssignmentSource) && eventAssignmentSource.length > 0) {
+      eventAssignmentSource.forEach((assignment) => {
+        const roleName = assignment?.roleName || assignment?.role?.name || "Role";
+        const eventLabel = assignment?.eventName || assignment?.eventId || "Event";
+        const key = `event:${assignment?.assignmentId || `${roleName}:${eventLabel}`}`;
+        if (seenKeys.has(key)) return;
+        seenKeys.add(key);
+        details.push({
+          key,
+          name: `${roleName} (${eventLabel})`,
+          description:
+            assignment?.roleDescription ||
+            `Event-scoped role for ${eventLabel}.`,
+        });
+      });
+    }
+
+    if (details.length > 0) {
+      return details;
     }
 
     if (recognisedRoles.length > 0) {
@@ -271,7 +411,7 @@ export default function UserPage() {
     }
 
     return [];
-  }, [assignmentSource, recognisedRoles, fallbackRoles]);
+  }, [globalAssignmentSource, eventAssignmentSource, recognisedRoles, fallbackRoles]);
 
   const profileEntries = useMemo(() => {
     if (!user) return [];
@@ -368,7 +508,7 @@ export default function UserPage() {
               )}
             </Card>
 
-            {recognisedRoles.length === 0 ? (
+            {elevatedRoles.length === 0 ? (
               <Card className="p-6 text-sm text-ink-muted">
                 You currently have viewer-level access. Reach out to an administrator if you require elevated permissions for officiating duties.
               </Card>

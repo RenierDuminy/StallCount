@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Card,
+  MatchCard,
   Panel,
   SectionHeader,
   SectionShell,
@@ -36,12 +37,43 @@ const formatDateTime = (value) => {
   });
 };
 
-const formatCoordinate = (value) => {
-  if (typeof value !== "number" || Number.isNaN(value)) {
-    return null;
-  }
-  return value.toFixed(4);
+const formatMatchup = (match) => {
+  const teamA = match.team_a?.name || "Team A";
+  const teamB = match.team_b?.name || "Team B";
+  return `${teamA} vs ${teamB}`;
 };
+
+const formatScoreLine = (match) => {
+  const scoreA =
+    typeof match.score_a === "number" ? match.score_a.toString() : "-";
+  const scoreB =
+    typeof match.score_b === "number" ? match.score_b.toString() : "-";
+  return `${scoreA} - ${scoreB}`;
+};
+
+const formatMatchStatus = (status, fallback = "Scheduled") => {
+  const normalized = (status || "").toString().trim().toLowerCase();
+  if (!normalized) return fallback;
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
+const normalizeSortText = (value) =>
+  (typeof value === "string" ? value.trim().toLowerCase() : "");
+
+const sortVenuesByCityLocationName = (venues = []) =>
+  [...venues].sort((left, right) => {
+    const leftCity = normalizeSortText(left?.city);
+    const rightCity = normalizeSortText(right?.city);
+    if (leftCity !== rightCity) return leftCity.localeCompare(rightCity);
+
+    const leftLocation = normalizeSortText(left?.location);
+    const rightLocation = normalizeSortText(right?.location);
+    if (leftLocation !== rightLocation) return leftLocation.localeCompare(rightLocation);
+
+    const leftName = normalizeSortText(left?.name);
+    const rightName = normalizeSortText(right?.name);
+    return leftName.localeCompare(rightName);
+  });
 
 const copyToClipboard = async (text, onSuccess, onError) => {
   try {
@@ -55,6 +87,7 @@ const copyToClipboard = async (text, onSuccess, onError) => {
     }
   }
 };
+
 const buildPoolMatchBuckets = (matches = []) => {
   const buckets = {};
   matches.forEach((match) => {
@@ -171,32 +204,72 @@ const TeamTable = ({ rows, columns }) => {
     </div>
   );
 };
-const renderMatchRow = (match) => (
-  <div
-    key={match.id}
-    className="rounded border border-border p-2 text-xs text-ink"
-  >
-    <div className="flex justify-between text-[11px] uppercase tracking-wide text-ink-muted">
-      <span>{formatDateTime(match.start_time)}</span>
-      <span>{match.status || "Status"}</span>
-    </div>
-    <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm font-semibold">
-      <div className="truncate">{match.team_a?.name || "Team A"}</div>
-      <div className="text-center text-base font-bold">
-        {match.score_a ?? 0} : {match.score_b ?? 0}
-      </div>
-      <div className="truncate text-right">
-        {match.team_b?.name || "Team B"}
-      </div>
-    </div>
-  </div>
-);
+const renderMatchRow = (match, options = {}) => {
+  const { showScore = false } = options;
+  const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
+  const component = matchHref ? Link : "article";
+  const linkProps = matchHref ? { to: matchHref } : {};
+  return (
+    <MatchCard
+      key={match.id}
+      as={component}
+      variant="tinted"
+      className={matchHref ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50" : ""}
+      eyebrow={match.event?.name || "Match"}
+      title={formatMatchup(match)}
+      venue={match.venue}
+      meta={formatDateTime(match.start_time)}
+      score={showScore ? formatScoreLine(match) : null}
+      status={formatMatchStatus(match.status, showScore ? "Final" : "Scheduled")}
+      scoreAlign={showScore ? "right" : "left"}
+      {...linkProps}
+    />
+  );
+};
 export default function DROwLeague26Page() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [eventData, setEventData] = useState(null);
   const [matchesByPool, setMatchesByPool] = useState({});
   const [copyToast, setCopyToast] = useState(null);
+
+  const sortedVenues = useMemo(
+    () => sortVenuesByCityLocationName(eventData?.venues || []),
+    [eventData?.venues],
+  );
+
+  const venuesByCity = useMemo(() => {
+    const cityMap = new Map();
+    sortedVenues.forEach((venue) => {
+      const cityLabel = venue.city?.trim() || "City TBD";
+      const locationLabel = venue.location?.trim() || "Location TBD";
+      const nameLabel = venue.name?.trim() || "Venue";
+
+      if (!cityMap.has(cityLabel)) {
+        cityMap.set(cityLabel, new Map());
+      }
+      const locationMap = cityMap.get(cityLabel);
+      if (!locationMap.has(locationLabel)) {
+        locationMap.set(locationLabel, []);
+      }
+
+      locationMap.get(locationLabel).push({
+        ...venue,
+        cityLabel,
+        locationLabel,
+        nameLabel,
+      });
+    });
+
+    return Array.from(cityMap.entries()).map(([cityLabel, locationMap]) => ({
+      cityLabel,
+      locations: Array.from(locationMap.entries()).map(([locationLabel, venues]) => ({
+        locationLabel,
+        venues,
+      })),
+    }));
+  }, [sortedVenues]);
+
   useEffect(() => {
     let ignore = false;
     async function load() {
@@ -317,61 +390,60 @@ export default function DROwLeague26Page() {
                       Linked via the event setup wizard
                     </p>
                   </div>
-                  <Chip>{eventData.venues?.length || 0}</Chip>
+                  <Chip>{sortedVenues.length}</Chip>
                 </div>
-                {eventData.venues?.length ? (
-                  <ul className="grid gap-2 md:grid-cols-2">
-                    {eventData.venues.map((venue) => {
-                      const lat = formatCoordinate(venue.latitude);
-                      const lon = formatCoordinate(venue.longitude);
-                      const locationLabel = venue.location || "Location TBD";
-                      const nameLabel = venue.name || "Venue";
-                      const compositeLabel = `${locationLabel} (${nameLabel})`;
-                      const coordText =
-                        lat && lon ? `${lat}, ${lon}` : null;
-                      return (
-                        <li
-                          key={venue.id}
-                          className="rounded border border-border p-3 text-sm"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="space-y-1 text-left">
-                              <p className="font-semibold text-ink">
-                                {locationLabel}
-                              </p>
-                              <p className="text-xs text-ink-muted">
-                                ({nameLabel})
-                              </p>
-                              {venue.notes && (
-                                <p className="text-xs text-ink-muted">
-                                  {venue.notes}
-                                </p>
-                              )}
-                              {(lat || lon) && (
-                                <p className="text-xs text-ink-muted">
-                                  Coords: {lat || "--"}, {lon || "--"}
-                                </p>
-                              )}
-                            </div>
-                            {coordText && (
-                              <button
-                                type="button"
-                                className="sc-button is-ghost text-[11px] uppercase tracking-wide"
-                                onClick={() =>
-                                  copyToClipboard(coordText, () =>
-                                    setCopyToast(
-                                      `Copied ${compositeLabel} coordinates`,
-                                    ),
-                                  )
-                                }
-                              >
-                                Copy coords
-                              </button>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
+                {venuesByCity.length ? (
+                  <ul className="space-y-3">
+                    {venuesByCity.map((city) => (
+                      <li key={city.cityLabel} className="rounded-lg border border-border bg-surface p-3">
+                        <p className="text-sm font-semibold uppercase tracking-wide text-ink">{city.cityLabel}</p>
+                        <ul className="mt-2 ml-4 space-y-2 border-l border-border pl-3">
+                          {city.locations.map((location) => (
+                            <li key={`${city.cityLabel}-${location.locationLabel}`}>
+                              <p className="text-sm font-semibold text-ink-muted">{location.locationLabel}</p>
+                              <ul className="mt-1 ml-4 space-y-2 border-l border-border pl-3">
+                                {location.venues.map((venue) => {
+                                  const coordText =
+                                    typeof venue.latitude === "number" &&
+                                    !Number.isNaN(venue.latitude) &&
+                                    typeof venue.longitude === "number" &&
+                                    !Number.isNaN(venue.longitude)
+                                      ? `${venue.latitude.toFixed(4)}, ${venue.longitude.toFixed(4)}`
+                                      : "";
+                                  return (
+                                    <li
+                                      key={venue.id}
+                                      className="rounded-md border border-border bg-surface-muted px-3 py-2"
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <p className="text-sm font-medium text-ink">{venue.nameLabel}</p>
+                                        <button
+                                          type="button"
+                                          disabled={!coordText}
+                                          className="sc-button is-ghost text-[11px] uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-50"
+                                          onClick={() =>
+                                            copyToClipboard(coordText, () =>
+                                              setCopyToast(
+                                                `Copied ${venue.cityLabel}, ${venue.locationLabel} - ${venue.nameLabel} coordinates`,
+                                              ),
+                                            )
+                                          }
+                                        >
+                                          Copy coordiantes
+                                        </button>
+                                      </div>
+                                      {venue.notes && (
+                                        <p className="mt-1 text-xs text-ink-muted">{venue.notes}</p>
+                                      )}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    ))}
                   </ul>
                 ) : (
                   <p className="text-sm text-ink-muted">
@@ -482,25 +554,34 @@ export default function DROwLeague26Page() {
                                   </div>
                                   <Chip>{pool.teams.length} teams</Chip>
                                 </div>
-                                <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-4">
                                   <div>
                                     <p className="text-xs uppercase tracking-wide text-ink-muted">
                                       Teams
                                     </p>
                                     <TeamTable
-                                      rows={(pool.teams || []).map((entry) => ({
-                                        id:
-                                          entry.team?.id ||
-                                          `${pool.id}-${entry.seed}-${entry.team?.name}`,
-                                        name: entry.team?.name || "Team",
-                                        shortName:
-                                          entry.team?.short_name || null,
-                                        seed:
-                                          typeof entry.seed === "number" &&
-                                          !Number.isNaN(entry.seed)
-                                            ? entry.seed
-                                            : null,
-                                      }))}
+                                      rows={(pool.teams || [])
+                                        .map((entry) => ({
+                                          id:
+                                            entry.team?.id ||
+                                            `${pool.id}-${entry.seed}-${entry.team?.name}`,
+                                          name: entry.team?.name || "Team",
+                                          shortName:
+                                            entry.team?.short_name || null,
+                                          seed:
+                                            typeof entry.seed === "number" &&
+                                            !Number.isNaN(entry.seed)
+                                              ? entry.seed
+                                              : null,
+                                        }))
+                                        .sort((a, b) => {
+                                          if (a.seed !== null && b.seed !== null) {
+                                            return a.seed - b.seed || a.name.localeCompare(b.name);
+                                          }
+                                          if (a.seed !== null) return -1;
+                                          if (b.seed !== null) return 1;
+                                          return a.name.localeCompare(b.name);
+                                        })}
                                       columns={[
                                         {
                                           key: "seed",
@@ -531,9 +612,9 @@ export default function DROwLeague26Page() {
                                           None live right now
                                         </p>
                                       ) : (
-                                        <div className="mt-2 space-y-2">
-                                          {poolMatches.current.map(
-                                            renderMatchRow,
+                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                                          {poolMatches.current.map((match) =>
+                                            renderMatchRow(match, { showScore: true }),
                                           )}
                                         </div>
                                       )}
@@ -547,9 +628,9 @@ export default function DROwLeague26Page() {
                                           No results recorded yet
                                         </p>
                                       ) : (
-                                        <div className="mt-2 space-y-2">
-                                          {poolMatches.finished.map(
-                                            renderMatchRow,
+                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                                          {poolMatches.finished.map((match) =>
+                                            renderMatchRow(match, { showScore: true }),
                                           )}
                                         </div>
                                       )}
@@ -559,37 +640,10 @@ export default function DROwLeague26Page() {
                                         <p className="text-xs uppercase tracking-wide text-ink-muted">
                                           Scheduled
                                         </p>
-                                        <div className="mt-2 space-y-2">
-                                          {poolMatches.other.map((match) => (
-                                            <div
-                                              key={match.id}
-                                              className="rounded border border-dashed border-border p-2 text-xs"
-                                            >
-                                              <div className="flex justify-between text-[11px] uppercase tracking-wide text-ink-muted">
-                                                <span>
-                                                  {formatDateTime(
-                                                    match.start_time,
-                                                  )}
-                                                </span>
-                                                <span>
-                                                  {match.status || "Pending"}
-                                                </span>
-                                              </div>
-                                              <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm font-semibold">
-                                                <div className="truncate">
-                                                  {match.team_a?.name ||
-                                                    "Team A"}
-                                                </div>
-                                                <div className="text-center">
-                                                  vs
-                                                </div>
-                                                <div className="truncate text-right">
-                                                  {match.team_b?.name ||
-                                                    "Team B"}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          ))}
+                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                                          {poolMatches.other.map((match) =>
+                                            renderMatchRow(match, { showScore: false }),
+                                          )}
                                         </div>
                                       </div>
                                     )}

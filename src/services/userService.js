@@ -5,6 +5,7 @@ function mapRoleAssignments(assignments) {
     assignmentId: assignment.id,
     roleId: assignment.role_id ?? assignment.role?.id ?? null,
     roleName: assignment.role?.name ?? null,
+    roleScope: assignment.role?.scope ?? "global",
     roleDescription: assignment.role?.description ?? "",
     grantedAt: assignment.created_at ?? null,
     grantedBy: assignment.granted_by ?? null,
@@ -16,6 +17,7 @@ function mapEventRoleAssignments(assignments) {
     assignmentId: assignment.id,
     roleId: assignment.role_id ?? assignment.role?.id ?? null,
     roleName: assignment.role?.name ?? null,
+    roleScope: assignment.role?.scope ?? "event",
     roleDescription: assignment.role?.description ?? "",
     eventId: assignment.event_id ?? assignment.event?.id ?? null,
     eventName: assignment.event?.name ?? "",
@@ -63,7 +65,16 @@ export async function getCurrentUser() {
           role_id,
           created_at,
           granted_by,
-          role:roles(id, name, description)
+          role:roles(id, name, description, scope)
+        ),
+        event_roles:event_user_roles!event_user_roles_user_id_fkey(
+          id,
+          role_id,
+          event_id,
+          created_at,
+          granted_by,
+          role:roles(id, name, description, scope),
+          event:events(id, name, start_date, end_date)
         )
       `,
     )
@@ -76,11 +87,13 @@ export async function getCurrentUser() {
 
   if (data) {
     const roles = mapRoleAssignments(data.assignments);
+    const eventRoles = mapEventRoleAssignments(data.event_roles);
     const primaryRole = roles[0]?.roleName || null;
     return {
       ...data,
       role: primaryRole,
       roles,
+      eventRoles,
       email: data.email || user.email,
     };
   }
@@ -90,6 +103,7 @@ export async function getCurrentUser() {
     full_name: user.user_metadata?.full_name || "",
     role: user.user_metadata?.role || "",
     roles: [],
+    eventRoles: [],
     email: user.email,
   };
 }
@@ -108,7 +122,7 @@ export async function getUserRoleAssignments(userId) {
         role_id,
         created_at,
         granted_by,
-        role:roles(id, name, description)
+        role:roles(id, name, description, scope)
       `,
     )
     .eq("user_id", userId)
@@ -137,7 +151,7 @@ export async function getUserEventRoleAssignments(userId) {
         event_id,
         created_at,
         granted_by,
-        role:roles(id, name, description),
+        role:roles(id, name, description, scope),
         event:events(id, name, start_date, end_date)
       `,
     )
@@ -150,6 +164,44 @@ export async function getUserEventRoleAssignments(userId) {
   }
 
   return mapEventRoleAssignments(data);
+}
+
+export async function getUserAccessRoleAssignments(userId) {
+  if (!userId) {
+    return [];
+  }
+
+  const [globalRoles, eventRoles] = await Promise.all([
+    getUserRoleAssignments(userId),
+    getUserEventRoleAssignments(userId),
+  ]);
+
+  const seen = new Set();
+  const combined = [];
+
+  const appendUnique = (assignment, scope) => {
+    const roleId = assignment?.roleId ?? null;
+    const roleName = assignment?.roleName ?? "";
+    const eventId = assignment?.eventId ?? null;
+    const key = `${roleId ?? "none"}|${String(roleName).trim().toLowerCase()}|${eventId ?? "global"}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    combined.push({
+      ...assignment,
+      scope,
+    });
+  };
+
+  (Array.isArray(globalRoles) ? globalRoles : []).forEach((assignment) =>
+    appendUnique(assignment, "global"),
+  );
+  (Array.isArray(eventRoles) ? eventRoles : []).forEach((assignment) =>
+    appendUnique(assignment, "event"),
+  );
+
+  return combined;
 }
 
 export async function getAccessControlUsers(limit = 500) {
@@ -165,7 +217,7 @@ export async function getAccessControlUsers(limit = 500) {
           id,
           role_id,
           created_at,
-          role:roles(id, name, description)
+          role:roles(id, name, description, scope)
         ),
         event_roles:event_user_roles!event_user_roles_user_id_fkey(
           id,
@@ -173,7 +225,7 @@ export async function getAccessControlUsers(limit = 500) {
           event_id,
           created_at,
           granted_by,
-          role:roles(id, name, description),
+          role:roles(id, name, description, scope),
           event:events(id, name, start_date, end_date)
         )
       `,
@@ -212,6 +264,7 @@ export async function getRoleCatalog() {
       `
         id,
         name,
+        scope,
         description,
         role_permissions:role_permissions!role_permissions_role_id_fkey(
           permission:permissions(id, key, description)
@@ -227,6 +280,7 @@ export async function getRoleCatalog() {
   return (data ?? []).map((row) => ({
     id: row.id,
     name: row.name,
+    scope: row.scope || "event",
     description: row.description || "",
     permissions: mapRolePermissions(row.role_permissions),
   }));

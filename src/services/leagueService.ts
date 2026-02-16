@@ -40,6 +40,7 @@ export type EventPoolRow = {
 export type EventVenueRow = {
   id: string;
   name: string;
+  city: string | null;
   location: string | null;
   notes: string | null;
   latitude: number | null;
@@ -169,6 +170,7 @@ type RawVenue = {
   venue?: {
     id: string;
     name: string | null;
+    city: string | null;
     location: string | null;
     notes: string | null;
     latitude: number | null;
@@ -212,6 +214,7 @@ const EVENT_HIERARCHY_SELECT = `
     venue:venues (
       id,
       name,
+      city,
       location,
       notes,
       latitude,
@@ -284,6 +287,7 @@ export async function getEventHierarchy(eventId: string): Promise<EventHierarchy
           return {
             id: entry.venue.id,
             name: entry.venue.name ?? "Venue",
+            city: entry.venue.city ?? null,
             location: entry.venue.location ?? null,
             notes: entry.venue.notes ?? null,
             latitude:

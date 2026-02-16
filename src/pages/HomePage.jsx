@@ -10,7 +10,7 @@ import { getCurrentUser } from "../services/userService";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabaseClient";
 import { getPlayersByIds } from "../services/playerService";
-import { Card, Chip, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
+import { Card, Chip, MatchCard, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
 import { resolveMediaProviderLabel } from "../utils/matchMedia";
 
 const LIVE_STATUSES = new Set(["live", "halftime"]);
@@ -1165,52 +1165,38 @@ export default function HomePage() {
                     const live = isMatchLive(match.status);
                     const final = isMatchFinal(match.status);
                     const showScore = live || final;
+                    const statusLabel = showScore
+                      ? formatMatchStatus(match.status) || (live ? "Live" : "Final")
+                      : formatMatchStatus(match.status) || "Scheduled";
                     return (
-                      <Panel key={match.id} as="article" variant="tintedAlt" className="flex flex-col gap-3 p-4">
-                        <div className="flex flex-col gap-2">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                              {match.event?.name || match.venue?.name || "Match"}
-                            </p>
-                            <h3 className="text-lg font-semibold text-ink">{formatMatchup(match)}</h3>
-                          </div>
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs text-ink-muted">{formatMatchMeta(match)}</p>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Link to={`/matches?matchId=${match.id}`} className="sc-button is-ghost text-xs">
-                                {live ? "Live tracker" : "Details"}
-                              </Link>
-                              {matchHasStream(match) && (
-                                <a
-                                  href={resolveStreamUrl(match)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="sc-button is-ghost text-xs"
-                                >
-                                  Watch
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-left">
-                            {showScore ? (
-                              <>
-                                <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                                  {formatMatchStatus(match.status) || (live ? "Live" : "Final")}
-                                </p>
-                              </>
-                            ) : (
-                              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                                {formatMatchStatus(match.status) || "Scheduled"}
-                              </p>
+                      <MatchCard
+                        key={match.id}
+                        as="article"
+                        variant="tintedAlt"
+                        eyebrow={match.event?.name || match.venue?.name || "Match"}
+                        title={formatMatchup(match)}
+                        venue={match.venue}
+                        meta={formatMatchMeta(match)}
+                        actions={
+                          <>
+                            <Link to={`/matches?matchId=${match.id}`} className="sc-button is-ghost text-xs">
+                              {live ? "Live tracker" : "Details"}
+                            </Link>
+                            {matchHasStream(match) && (
+                              <a
+                                href={resolveStreamUrl(match)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="sc-button is-ghost text-xs"
+                              >
+                                Watch
+                              </a>
                             )}
-                          </div>
-                          <div />
-                        </div>
-                      </Panel>
+                          </>
+                        }
+                        score={showScore ? formatLiveScore(match) : null}
+                        status={statusLabel}
+                      />
                     );
                   })}
                 </div>
@@ -1242,28 +1228,19 @@ export default function HomePage() {
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {latestResults.map((match) => (
-                    <Panel
+                    <MatchCard
                       key={match.id}
                       as={Link}
-                      variant="tinted"
                       to={`/matches?matchId=${match.id}`}
-                      className="block p-4"
-                    >
-                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                            {match.event?.name || "Match"}
-                          </p>
-                          <h3 className="text-lg font-semibold text-ink">{formatMatchup(match)}</h3>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-2xl font-semibold text-accent">{formatLiveScore(match)}</p>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                            {match.status || "final"}
-                          </p>
-                        </div>
-                      </div>
-                    </Panel>
+                      variant="tinted"
+                      eyebrow={match.event?.name || "Match"}
+                      title={formatMatchup(match)}
+                      venue={match.venue}
+                      meta={formatMatchMeta(match)}
+                      score={formatLiveScore(match)}
+                      status={formatMatchStatus(match.status) || "Final"}
+                      scoreAlign="right"
+                    />
                   ))}
                 </div>
               )}
@@ -1376,9 +1353,6 @@ function formatMatchMeta(match) {
   const parts = [];
   if (match?.start_time) {
     parts.push(formatMatchTime(match.start_time));
-  }
-  if (match?.venue?.name) {
-    parts.push(match.venue.name);
   }
   return parts.join(" | ") || "Details pending";
 }

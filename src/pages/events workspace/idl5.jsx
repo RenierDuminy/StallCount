@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Card,
-  Panel,
+  MatchCard,
   SectionHeader,
   SectionShell,
 } from "../../components/ui/primitives";
@@ -166,7 +166,6 @@ export default function InternalDraftLeague5Page() {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     let ignore = false;
@@ -346,60 +345,22 @@ export default function InternalDraftLeague5Page() {
       isLiveMatch(match.status) || isFinishedMatch(match.status);
     const mediaDetails = getMatchMediaDetails(match);
     const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
+    const component = matchHref ? Link : "article";
+    const linkProps = matchHref ? { to: matchHref } : {};
+    const statusLabel = formatMatchStatus(match.status);
+
     return (
-      <Panel
+      <MatchCard
         key={match.id}
+        as={component}
         variant="tinted"
-        role="link"
-        tabIndex={matchHref ? 0 : -1}
-        onClick={() => {
-          if (matchHref) {
-            navigate(matchHref);
-          }
-        }}
-        onKeyDown={(event) => {
-          if (!matchHref) return;
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            navigate(matchHref);
-          }
-        }}
-        className="space-y-4 p-4 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50"
-      >
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              {match.event?.name || "Match"}
-            </p>
-            <h3 className="text-lg font-semibold text-ink">
-              {formatMatchup(match)}
-            </h3>
-            <p className="text-xs text-ink-muted">
-              {formatMatchTime(match.start_time)}
-            </p>
-          </div>
-          <div className="text-right">
-            {liveOrFinal ? (
-              <>
-                <p className="text-2xl font-semibold text-accent">
-                  {formatScoreLine(match)}
-                </p>
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  {formatMatchStatus(match.status)}
-                </p>
-              </>
-            ) : (
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                {formatMatchStatus(match.status)}
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-ink-muted">
-            {match.venue?.name || "Venue TBC"}
-          </p>
-          {mediaDetails ? (
+        className={matchHref ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50" : ""}
+        eyebrow={match.event?.name || "Match"}
+        title={formatMatchup(match)}
+        venue={match.venue}
+        meta={formatMatchTime(match.start_time)}
+        actions={
+          mediaDetails ? (
             <a
               href={mediaDetails.url}
               target="_blank"
@@ -410,12 +371,13 @@ export default function InternalDraftLeague5Page() {
               {mediaDetails.providerLabel || "Watch"}
             </a>
           ) : (
-            <span className="text-xs text-ink-muted">
-              No media link attached
-            </span>
-          )}
-        </div>
-      </Panel>
+            <span className="text-xs text-ink-muted">No media link attached</span>
+          )
+        }
+        score={liveOrFinal ? formatScoreLine(match) : null}
+        status={statusLabel}
+        {...linkProps}
+      />
     );
   };
 

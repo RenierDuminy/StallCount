@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { setSupabaseAuthState, supabase } from "../services/supabaseClient";
-import { getUserRoleAssignments } from "../services/userService";
+import { getUserAccessRoleAssignments } from "../services/userService";
 
 const AuthContext = createContext();
 
@@ -66,7 +66,7 @@ export function AuthProvider({ children }) {
     setRoles(null);
 
     try {
-      const assignments = await getUserRoleAssignments(userId);
+      const assignments = await getUserAccessRoleAssignments(userId);
       setRoles(assignments);
       return assignments;
     } catch (error) {
@@ -95,7 +95,7 @@ export function AuthProvider({ children }) {
     setRolesLoading(true);
     setRolesError(null);
 
-    getUserRoleAssignments(userId)
+    getUserAccessRoleAssignments(userId)
       .then((assignments) => {
         if (!isSubscribed) return;
         setRoles(assignments);
