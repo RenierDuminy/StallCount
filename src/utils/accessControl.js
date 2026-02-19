@@ -19,7 +19,61 @@ const SPIRIT_SCORES_ACCESS_ROLES = [
   "field_assistant",
   "tournament_director",
 ];
-const MEDIA_ACCESS_PERMISSIONS = ["publish_media"];
+const ADMIN_OVERRIDE_PERMISSIONS = ["admin_override"];
+const MEDIA_ACCESS_PERMISSIONS = ["media_edit", "admin_override"];
+const ADMIN_ACCESS_PERMISSIONS = ["role_edit", "admin_override"];
+const EVENT_ACCESS_PERMISSIONS = ["role_edit", "admin_override"];
+const SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS = [
+  "roster_insert",
+  "roster_update",
+  "roster_delete",
+  "player_insert",
+  "player_update",
+  "player_delete",
+  "admin_override",
+];
+const SPIRIT_SCORES_ACCESS_PERMISSIONS = ["match_insert", "match_update", "admin_override"];
+const SCOREKEEPER_ACCESS_PERMISSIONS = ["match_insert", "match_update", "admin_override"];
+const CAPTAIN_ACCESS_PERMISSIONS = [
+  "team_update",
+  "roster_insert",
+  "roster_update",
+  "roster_delete",
+  "player_insert",
+  "player_update",
+  "match_update",
+  "admin_override",
+];
+const EVENT_SETUP_ACCESS_PERMISSIONS = [
+  "event_insert",
+  "event_update",
+  "team_insert",
+  "team_update",
+  "team_delete",
+  "match_insert",
+  "match_update",
+  "match_delete",
+  "admin_override",
+];
+const TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS = [
+  "event_insert",
+  "event_update",
+  "team_insert",
+  "team_update",
+  "team_delete",
+  "roster_insert",
+  "roster_update",
+  "roster_delete",
+  "player_insert",
+  "player_update",
+  "player_delete",
+  "media_edit",
+  "match_insert",
+  "match_update",
+  "match_delete",
+  "admin_override",
+];
+const SYS_ADMIN_ACCESS_PERMISSIONS = ["admin_override"];
 
 function normalizePermissionKey(value) {
   if (value === undefined || value === null) return null;
@@ -241,5 +295,15 @@ export {
   ADMIN_ACCESS_ACCESS_ROLES,
   EVENT_SETUP_ACCESS_ROLES,
   SPIRIT_SCORES_ACCESS_ROLES,
+  ADMIN_OVERRIDE_PERMISSIONS,
+  ADMIN_ACCESS_PERMISSIONS,
+  EVENT_ACCESS_PERMISSIONS,
+  SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS,
+  SPIRIT_SCORES_ACCESS_PERMISSIONS,
+  SCOREKEEPER_ACCESS_PERMISSIONS,
+  CAPTAIN_ACCESS_PERMISSIONS,
+  EVENT_SETUP_ACCESS_PERMISSIONS,
+  TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS,
+  SYS_ADMIN_ACCESS_PERMISSIONS,
   MEDIA_ACCESS_PERMISSIONS,
 };

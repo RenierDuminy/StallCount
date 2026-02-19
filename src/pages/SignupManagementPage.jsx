@@ -13,8 +13,14 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { getEventsList } from "../services/leagueService";
 import { getEventRosters } from "../services/playerService";
-import { getUserEventRoleAssignments } from "../services/userService";
-import { normaliseRoleList, userHasAnyRole } from "../utils/accessControl";
+import { getRoleCatalog, getUserEventRoleAssignments } from "../services/userService";
+import {
+  ADMIN_OVERRIDE_PERMISSIONS,
+  normalisePermissionList,
+  normaliseRoleList,
+  SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS,
+  userHasAnyPermission,
+} from "../utils/accessControl";
 
 const LIST_NAME_COLUMN_CANDIDATES = ["name"];
 const LIST_SURNAME_COLUMN_CANDIDATES = ["surname", "last name", "last_name"];
@@ -237,21 +243,75 @@ function detectColumn(headers, candidates) {
   );
 }
 
-function isTournamentDirectorAssignment(assignment) {
-  const roles = normaliseRoleList(assignment?.roleName || assignment?.roleId || "");
-  return roles.includes("tournament_director");
-}
-
 export default function SignupManagementPage() {
   const { session, roles, rolesLoading } = useAuth();
   const userId = session?.user?.id || null;
-  const hasAdminRole = useMemo(
-    () => userHasAnyRole(session?.user || null, ["admin"], roles),
-    [session?.user, roles]
+  const [roleCatalog, setRoleCatalog] = useState([]);
+  const [roleCatalogLoading, setRoleCatalogLoading] = useState(false);
+
+  useEffect(() => {
+    let ignore = false;
+    if (!session?.user?.id) {
+      setRoleCatalog([]);
+      setRoleCatalogLoading(false);
+      return () => {
+        ignore = true;
+      };
+    }
+
+    const loadRoleCatalog = async () => {
+      setRoleCatalogLoading(true);
+      try {
+        const catalog = await getRoleCatalog();
+        if (!ignore) {
+          setRoleCatalog(Array.isArray(catalog) ? catalog : []);
+        }
+      } catch (error) {
+        if (!ignore) {
+          console.error("[SignupManagement] Failed to load role catalog", error);
+          setRoleCatalog([]);
+        }
+      } finally {
+        if (!ignore) {
+          setRoleCatalogLoading(false);
+        }
+      }
+    };
+
+    loadRoleCatalog();
+    return () => {
+      ignore = true;
+    };
+  }, [session?.user?.id]);
+
+  const hasAdminAccess = useMemo(
+    () =>
+      userHasAnyPermission(
+        session?.user || null,
+        ADMIN_OVERRIDE_PERMISSIONS,
+        roles,
+        roleCatalog,
+      ),
+    [session?.user, roles, roleCatalog],
   );
-  const hasTournamentDirectorRole = useMemo(
-    () => userHasAnyRole(session?.user || null, ["tournament_director"], roles),
-    [session?.user, roles]
+  const hasSignupManagementPermission = useMemo(
+    () =>
+      userHasAnyPermission(
+        session?.user || null,
+        SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS,
+        roles,
+        roleCatalog,
+      ),
+    [session?.user, roles, roleCatalog],
+  );
+  const scopedSignupPermissionKeys = useMemo(
+    () =>
+      new Set(
+        normalisePermissionList(SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS).filter(
+          (key) => key !== "admin_override",
+        ),
+      ),
+    [],
   );
 
   const [eventOptions, setEventOptions] = useState([]);
@@ -286,7 +346,7 @@ export default function SignupManagementPage() {
       setEventsLoading(true);
       setEventsError("");
       try {
-        if (hasAdminRole) {
+        if (hasAdminAccess) {
           const events = await getEventsList(200);
           if (ignore) return;
           const normalizedEvents = (Array.isArray(events) ? events : []).map((event) => ({
@@ -310,7 +370,27 @@ export default function SignupManagementPage() {
 
         const scopedEventMap = new Map();
         assignments
-          .filter((assignment) => assignment?.eventId && isTournamentDirectorAssignment(assignment))
+          .filter((assignment) => {
+            if (!assignment?.eventId) return false;
+            const roleFromCatalog = (Array.isArray(roleCatalog) ? roleCatalog : []).find((role) => {
+              if (assignment?.roleId !== null && assignment?.roleId !== undefined) {
+                return String(role.id) === String(assignment.roleId);
+              }
+              const assignmentRoleSlug = normaliseRoleList(assignment?.roleName || "")[0] || "";
+              const roleSlug = normaliseRoleList(role?.name || "")[0] || "";
+              return assignmentRoleSlug && roleSlug && assignmentRoleSlug === roleSlug;
+            });
+            if (!roleFromCatalog) return false;
+            const rolePermissionKeys = normalisePermissionList(
+              (Array.isArray(roleFromCatalog.permissions) ? roleFromCatalog.permissions : []).map(
+                (permission) =>
+                  (typeof permission === "string"
+                    ? permission
+                    : permission?.key || permission?.name || permission?.value || ""),
+              ),
+            );
+            return rolePermissionKeys.some((key) => scopedSignupPermissionKeys.has(key));
+          })
           .forEach((assignment) => {
             const eventId = assignment.eventId;
             if (scopedEventMap.has(eventId)) return;
@@ -348,7 +428,7 @@ export default function SignupManagementPage() {
     return () => {
       ignore = true;
     };
-  }, [hasAdminRole, userId]);
+  }, [hasAdminAccess, roleCatalog, scopedSignupPermissionKeys, userId]);
 
   useEffect(() => {
     if (!selectedEventId) {
@@ -581,7 +661,7 @@ export default function SignupManagementPage() {
     }
   };
 
-  if (rolesLoading) {
+  if (rolesLoading || roleCatalogLoading) {
     return (
       <SectionShell className="py-10">
         <Panel variant="muted" className="p-4 text-sm text-ink-muted">
@@ -591,11 +671,11 @@ export default function SignupManagementPage() {
     );
   }
 
-  if (!hasAdminRole && !hasTournamentDirectorRole) {
+  if (!hasAdminAccess && !hasSignupManagementPermission) {
     return (
       <SectionShell className="py-10">
         <Panel className="border border-rose-300/40 bg-rose-50 p-4 text-sm text-rose-700">
-          Access restricted. Signup management is available only to tournament directors and admins.
+          Access restricted. Signup management requires roster or player permissions.
         </Panel>
       </SectionShell>
     );
@@ -641,9 +721,9 @@ export default function SignupManagementPage() {
             eyebrow="Scope"
             title="Event access scope"
             description={
-              hasAdminRole
+              hasAdminAccess
                 ? "Admin access is global. You can select any event."
-                : "Only events where you hold a tournament director event role are available."
+                : "Only events where you hold event-scoped roster or player permissions are available."
             }
           />
           <div className="grid gap-4 md:grid-cols-2">

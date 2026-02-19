@@ -42,6 +42,43 @@ function formatPermissionLabel(permission) {
   return String(permission.key || "permission").replace(/_/g, " ");
 }
 
+function normalizePermissionKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function roleHasPermission(role, permissionKey) {
+  const required = normalizePermissionKey(permissionKey);
+  if (!required) return false;
+  const permissions = Array.isArray(role?.permissions) ? role.permissions : [];
+  return permissions.some((permission) => {
+    const candidate =
+      typeof permission === "string"
+        ? permission
+        : permission?.key || permission?.name || permission?.value || "";
+    return normalizePermissionKey(candidate) === required;
+  });
+}
+
+function isAdminPrivilegeRole(role) {
+  if (!role) return false;
+  if (roleHasPermission(role, "admin_override")) return true;
+  const normalizedName = normalizePermissionKey(role?.name || role?.roleName || "");
+  return (
+    normalizedName === "admin" ||
+    normalizedName === "administrator" ||
+    normalizedName === "sys_admin"
+  );
+}
+
+function isUserRole(role) {
+  const normalizedName = normalizePermissionKey(role?.name || role?.roleName || "");
+  return normalizedName === "user";
+}
+
 function formatEventRoleLabel(entry) {
   if (!entry) return "Event role";
   const eventLabel = entry.eventName || entry.eventId || "Event";
@@ -109,6 +146,15 @@ export default function EventAccessPage() {
     }
     if (!pendingRoleId) {
       setRoleManagerError("Select a role to add.");
+      return;
+    }
+    const selectedRole = roles.find((role) => String(role.id) === String(pendingRoleId));
+    if (!selectedRole) {
+      setRoleManagerError("Selected role is invalid.");
+      return;
+    }
+    if (isAdminPrivilegeRole(selectedRole)) {
+      setRoleManagerError("Admin privileges cannot be assigned from Event access control.");
       return;
     }
 
@@ -191,28 +237,13 @@ export default function EventAccessPage() {
 
   const roleCounts = useMemo(() => formatRoleCounts(users), [users]);
   const rolesWithPermissions = useMemo(
-    () => {
-      const normalized = roles.map((role) => ({
-        ...role,
-        permissions: Array.isArray(role.permissions) ? role.permissions : [],
-      }));
-      const hasAdmin = normalized.some((role) => {
-        const name = String(role.name || "").toLowerCase();
-        return name === "admin" || name === "administrator";
-      });
-      if (!hasAdmin) {
-        return [
-          ...normalized,
-          {
-            id: "admin-fallback",
-            name: "Admin",
-            description: "Administrative role",
-            permissions: [],
-          },
-        ];
-      }
-      return normalized;
-    },
+    () =>
+      roles
+        .map((role) => ({
+          ...role,
+          permissions: Array.isArray(role.permissions) ? role.permissions : [],
+        }))
+        .filter((role) => !isAdminPrivilegeRole(role) && !isUserRole(role)),
     [roles],
   );
 
@@ -295,7 +326,9 @@ export default function EventAccessPage() {
       .filter((value) => value !== null && value !== undefined)
       .map((value) => String(value)),
   );
-  const availableRoles = roles.filter((role) => !assignedRoleIds.has(String(role.id)));
+  const availableRoles = roles.filter(
+    (role) => !assignedRoleIds.has(String(role.id)) && !isAdminPrivilegeRole(role),
+  );
 
   const pageSize = 20;
   const totalResults = filteredUsers.length;
@@ -535,6 +568,9 @@ export default function EventAccessPage() {
                     <span className="text-[11px] text-rose-200">{roleManagerError}</span>
                   ) : null}
                 </div>
+                <p className="text-[11px] text-ink-muted">
+                  Admin-capable roles are excluded here. Use Admin access control for global admin assignment.
+                </p>
               </div>
             ) : (
               <p className="text-xs text-ink-muted">Search for a user to manage their roles.</p>

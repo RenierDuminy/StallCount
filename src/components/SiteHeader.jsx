@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import useInstallPrompt from "../hooks/useInstallPrompt";
 import { useAuth } from "../context/AuthContext";
+import { normaliseRoleList } from "../utils/accessControl";
 
 const NAV_LINKS = [
   { label: "Home", to: "/" },
@@ -36,7 +37,15 @@ export default function SiteHeader() {
   const user = session?.user ?? null;
   const hasLoadedRoles = Array.isArray(roles);
   const showAdminTools = hasLoadedRoles
-    ? roles.some((role) => role?.roleId !== null && role?.roleId !== undefined && role?.roleId !== 14)
+    ? roles.some((role) => {
+        const normalizedRoleNames = normaliseRoleList(
+          role?.roleName || role?.role?.name || role?.name || "",
+        );
+        if (normalizedRoleNames.length > 0) {
+          return normalizedRoleNames.some((name) => name !== "user");
+        }
+        return false;
+      })
     : false;
   const roleLinks = ROLE_LINKS.filter((link) => {
     if (link.to === "/admin") {

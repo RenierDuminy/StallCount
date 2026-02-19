@@ -20,7 +20,28 @@ import {
   removeEventUserRoleAssignment,
 } from "../services/userService";
 
-function formatRoleCounts(users, adminRoleIds) {
+function normalizePermissionKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function roleHasPermission(role, permissionKey) {
+  const required = normalizePermissionKey(permissionKey);
+  if (!required) return false;
+  const permissions = Array.isArray(role?.permissions) ? role.permissions : [];
+  return permissions.some((permission) => {
+    const candidate =
+      typeof permission === "string"
+        ? permission
+        : permission?.key || permission?.name || permission?.value || "";
+    return normalizePermissionKey(candidate) === required;
+  });
+}
+
+function formatRoleCounts(users, adminRoleIds, adminRoleNames) {
   return users.reduce((acc, user) => {
     const assignments = Array.isArray(user.roles) ? user.roles : [];
     const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
@@ -29,8 +50,8 @@ function formatRoleCounts(users, adminRoleIds) {
       if (assignment.roleId !== null && assignment.roleId !== undefined) {
         return adminRoleIds.has(String(assignment.roleId));
       }
-      const name = String(assignment.roleName || "").toLowerCase();
-      return name === "admin" || name === "administrator";
+      const normalizedName = normalizePermissionKey(assignment.roleName || "");
+      return normalizedName ? adminRoleNames.has(normalizedName) : false;
     });
     if (adminAssignments.length === 0 && eventRoles.length === 0) {
       acc.set("none", (acc.get("none") || 0) + 1);
@@ -75,17 +96,16 @@ function formatEventOptionLabel(event) {
 }
 
 function isAdminRole(role) {
-  const name = String(role?.name || role?.roleName || "").toLowerCase();
-  return name === "admin" || name === "administrator";
+  return roleHasPermission(role, "admin_override");
 }
 
-function isAdminAssignment(assignment, adminRoleIds) {
+function isAdminAssignment(assignment, adminRoleIds, adminRoleNames) {
   if (!assignment) return false;
   if (assignment.roleId !== null && assignment.roleId !== undefined) {
     return adminRoleIds.has(String(assignment.roleId));
   }
-  const name = String(assignment.roleName || "").toLowerCase();
-  return name === "admin" || name === "administrator";
+  const normalizedName = normalizePermissionKey(assignment.roleName || "");
+  return normalizedName ? adminRoleNames.has(normalizedName) : false;
 }
 
 export default function AdminAccessPage() {
@@ -259,6 +279,10 @@ export default function AdminAccessPage() {
     const adminRoles = roles.filter((role) => isAdminRole(role));
     return new Set(adminRoles.map((role) => String(role.id)));
   }, [roles]);
+  const adminRoleNames = useMemo(() => {
+    const adminRoles = roles.filter((role) => isAdminRole(role));
+    return new Set(adminRoles.map((role) => normalizePermissionKey(role.name)).filter(Boolean));
+  }, [roles]);
   const adminRoles = useMemo(() => roles.filter((role) => isAdminRole(role)), [roles]);
   const eventRoles = useMemo(() => roles.filter((role) => !isAdminRole(role)), [roles]);
 
@@ -275,7 +299,7 @@ export default function AdminAccessPage() {
       const assignments = Array.isArray(user.roles) ? user.roles : [];
       const eventAssignments = Array.isArray(user.eventRoles) ? user.eventRoles : [];
       const adminAssignments = assignments.filter((assignment) =>
-        isAdminAssignment(assignment, adminRoleIds),
+        isAdminAssignment(assignment, adminRoleIds, adminRoleNames),
       );
       const matchesRole = (() => {
         if (roleKey === null) return true;
@@ -291,9 +315,12 @@ export default function AdminAccessPage() {
       })();
       return matchesQuery && matchesRole;
     });
-  }, [users, search, roleFilter, adminRoleIds]);
+  }, [users, search, roleFilter, adminRoleIds, adminRoleNames]);
 
-  const roleCounts = useMemo(() => formatRoleCounts(users, adminRoleIds), [users, adminRoleIds]);
+  const roleCounts = useMemo(
+    () => formatRoleCounts(users, adminRoleIds, adminRoleNames),
+    [users, adminRoleIds, adminRoleNames],
+  );
   const rolesWithPermissions = useMemo(
     () =>
       roles.map((role) => ({
@@ -336,10 +363,10 @@ export default function AdminAccessPage() {
   const selectedAssignments = Array.isArray(selectedUser?.roles) ? selectedUser.roles : [];
   const selectedEventRoles = Array.isArray(selectedUser?.eventRoles) ? selectedUser.eventRoles : [];
   const adminAssignments = selectedAssignments.filter((assignment) =>
-    isAdminAssignment(assignment, adminRoleIds),
+    isAdminAssignment(assignment, adminRoleIds, adminRoleNames),
   );
   const legacyAssignments = selectedAssignments.filter(
-    (assignment) => !isAdminAssignment(assignment, adminRoleIds),
+    (assignment) => !isAdminAssignment(assignment, adminRoleIds, adminRoleNames),
   );
 
   const eventOptions = useMemo(() => {
@@ -826,7 +853,7 @@ export default function AdminAccessPage() {
                     {pagedUsers.map((user) => {
                       const assignments = Array.isArray(user.roles) ? user.roles : [];
                       const adminAssignments = assignments.filter((assignment) =>
-                        isAdminAssignment(assignment, adminRoleIds),
+                        isAdminAssignment(assignment, adminRoleIds, adminRoleNames),
                       );
                       const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
                       return (

@@ -81,7 +81,24 @@ function normalizePlayerWriteError(error: unknown, fallback: string) {
     normalized.includes("row-level security") &&
     normalized.includes("player")
   ) {
-    return "Your account cannot create or update `public.player` rows. Event-scoped roles in `event_user_roles` are not enough here because `player` has no `event_id`. Ask an admin to grant `manage_users`, or add a player-write policy/function that checks event access.";
+    return "Your account cannot create or update `public.player` rows. Ask an admin to grant `player_insert` / `player_update` (or `admin_override`) for your role scope.";
+  }
+
+  return message || fallback;
+}
+
+function normalizeRosterWriteError(error: unknown, fallback: string) {
+  const message =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message || "")
+      : "";
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("row-level security") &&
+    normalized.includes("team_roster")
+  ) {
+    return "Your account cannot modify `public.team_roster` rows. Ask an admin to grant `roster_insert` / `roster_update` / `roster_delete` (or `admin_override`) for your event scope.";
   }
 
   return message || fallback;
@@ -318,7 +335,7 @@ export async function addPlayerToRoster(options: {
   const { error } = await supabase.from("team_roster").insert(payload);
 
   if (error) {
-    throw new Error(error.message || "Unable to add player to roster");
+    throw new Error(normalizeRosterWriteError(error, "Unable to add player to roster"));
   }
 }
 
@@ -326,7 +343,7 @@ export async function removePlayerFromRoster(rosterId: string) {
   const { error } = await supabase.from("team_roster").delete().eq("id", rosterId);
 
   if (error) {
-    throw new Error(error.message || "Unable to remove roster entry");
+    throw new Error(normalizeRosterWriteError(error, "Unable to remove roster entry"));
   }
 }
 
@@ -343,6 +360,6 @@ export async function updateRosterCaptainRole(
     .eq("id", rosterId);
 
   if (error) {
-    throw new Error(error.message || "Unable to update captain assignment");
+    throw new Error(normalizeRosterWriteError(error, "Unable to update captain assignment"));
   }
 }

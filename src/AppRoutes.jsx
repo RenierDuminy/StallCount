@@ -4,14 +4,16 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 import AppLayout from "./components/AppLayout";
 import {
-  ADMIN_ACCESS_ACCESS_ROLES,
-  CAPTAIN_ACCESS_ROLES,
-  EVENT_SETUP_ACCESS_ROLES,
+  ADMIN_ACCESS_PERMISSIONS,
+  CAPTAIN_ACCESS_PERMISSIONS,
+  EVENT_ACCESS_PERMISSIONS,
+  EVENT_SETUP_ACCESS_PERMISSIONS,
   MEDIA_ACCESS_PERMISSIONS,
-  SPIRIT_SCORES_ACCESS_ROLES,
-  SCOREKEEPER_ACCESS_ROLES,
-  SYS_ADMIN_ACCESS_ROLES,
-  TOURNAMENT_DIRECTOR_ACCESS_ROLES,
+  SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS,
+  SPIRIT_SCORES_ACCESS_PERMISSIONS,
+  SCOREKEEPER_ACCESS_PERMISSIONS,
+  SYS_ADMIN_ACCESS_PERMISSIONS,
+  TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS,
 } from "./utils/accessControl";
 import { eventWorkspaces } from "./pages/eventWorkspaces";
 
@@ -116,7 +118,7 @@ export default function AppRoutes() {
           <Route
             path="/admin/access"
             element={
-              <ProtectedRoute allowedRoles={ADMIN_ACCESS_ACCESS_ROLES}>
+              <ProtectedRoute allowedPermissions={ADMIN_ACCESS_PERMISSIONS}>
                 <AdminAccessPage />
               </ProtectedRoute>
             }
@@ -124,7 +126,7 @@ export default function AppRoutes() {
           <Route
             path="/admin/event-access"
             element={
-              <ProtectedRoute allowedRoles={TOURNAMENT_DIRECTOR_ACCESS_ROLES}>
+              <ProtectedRoute allowedPermissions={EVENT_ACCESS_PERMISSIONS}>
                 <EventAccessPage />
               </ProtectedRoute>
             }
@@ -132,7 +134,7 @@ export default function AppRoutes() {
           <Route
             path="/admin/signup-management"
             element={
-              <ProtectedRoute allowedRoles={TOURNAMENT_DIRECTOR_ACCESS_ROLES}>
+              <ProtectedRoute allowedPermissions={SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS}>
                 <SignupManagementPage />
               </ProtectedRoute>
             }
@@ -140,7 +142,7 @@ export default function AppRoutes() {
           <Route
             path="/spirit-scores"
             element={
-              <ProtectedRoute allowedRoles={SPIRIT_SCORES_ACCESS_ROLES}>
+              <ProtectedRoute allowedPermissions={SPIRIT_SCORES_ACCESS_PERMISSIONS}>
                 <SpiritScoresPage />
               </ProtectedRoute>
             }
@@ -148,7 +150,7 @@ export default function AppRoutes() {
           <Route
             path="/tournament-director"
             element={
-              <ProtectedRoute allowedRoles={TOURNAMENT_DIRECTOR_ACCESS_ROLES}>
+              <ProtectedRoute allowedPermissions={TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS}>
                 <TournamentDirectorPage />
               </ProtectedRoute>
             }
@@ -164,7 +166,7 @@ export default function AppRoutes() {
           <Route
             path="/admin/event-setup"
             element={
-              <ProtectedRoute allowedRoles={EVENT_SETUP_ACCESS_ROLES}>
+              <ProtectedRoute allowedPermissions={EVENT_SETUP_ACCESS_PERMISSIONS}>
                 <EventSetupWizardPage />
               </ProtectedRoute>
             }
@@ -172,7 +174,7 @@ export default function AppRoutes() {
           <Route
             path="/captain"
             element={
-              <ProtectedRoute allowedRoles={CAPTAIN_ACCESS_ROLES}>
+              <ProtectedRoute allowedPermissions={CAPTAIN_ACCESS_PERMISSIONS}>
                 <CaptainPage />
               </ProtectedRoute>
             }
@@ -180,7 +182,7 @@ export default function AppRoutes() {
           <Route
             path="/sys-admin"
             element={
-              <ProtectedRoute allowedRoles={SYS_ADMIN_ACCESS_ROLES}>
+              <ProtectedRoute allowedPermissions={SYS_ADMIN_ACCESS_PERMISSIONS}>
                 <SysAdminPage />
               </ProtectedRoute>
             }
@@ -189,7 +191,7 @@ export default function AppRoutes() {
         <Route
           path="/score-keeper"
           element={
-            <ProtectedRoute allowedRoles={SCOREKEEPER_ACCESS_ROLES}>
+            <ProtectedRoute allowedPermissions={SCOREKEEPER_ACCESS_PERMISSIONS}>
               <Suspense fallback={routeFallback}>
                 <ScoreKeeperPage />
               </Suspense>
@@ -199,7 +201,7 @@ export default function AppRoutes() {
         <Route
           path="/score-keeper-5v5"
           element={
-            <ProtectedRoute allowedRoles={SCOREKEEPER_ACCESS_ROLES}>
+            <ProtectedRoute allowedPermissions={SCOREKEEPER_ACCESS_PERMISSIONS}>
               <Suspense fallback={routeFallback}>
                 <ScoreKeeper5v5Page />
               </Suspense>

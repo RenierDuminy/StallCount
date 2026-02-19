@@ -51,6 +51,16 @@ function parseJsonPayload(raw, onError) {
   }
 }
 
+function formatVenueOptionLabel(venue) {
+  if (!venue || typeof venue !== "object") return "Unnamed venue";
+  const city = String(venue.city || "").trim();
+  const location = String(venue.location || "").trim();
+  const name = String(venue.name || "").trim();
+  const parts = [city, location, name].filter(Boolean);
+  if (parts.length === 0) return "Unnamed venue";
+  return parts.join(" - ");
+}
+
 export default function SysAdminPage() {
   const tables = listSchemaTables();
   const [tableSearch, setTableSearch] = useState("");
@@ -124,6 +134,14 @@ export default function SysAdminPage() {
     const q = tableSearch.toLowerCase();
     return tables.filter((t) => t.toLowerCase().includes(q));
   }, [tableSearch, tables]);
+  const sortedVenues = useMemo(() => {
+    if (!Array.isArray(venues) || venues.length === 0) return [];
+    return [...venues].sort((a, b) =>
+      formatVenueOptionLabel(a).localeCompare(formatVenueOptionLabel(b), undefined, {
+        sensitivity: "base",
+      }),
+    );
+  }, [venues]);
 
   useEffect(() => {
     const nextOrder = pickRecencyColumn(selectedTable);
@@ -546,7 +564,7 @@ export default function SysAdminPage() {
                 eyebrow="Quick create"
                 eyebrowVariant="tag"
                 title="Create a match"
-                description="Choose event, teams, venue, and start time."
+                description="Choose event, venue, teams, date, and status."
                 action={
                   <button
                     type="button"
@@ -583,6 +601,21 @@ export default function SysAdminPage() {
                   </select>
                 </div>
                 <div className="lg:col-span-6">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Venue</p>
+                  <select
+                    value={matchForm.venueId}
+                    onChange={(event) => setMatchForm((prev) => ({ ...prev, venueId: event.target.value }))}
+                    className={`${LIGHT_INPUT_CLASS} appearance-none`}
+                  >
+                    <option value="">Select venue (optional)</option>
+                    {sortedVenues.map((venue) => (
+                      <option key={venue.id} value={venue.id}>
+                        {formatVenueOptionLabel(venue)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="lg:col-span-6">
                   <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Team A</p>
                   <select
                     value={matchForm.teamAId}
@@ -613,22 +646,7 @@ export default function SysAdminPage() {
                   </select>
                 </div>
                 <div className="lg:col-span-6">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Venue</p>
-                  <select
-                    value={matchForm.venueId}
-                    onChange={(event) => setMatchForm((prev) => ({ ...prev, venueId: event.target.value }))}
-                    className={`${LIGHT_INPUT_CLASS} appearance-none`}
-                  >
-                    <option value="">Select venue (optional)</option>
-                    {venues.map((venue) => (
-                      <option key={venue.id} value={venue.id}>
-                        {venue.name || "Unnamed venue"}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="lg:col-span-6">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Start time</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Date</p>
                   <input
                     type="datetime-local"
                     value={matchForm.startTime}

@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getRoleCatalog } from "../services/userService";
 import {
+  ADMIN_OVERRIDE_PERMISSIONS,
   normalisePermissionList,
   normaliseRoleList,
   userHasAnyPermission,
@@ -24,6 +25,7 @@ export default function ProtectedRoute({
     ? allowedPermissions.length > 0
     : Boolean(allowedPermissions);
   const shouldCheckNonViewer = Boolean(requireNonViewer);
+  const shouldCheckAdminOverride = shouldCheckRoles || shouldCheckPermissions || shouldCheckNonViewer;
   const requiredRoles = shouldCheckRoles ? normaliseRoleList(allowedRoles) : [];
   const requiredPermissions = shouldCheckPermissions
     ? normalisePermissionList(allowedPermissions)
@@ -46,7 +48,7 @@ export default function ProtectedRoute({
   useEffect(() => {
     let isActive = true;
 
-    if (!shouldCheckPermissions || !session) {
+    if (!shouldCheckAdminOverride || !session) {
       setRoleCatalog(null);
       setRoleCatalogLoading(false);
       return () => {
@@ -76,24 +78,35 @@ export default function ProtectedRoute({
     return () => {
       isActive = false;
     };
-  }, [session, shouldCheckPermissions]);
+  }, [session, shouldCheckAdminOverride]);
 
   if (loading) return <div className="p-8 text-gray-500">Loading...</div>;
   if (!session) return <Navigate to="/login" replace />;
 
   if (shouldCheckRoles || shouldCheckPermissions || shouldCheckNonViewer) {
-    if (!Array.isArray(roles) || rolesLoading || (shouldCheckPermissions && roleCatalogLoading)) {
+    if (!Array.isArray(roles) || rolesLoading || (shouldCheckAdminOverride && roleCatalogLoading)) {
       return <div className="p-8 text-gray-500">Checking access...</div>;
     }
 
-    const isAdmin = userHasAnyRole(session.user, ["admin"], roles);
-    if (isAdmin) {
+    const hasAdminOverride = userHasAnyPermission(
+      session.user,
+      ADMIN_OVERRIDE_PERMISSIONS,
+      roles,
+      roleCatalog,
+    );
+    if (hasAdminOverride) {
       return children;
     }
 
-    const hasNonViewerRole = roles.some(
-      (role) => role?.roleId !== null && role?.roleId !== undefined && role?.roleId !== 14,
-    );
+    const hasNonViewerRole = roles.some((role) => {
+      const normalizedRoleNames = normaliseRoleList(
+        role?.roleName || role?.role?.name || role?.name || "",
+      );
+      if (normalizedRoleNames.length > 0) {
+        return normalizedRoleNames.some((name) => name !== "user");
+      }
+      return false;
+    });
     const hasAllowedRole = shouldCheckRoles
       ? userHasAnyRole(session.user, allowedRoles, roles)
       : true;
