@@ -1,16 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { getAllPlayerMatchStats } from "../services/teamService";
 import { Card, SectionHeader, SectionShell, Field, Input, Select } from "../components/ui/primitives";
 
 export default function PlayersPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialEventId = searchParams.get("eventId") || "all";
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("total");
   const [sortDirection, setSortDirection] = useState("desc");
-  const [eventFilter, setEventFilter] = useState("all");
+  const [eventFilter, setEventFilter] = useState(initialEventId);
+
+  useEffect(() => {
+    const requestedEventId = searchParams.get("eventId") || "all";
+    setEventFilter((current) => (current === requestedEventId ? current : requestedEventId));
+  }, [searchParams]);
 
   useEffect(() => {
     let ignore = false;
@@ -187,6 +194,15 @@ export default function PlayersPage() {
     { key: "callahans", label: "Callahans" },
   ];
 
+  const handleEventFilterChange = (nextFilter) => {
+    setEventFilter(nextFilter);
+    if (nextFilter === "all") {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    setSearchParams({ eventId: nextFilter }, { replace: true });
+  };
+
   return (
     <div className="pb-16 text-ink">
       <SectionShell as="header" className="py-4 sm:py-6">
@@ -227,7 +243,7 @@ export default function PlayersPage() {
                   <Select
                     id="player-event-filter"
                     value={eventFilter}
-                    onChange={(e) => setEventFilter(e.target.value)}
+                    onChange={(e) => handleEventFilterChange(e.target.value)}
                   >
                     <option value="all">All events</option>
                     {eventOptions.map((event) => (

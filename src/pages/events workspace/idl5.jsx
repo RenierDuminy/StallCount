@@ -390,9 +390,14 @@ export default function InternalDraftLeague5Page() {
             title={EVENT_NAME}
             description={`${EVENT_NAME}, a semi-competitive draft league held by Maties Ultimate Frisbee Club.`}
             action={
-              <Link to={`/event-rosters?eventId=${EVENT_ID}`} className="sc-button">
-                View event roster
-              </Link>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link to={`/event-rosters?eventId=${EVENT_ID}`} className="sc-button">
+                  View event roster
+                </Link>
+                <Link to={`/players?eventId=${encodeURIComponent(EVENT_ID)}`} className="sc-button">
+                  Player standings
+                </Link>
+              </div>
             }
           />
           {error && <div className="sc-alert is-error">{error}</div>}
