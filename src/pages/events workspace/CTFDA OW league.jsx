@@ -232,6 +232,7 @@ export default function DROwLeague26Page() {
   const [eventData, setEventData] = useState(null);
   const [matchesByPool, setMatchesByPool] = useState({});
   const [copyToast, setCopyToast] = useState(null);
+  const [copyToastVisible, setCopyToastVisible] = useState(false);
 
   const sortedVenues = useMemo(
     () => sortVenuesByCityLocationName(eventData?.venues || []),
@@ -298,22 +299,40 @@ export default function DROwLeague26Page() {
       ignore = true;
     };
   }, []);
+  useEffect(() => {
+    if (!copyToast) {
+      setCopyToastVisible(false);
+      return undefined;
+    }
+
+    setCopyToastVisible(true);
+    const fadeTimer = window.setTimeout(() => {
+      setCopyToastVisible(false);
+    }, 1800);
+    const clearTimer = window.setTimeout(() => {
+      setCopyToast(null);
+    }, 2400);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [copyToast]);
   return (
     <div className="pb-16 text-ink">
       {copyToast && (
         <div className="fixed bottom-4 left-1/2 z-50 w-full max-w-sm -translate-x-1/2 px-4">
           <div
-            className="sc-alert is-success text-center text-sm"
-            onAnimationEnd={() => {
-              setTimeout(() => setCopyToast(null), 2000);
-            }}
+            className={`sc-alert is-success text-center text-sm transition-opacity duration-500 ${
+              copyToastVisible ? "opacity-100" : "opacity-0"
+            }`}
           >
             {copyToast}
           </div>
         </div>
       )}
       <SectionShell as="main" className="space-y-6 py-8">
-        <Card className="space-y-4 p-6 sm:p-8">
+        <Card className="space-y-4 border border-white/80 p-6 sm:p-8">
           <SectionHeader
             eyebrow="Operations Workspace"
             title="OW League overview"
@@ -328,20 +347,20 @@ export default function DROwLeague26Page() {
         {loading ? (
           <Card
             variant="muted"
-            className="p-6 text-center text-sm text-ink-muted"
+            className="border border-white/80 p-6 text-center text-sm text-ink-muted"
           >
             Loading event hierarchy and match feed...
           </Card>
         ) : !eventData ? (
           <Card
             variant="muted"
-            className="p-6 text-center text-sm text-ink-muted"
+            className="border border-white/80 p-6 text-center text-sm text-ink-muted"
           >
             Event not found.
           </Card>
         ) : (
           <>
-            <Card className="space-y-3 p-6 sm:p-8">
+            <Card className="space-y-3 border border-white/80 p-6 sm:p-8">
               <SectionHeader
                 eyebrow="Event"
                 title={eventData.name}
@@ -415,22 +434,41 @@ export default function DROwLeague26Page() {
                                       key={venue.id}
                                       className="rounded-md border border-border bg-surface-muted px-3 py-2"
                                     >
-                                      <div className="flex items-center justify-between gap-3">
+                                      <div className="space-y-1">
                                         <p className="text-sm font-medium text-ink">{venue.nameLabel}</p>
-                                        <button
-                                          type="button"
-                                          disabled={!coordText}
-                                          className="sc-button is-ghost text-[11px] uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-50"
-                                          onClick={() =>
-                                            copyToClipboard(coordText, () =>
-                                              setCopyToast(
-                                                `Copied ${venue.cityLabel}, ${venue.locationLabel} - ${venue.nameLabel} coordinates`,
-                                              ),
-                                            )
-                                          }
-                                        >
-                                          Copy coordiantes
-                                        </button>
+                                        {coordText && (
+                                          <div className="flex items-center gap-2 text-xs text-ink-muted">
+                                            <span>Coords: {coordText}</span>
+                                            <button
+                                              type="button"
+                                              className="rounded border border-border p-1 text-ink-muted transition hover:text-ink"
+                                              aria-label={`Copy ${venue.cityLabel}, ${venue.locationLabel} - ${venue.nameLabel} coordinates`}
+                                              title="Copy coordinates"
+                                              onClick={() =>
+                                                copyToClipboard(coordText, () =>
+                                                  setCopyToast(
+                                                    `Copied ${venue.cityLabel}, ${venue.locationLabel} - ${venue.nameLabel} coordinates`,
+                                                  ),
+                                                )
+                                              }
+                                            >
+                                              <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                className="h-3.5 w-3.5"
+                                                aria-hidden="true"
+                                              >
+                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                              </svg>
+                                            </button>
+                                          </div>
+                                        )}
                                       </div>
                                       {venue.notes && (
                                         <p className="mt-1 text-xs text-ink-muted">{venue.notes}</p>
@@ -463,7 +501,7 @@ export default function DROwLeague26Page() {
             {eventData.divisions.length === 0 ? (
               <Card
                 variant="muted"
-                className="p-6 text-center text-sm text-ink-muted"
+                className="border border-white/80 p-6 text-center text-sm text-ink-muted"
               >
                 No divisions have been configured for this event yet.
               </Card>
@@ -493,7 +531,7 @@ export default function DROwLeague26Page() {
                     },
                   ];
                   return (
-                    <Card key={division.id} className="space-y-4 p-6">
+                    <Card key={division.id} className="space-y-4 border border-white/80 p-6">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <p className="text-xs uppercase tracking-wide text-ink-muted">

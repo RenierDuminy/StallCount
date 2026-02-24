@@ -77,6 +77,8 @@
   --sc-alert-success-border: rgba(99, 255, 160, 0.45);
   --sc-alert-error-bg: rgba(55, 18, 18, 0.8);
   --sc-alert-error-border: rgba(255, 123, 123, 0.5);
+  --sc-button-danger-bg: #b91c1c;
+  --sc-button-danger-bg-hover: #991b1b;
 
   --sc-surface-light-bg: linear-gradient(180deg, #ffffff, #f6fbf7);
   --sc-surface-light-border: #0b3a24;
@@ -583,6 +585,15 @@ textarea.sc-input {
   text-align: left;
   width: 100%;
   padding: 1rem 1.25rem;
+}
+
+.sc-button-danger {
+  background: var(--sc-button-danger-bg);
+  color: #ffffff;
+}
+
+.sc-button-danger:hover {
+  background: var(--sc-button-danger-bg-hover);
 }
 
 /* Tournament Director grayscale variant */

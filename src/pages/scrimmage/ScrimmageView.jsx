@@ -326,8 +326,8 @@ export default function ScrimmageView() {
       })
       .sort((left, right) => {
         const sideOrder = {
-          both: 0,
-          A: 1,
+          A: 0,
+          both: 1,
           B: 2,
         };
         const leftOrder = sideOrder[left.side] ?? 99;
@@ -375,6 +375,7 @@ export default function ScrimmageView() {
 
   const POSSESSION_DRAG_THRESHOLD = 24;
   const [endScrimmageModalOpen, setEndScrimmageModalOpen] = useState(false);
+  const [endScrimmageConfirmed, setEndScrimmageConfirmed] = useState(false);
   const [matchReportOpen, setMatchReportOpen] = useState(false);
   const [simpleEventEditState, setSimpleEventEditState] = useState({
     open: false,
@@ -975,9 +976,12 @@ export default function ScrimmageView() {
                   )}
                 <button
                   type="button"
-                  onClick={() => setEndScrimmageModalOpen(true)}
+                  onClick={() => {
+                    setEndScrimmageConfirmed(false);
+                    setEndScrimmageModalOpen(true);
+                  }}
                   disabled={!canEndMatch}
-                  className="block w-full rounded-full bg-[#0f5132] px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="block w-full rounded-full bg-rose-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   End scrimmage
                 </button>
@@ -1639,7 +1643,12 @@ export default function ScrimmageView() {
       )}
 
       {rosterEditorOpen && (
-        <ActionModal title="Edit player roster" onClose={closeRosterEditor}>
+        <ActionModal
+          title="Edit player roster"
+          onClose={closeRosterEditor}
+          alignTop
+          fitViewport
+        >
           <div className="space-y-3 text-sm text-[#0f5132]">
             <form className="space-y-3" onSubmit={handleRosterPlayerSubmit}>
               <label className="block text-sm font-semibold text-[#0f5132]">
@@ -1666,20 +1675,37 @@ export default function ScrimmageView() {
                   className="mt-2 w-full rounded-xl border border-[#0f5132]/30 bg-white px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30"
                 />
               </label>
-              <label className="block text-sm font-semibold text-[#0f5132]">
-                Team icon
-                <select
-                  value={playerEditorForm.assignment}
-                  onChange={(event) =>
-                    setPlayerEditorForm((prev) => ({ ...prev, assignment: event.target.value }))
-                  }
-                  className="mt-2 w-full rounded-xl border border-[#0f5132]/30 bg-white px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30"
-                >
-                  <option value="A">{safeTeamAName} (L)</option>
-                  <option value="B">{safeTeamBName} (D)</option>
-                  <option value="both">Light + Dark (L+D)</option>
-                </select>
-              </label>
+              <div className="block text-sm font-semibold text-[#0f5132]">
+                Team
+                <div className="mt-2 rounded-full border border-[#0f5132]/30 bg-white p-1">
+                  <div className="grid grid-cols-3 gap-1">
+                    {[
+                      { value: "A", label: "Light" },
+                      { value: "both", label: "Both" },
+                      { value: "B", label: "Dark" },
+                    ].map((option) => {
+                      const active = playerEditorForm.assignment === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            setPlayerEditorForm((prev) => ({ ...prev, assignment: option.value }))
+                          }
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                            active
+                              ? "bg-[#0f5132] text-white"
+                              : "text-[#0f5132] hover:bg-[#ecfdf3]"
+                          }`}
+                          aria-pressed={active}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 <button
                   type="submit"
@@ -1695,15 +1721,7 @@ export default function ScrimmageView() {
                   >
                     Delete player
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={closeRosterEditor}
-                    className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
-                  >
-                    Done
-                  </button>
-                )}
+                ) : null}
               </div>
               {playerEditorForm.id && (
                 <button
@@ -1723,7 +1741,7 @@ export default function ScrimmageView() {
               {allRosterPlayers.length === 0 ? (
                 <p className="mt-2 text-xs text-slate-500">No players yet.</p>
               ) : (
-                <div className="mt-2 space-y-1.5">
+                <div className="mt-2 max-h-[38vh] space-y-1.5 overflow-y-auto pr-1">
                   {allRosterPlayers.map((player) => (
                     <div
                       key={`edit-${player.id}`}
@@ -1754,6 +1772,13 @@ export default function ScrimmageView() {
                 </div>
               )}
             </div>
+            <button
+              type="button"
+              onClick={closeRosterEditor}
+              className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
+            >
+              Done
+            </button>
           </div>
         </ActionModal>
       )}
@@ -1762,15 +1787,29 @@ export default function ScrimmageView() {
         <ActionModal title="End scrimmage" onClose={() => setEndScrimmageModalOpen(false)}>
           <div className="space-y-3 text-sm text-[#0f5132]">
             <p>How would you like to wrap up this scrimmage?</p>
+            <button
+              type="button"
+              onClick={() => setEndScrimmageConfirmed(true)}
+              className={`w-full rounded-full px-4 py-2 text-sm font-semibold text-white transition ${
+                endScrimmageConfirmed
+                  ? "bg-rose-400 cursor-default"
+                  : "bg-rose-600 hover:bg-rose-700"
+              }`}
+              disabled={endScrimmageConfirmed}
+            >
+              {endScrimmageConfirmed ? "End scrimmage confirmed" : "Confirm end scrimmage"}
+            </button>
             <div className="grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => {
                   handleEndMatchNavigation();
+                  setEndScrimmageConfirmed(false);
                   setEndScrimmageModalOpen(false);
                   setMatchReportOpen(true);
                 }}
-                className="w-full rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                disabled={!endScrimmageConfirmed}
+                className="w-full rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Match report
               </button>
@@ -1778,16 +1817,21 @@ export default function ScrimmageView() {
                 type="button"
                 onClick={() => {
                   handleExportCsv();
+                  setEndScrimmageConfirmed(false);
                   setEndScrimmageModalOpen(false);
                 }}
-                className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
+                disabled={!endScrimmageConfirmed}
+                className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Download CSV
               </button>
             </div>
             <button
               type="button"
-              onClick={() => setEndScrimmageModalOpen(false)}
+              onClick={() => {
+                setEndScrimmageConfirmed(false);
+                setEndScrimmageModalOpen(false);
+              }}
               className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#0f5132] transition hover:bg-white"
             >
               Cancel
@@ -1840,6 +1884,7 @@ function ActionModal({
   maxWidthClass = "max-w-sm",
   alignTop = false,
   scrollable = false,
+  fitViewport = false,
 }) {
   const handleClose = () => {
     if (!disableClose) {
@@ -1855,7 +1900,7 @@ function ActionModal({
     >
       <div
         className={`w-full ${maxWidthClass} rounded-[32px] bg-white p-3 ${
-          scrollable ? "max-h-[92vh] overflow-hidden" : ""
+          scrollable || fitViewport ? "max-h-[92vh] overflow-hidden" : ""
         }`}
       >
         <div className="mb-2 flex items-start justify-between">

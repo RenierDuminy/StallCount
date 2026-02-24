@@ -437,10 +437,14 @@ function GamesTable({ matches, teamId, venueLookup }) {
         </thead>
         <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
           {matches.map((match) => {
-            const isTeamA = teamId && match.team_a?.id === teamId;
-            const opponent = isTeamA ? match.team_b : match.team_a;
-            const goalsFor = isTeamA ? match.score_a ?? 0 : match.score_b ?? 0;
-            const goalsAgainst = isTeamA ? match.score_b ?? 0 : match.score_a ?? 0;
+            const isTeamA = Boolean(teamId && match.team_a?.id === teamId);
+            const isTeamB = Boolean(teamId && match.team_b?.id === teamId);
+            const leftTeam = isTeamA ? match.team_a : isTeamB ? match.team_b : match.team_a;
+            const rightTeam = isTeamA ? match.team_b : isTeamB ? match.team_a : match.team_b;
+            const leftScore = isTeamA ? match.score_a : isTeamB ? match.score_b : match.score_a;
+            const rightScore = isTeamA ? match.score_b : isTeamB ? match.score_a : match.score_b;
+            const goalsFor = Number.isFinite(leftScore) ? leftScore : 0;
+            const goalsAgainst = Number.isFinite(rightScore) ? rightScore : 0;
             const mediaDetails = getMatchMediaDetails(match);
       const scoreClass =
         goalsFor > goalsAgainst
@@ -460,29 +464,29 @@ function GamesTable({ matches, teamId, venueLookup }) {
                   </div>
                 </td>
                 <td className="px-4 py-3 font-semibold text-[var(--sc-surface-light-ink)]">
-                  {match.team_a ? (
+                  {leftTeam ? (
                     <Link
-                      to={`/teams/${match.team_a.id}`}
+                      to={`/teams/${leftTeam.id}`}
                       className="text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
                     >
-                      {match.team_a.name}
+                      {leftTeam.name}
                     </Link>
                   ) : (
                     "TBD"
                   )}
                 </td>
                 <td className={`px-4 py-3 text-center text-base font-semibold ${scoreClass}`}>
-                  {Number.isFinite(goalsFor) && Number.isFinite(goalsAgainst)
-                    ? `${goalsFor} - ${goalsAgainst}`
+                  {Number.isFinite(leftScore) && Number.isFinite(rightScore)
+                    ? `${leftScore} - ${rightScore}`
                     : "TBD"}
                 </td>
                 <td className="px-4 py-3 font-semibold text-[var(--sc-surface-light-ink)]">
-                  {opponent ? (
+                  {rightTeam ? (
                     <Link
-                      to={`/teams/${opponent.id}`}
+                      to={`/teams/${rightTeam.id}`}
                       className="text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
                     >
-                      {opponent.name}
+                      {rightTeam.name}
                     </Link>
                   ) : (
                     "TBD"

@@ -99,49 +99,6 @@ const ROLE_LIBRARY = {
   },
 };
 
-const ACCESS_GUIDE = [
-  {
-    key: "viewer",
-    label: "Viewer access",
-    description: "General read-only access to live data and schedules.",
-  },
-  {
-    key: "field_assistant",
-    label: "Field assistant",
-    description: "Scorekeeper tools to run live tables and reconcile offline submissions.",
-  },
-  {
-    key: "scorekeeper",
-    label: "Scorekeeper",
-    description: "Full scorekeeper workflow access for live match operations.",
-  },
-  {
-    key: "captain",
-    label: "Captain",
-    description: "Field assistant capabilities plus team management (rosters and spirit submissions).",
-  },
-  {
-    key: "team_manager",
-    label: "Team manager",
-    description: "Team operations support, including event administration and coordination.",
-  },
-  {
-    key: "media",
-    label: "Media",
-    description: "Ability to modify match media entries and surface highlights for the community site.",
-  },
-  {
-    key: "tournament_director",
-    label: "Tournament director",
-    description: "Administrative control for event setup, scheduling, and staff workflows.",
-  },
-  {
-    key: "admin",
-    label: "Administrator",
-    description: "Field assistant + captain + media capabilities, along with event management controls.",
-  },
-];
-
 function formatDate(value) {
   if (!value) return "Unknown";
   try {
@@ -168,6 +125,26 @@ function resolveAccessLevel(user) {
 
 function isElevatedRole(role) {
   return Boolean(role) && !NON_ELEVATED_ROLE_SLUGS.has(role);
+}
+
+function getAssignmentRoleLabel(assignment) {
+  const value = assignment?.roleName || assignment?.role?.name || assignment?.roleId || "Role";
+  return String(value).trim() || "Role";
+}
+
+function getAssignmentEventLabel(assignment) {
+  const value = assignment?.eventName || assignment?.event?.name || assignment?.eventId || "Event";
+  return String(value).trim() || "Event";
+}
+
+function compareAlphabetical(a, b) {
+  return String(a).localeCompare(String(b), undefined, { sensitivity: "base" });
+}
+
+function shouldDisplayAccessRole(roleLabel) {
+  const roleSlugs = normaliseRoleList(roleLabel);
+  if (roleSlugs.length === 0) return Boolean(String(roleLabel || "").trim());
+  return roleSlugs.some((slug) => !NON_ELEVATED_ROLE_SLUGS.has(slug));
 }
 
 export default function UserPage() {
@@ -284,21 +261,29 @@ export default function UserPage() {
 
     if (Array.isArray(globalAssignmentSource)) {
       const globalLabels = globalAssignmentSource
-        .map((assignment) => assignment?.roleName || assignment?.role?.name || null)
+        .map((assignment) => getAssignmentRoleLabel(assignment))
         .filter(Boolean)
         .map((name) => `${name} (Global)`)
-        .filter(Boolean);
+        .sort(compareAlphabetical);
       labels.push(...globalLabels);
     }
 
     if (Array.isArray(eventAssignmentSource) && eventAssignmentSource.length > 0) {
-      const eventLabels = eventAssignmentSource
-        .map((assignment) => {
-          const roleLabel = assignment?.roleName || assignment?.role?.name || "Role";
-          const eventLabel = assignment?.eventName || assignment?.eventId || "Event";
-          return `${roleLabel} (${eventLabel})`;
-        })
-        .filter(Boolean);
+      const groupedByEvent = new Map();
+      eventAssignmentSource.forEach((assignment) => {
+        const eventLabel = getAssignmentEventLabel(assignment);
+        const roleLabel = getAssignmentRoleLabel(assignment);
+        const roles = groupedByEvent.get(eventLabel) || new Set();
+        roles.add(roleLabel);
+        groupedByEvent.set(eventLabel, roles);
+      });
+
+      const eventLabels = Array.from(groupedByEvent.entries())
+        .sort((a, b) => compareAlphabetical(a[0], b[0]))
+        .map(([eventLabel, roleSet]) => {
+          const sortedRoles = Array.from(roleSet).sort(compareAlphabetical);
+          return `${eventLabel}: ${sortedRoles.join(", ")}`;
+        });
       labels.push(...eventLabels);
     }
 
@@ -330,92 +315,56 @@ export default function UserPage() {
     user?.email ||
     "User profile";
 
-  const accessLevelsValue = accessLevelLabels.length > 0 ? accessLevelLabels.join(", ") : `${accessInfo.role} - ${accessInfo.level}`;
-  const accessGuideEntries = useMemo(() => {
-    const roleSet = new Set(elevatedRoles);
-    const entries = ACCESS_GUIDE.filter((entry) => {
-      if (entry.key === "viewer") {
-        return elevatedRoles.length === 0;
+  const accessLevelGroups = useMemo(() => {
+    const groups = new Map();
+
+    if (Array.isArray(eventAssignmentSource) && eventAssignmentSource.length > 0) {
+      eventAssignmentSource.forEach((assignment) => {
+        const eventLabel = getAssignmentEventLabel(assignment);
+        const roleLabel = getAssignmentRoleLabel(assignment);
+        if (!shouldDisplayAccessRole(roleLabel)) return;
+        const roles = groups.get(eventLabel) || new Set();
+        roles.add(roleLabel);
+        groups.set(eventLabel, roles);
+      });
+    }
+
+    if (groups.size > 0) {
+      return Array.from(groups.entries())
+        .sort((a, b) => compareAlphabetical(a[0], b[0]))
+        .map(([topic, roleSet]) => ({
+          topic,
+          roles: Array.from(roleSet).sort(compareAlphabetical),
+        }));
+    }
+
+    if (Array.isArray(globalAssignmentSource) && globalAssignmentSource.length > 0) {
+      const globalRoles = globalAssignmentSource
+        .map((assignment) => getAssignmentRoleLabel(assignment))
+        .filter((roleLabel) => shouldDisplayAccessRole(roleLabel))
+        .sort(compareAlphabetical);
+      const uniqueGlobalRoles = Array.from(new Set(globalRoles));
+      if (uniqueGlobalRoles.length > 0) {
+        return [{ topic: "Global", roles: uniqueGlobalRoles }];
       }
-      return roleSet.has(entry.key);
-    });
-    return entries;
-  }, [elevatedRoles]);
+    }
+
+    if (accessLevelLabels.length > 0) {
+      return [{ topic: "General", roles: accessLevelLabels }];
+    }
+
+    return [{ topic: "General", roles: [`${accessInfo.role} - ${accessInfo.level}`] }];
+  }, [eventAssignmentSource, globalAssignmentSource, accessLevelLabels, accessInfo.role, accessInfo.level]);
 
   const moduleRoles = useMemo(
     () => recognisedRoles.filter((role) => role !== "admin" && isElevatedRole(role)),
     [recognisedRoles],
   );
-  
-  const roleDetails = useMemo(() => {
-    const details = [];
-    const seenKeys = new Set();
-
-    if (Array.isArray(globalAssignmentSource) && globalAssignmentSource.length > 0) {
-      const map = new Map();
-      globalAssignmentSource.forEach((assignment) => {
-        const name = assignment?.roleName || assignment?.role?.name || "Role";
-        if (map.has(name)) return;
-        const slug = normaliseRoleList(name)[0];
-        map.set(name, {
-          key: `global:${assignment?.assignmentId || assignment?.roleId || name}`,
-          name: `${name} (Global)`,
-          description:
-            assignment?.roleDescription ||
-            (slug && ROLE_LIBRARY[slug]?.description) ||
-            "No description available.",
-        });
-      });
-      Array.from(map.values()).forEach((entry) => {
-        if (seenKeys.has(entry.key)) return;
-        seenKeys.add(entry.key);
-        details.push(entry);
-      });
-    }
-
-    if (Array.isArray(eventAssignmentSource) && eventAssignmentSource.length > 0) {
-      eventAssignmentSource.forEach((assignment) => {
-        const roleName = assignment?.roleName || assignment?.role?.name || "Role";
-        const eventLabel = assignment?.eventName || assignment?.eventId || "Event";
-        const key = `event:${assignment?.assignmentId || `${roleName}:${eventLabel}`}`;
-        if (seenKeys.has(key)) return;
-        seenKeys.add(key);
-        details.push({
-          key,
-          name: `${roleName} (${eventLabel})`,
-          description:
-            assignment?.roleDescription ||
-            `Event-scoped role for ${eventLabel}.`,
-        });
-      });
-    }
-
-    if (details.length > 0) {
-      return details;
-    }
-
-    if (recognisedRoles.length > 0) {
-      return recognisedRoles.map((role) => ({
-        key: role,
-        name: ROLE_LIBRARY[role]?.label || role,
-        description: ROLE_LIBRARY[role]?.description || "No description available.",
-      }));
-    }
-
-    if (fallbackRoles.length > 0) {
-      return fallbackRoles.map((role) => ({
-        key: role,
-        name: role,
-        description: "No description available.",
-      }));
-    }
-
-    return [];
-  }, [globalAssignmentSource, eventAssignmentSource, recognisedRoles, fallbackRoles]);
 
   const profileEntries = useMemo(() => {
     if (!user) return [];
     const metadata = user.user_metadata || {};
+    const accessLabel = "Access levels";
     return [
       {
         label: "Full name",
@@ -423,12 +372,13 @@ export default function UserPage() {
       },
       { label: "Email", value: profile?.email || user.email || "Unknown" },
       {
-        label: accessLevelLabels.length > 1 ? "Access levels" : "Access level",
-        value: accessLevelsValue,
+        label: accessLabel,
+        groups: accessLevelGroups,
+        isAccessGroupedList: true,
       },
       { label: "Created", value: formatDate(user.created_at) },
     ];
-  }, [user, accessLevelLabels.length, accessLevelsValue, profile]);
+  }, [user, accessLevelGroups, profile]);
 
   return (
     <div className="pb-16 text-ink">
@@ -470,7 +420,24 @@ export default function UserPage() {
               {profileEntries.map((entry) => (
                 <Panel key={entry.label} variant="muted" className="p-4 text-sm">
                   <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{entry.label}</p>
-                  <p className="mt-1 break-words text-base font-semibold text-ink">{entry.value}</p>
+                  {entry.isAccessGroupedList ? (
+                    <div className="mt-2 space-y-2">
+                      {(entry.groups || []).map((group) => (
+                        <div key={`${entry.label}-${group.topic}`} className="space-y-1">
+                          <p className="break-words text-base font-semibold text-ink">{group.topic}</p>
+                          <ul className="list-disc space-y-1 pl-5 text-base font-semibold text-ink">
+                            {(group.roles || []).map((role) => (
+                              <li key={`${entry.label}-${group.topic}-${role}`} className="break-words">
+                                {role}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1 break-words text-base font-semibold text-ink">{entry.value}</p>
+                  )}
                 </Panel>
               ))}
             </div>
@@ -479,35 +446,6 @@ export default function UserPage() {
 
         {user ? (
           <>
-            <Card className="space-y-5 p-6">
-              <SectionHeader
-                eyebrow="Your access"
-                description="The roles below determine which workflows you can launch within StallCount."
-              />
-              {roleDetails.length > 0 ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {roleDetails.map((role) => (
-                    <Panel key={role.key} variant="muted" className="p-4 text-sm">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{role.name}</p>
-                      <p className="mt-1 text-ink">{role.description}</p>
-                    </Panel>
-                  ))}
-                </div>
-              ) : (
-                <Chip variant="ghost">General viewer</Chip>
-              )}
-              {accessGuideEntries.length > 0 && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {accessGuideEntries.map((entry) => (
-                    <Panel key={entry.label} variant="muted" className="p-4 text-sm">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{entry.label}</p>
-                      <p className="mt-1 text-ink">{entry.description}</p>
-                    </Panel>
-                  ))}
-                </div>
-              )}
-            </Card>
-
             {elevatedRoles.length === 0 ? (
               <Card className="p-6 text-sm text-ink-muted">
                 You currently have viewer-level access. Reach out to an administrator if you require elevated permissions for officiating duties.

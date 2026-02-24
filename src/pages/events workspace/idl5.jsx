@@ -16,6 +16,14 @@ const MATCH_LIMIT = 200;
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const WEEK_LABELS = ["W1", "W2", "W3", "W4", "W5"];
+const MATCH_WEEK_SCHEDULE = [
+  { key: "week-1", title: "Week 1", dateLabel: "17 Feb", month: 2, day: 17 },
+  { key: "week-2", title: "Week 2", dateLabel: "24 Feb", month: 2, day: 24 },
+  { key: "week-3", title: "Week 3", dateLabel: "3 Mar", month: 3, day: 3 },
+  { key: "week-4", title: "Week 4", dateLabel: "10 Mar", month: 3, day: 10 },
+  { key: "week-5", title: "Week 5", dateLabel: "17 Mar", month: 3, day: 17 },
+];
+const WEEK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const RESULT_LABELS = {
   win: "Win",
   loss: "Loss",
@@ -61,13 +69,6 @@ const formatMatchTime = (value) => {
   });
 };
 
-const getCompletionTime = (match) => {
-  const source = match.confirmed_at || match.start_time;
-  if (!source) return null;
-  const timestamp = new Date(source).getTime();
-  return Number.isNaN(timestamp) ? null : timestamp;
-};
-
 const isLiveMatch = (status) => LIVE_STATUSES.has((status || "").toLowerCase());
 const isFinishedMatch = (status) =>
   FINISHED_STATUSES.has((status || "").toLowerCase());
@@ -83,6 +84,37 @@ const getMatchTimestamp = (match) => {
   if (!source) return null;
   const timestamp = new Date(source).getTime();
   return Number.isNaN(timestamp) ? null : timestamp;
+};
+
+const getWeekStartTimestampsForYear = (year) =>
+  MATCH_WEEK_SCHEDULE.map((week) => Date.UTC(year, week.month - 1, week.day));
+
+const getWeekIndexForTimestamp = (timestamp) => {
+  if (typeof timestamp !== "number") return MATCH_WEEK_SCHEDULE.length - 1;
+  const year = new Date(timestamp).getUTCFullYear();
+  if (!Number.isFinite(year)) return MATCH_WEEK_SCHEDULE.length - 1;
+
+  const starts = getWeekStartTimestampsForYear(year);
+  for (let index = 0; index < starts.length; index += 1) {
+    const start = starts[index];
+    const end =
+      index < starts.length - 1 ? starts[index + 1] : start + WEEK_WINDOW_MS;
+    if (timestamp >= start && timestamp < end) {
+      return index;
+    }
+  }
+
+  let closestIndex = 0;
+  let closestDistance = Infinity;
+  starts.forEach((start, index) => {
+    const distance = Math.abs(start - timestamp);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = index;
+    }
+  });
+
+  return closestIndex;
 };
 
 const getWeekKey = (timestamp) => {
@@ -197,58 +229,27 @@ export default function InternalDraftLeague5Page() {
     };
   }, []);
 
-  const liveMatches = useMemo(
-    () =>
-      matches
-        .filter((match) => isLiveMatch(match.status))
-        .sort(sortByStartTimeAsc),
-    [matches],
-  );
+  const sections = useMemo(() => {
+    const buckets = Array.from({ length: MATCH_WEEK_SCHEDULE.length }, () => []);
 
-  const recentMatches = useMemo(
-    () =>
-      matches
-        .filter((match) => isFinishedMatch(match.status))
-        .sort(
-          (a, b) => (getCompletionTime(b) ?? 0) - (getCompletionTime(a) ?? 0),
-        ),
-    [matches],
-  );
+    matches.forEach((match) => {
+      const timestamp = getMatchTimestamp(match);
+      if (timestamp === null) {
+        buckets[MATCH_WEEK_SCHEDULE.length - 1].push(match);
+        return;
+      }
+      const weekIndex = getWeekIndexForTimestamp(timestamp);
+      buckets[weekIndex].push(match);
+    });
 
-  const scheduledMatches = useMemo(
-    () =>
-      matches
-        .filter(
-          (match) =>
-            !isLiveMatch(match.status) && !isFinishedMatch(match.status),
-        )
-        .sort(sortByStartTimeAsc),
-    [matches],
-  );
-
-  const sections = [
-    {
-      key: "live",
-      title: "Live matches",
-      description: "Tracking every live point as it happens.",
-      dataset: liveMatches,
-      empty: "No live matches right now.",
-    },
-    {
-      key: "recent",
-      title: "Recent finals",
-      description: "Latest confirmed results from the desk.",
-      dataset: recentMatches,
-      empty: "No completed matches recorded yet.",
-    },
-    {
-      key: "scheduled",
-      title: "Scheduled",
-      description: "Upcoming fixtures waiting for pull.",
-      dataset: scheduledMatches,
-      empty: "No scheduled matches on the calendar.",
-    },
-  ];
+    return MATCH_WEEK_SCHEDULE.map((week, index) => ({
+      key: week.key,
+      title: `${week.title} (${week.dateLabel})`,
+      description: `Fixtures grouped for ${week.dateLabel}.`,
+      dataset: buckets[index].slice().sort(sortByStartTimeAsc),
+      empty: `No matches scheduled for ${week.title.toLowerCase()}.`,
+    }));
+  }, [matches]);
 
   const teams = useMemo(() => {
     const map = new Map();

@@ -804,7 +804,7 @@ export default function ScoreKeeperView() {
                   type="button"
                   onClick={() => setEndMatchModalOpen(true)}
                   disabled={!canEndMatch}
-                  className="block w-full rounded-full bg-[#0f5132] px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="sc-button-danger block w-full rounded-full px-4 py-3 text-center text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   End match
                 </button>
