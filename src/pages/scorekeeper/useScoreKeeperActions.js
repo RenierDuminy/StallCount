@@ -322,7 +322,8 @@ export function useScoreKeeperActions(controller) {
       !controller.halftimeTriggered &&
       (reachedHalftimeScore || controller.halftimeTimeCapArmed)
     ) {
-      halftimeStarted = Boolean(await controller.triggerHalftime());
+      const halftimeTriggerType = controller.halftimeTimeCapArmed ? "timeCap" : "pointCap";
+      halftimeStarted = Boolean(await controller.triggerHalftime(halftimeTriggerType));
     }
     if (!halftimeStarted) {
       controller.startSecondaryTimer(
@@ -651,6 +652,7 @@ export function useScoreKeeperActions(controller) {
       }
       if (isHalftimeLog) {
         controller.setHalftimeTriggered(false);
+        controller.setHalftimeTriggerType("unknown");
         controller.setHalftimeTimeCapArmed(false);
         controller.setHalftimeCapTargetScore(null);
       }
@@ -721,7 +723,7 @@ export function useScoreKeeperActions(controller) {
   }
 
   async function handleHalfTimeTrigger() {
-    await controller.triggerHalftime();
+    await controller.triggerHalftime("manual");
     if (!controller.stoppageActive) {
       controller.setTimeModalOpen(false);
     }

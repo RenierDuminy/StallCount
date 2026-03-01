@@ -5,6 +5,7 @@ import { formatClock } from "./scrimmageUtils";
 import { useScrimmageData } from "./useScrimmageData";
 import { useScrimmageActions } from "./useScrimmageActions";
 import { deriveScrimmageReport } from "./scrimmageReport";
+import { downloadScrimmageReportPdf } from "./scrimmagePdfReport";
 import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
 import {
   BlockEventCard,
@@ -49,6 +50,15 @@ const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([
   MATCH_LOG_EVENT_CODES.STOPPAGE_START,
   MATCH_LOG_EVENT_CODES.STOPPAGE_END,
 ]);
+const REPORT_SERIES_COLORS = {
+  teamA: "#1d4ed8",
+  teamB: "#b91c1c",
+};
+const REPORT_BAND_COLORS = {
+  timeout: "rgba(59, 130, 246, 0.1)",
+  stoppage: "rgba(128, 0, 0, 0.18)",
+  halftime: "rgba(16, 185, 129, 0.18)",
+};
 
 export default function ScrimmageView() {
   const data = useScrimmageData();
@@ -369,8 +379,7 @@ export default function ScrimmageView() {
     handleHalfTimeTrigger,
     handleGameStoppage,
     handleEndMatchNavigation,
-    logMatchStartEvent,
-    handleExportCsv
+    logMatchStartEvent
   } = actions;
 
   const POSSESSION_DRAG_THRESHOLD = 24;
@@ -719,6 +728,32 @@ export default function ScrimmageView() {
       }),
     [logs, displayTeamA, displayTeamB, matchStartingTeamKey, setupForm.startTime]
   );
+  const scrimmageReportMatch = useMemo(
+    () => ({
+      team_a: { name: safeTeamAName },
+      team_b: { name: safeTeamBName },
+      score_a: score.a,
+      score_b: score.b,
+      start_time: setupForm.startTime,
+    }),
+    [safeTeamAName, safeTeamBName, score.a, score.b, setupForm.startTime]
+  );
+
+  const handleDownloadPdf = () => {
+    downloadScrimmageReportPdf({
+      report: scrimmageReport,
+      teamAName: safeTeamAName,
+      teamBName: safeTeamBName,
+      score,
+      startTime: setupForm.startTime,
+    });
+  };
+
+  const handleOpenMatchReport = () => {
+    setEndScrimmageConfirmed(false);
+    setEndScrimmageModalOpen(false);
+    setMatchReportOpen(true);
+  };
 
   return (
     <ScorekeeperShell>
@@ -728,14 +763,6 @@ export default function ScrimmageView() {
             <h1 className="text-xl font-semibold text-white">Scrimmage console</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <ScorekeeperButton
-              type="button"
-              onClick={handleExportCsv}
-              variant="compactGhost"
-              className="text-xs"
-            >
-              Export CSV
-            </ScorekeeperButton>
             <ScorekeeperButton as={Link} to="/" variant="compactGhost" className="text-xs">
               Back to home
             </ScorekeeperButton>
@@ -1787,6 +1814,10 @@ export default function ScrimmageView() {
         <ActionModal title="End scrimmage" onClose={() => setEndScrimmageModalOpen(false)}>
           <div className="space-y-3 text-sm text-[#0f5132]">
             <p>How would you like to wrap up this scrimmage?</p>
+            <p className="text-xs text-[#4b6f5b]">
+              Open the match report at any time to review live stats. Only confirm the end if you
+              want to stop the scrimmage.
+            </p>
             <button
               type="button"
               onClick={() => setEndScrimmageConfirmed(true)}
@@ -1799,31 +1830,25 @@ export default function ScrimmageView() {
             >
               {endScrimmageConfirmed ? "End scrimmage confirmed" : "Confirm end scrimmage"}
             </button>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  handleEndMatchNavigation();
-                  setEndScrimmageConfirmed(false);
-                  setEndScrimmageModalOpen(false);
-                  setMatchReportOpen(true);
-                }}
-                disabled={!endScrimmageConfirmed}
-                className="w-full rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={handleOpenMatchReport}
+                className="w-full rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
               >
                 Match report
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  handleExportCsv();
+                  handleEndMatchNavigation();
                   setEndScrimmageConfirmed(false);
                   setEndScrimmageModalOpen(false);
                 }}
                 disabled={!endScrimmageConfirmed}
-                className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Download CSV
+                End scrimmage now
               </button>
             </div>
             <button
@@ -1844,17 +1869,40 @@ export default function ScrimmageView() {
         <ActionModal
           title="Scrimmage report"
           onClose={() => setMatchReportOpen(false)}
-          maxWidthClass="max-w-4xl"
+          maxWidthClass="max-w-6xl"
         >
-          <div className="max-h-[75vh] space-y-4 overflow-y-auto text-[#0f5132]">
-            <section className="space-y-3">
+          <div className="max-h-[75vh] space-y-3 overflow-y-auto pr-1 text-ink">
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                className="rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+              >
+                Download PDF
+              </button>
+            </div>
+            <section className="sc-card-base space-y-3 p-4 sm:p-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="sc-chip">Match analytics</span>
+              </div>
               <div className="grid gap-3 lg:grid-cols-2">
                 <InsightTable title="Match insight" rows={scrimmageReport?.insights?.match} />
                 <InsightTable title="Tempo insight" rows={scrimmageReport?.insights?.tempo} />
               </div>
             </section>
 
-            <section className="space-y-3">
+            <section className="sc-card-base space-y-2 p-4 sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="sc-chip">Score progression</span>
+              </div>
+              <TimelineChart
+                match={scrimmageReportMatch}
+                timeline={scrimmageReport?.timeline}
+                possessionTimeline={scrimmageReport?.possessionTimeline}
+              />
+            </section>
+
+            <section className="sc-card-base space-y-3 p-4 sm:p-6">
               <div className="flex items-center gap-2">
                 <span className="sc-chip">Team production</span>
               </div>
@@ -2026,25 +2074,265 @@ function PlayerSideIcon({ side }) {
   );
 }
 
+function LegendSwatch({ color, label }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-xs sm:gap-1.5">
+      <span
+        className="inline-block h-4 w-6 rounded-sm border border-black/60"
+        style={{ backgroundColor: color }}
+      />
+      {label}
+    </span>
+  );
+}
+
+function TimelineChart({ match, timeline, possessionTimeline }) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (typeof window === "undefined") return;
+      setIsMobile(window.innerWidth <= 640);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  if (!match || !timeline) {
+    return (
+      <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">
+        Timeline data unavailable.
+      </div>
+    );
+  }
+
+  const width = 900;
+  const baseHeight = 300;
+  const possessionSegments = possessionTimeline?.segments || [];
+  const possessionBandHeight = possessionSegments.length ? (isMobile ? 18 : 14) : 0;
+  const possessionBandGap = possessionSegments.length ? 24 : 0;
+  const chartCanvasHeight = isMobile ? baseHeight * 1.35 : baseHeight;
+  const height = chartCanvasHeight + possessionBandHeight + possessionBandGap;
+  const padding = { top: 26, right: 44, bottom: 52, left: 50 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = chartCanvasHeight - padding.top - padding.bottom;
+  const yMax = Math.max(10, timeline.maxScore);
+  const legendY = height - 35;
+  const minutesLabelY = legendY - 8;
+
+  const getX = (time) => {
+    const ratio = (time - timeline.minTime) / (timeline.maxTime - timeline.minTime || 1);
+    return padding.left + ratio * chartWidth;
+  };
+
+  const getY = (value) => padding.top + (1 - value / (yMax || 1)) * chartHeight;
+
+  const renderLinePath = (points, color) => {
+    if (!points.length) return null;
+    const sorted = [...points].sort((a, b) => a.time - b.time);
+    let path = `M${getX(sorted[0].time)},${getY(sorted[0].score)}`;
+    for (let index = 1; index < sorted.length; index += 1) {
+      const point = sorted[index];
+      path += ` L${getX(point.time)},${getY(point.score)}`;
+    }
+    return <path d={path} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" />;
+  };
+
+  const teamAName = match?.team_a?.name || "Team A";
+  const teamBName = match?.team_b?.name || "Team B";
+  const finalScoreA =
+    timeline.series?.teamA?.[timeline.series.teamA.length - 1]?.score ?? match?.score_a ?? 0;
+  const finalScoreB =
+    timeline.series?.teamB?.[timeline.series.teamB.length - 1]?.score ?? match?.score_b ?? 0;
+  const chartTitle = `${teamAName} ${finalScoreA} - ${finalScoreB} ${teamBName}`;
+
+  return (
+    <div className="relative mx-auto w-full pb-14">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" preserveAspectRatio="xMidYMid meet">
+        <rect x="0" y="0" width={width} height={height} fill="white" rx="18" />
+
+        {(timeline.bands || []).map((band) => (
+          <rect
+            key={`${band.type}-${band.start}`}
+            x={getX(band.start)}
+            y={padding.top}
+            width={Math.max(2, getX(band.end) - getX(band.start))}
+            height={chartHeight}
+            fill={REPORT_BAND_COLORS[band.type] || "rgba(125,125,125,0.15)"}
+          />
+        ))}
+
+        <line
+          x1={padding.left}
+          y1={padding.top + chartHeight}
+          x2={padding.left + chartWidth}
+          y2={padding.top + chartHeight}
+          stroke="#cbd5f5"
+          strokeWidth="1"
+        />
+        <line
+          x1={padding.left}
+          y1={padding.top}
+          x2={padding.left}
+          y2={padding.top + chartHeight}
+          stroke="#cbd5f5"
+          strokeWidth="1"
+        />
+
+        {Array.from({ length: yMax + 1 }).map((_, index) => {
+          const y = getY(index);
+          return (
+            <g key={index}>
+              <line
+                x1={padding.left}
+                x2={padding.left + chartWidth}
+                y1={y}
+                y2={y}
+                stroke="#cbd5f5"
+                strokeDasharray="4 6"
+                strokeWidth="0.5"
+              />
+              <text x={padding.left - 10} y={y + 4} fontSize="9.35" textAnchor="end" fill="#000">
+                {index}
+              </text>
+            </g>
+          );
+        })}
+
+        {(timeline.scoringPoints || []).map((point) => {
+          const cx = getX(point.time);
+          const cy = getY(point.score);
+          const baselineY = padding.top + chartHeight;
+          return (
+            <g key={`${point.team}-${point.time}`}>
+              <line x1={cx} x2={cx} y1={cy} y2={baselineY} stroke="#cbd5f5" strokeWidth="0.8" />
+              <circle
+                cx={cx}
+                cy={cy}
+                r={4}
+                fill={REPORT_SERIES_COLORS[point.team]}
+                stroke="white"
+                strokeWidth="1.5"
+              />
+            </g>
+          );
+        })}
+
+        {renderLinePath(timeline.series?.teamA || [], REPORT_SERIES_COLORS.teamA)}
+        {renderLinePath(timeline.series?.teamB || [], REPORT_SERIES_COLORS.teamB)}
+
+        <text x={width / 2} y={20} textAnchor="middle" fontSize="13.6" fontWeight="600" fill="#0f172a">
+          {chartTitle}
+        </text>
+
+        {possessionSegments.length > 0 && (
+          <g>
+            <rect
+              x={padding.left}
+              y={padding.top + chartHeight}
+              width={chartWidth}
+              height={possessionBandHeight}
+              fill="#f8fafc"
+              rx="4"
+            />
+            {(timeline.timeTicks || []).map((tick) => {
+              const x = getX(tick.value);
+              const labelY = padding.top + chartHeight + possessionBandHeight + 12;
+              return (
+                <text
+                  key={`possession-tick-${tick.value}`}
+                  fontSize="9.35"
+                  fill="#475569"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  x={x}
+                  y={labelY}
+                >
+                  {tick.label}
+                </text>
+              );
+            })}
+            {possessionSegments.map((segment, index) => {
+              const xStart = getX(segment.start);
+              const xEnd = getX(segment.end);
+              const fill =
+                segment.team === "teamA"
+                  ? REPORT_SERIES_COLORS.teamA
+                  : segment.team === "teamB"
+                    ? REPORT_SERIES_COLORS.teamB
+                    : segment.team === "band"
+                      ? "rgba(148, 163, 184, 0.9)"
+                      : "rgba(226, 232, 240, 0.9)";
+              return (
+                <rect
+                  key={`${segment.team || "unknown"}-${segment.start}-${index}`}
+                  x={xStart}
+                  y={padding.top + chartHeight}
+                  width={Math.max(2, xEnd - xStart)}
+                  height={possessionBandHeight}
+                  fill={fill}
+                  opacity="0.9"
+                />
+              );
+            })}
+          </g>
+        )}
+
+        <text x={width / 2} y={minutesLabelY} textAnchor="middle" fontSize="10.2" fill="#000">
+          Minutes
+        </text>
+        <text
+          x="14"
+          y={height / 2}
+          textAnchor="middle"
+          fontSize="10.2"
+          transform={`rotate(-90 14 ${height / 2})`}
+          fill="#000"
+        >
+          Score
+        </text>
+
+        <foreignObject x={width * 0.15} y={legendY} width={width * 0.7} height="40">
+          <div
+            xmlns="http://www.w3.org/1999/xhtml"
+            className="flex flex-wrap items-center justify-center gap-4 text-xs"
+          >
+            <span className="flex flex-wrap items-center gap-3 text-sm font-semibold text-black">
+              <LegendSwatch color={REPORT_SERIES_COLORS.teamA} label={teamAName} />
+              <LegendSwatch color={REPORT_SERIES_COLORS.teamB} label={teamBName} />
+            </span>
+            <span className="flex flex-wrap items-center gap-2 text-xs text-black">
+              <LegendSwatch color={REPORT_BAND_COLORS.timeout} label="Timeout" />
+              <LegendSwatch color={REPORT_BAND_COLORS.stoppage} label="Stoppage" />
+              <LegendSwatch color={REPORT_BAND_COLORS.halftime} label="Halftime" />
+            </span>
+          </div>
+        </foreignObject>
+      </svg>
+    </div>
+  );
+}
+
 function InsightTable({ title, rows }) {
   if (!rows?.length) {
     return (
-      <div className="rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-4 text-sm text-[#0f5132]/70">
+      <div className="sc-card-muted p-4 text-sm text-ink-muted">
         No {title.toLowerCase()} available.
       </div>
     );
   }
   return (
-    <div className="rounded-2xl border border-[#0f5132]/20 bg-white">
-      <div className="border-b border-[#0f5132]/20 px-4 py-3">
-        <h3 className="text-sm font-semibold text-[#0f5132]">{title}</h3>
+    <div className="sc-card-base">
+      <div className="border-b border-border px-4 py-3">
+        <h3 className="text-sm font-semibold text-ink">{title}</h3>
       </div>
-      <table className="w-full text-sm text-[#0f5132]">
+      <table className="w-full text-sm text-ink">
         <tbody>
           {rows.map((row) => (
-            <tr key={row.label} className="border-t border-[#0f5132]/10 text-sm">
-              <td className="px-4 py-2 font-medium text-[#0f5132]/70">{row.label}</td>
-              <td className="px-4 py-2 text-right font-semibold text-[#0f5132]">{row.value}</td>
+            <tr key={row.label} className="border-t border-border text-sm">
+              <td className="px-4 py-2 font-medium text-ink-muted">{row.label}</td>
+              <td className="px-4 py-2 text-right font-semibold text-ink">{row.value}</td>
             </tr>
           ))}
         </tbody>
@@ -2069,18 +2357,18 @@ function TeamOverviewCard({ title, stats }) {
   const formatStatValue = (value) => (Number.isFinite(value) ? value : value === 0 ? 0 : "--");
 
   const renderList = (label, rows, valueLabel) => (
-    <div className="rounded-2xl border border-[#0f5132]/15 bg-[#ecfdf3] p-3">
+    <div className="sc-card-muted p-3">
       {rows.length ? (
-        <table className="w-full text-left text-sm text-[#0f5132]">
+        <table className="w-full text-left text-sm text-ink">
           <thead>
-            <tr className="text-xs uppercase tracking-wide text-[#0f5132]/60">
+            <tr className="text-xs uppercase tracking-wide text-ink-muted">
               <th className="py-0.5 pr-2">{valueLabel}</th>
               <th className="py-0.5 text-right"></th>
             </tr>
           </thead>
           <tbody>
             {rows.slice(0, 8).map((row) => (
-              <tr key={`${label}-${row.player}`} className="border-t border-[#0f5132]/10 text-sm">
+              <tr key={`${label}-${row.player}`} className="border-t border-border text-sm">
                 <td className="py-1 pr-2">{row.player}</td>
                 <td className="py-1 text-right font-semibold">{row.count}</td>
               </tr>
@@ -2088,27 +2376,25 @@ function TeamOverviewCard({ title, stats }) {
           </tbody>
         </table>
       ) : (
-        <p className="mt-0.5 text-xs text-[#0f5132]/60 sm:mt-1.5">
-          No {label.toLowerCase()} recorded.
-        </p>
+        <p className="mt-0.5 text-xs text-ink-muted sm:mt-1.5">No {label.toLowerCase()} recorded.</p>
       )}
     </div>
   );
 
   return (
-    <div className="rounded-2xl border border-[#0f5132]/20 bg-white p-3 sm:p-5">
-      <h3 className="mb-1.5 text-lg font-semibold text-[#0f5132] sm:mb-2.5">{title}</h3>
+    <div className="sc-card-base p-3 sm:p-5">
+      <h3 className="mb-1.5 text-lg font-semibold text-ink sm:mb-2.5">{title}</h3>
       {production && (
         <div className="mb-2 grid grid-cols-2 gap-2 text-center sm:mb-3 sm:grid-cols-5 sm:gap-3">
           {summaryStats.map((item) => (
             <div
               key={item.key}
-              className="rounded-xl border border-[#0f5132]/15 bg-[#f8fffb] px-2 py-3"
+              className="rounded-xl border border-border bg-surface px-2 py-3"
             >
-              <p className="text-lg font-semibold text-[#0f5132] sm:text-xl">
+              <p className="text-lg font-semibold text-ink sm:text-xl">
                 {formatStatValue(item.value)}
               </p>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/60 sm:text-[11px]">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted sm:text-[11px]">
                 {item.label}
               </p>
             </div>
@@ -2120,14 +2406,12 @@ function TeamOverviewCard({ title, stats }) {
         {renderList("Assists", assists, "Assist")}
         {renderList("Turnovers", turnovers, "Turnover")}
       </div>
-      <div className="mt-1.5 rounded-2xl border border-[#0f5132]/15 bg-[#ecfdf3] p-3 sm:mt-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/60">
-          Top connections
-        </p>
+      <div className="mt-1.5 sc-card-muted p-3 sm:mt-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Top connections</p>
         {connections.length ? (
-          <table className="mt-1 w-full text-left text-sm text-[#0f5132] sm:mt-1.5">
+          <table className="mt-1 w-full text-left text-sm text-ink sm:mt-1.5">
             <thead>
-              <tr className="text-xs uppercase tracking-wide text-[#0f5132]/60">
+              <tr className="text-xs uppercase tracking-wide text-ink-muted">
                 <th className="py-0.5 pr-2">Assist</th>
                 <th className="py-0.5" />
                 <th className="py-0.5 pr-2">Scorer</th>
@@ -2136,9 +2420,9 @@ function TeamOverviewCard({ title, stats }) {
             </thead>
             <tbody>
               {connections.slice(0, 6).map((row) => (
-                <tr key={`${row.assist}-${row.scorer}`} className="border-t border-[#0f5132]/10 text-sm">
+                <tr key={`${row.assist}-${row.scorer}`} className="border-t border-border text-sm">
                   <td className="py-1 pr-2">{row.assist}</td>
-                  <td className="py-1 text-center text-sm font-bold text-[#0f5132]/60">ƒ+'</td>
+                  <td className="py-1 text-center text-sm font-bold text-ink-muted">-&gt;</td>
                   <td className="py-1 pr-2">{row.scorer}</td>
                   <td className="py-1 text-right font-semibold">{row.count}</td>
                 </tr>
@@ -2146,9 +2430,7 @@ function TeamOverviewCard({ title, stats }) {
             </tbody>
           </table>
         ) : (
-          <p className="mt-1 text-xs text-[#0f5132]/60 sm:mt-1.5">
-            No assisted goals recorded.
-          </p>
+          <p className="mt-1 text-xs text-ink-muted sm:mt-1.5">No assisted goals recorded.</p>
         )}
       </div>
     </div>

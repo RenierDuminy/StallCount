@@ -73,6 +73,8 @@ export default function ScoreKeeperView() {
     setScoreForm,
     timeoutUsage,
     possessionTeam,
+    halftimeTriggerType,
+    halftimeTimeCapArmed,
     resumeCandidate,
     resumeHandled,
     resumeBusy,
@@ -94,6 +96,8 @@ export default function ScoreKeeperView() {
     canEndMatch,
     possessionLeader,
     halfRemainingLabel,
+    softCapApplied,
+    hardCapReached,
     sortedRosters,
     rosterOptionsForModal,
     formattedPrimaryClock,
@@ -131,7 +135,31 @@ export default function ScoreKeeperView() {
   const halftimeEndLogged = logs.some(
     (entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
   );
-  const halftimeButtonDisabled = halftimeStartLogged && halftimeEndLogged;
+  const halftimeButtonDisabled = halftimeStartLogged || halftimeEndLogged;
+  const halftimeTypeLabel =
+    halftimeTriggerType === "manual"
+      ? "Manual"
+      : halftimeTriggerType === "pointCap"
+      ? "Point cap"
+      : halftimeTriggerType === "timeCap"
+        ? "Time cap"
+        : "Unknown";
+  const attentionBannerMessage = (() => {
+    if (!matchStarted) return null;
+    if (halftimeTimeCapArmed && !halftimeStartLogged && !halftimeEndLogged) {
+      return "Halftime time cap has been reached and will start HT after the point.";
+    }
+    if (hardCapReached) {
+      if ((rules.gameHardCapEndMode || "afterPoint") === "afterPoint") {
+        return "Hard cap has been reached and play will end after the point.";
+      }
+      return "Hard cap has been reached.";
+    }
+    if (softCapApplied) {
+      return "Soft cap has been reached and is now in effect.";
+    }
+    return null;
+  })();
   const possessionDisplay =
     formatTeamLabel(possessionTeam) || possessionLeader || "Unassigned";
 
@@ -718,6 +746,12 @@ export default function ScoreKeeperView() {
               </button>
             </div>
 
+            {attentionBannerMessage && (
+              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                {attentionBannerMessage}
+              </p>
+            )}
+
             {matchStarted && (
               <div className="rounded-3xl border border-slate-200 bg-white p-2 w-full">
                 <div className="mt-3 space-y-2">
@@ -1027,6 +1061,7 @@ export default function ScoreKeeperView() {
           onClose: () => setTimeModalOpen(false),
           stoppageActive,
           halftimeDisabled: halftimeButtonDisabled,
+          halftimeTypeLabel,
           onHalfTime: handleHalfTimeTrigger,
           onTimeout: handleTimeoutTrigger,
           remainingTimeouts,

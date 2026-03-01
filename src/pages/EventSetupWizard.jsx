@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Card,
   Panel,
@@ -139,6 +139,7 @@ const INITIAL_VENUE_FORM = {
 };
 
 const matchStatuses = ["scheduled", "ready", "pending", "live", "finished"];
+const WIZARD_DRAFT_STORAGE_KEY = "stallcount:event-setup-wizard:draft:v1";
 const createId = () =>
   `tmp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -197,6 +198,51 @@ const compareVenueSort = (left, right) => {
   return leftName.localeCompare(rightName);
 };
 
+const getMatchSortTimestamp = (match) => {
+  if (!match?.start) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const timestamp = new Date(match.start).getTime();
+  return Number.isFinite(timestamp) ? timestamp : Number.POSITIVE_INFINITY;
+};
+
+const compareMatchSchedule = (left, right) => {
+  const timeDelta = getMatchSortTimestamp(left) - getMatchSortTimestamp(right);
+  if (timeDelta !== 0) {
+    return timeDelta;
+  }
+
+  const leftTeamA = normalizeSortValue(left?.teamALabel || left?.teamA);
+  const rightTeamA = normalizeSortValue(right?.teamALabel || right?.teamA);
+  if (leftTeamA !== rightTeamA) {
+    return leftTeamA.localeCompare(rightTeamA);
+  }
+
+  const leftTeamB = normalizeSortValue(left?.teamBLabel || left?.teamB);
+  const rightTeamB = normalizeSortValue(right?.teamBLabel || right?.teamB);
+  if (leftTeamB !== rightTeamB) {
+    return leftTeamB.localeCompare(rightTeamB);
+  }
+
+  return normalizeSortValue(left?.id).localeCompare(normalizeSortValue(right?.id));
+};
+
+const readPersistedWizardDraft = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(WIZARD_DRAFT_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 const Stepper = ({ current }) => (
   <ol className="wizard-stepper">
     {STEPS.map((step, index) => {
@@ -235,58 +281,149 @@ const TextField = ({ label, className = "", inputClassName = "", ...props }) => 
 );
 
 export default function EventSetupWizardPage() {
-  const [step, setStep] = useState(0);
-  const [event, setEvent] = useState(INITIAL_EVENT);
-  const [divisions, setDivisions] = useState([]);
-  const [eventVenues, setEventVenues] = useState([]);
-  const [venueForm, setVenueForm] = useState(INITIAL_VENUE_FORM);
-  const [venueMode, setVenueMode] = useState("create");
-  const [selectedExistingVenueId, setSelectedExistingVenueId] = useState("");
+  const persistedDraftRef = useRef(null);
+  if (persistedDraftRef.current === null) {
+    persistedDraftRef.current = readPersistedWizardDraft() || {};
+  }
+  const persistedDraft = persistedDraftRef.current;
+
+  const [step, setStep] = useState(() =>
+    Number.isInteger(persistedDraft.step) ? persistedDraft.step : 0,
+  );
+  const [event, setEvent] = useState(() =>
+    persistedDraft.event && typeof persistedDraft.event === "object"
+      ? { ...INITIAL_EVENT, ...persistedDraft.event }
+      : INITIAL_EVENT,
+  );
+  const [divisions, setDivisions] = useState(() =>
+    Array.isArray(persistedDraft.divisions) ? persistedDraft.divisions : [],
+  );
+  const [eventVenues, setEventVenues] = useState(() =>
+    Array.isArray(persistedDraft.eventVenues) ? persistedDraft.eventVenues : [],
+  );
+  const [venueForm, setVenueForm] = useState(() =>
+    persistedDraft.venueForm && typeof persistedDraft.venueForm === "object"
+      ? { ...INITIAL_VENUE_FORM, ...persistedDraft.venueForm }
+      : INITIAL_VENUE_FORM,
+  );
+  const [venueMode, setVenueMode] = useState(() =>
+    persistedDraft.venueMode === "existing" ? "existing" : "create",
+  );
+  const [selectedExistingVenueId, setSelectedExistingVenueId] = useState(() =>
+    typeof persistedDraft.selectedExistingVenueId === "string"
+      ? persistedDraft.selectedExistingVenueId
+      : "",
+  );
   const [availableVenues, setAvailableVenues] = useState([]);
   const [availableVenuesLoading, setAvailableVenuesLoading] = useState(false);
   const [availableVenuesError, setAvailableVenuesError] = useState(null);
-  const [divisionForm, setDivisionForm] = useState({
-    id: null,
-    name: "",
-    level: "",
-  });
-  const [divisionTeamForm, setDivisionTeamForm] = useState({
-    divisionId: "",
-    name: "",
-  });
-  const [createTeamForm, setCreateTeamForm] = useState({
-    name: "",
-    shortName: "",
-  });
+  const [divisionForm, setDivisionForm] = useState(() =>
+    persistedDraft.divisionForm && typeof persistedDraft.divisionForm === "object"
+      ? {
+          id: null,
+          name: "",
+          level: "",
+          ...persistedDraft.divisionForm,
+        }
+      : {
+          id: null,
+          name: "",
+          level: "",
+        },
+  );
+  const [divisionTeamForm, setDivisionTeamForm] = useState(() =>
+    persistedDraft.divisionTeamForm && typeof persistedDraft.divisionTeamForm === "object"
+      ? {
+          divisionId: "",
+          name: "",
+          ...persistedDraft.divisionTeamForm,
+        }
+      : {
+          divisionId: "",
+          name: "",
+        },
+  );
+  const [createTeamForm, setCreateTeamForm] = useState(() =>
+    persistedDraft.createTeamForm && typeof persistedDraft.createTeamForm === "object"
+      ? {
+          name: "",
+          shortName: "",
+          ...persistedDraft.createTeamForm,
+        }
+      : {
+          name: "",
+          shortName: "",
+        },
+  );
   const [createTeamState, setCreateTeamState] = useState({
     status: "idle",
     error: null,
   });
-  const [poolForm, setPoolForm] = useState({
-    id: null,
-    divisionId: "",
-    name: "",
-  });
-  const [teamForm, setTeamForm] = useState({
-    id: null,
-    poolId: "",
-    teamId: "",
-    name: "",
-    seed: "",
-  });
-  const [matchForm, setMatchForm] = useState({
-    id: null,
-    poolId: "",
-    matchPoolId: "",
-    teamA: "",
-    teamAId: "",
-    teamB: "",
-    teamBId: "",
-    start: "",
-    status: "scheduled",
-    venueRefId: "",
-  });
-  const [rules, setRules] = useState(() => cloneDefaultRules());
+  const [poolForm, setPoolForm] = useState(() =>
+    persistedDraft.poolForm && typeof persistedDraft.poolForm === "object"
+      ? {
+          id: null,
+          divisionId: "",
+          name: "",
+          ...persistedDraft.poolForm,
+        }
+      : {
+          id: null,
+          divisionId: "",
+          name: "",
+        },
+  );
+  const [teamForm, setTeamForm] = useState(() =>
+    persistedDraft.teamForm && typeof persistedDraft.teamForm === "object"
+      ? {
+          id: null,
+          poolId: "",
+          teamId: "",
+          name: "",
+          seed: "",
+          ...persistedDraft.teamForm,
+        }
+      : {
+          id: null,
+          poolId: "",
+          teamId: "",
+          name: "",
+          seed: "",
+        },
+  );
+  const [matchForm, setMatchForm] = useState(() =>
+    persistedDraft.matchForm && typeof persistedDraft.matchForm === "object"
+      ? {
+          id: null,
+          poolId: "",
+          matchPoolId: "",
+          teamA: "",
+          teamAId: "",
+          teamB: "",
+          teamBId: "",
+          start: "",
+          status: "scheduled",
+          venueRefId: "",
+          ...persistedDraft.matchForm,
+        }
+      : {
+          id: null,
+          poolId: "",
+          matchPoolId: "",
+          teamA: "",
+          teamAId: "",
+          teamB: "",
+          teamBId: "",
+          start: "",
+          status: "scheduled",
+          venueRefId: "",
+        },
+  );
+  const [rules, setRules] = useState(() =>
+    persistedDraft.rules && typeof persistedDraft.rules === "object"
+      ? mergeRuleDefaults(cloneDefaultRules(), persistedDraft.rules)
+      : cloneDefaultRules(),
+  );
   const [teamOptions, setTeamOptions] = useState([]);
   const [teamOptionsError, setTeamOptionsError] = useState(null);
   const [teamOptionsLoading, setTeamOptionsLoading] = useState(false);
@@ -297,11 +434,15 @@ export default function EventSetupWizardPage() {
     eventId: null,
     summary: null,
   });
-  const [eventMode, setEventMode] = useState("create");
+  const [eventMode, setEventMode] = useState(() =>
+    persistedDraft.eventMode === "edit" ? "edit" : "create",
+  );
   const [existingEvents, setExistingEvents] = useState([]);
   const [existingEventsLoading, setExistingEventsLoading] = useState(false);
   const [existingEventsError, setExistingEventsError] = useState(null);
-  const [selectedEventId, setSelectedEventId] = useState("");
+  const [selectedEventId, setSelectedEventId] = useState(() =>
+    typeof persistedDraft.selectedEventId === "string" ? persistedDraft.selectedEventId : "",
+  );
   const [prefillState, setPrefillState] = useState({
     status: "idle",
     error: null,
@@ -422,6 +563,61 @@ export default function EventSetupWizardPage() {
       setExistingEventsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (eventMode === "edit" && existingEvents.length === 0 && !existingEventsLoading) {
+      loadExistingEvents();
+    }
+  }, [eventMode, existingEvents.length, existingEventsLoading, loadExistingEvents]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const draft = {
+      step,
+      event,
+      divisions,
+      eventVenues,
+      venueForm,
+      venueMode,
+      selectedExistingVenueId,
+      divisionForm,
+      divisionTeamForm,
+      createTeamForm,
+      poolForm,
+      teamForm,
+      matchForm,
+      rules,
+      eventMode,
+      selectedEventId,
+    };
+    try {
+      window.localStorage.setItem(
+        WIZARD_DRAFT_STORAGE_KEY,
+        JSON.stringify(draft),
+      );
+    } catch {
+      // Ignore storage errors and keep the in-memory draft working.
+    }
+  }, [
+    createTeamForm,
+    divisionForm,
+    divisionTeamForm,
+    divisions,
+    event,
+    eventMode,
+    eventVenues,
+    matchForm,
+    poolForm,
+    rules,
+    selectedEventId,
+    selectedExistingVenueId,
+    step,
+    teamForm,
+    venueForm,
+    venueMode,
+  ]);
 
   const applyEventHierarchy = useCallback((payload) => {
     if (!payload?.event) {
@@ -1158,12 +1354,16 @@ export default function EventSetupWizardPage() {
       if (matchForm.id) {
         return {
           ...pool,
-          matches: matches.map((match) =>
-            match.id === matchForm.id ? next : match,
-          ),
+          matches: matches
+            .map((match) => (match.id === matchForm.id ? next : match))
+            .slice()
+            .sort(compareMatchSchedule),
         };
       }
-      return { ...pool, matches: [...matches, next] };
+      return {
+        ...pool,
+        matches: [...matches, next].slice().sort(compareMatchSchedule),
+      };
     });
     setMatchForm({
       id: null,
@@ -3151,7 +3351,7 @@ export default function EventSetupWizardPage() {
                       </p>
                     ) : (
                       <div className="wizard-grid wizard-gap-sm wizard-grid-cols-2-md">
-                        {pool.matches.map((match) => (
+                        {[...(pool.matches || [])].sort(compareMatchSchedule).map((match) => (
                           <div
                             key={match.id}
                             className="wizard-box-compact"
@@ -3372,7 +3572,6 @@ export default function EventSetupWizardPage() {
   );
 
   const renderConfirmStep = () => {
-    const submissionInFlight = submissionState.status === "submitting";
     const submissionSucceeded = submissionState.status === "success";
     return (
       <div className="wizard-stack-lg">

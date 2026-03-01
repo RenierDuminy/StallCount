@@ -174,6 +174,13 @@ function normalizeHardCapEndMode(input) {
   return "afterPoint";
 }
 
+function normalizeHalftimeTriggerType(input) {
+  if (input === "manual" || input === "pointCap" || input === "timeCap") {
+    return input;
+  }
+  return "unknown";
+}
+
 const getGameTimeCapMinutes = (rules) =>
   rules?.game?.timeCapMinutes ?? rules?.game?.hardCapMinutes;
 const getGameTimeCapEndMode = (rules) =>
@@ -552,6 +559,7 @@ const [secondaryFlashRateMs, setSecondaryFlashRateMs] = useState(400);
 const [possessionTeam, setPossessionTeam] = useState(null);
 const [halftimeTriggered, setHalftimeTriggered] = useState(false);
 const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
+  const [halftimeTriggerType, setHalftimeTriggerType] = useState("unknown");
   const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
   const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
   const [resumeCandidate, setResumeCandidate] = useState(null);
@@ -818,6 +826,7 @@ const clearLocalMatchState = useCallback(() => {
     setPossessionTeam(null);
     setHalftimeTriggered(false);
     setHalftimeBreakActive(false);
+    setHalftimeTriggerType("unknown");
     setHalftimeTimeCapArmed(false);
     setHalftimeCapTargetScore(null);
     setStoppageActive(false);
@@ -1268,12 +1277,14 @@ useEffect(() => {
 useEffect(() => {
   if (!consoleReady && !resumeHydrationRef.current) {
     setHalftimeTriggered(false);
+    setHalftimeTriggerType("unknown");
   }
 }, [consoleReady]);
 
 useEffect(() => {
   if (resumeHydrationRef.current) return;
   setHalftimeTriggered(false);
+  setHalftimeTriggerType("unknown");
 }, [activeMatch?.id]);
 
   useEffect(() => {
@@ -1478,6 +1489,7 @@ useEffect(() => {
       timeoutUsage: { ...timeoutUsage },
       possessionTeam,
       halftimeTriggered,
+      halftimeTriggerType,
       stoppageActive,
       scoreTarget,
       softCapApplied,
@@ -1502,6 +1514,7 @@ useEffect(() => {
     timeoutUsage,
     possessionTeam,
     halftimeTriggered,
+    halftimeTriggerType,
     stoppageActive,
     secondaryTotalSeconds,
     scoreTarget,
@@ -1949,14 +1962,16 @@ const replaceSecondaryTimer = useCallback(
       entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
   );
 
-  const triggerHalftime = useCallback(async () => {
+  const triggerHalftime = useCallback(async (triggerType = "unknown") => {
     if (halftimeTriggerLockRef.current || halftimeTriggered || !matchStarted || halftimeLogged) {
       setHalftimeTimeCapArmed(false);
       return false;
     }
+    const normalizedTriggerType = normalizeHalftimeTriggerType(triggerType);
     halftimeTriggerLockRef.current = true;
     setHalftimeTriggered(true);
     setHalftimeBreakActive(true);
+    setHalftimeTriggerType(normalizedTriggerType);
     setHalftimeTimeCapArmed(false);
     const breakSeconds = Math.max(1, (rules.halftimeBreakMinutes || 0) * 60);
     try {
@@ -2009,7 +2024,7 @@ const replaceSecondaryTimer = useCallback(
         if (halftimeTimeCapArmed) {
           setHalftimeTimeCapArmed(false);
         }
-        void triggerHalftime();
+        void triggerHalftime("timeCap");
       } else if (!halftimeTimeCapArmed) {
         setHalftimeTimeCapArmed(true);
       }
@@ -2380,6 +2395,7 @@ const replaceSecondaryTimer = useCallback(
     setTimeoutUsage(snapshot.timeoutUsage ?? { ...DEFAULT_TIMEOUT_USAGE });
     setPossessionTeam(snapshot.possessionTeam ?? null);
     setHalftimeTriggered(Boolean(snapshot.halftimeTriggered));
+    setHalftimeTriggerType(normalizeHalftimeTriggerType(snapshot.halftimeTriggerType));
     setStoppageActive(Boolean(snapshot.stoppageActive));
     setMatchStarted(resumeWasStarted);
     setScoreTarget(
@@ -2597,6 +2613,8 @@ const replaceSecondaryTimer = useCallback(
     setPossessionTeam,
     halftimeTriggered,
     setHalftimeTriggered,
+    halftimeTriggerType,
+    setHalftimeTriggerType,
     halftimeTimeCapArmed,
     setHalftimeTimeCapArmed,
     halftimeCapTargetScore,

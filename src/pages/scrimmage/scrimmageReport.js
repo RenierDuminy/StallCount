@@ -130,6 +130,145 @@ function buildPossessionMetrics({
   };
 }
 
+function buildTimeTicks(start, end) {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return [];
+  }
+
+  const intervalMs = 5 * 60_000;
+  const durationMs = end - start;
+  const ticks = [];
+  let offset = 0;
+
+  while (offset <= durationMs) {
+    const minutes = Math.round(offset / 60_000);
+    ticks.push({ value: start + offset, label: `${minutes}'` });
+    offset += intervalMs;
+  }
+
+  const lastTick = ticks[ticks.length - 1];
+  if (!lastTick || lastTick.value !== end) {
+    const minutes = Math.round(durationMs / 60_000);
+    ticks.push({ value: end, label: `${minutes}'` });
+  }
+
+  return ticks;
+}
+
+function buildPossessionTimeline({
+  turnovers,
+  scoringPoints,
+  axisStart,
+  axisEnd,
+  timeTicks,
+  bands,
+  startingTeamKey,
+}) {
+  if (!Number.isFinite(axisStart) || !Number.isFinite(axisEnd) || axisEnd <= axisStart) {
+    return null;
+  }
+
+  const scoreFlipTurnovers = (scoringPoints || [])
+    .filter((point) => Number.isFinite(point.time))
+    .map((point) => ({
+      time: Math.min(Math.max(point.time, axisStart), axisEnd),
+      team: point.team === "teamA" ? "teamB" : point.team === "teamB" ? "teamA" : null,
+      source: "score",
+    }))
+    .filter((entry) => entry.team && entry.time >= axisStart && entry.time <= axisEnd);
+
+  const normalizedTurnovers = (turnovers || [])
+    .filter((entry) => Number.isFinite(entry.time))
+    .map((entry) => ({
+      ...entry,
+      time: Math.min(Math.max(entry.time, axisStart), axisEnd),
+      source: entry.source || "turnover",
+    }))
+    .filter((entry) => entry.time >= axisStart && entry.time <= axisEnd);
+
+  const sortedTurnovers = [...normalizedTurnovers, ...scoreFlipTurnovers].sort(
+    (a, b) => a.time - b.time
+  );
+
+  const inferInitialTeam = () => {
+    if (startingTeamKey === "A") return "teamB";
+    if (startingTeamKey === "B") return "teamA";
+    const firstTeam = sortedTurnovers[0]?.team;
+    if (firstTeam === "teamA") return "teamB";
+    if (firstTeam === "teamB") return "teamA";
+    return null;
+  };
+
+  let currentTeam = inferInitialTeam();
+  let cursor = axisStart;
+  const segments = [];
+
+  const pushSegment = (endTime, team) => {
+    if (!Number.isFinite(endTime) || endTime <= cursor) return;
+    segments.push({ start: cursor, end: endTime, team: team || null });
+  };
+
+  for (const turnover of sortedTurnovers) {
+    pushSegment(turnover.time, currentTeam);
+    currentTeam = turnover.team || null;
+    cursor = turnover.time;
+  }
+  pushSegment(axisEnd, currentTeam);
+
+  const interruptionBands = (bands || []).filter(
+    (band) => band.type === "timeout" || band.type === "stoppage" || band.type === "halftime"
+  );
+
+  const applyBands = (baseSegments) => {
+    if (!interruptionBands.length) return baseSegments;
+    const output = [];
+    for (const segment of baseSegments) {
+      let pending = [segment];
+      for (const band of interruptionBands) {
+        const next = [];
+        for (const piece of pending) {
+          if (band.end <= piece.start || band.start >= piece.end) {
+            next.push(piece);
+            continue;
+          }
+          if (band.start > piece.start) {
+            next.push({ ...piece, end: band.start });
+          }
+          const bandStart = Math.max(piece.start, band.start);
+          const bandEnd = Math.min(piece.end, band.end);
+          if (bandEnd > bandStart) {
+            next.push({ start: bandStart, end: bandEnd, team: "band" });
+          }
+          if (band.end < piece.end) {
+            next.push({ ...piece, start: band.end });
+          }
+        }
+        pending = next;
+      }
+      output.push(...pending.filter((piece) => piece.end > piece.start));
+    }
+    return output;
+  };
+
+  const cleanedSegments = applyBands(segments);
+  const scoreMarkers = (scoringPoints || [])
+    .filter((point) => Number.isFinite(point.time))
+    .map((point) => ({
+      ...point,
+      time: Math.min(Math.max(point.time, axisStart), axisEnd),
+    }))
+    .filter((point) => point.time >= axisStart && point.time <= axisEnd);
+
+  return {
+    minTime: axisStart,
+    maxTime: axisEnd,
+    segments: cleanedSegments,
+    turnovers: sortedTurnovers,
+    scores: scoreMarkers,
+    timeTicks: timeTicks || buildTimeTicks(axisStart, axisEnd),
+  };
+}
+
 export function deriveScrimmageReport({
   logs,
   teamAName,
@@ -217,9 +356,30 @@ export function deriveScrimmageReport({
   const scoringPoints = [];
   const turnovers = [];
   const halftimeEvents = [];
+  const snapshots = [];
+  const timestamps = [];
+  const bands = [];
+  const pendingBands = {
+    timeout: null,
+    stoppage: null,
+    halftime: null,
+  };
 
   let matchStartEventTime = null;
   let matchEndEventTime = null;
+  let timelineStart = startTime ? new Date(startTime).getTime() : null;
+  let timelineEnd = null;
+
+  const pushSnapshot = (time) => {
+    if (!Number.isFinite(time)) return;
+    timestamps.push(time);
+    snapshots.push({ time, scoreA, scoreB });
+  };
+
+  if (Number.isFinite(timelineStart)) {
+    snapshots.push({ time: timelineStart, scoreA: 0, scoreB: 0 });
+    timestamps.push(timelineStart);
+  }
 
   sortedLogs.forEach((log) => {
     const code = log.eventCode;
@@ -229,6 +389,11 @@ export function deriveScrimmageReport({
       if (!matchStartEventTime || timestamp < matchStartEventTime) {
         matchStartEventTime = timestamp;
       }
+      timelineStart = matchStartEventTime;
+      if (!snapshots.some((entry) => entry.time === matchStartEventTime)) {
+        snapshots.unshift({ time: matchStartEventTime, scoreA: 0, scoreB: 0 });
+        timestamps.push(matchStartEventTime);
+      }
       return;
     }
 
@@ -236,11 +401,24 @@ export function deriveScrimmageReport({
       if (!matchEndEventTime || timestamp > matchEndEventTime) {
         matchEndEventTime = timestamp;
       }
+      timelineEnd = timestamp;
+      pushSnapshot(timestamp);
       return;
     }
 
     if (code === MATCH_LOG_EVENT_CODES.HALFTIME_START) {
       halftimeEvents.push({ time: timestamp });
+      pendingBands.halftime = timestamp;
+      pushSnapshot(timestamp);
+      return;
+    }
+
+    if (code === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
+      if (pendingBands.halftime) {
+        bands.push({ type: "halftime", start: pendingBands.halftime, end: timestamp });
+        pendingBands.halftime = null;
+      }
+      pushSnapshot(timestamp);
       return;
     }
 
@@ -272,6 +450,7 @@ export function deriveScrimmageReport({
         }
       }
 
+      pushSnapshot(timestamp);
       const nextOffense = teamKey ? getOppositeTeam(teamKey) : fallbackOffense;
       resetPointState(nextOffense);
       return;
@@ -292,29 +471,130 @@ export function deriveScrimmageReport({
         currentPossession = gainingTeamKey;
         turnovers.push({ time: timestamp, team: gainingTeamKey });
       }
+      return;
+    }
+
+    if (code === MATCH_LOG_EVENT_CODES.TIMEOUT_START) {
+      pendingBands.timeout = timestamp;
+      pushSnapshot(timestamp);
+      return;
+    }
+
+    if (code === MATCH_LOG_EVENT_CODES.TIMEOUT_END) {
+      if (pendingBands.timeout) {
+        bands.push({ type: "timeout", start: pendingBands.timeout, end: timestamp });
+        pendingBands.timeout = null;
+      }
+      pushSnapshot(timestamp);
+      return;
+    }
+
+    if (code === MATCH_LOG_EVENT_CODES.STOPPAGE_START) {
+      pendingBands.stoppage = timestamp;
+      pushSnapshot(timestamp);
+      return;
+    }
+
+    if (code === MATCH_LOG_EVENT_CODES.STOPPAGE_END) {
+      if (pendingBands.stoppage) {
+        bands.push({ type: "stoppage", start: pendingBands.stoppage, end: timestamp });
+        pendingBands.stoppage = null;
+      }
+      pushSnapshot(timestamp);
     }
   });
 
   const fallbackStartTime = startTime ? new Date(startTime).getTime() : null;
-  const derivedStart =
-    matchStartEventTime ||
-    fallbackStartTime ||
-    sortedLogs[0]?.time ||
-    null;
-  const derivedEnd =
-    matchEndEventTime ||
-    sortedLogs[sortedLogs.length - 1]?.time ||
-    derivedStart ||
-    null;
+  const defaultStart = Number.isFinite(timelineStart)
+    ? timelineStart
+    : Number.isFinite(fallbackStartTime)
+      ? fallbackStartTime
+      : timestamps.length > 0
+        ? Math.min(...timestamps)
+        : Date.now();
+
+  let defaultEnd = Number.isFinite(timelineEnd)
+    ? timelineEnd
+    : timestamps.length > 0
+      ? Math.max(...timestamps)
+      : defaultStart + 5 * 60_000;
+
+  if (defaultEnd <= defaultStart) {
+    defaultEnd = defaultStart + 5 * 60_000;
+  }
+
+  const axisStart = Number.isFinite(matchStartEventTime) ? matchStartEventTime : defaultStart;
+  let axisEnd = Number.isFinite(matchEndEventTime) ? matchEndEventTime : defaultEnd;
+  if (axisEnd <= axisStart) {
+    axisEnd = axisStart + 5 * 60_000;
+  }
+
+  if (!snapshots.some((entry) => entry.time === axisStart)) {
+    snapshots.unshift({ time: axisStart, scoreA: 0, scoreB: 0 });
+    timestamps.push(axisStart);
+  }
+  if (!snapshots.some((entry) => entry.time === axisEnd)) {
+    snapshots.push({ time: axisEnd, scoreA, scoreB });
+    timestamps.push(axisEnd);
+  }
+
+  Object.entries(pendingBands).forEach(([type, start]) => {
+    if (start) {
+      bands.push({ type, start, end: axisEnd });
+    }
+  });
+
+  const boundedSnapshots = [...snapshots]
+    .sort((a, b) => a.time - b.time)
+    .filter((entry) => entry.time >= axisStart && entry.time <= axisEnd);
+
+  const boundedScoringPoints = scoringPoints.filter(
+    (point) => point.time >= axisStart && point.time <= axisEnd
+  );
+
+  const boundedBands = bands
+    .map((band) => {
+      const start = Math.max(axisStart, band.start);
+      const end = Math.min(axisEnd, band.end);
+      if (!(Number.isFinite(start) && Number.isFinite(end))) {
+        return null;
+      }
+      return start < end ? { ...band, start, end } : null;
+    })
+    .filter(Boolean);
+
+  const timeTicks = buildTimeTicks(axisStart, axisEnd);
+  const timeline = {
+    minTime: axisStart,
+    maxTime: axisEnd,
+    maxScore: Math.max(scoreA, scoreB),
+    series: {
+      teamA: boundedSnapshots.map((entry) => ({ time: entry.time, score: entry.scoreA })),
+      teamB: boundedSnapshots.map((entry) => ({ time: entry.time, score: entry.scoreB })),
+    },
+    scoringPoints: boundedScoringPoints,
+    bands: boundedBands,
+    timeTicks,
+  };
+
+  const possessionTimeline = buildPossessionTimeline({
+    turnovers,
+    scoringPoints: boundedScoringPoints,
+    axisStart,
+    axisEnd,
+    timeTicks,
+    bands: boundedBands,
+    startingTeamKey,
+  });
 
   const duration =
-    Number.isFinite(derivedStart) && Number.isFinite(derivedEnd)
-      ? derivedEnd - derivedStart
+    Number.isFinite(axisStart) && Number.isFinite(axisEnd)
+      ? axisEnd - axisStart
       : null;
 
   const matchRows = [
-    { label: "Match date", value: formatMatchDate(derivedStart) },
-    { label: "Match start", value: formatTimeLabel(derivedStart, true) },
+    { label: "Match date", value: formatMatchDate(axisStart) },
+    { label: "Match start", value: formatTimeLabel(axisStart, true) },
   ];
 
   if (halftimeEvents.length > 0) {
@@ -332,8 +612,8 @@ export function deriveScrimmageReport({
     });
   }
 
-  const firstPoint = scoringPoints[0]?.time ?? null;
-  const lastPoint = scoringPoints[scoringPoints.length - 1]?.time ?? null;
+  const firstPoint = boundedScoringPoints[0]?.time ?? null;
+  const lastPoint = boundedScoringPoints[boundedScoringPoints.length - 1]?.time ?? null;
 
   matchRows.push(
     { label: "First point", value: formatTimeLabel(firstPoint, true) },
@@ -349,12 +629,20 @@ export function deriveScrimmageReport({
   );
 
   const averageTempo = (() => {
-    if (scoringPoints.length < 2 || !firstPoint || !lastPoint) return null;
-    return (lastPoint - firstPoint) / (scoringPoints.length - 1);
+    if (
+      boundedScoringPoints.length < 2 ||
+      !Number.isFinite(firstPoint) ||
+      !Number.isFinite(lastPoint)
+    ) {
+      return null;
+    }
+    return (lastPoint - firstPoint) / (boundedScoringPoints.length - 1);
   })();
 
   const teamAverageGap = (teamKey) => {
-    const times = scoringPoints.filter((point) => point.team === teamKey).map((point) => point.time);
+    const times = boundedScoringPoints
+      .filter((point) => point.team === teamKey)
+      .map((point) => point.time);
     if (times.length < 2) return null;
     let total = 0;
     for (let i = 1; i < times.length; i += 1) {
@@ -367,16 +655,16 @@ export function deriveScrimmageReport({
   const teamBGap = teamAverageGap("teamB");
 
   const possessionMetrics = buildPossessionMetrics({
-    startTime: derivedStart,
-    endTime: derivedEnd,
+    startTime: axisStart,
+    endTime: axisEnd,
     startingTeamKey,
     turnovers,
-    scoringPoints,
+    scoringPoints: boundedScoringPoints,
   });
 
   const avgTurnsPerPoint =
-    scoringPoints.length > 0 && turnovers.length > 0
-      ? turnovers.length / scoringPoints.length
+    boundedScoringPoints.length > 0 && turnovers.length > 0
+      ? turnovers.length / boundedScoringPoints.length
       : null;
 
   const formatMsShort = (ms) => (Number.isFinite(ms) && ms > 0 ? formatGap(ms) : "--");
@@ -422,6 +710,8 @@ export function deriveScrimmageReport({
   }
 
   return {
+    timeline,
+    possessionTimeline,
     insights: {
       match: matchRows,
       tempo: tempoRows,

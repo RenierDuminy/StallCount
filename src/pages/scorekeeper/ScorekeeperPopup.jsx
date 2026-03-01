@@ -80,6 +80,7 @@ export function ScorekeeperPopups({
     onClose: onTimeClose,
     stoppageActive,
     halftimeDisabled,
+    halftimeTypeLabel,
     onHalfTime,
     onTimeout,
     remainingTimeouts = { A: 0, B: 0 },
@@ -688,6 +689,9 @@ export function ScorekeeperPopups({
             >
               Half Time
             </button>
+            <p className="text-xs text-[#0f5132]/80">
+              Trigger: {halftimeTypeLabel || "Unknown"}
+            </p>
 
             <div className="grid gap-2 sm:grid-cols-2">
               <div>

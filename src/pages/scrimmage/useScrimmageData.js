@@ -10,6 +10,7 @@ import {
   ABBA_LINE_SEQUENCE,
   DEFAULT_TIMER_LABEL,
   DEFAULT_SECONDARY_LABEL,
+  MAX_SCRIMMAGE_TIMER_SECONDS,
   SESSION_SAVE_DEBOUNCE_MS,
   TIMER_TICK_INTERVAL_MS,
 } from "./scrimmageConstants";
@@ -88,6 +89,15 @@ function createLocalId(prefix) {
     return `${prefix}-${crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizePrimaryTimerState(seconds, running) {
+  const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds)) : 0;
+  const clampedSeconds = Math.min(safeSeconds, MAX_SCRIMMAGE_TIMER_SECONDS);
+  return {
+    seconds: clampedSeconds,
+    running: Boolean(running) && clampedSeconds < MAX_SCRIMMAGE_TIMER_SECONDS,
+  };
 }
 
 export function useScrimmageData() {
@@ -188,10 +198,10 @@ export function useScrimmageData() {
     const anchor = primaryTimerAnchorRef.current;
     const base = Number.isFinite(anchor?.baseSeconds) ? anchor.baseSeconds : timerSeconds;
     if (!timerRunning || !anchor?.anchorTimestamp) {
-      return Math.max(0, Math.round(base));
+      return Math.min(MAX_SCRIMMAGE_TIMER_SECONDS, Math.max(0, Math.round(base)));
     }
     const elapsed = Math.floor((Date.now() - anchor.anchorTimestamp) / 1000);
-    return Math.max(0, Math.round(base + elapsed));
+    return Math.min(MAX_SCRIMMAGE_TIMER_SECONDS, Math.max(0, Math.round(base + elapsed)));
   }, [timerRunning, timerSeconds]);
 
   const getSecondaryRemainingSeconds = useCallback(() => {
@@ -205,17 +215,17 @@ export function useScrimmageData() {
   }, [secondaryRunning, secondarySeconds]);
 
   const commitPrimaryTimerState = useCallback((seconds, running) => {
-    const baseSeconds = Number.isFinite(seconds) ? seconds : 0;
-    setTimerSeconds(baseSeconds);
-    setTimerRunning(Boolean(running));
-    if (running) {
+    const nextState = normalizePrimaryTimerState(seconds, running);
+    setTimerSeconds(nextState.seconds);
+    setTimerRunning(nextState.running);
+    if (nextState.running) {
       primaryTimerAnchorRef.current = {
-        baseSeconds,
+        baseSeconds: nextState.seconds,
         anchorTimestamp: Date.now(),
       };
     } else {
       primaryTimerAnchorRef.current = {
-        baseSeconds,
+        baseSeconds: nextState.seconds,
         anchorTimestamp: null,
       };
     }
@@ -318,7 +328,12 @@ export function useScrimmageData() {
     if (!timerRunning && !secondaryRunning) return undefined;
     const tick = () => {
       if (timerRunning) {
-        setTimerSeconds(getPrimaryRemainingSeconds());
+        const nextPrimary = getPrimaryRemainingSeconds();
+        if (nextPrimary >= MAX_SCRIMMAGE_TIMER_SECONDS) {
+          commitPrimaryTimerState(MAX_SCRIMMAGE_TIMER_SECONDS, false);
+        } else {
+          setTimerSeconds(nextPrimary);
+        }
       }
       if (secondaryRunning) {
         const remainingSecondary = getSecondaryRemainingSeconds();
@@ -337,6 +352,7 @@ export function useScrimmageData() {
     secondaryRunning,
     getPrimaryRemainingSeconds,
     getSecondaryRemainingSeconds,
+    commitPrimaryTimerState,
     commitSecondaryTimerState,
   ]);
 
@@ -384,12 +400,16 @@ export function useScrimmageData() {
         0,
         DEFAULT_TIMER_LABEL
       );
-      setTimerSeconds(primaryTimer.seconds);
-      setTimerRunning(primaryTimer.running);
+      const resumedPrimaryTimer = normalizePrimaryTimerState(
+        primaryTimer.seconds,
+        primaryTimer.running
+      );
+      setTimerSeconds(resumedPrimaryTimer.seconds);
+      setTimerRunning(resumedPrimaryTimer.running);
       setTimerLabel(primaryTimer.label);
-      primaryTimerAnchorRef.current = primaryTimer.running
-        ? { baseSeconds: primaryTimer.seconds, anchorTimestamp: Date.now() }
-        : { baseSeconds: primaryTimer.seconds, anchorTimestamp: null };
+      primaryTimerAnchorRef.current = resumedPrimaryTimer.running
+        ? { baseSeconds: resumedPrimaryTimer.seconds, anchorTimestamp: Date.now() }
+        : { baseSeconds: resumedPrimaryTimer.seconds, anchorTimestamp: null };
 
       const secondaryFallback = getRuleTimeoutSeconds(snapshotRules);
       const secondaryTimer = deriveCountdownTimerSnapshot(
