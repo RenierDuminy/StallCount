@@ -1,20 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getEventsList } from "../services/leagueService";
 import { getMatchesByEvent, updateMatchMediaLink } from "../services/matchService";
 import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
+import usePersistentState from "../hooks/usePersistentState";
+
+const MEDIA_SELECTED_EVENT_KEY = "stallcount:media-admin:selected-event:v1";
+const MEDIA_FORM_KEY = "stallcount:media-admin:form:v1";
 
 export default function MediaAdminPage() {
   const [events, setEvents] = useState([]);
   const [eventError, setEventError] = useState("");
-  const [selectedEventId, setSelectedEventId] = useState("");
+  const [selectedEventId, setSelectedEventId] = usePersistentState(MEDIA_SELECTED_EVENT_KEY, "");
   const [matches, setMatches] = useState([]);
   const [matchesLoading, setMatchesLoading] = useState(false);
   const [matchesError, setMatchesError] = useState("");
-  const [form, setForm] = useState(createEmptyForm());
+  const [form, setForm] = usePersistentState(MEDIA_FORM_KEY, createEmptyForm);
   const [saving, setSaving] = useState(false);
   const [resultMessage, setResultMessage] = useState("");
   const [resultError, setResultError] = useState("");
+  const previousEventIdRef = useRef(selectedEventId);
 
   useEffect(() => {
     async function loadEvents() {
@@ -30,9 +35,14 @@ export default function MediaAdminPage() {
   }, []);
 
   useEffect(() => {
+    const eventChanged = previousEventIdRef.current !== selectedEventId;
+    previousEventIdRef.current = selectedEventId;
+
     if (!selectedEventId) {
       setMatches([]);
-      setForm(createEmptyForm());
+      if (eventChanged) {
+        setForm(createEmptyForm());
+      }
       return;
     }
     let ignore = false;
@@ -42,8 +52,18 @@ export default function MediaAdminPage() {
       try {
         const rows = await getMatchesByEvent(selectedEventId, 200, { includeFinished: true });
         if (!ignore) {
-          setMatches(rows ?? []);
-          setForm(createEmptyForm());
+          const nextMatches = rows ?? [];
+          setMatches(nextMatches);
+          setForm((prev) => {
+            if (eventChanged) {
+              return createEmptyForm();
+            }
+            if (!prev?.matchId) {
+              return prev;
+            }
+            const matchStillExists = nextMatches.some((match) => match.id === prev.matchId);
+            return matchStillExists ? prev : createEmptyForm();
+          });
         }
       } catch (err) {
         if (!ignore) {
@@ -60,7 +80,7 @@ export default function MediaAdminPage() {
     return () => {
       ignore = true;
     };
-  }, [selectedEventId]);
+  }, [selectedEventId, setForm]);
 
   const selectedMatch = useMemo(() => {
     return matches.find((match) => match.id === form.matchId) || null;

@@ -21,6 +21,16 @@ import {
   SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS,
   userHasAnyPermission,
 } from "../utils/accessControl";
+import usePersistentState from "../hooks/usePersistentState";
+
+const SIGNUP_SELECTED_EVENT_KEY = "stallcount:signup-management:selected-event:v1";
+const SIGNUP_CSV_URL_KEY = "stallcount:signup-management:csv-url:v1";
+const SIGNUP_EXTERNAL_ROWS_KEY = "stallcount:signup-management:external-rows:v1";
+const SIGNUP_EXTERNAL_HEADERS_KEY = "stallcount:signup-management:external-headers:v1";
+const SIGNUP_NAME_COLUMN_KEY = "stallcount:signup-management:name-column:v1";
+const SIGNUP_SURNAME_COLUMN_KEY = "stallcount:signup-management:surname-column:v1";
+const SIGNUP_DOB_COLUMN_KEY = "stallcount:signup-management:dob-column:v1";
+const SIGNUP_DOB_MODE_KEY = "stallcount:signup-management:dob-mode:v1";
 
 const LIST_NAME_COLUMN_CANDIDATES = ["name"];
 const LIST_SURNAME_COLUMN_CANDIDATES = ["surname", "last name", "last_name"];
@@ -317,26 +327,34 @@ export default function SignupManagementPage() {
   const [eventOptions, setEventOptions] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState("");
-  const [selectedEventId, setSelectedEventId] = useState("");
+  const [selectedEventId, setSelectedEventId] = usePersistentState(
+    SIGNUP_SELECTED_EVENT_KEY,
+    "",
+  );
 
   const [rosterRows, setRosterRows] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState("");
 
-  const [csvUrl, setCsvUrl] = useState("");
+  const [csvUrl, setCsvUrl] = usePersistentState(SIGNUP_CSV_URL_KEY, "");
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvError, setCsvError] = useState("");
-  const [externalRows, setExternalRows] = useState([]);
-  const [externalHeaders, setExternalHeaders] = useState([]);
-  const [listNameColumn, setListNameColumn] = useState("");
-  const [listSurnameColumn, setListSurnameColumn] = useState("");
-  const [listDobColumn, setListDobColumn] = useState("");
-  const [dobInputMode, setDobInputMode] = useState("auto");
+  const [externalRows, setExternalRows] = usePersistentState(SIGNUP_EXTERNAL_ROWS_KEY, []);
+  const [externalHeaders, setExternalHeaders] = usePersistentState(
+    SIGNUP_EXTERNAL_HEADERS_KEY,
+    [],
+  );
+  const [listNameColumn, setListNameColumn] = usePersistentState(SIGNUP_NAME_COLUMN_KEY, "");
+  const [listSurnameColumn, setListSurnameColumn] = usePersistentState(
+    SIGNUP_SURNAME_COLUMN_KEY,
+    "",
+  );
+  const [listDobColumn, setListDobColumn] = usePersistentState(SIGNUP_DOB_COLUMN_KEY, "");
+  const [dobInputMode, setDobInputMode] = usePersistentState(SIGNUP_DOB_MODE_KEY, "auto");
 
   useEffect(() => {
     if (!userId) {
       setEventOptions([]);
-      setSelectedEventId("");
       setEventsError("");
       return;
     }
@@ -416,7 +434,6 @@ export default function SignupManagementPage() {
           error instanceof Error ? error.message : "Unable to load tournament director event scope."
         );
         setEventOptions([]);
-        setSelectedEventId("");
       } finally {
         if (!ignore) {
           setEventsLoading(false);
@@ -428,7 +445,13 @@ export default function SignupManagementPage() {
     return () => {
       ignore = true;
     };
-  }, [hasAdminAccess, roleCatalog, scopedSignupPermissionKeys, userId]);
+  }, [
+    hasAdminAccess,
+    roleCatalog,
+    scopedSignupPermissionKeys,
+    setSelectedEventId,
+    userId,
+  ]);
 
   useEffect(() => {
     if (!selectedEventId) {

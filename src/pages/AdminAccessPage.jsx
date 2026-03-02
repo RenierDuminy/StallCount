@@ -19,6 +19,16 @@ import {
   removeUserRoleAssignment,
   removeEventUserRoleAssignment,
 } from "../services/userService";
+import usePersistentState from "../hooks/usePersistentState";
+
+const ADMIN_ACCESS_SEARCH_KEY = "stallcount:admin-access:search:v1";
+const ADMIN_ACCESS_ROLE_FILTER_KEY = "stallcount:admin-access:role-filter:v1";
+const ADMIN_ACCESS_PAGE_KEY = "stallcount:admin-access:page:v1";
+const ADMIN_ACCESS_MANAGER_QUERY_KEY = "stallcount:admin-access:manager-query:v1";
+const ADMIN_ACCESS_SELECTED_USER_KEY = "stallcount:admin-access:selected-user:v1";
+const ADMIN_ACCESS_SELECTED_EVENT_KEY = "stallcount:admin-access:selected-event:v1";
+const ADMIN_ACCESS_PENDING_ROLE_KEY = "stallcount:admin-access:pending-event-role:v1";
+const ADMIN_ACCESS_PENDING_ADMIN_ROLE_KEY = "stallcount:admin-access:pending-admin-role:v1";
 
 function normalizePermissionKey(value) {
   return String(value || "")
@@ -114,16 +124,16 @@ export default function AdminAccessPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [page, setPage] = useState(1);
-  const [roleManagerQuery, setRoleManagerQuery] = useState("");
-  const [selectedUserId, setSelectedUserId] = useState("");
-  const [selectedEventId, setSelectedEventId] = useState("");
+  const [search, setSearch] = usePersistentState(ADMIN_ACCESS_SEARCH_KEY, "");
+  const [roleFilter, setRoleFilter] = usePersistentState(ADMIN_ACCESS_ROLE_FILTER_KEY, "all");
+  const [page, setPage] = usePersistentState(ADMIN_ACCESS_PAGE_KEY, 1);
+  const [roleManagerQuery, setRoleManagerQuery] = usePersistentState(ADMIN_ACCESS_MANAGER_QUERY_KEY, "");
+  const [selectedUserId, setSelectedUserId] = usePersistentState(ADMIN_ACCESS_SELECTED_USER_KEY, "");
+  const [selectedEventId, setSelectedEventId] = usePersistentState(ADMIN_ACCESS_SELECTED_EVENT_KEY, "");
   const [roleManagerBusy, setRoleManagerBusy] = useState(false);
   const [roleManagerError, setRoleManagerError] = useState("");
-  const [pendingRoleId, setPendingRoleId] = useState("");
-  const [pendingAdminRoleId, setPendingAdminRoleId] = useState("");
+  const [pendingRoleId, setPendingRoleId] = usePersistentState(ADMIN_ACCESS_PENDING_ROLE_KEY, "");
+  const [pendingAdminRoleId, setPendingAdminRoleId] = usePersistentState(ADMIN_ACCESS_PENDING_ADMIN_ROLE_KEY, "");
 
   useEffect(() => {
     loadData();
@@ -141,19 +151,43 @@ export default function AdminAccessPage() {
       setUsers(userRows);
       setRoles(roleRows);
       setEvents(eventRows);
-      setRoleManagerQuery("");
-      setSelectedUserId("");
-      setSelectedEventId("");
       setRoleManagerError("");
-      setPendingRoleId("");
-      setPendingAdminRoleId("");
-      setPage(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load access control data.");
     } finally {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (selectedUserId && !users.some((user) => user.id === selectedUserId)) {
+      setSelectedUserId("");
+    }
+  }, [selectedUserId, setSelectedUserId, users]);
+
+  useEffect(() => {
+    if (selectedEventId && !events.some((event) => event.id === selectedEventId)) {
+      setSelectedEventId("");
+    }
+  }, [events, selectedEventId, setSelectedEventId]);
+
+  useEffect(() => {
+    if (
+      pendingRoleId &&
+      !roles.some((role) => String(role.id) === String(pendingRoleId))
+    ) {
+      setPendingRoleId("");
+    }
+  }, [pendingRoleId, roles, setPendingRoleId]);
+
+  useEffect(() => {
+    if (
+      pendingAdminRoleId &&
+      !roles.some((role) => String(role.id) === String(pendingAdminRoleId))
+    ) {
+      setPendingAdminRoleId("");
+    }
+  }, [pendingAdminRoleId, roles, setPendingAdminRoleId]);
 
   async function handleAddEventRole(userId) {
     if (!userId) return;
@@ -332,7 +366,7 @@ export default function AdminAccessPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, roleFilter]);
+  }, [search, roleFilter, setPage]);
 
   const selectedUser = useMemo(
     () => users.find((user) => user.id === selectedUserId) || null,
@@ -402,7 +436,7 @@ export default function AdminAccessPage() {
     if (!eventOptions.some((event) => event.id === selectedEventId)) {
       setSelectedEventId("");
     }
-  }, [selectedEventId, eventOptions]);
+  }, [selectedEventId, eventOptions, setSelectedEventId]);
 
   const selectedEventRolesForEvent = selectedEventId
     ? selectedEventRoles.filter((entry) => entry.eventId === selectedEventId)
@@ -438,7 +472,7 @@ export default function AdminAccessPage() {
     if (page !== currentPage) {
       setPage(currentPage);
     }
-  }, [page, currentPage]);
+  }, [page, currentPage, setPage]);
 
   const isEmpty = !loading && filteredUsers.length === 0;
 

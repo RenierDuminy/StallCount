@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { getRecentMatches, getMatchById, updateMatchStatus } from "../services/matchService";
 import { submitSpiritScores } from "../services/spiritScoreService";
 import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
+import usePersistentState from "../hooks/usePersistentState";
 
 const SPIRIT_CATEGORIES = [
   { key: "rulesKnowledge", label: "Rules knowledge & use" },
@@ -22,23 +23,32 @@ const createDefaultScores = () => ({
   notes: "",
 });
 
+const SPIRIT_SELECTED_MATCH_KEY = "stallcount:spirit-scores:selected-match:v1";
+const SPIRIT_TEAM_SCORES_KEY = "stallcount:spirit-scores:team-scores:v1";
+
 export default function SpiritScoresPage() {
   const { session } = useAuth();
   const userId = session?.user?.id ?? null;
   const [searchParams] = useSearchParams();
   const prefilledMatchId = searchParams.get("matchId") || "";
 
-  const [selectedMatchId, setSelectedMatchId] = useState(prefilledMatchId);
+  const [selectedMatchId, setSelectedMatchId] = usePersistentState(SPIRIT_SELECTED_MATCH_KEY, "");
   const [matches, setMatches] = useState([]);
   const [matchLoading, setMatchLoading] = useState(true);
   const [matchError, setMatchError] = useState(null);
   const [selectedMatch, setSelectedMatch] = useState(null);
-  const [teamScores, setTeamScores] = useState({
+  const [teamScores, setTeamScores] = usePersistentState(SPIRIT_TEAM_SCORES_KEY, {
     teamA: createDefaultScores(),
     teamB: createDefaultScores(),
   });
   const [submitState, setSubmitState] = useState({ message: null, variant: null });
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (prefilledMatchId) {
+      setSelectedMatchId(prefilledMatchId);
+    }
+  }, [prefilledMatchId, setSelectedMatchId]);
 
   useEffect(() => {
     async function loadMatches() {

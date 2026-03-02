@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   getPlayerDirectory,
@@ -11,6 +11,7 @@ import {
 import { getTeamsLinkedToEvent } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
 import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
+import usePersistentState from "../hooks/usePersistentState";
 
 const EMPTY_PLAYER_FORM = {
   id: "",
@@ -20,6 +21,15 @@ const EMPTY_PLAYER_FORM = {
   birthday: "",
   description: "",
 };
+
+const CAPTAIN_PLAYER_FILTER_KEY = "stallcount:captain:player-filter:v1";
+const CAPTAIN_PLAYER_FORM_KEY = "stallcount:captain:player-form:v1";
+const CAPTAIN_SELECTED_EVENT_KEY = "stallcount:captain:selected-event:v1";
+const CAPTAIN_SELECTED_TEAM_KEY = "stallcount:captain:selected-team:v1";
+const CAPTAIN_ASSIGN_PLAYER_KEY = "stallcount:captain:assign-player:v1";
+const CAPTAIN_ASSIGN_FILTER_KEY = "stallcount:captain:assign-filter:v1";
+const CAPTAIN_ASSIGN_ROLE_KEY = "stallcount:captain:assign-role:v1";
+const PLAYER_RESULT_LIMIT = 8;
 
 function normalizeName(value) {
   return String(value || "")
@@ -76,25 +86,71 @@ function nameSimilarity(left, right) {
   return Math.max(0, 1 - distance / maxLength);
 }
 
+function getRosterRolePriority(entry) {
+  if (entry?.is_captain) return 0;
+  if (entry?.is_spirit_captain) return 1;
+  return 2;
+}
+
+function compareRosterEntries(left, right) {
+  const roleDelta = getRosterRolePriority(left) - getRosterRolePriority(right);
+  if (roleDelta !== 0) {
+    return roleDelta;
+  }
+
+  const leftName = String(left?.player?.name || "").trim();
+  const rightName = String(right?.player?.name || "").trim();
+  const nameDelta = leftName.localeCompare(rightName, undefined, {
+    sensitivity: "base",
+  });
+  if (nameDelta !== 0) {
+    return nameDelta;
+  }
+
+  const leftJersey = Number.isFinite(Number(left?.player?.jersey_number))
+    ? Number(left.player.jersey_number)
+    : Number.POSITIVE_INFINITY;
+  const rightJersey = Number.isFinite(Number(right?.player?.jersey_number))
+    ? Number(right.player.jersey_number)
+    : Number.POSITIVE_INFINITY;
+  if (leftJersey !== rightJersey) {
+    return leftJersey - rightJersey;
+  }
+
+  return String(left?.id || "").localeCompare(String(right?.id || ""));
+}
+
+function getRosterRoleTags(entry) {
+  const tags = [];
+  if (entry?.is_captain) {
+    tags.push({ label: "C", title: "Captain" });
+  }
+  if (entry?.is_spirit_captain) {
+    tags.push({ label: "SC", title: "Spirit captain" });
+  }
+  return tags;
+}
+
 export default function CaptainPage() {
   const [playerDirectory, setPlayerDirectory] = useState([]);
-  const [playerFilter, setPlayerFilter] = useState("");
-  const [playerForm, setPlayerForm] = useState(EMPTY_PLAYER_FORM);
+  const [playerFilter, setPlayerFilter] = usePersistentState(CAPTAIN_PLAYER_FILTER_KEY, "");
+  const [playerForm, setPlayerForm] = usePersistentState(CAPTAIN_PLAYER_FORM_KEY, EMPTY_PLAYER_FORM);
   const [playerSaving, setPlayerSaving] = useState(false);
   const [playerAlert, setPlayerAlert] = useState(null);
 
   const [eventTeams, setEventTeams] = useState([]);
   const [eventTeamsLoading, setEventTeamsLoading] = useState(false);
   const [events, setEvents] = useState([]);
-  const [selectedTeamId, setSelectedTeamId] = useState("");
-  const [selectedEventId, setSelectedEventId] = useState("");
+  const [selectedTeamId, setSelectedTeamId] = usePersistentState(CAPTAIN_SELECTED_TEAM_KEY, "");
+  const [selectedEventId, setSelectedEventId] = usePersistentState(CAPTAIN_SELECTED_EVENT_KEY, "");
   const [rosterEntries, setRosterEntries] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterAlert, setRosterAlert] = useState(null);
-  const [assignPlayerId, setAssignPlayerId] = useState("");
-  const [assignPlayerFilter, setAssignPlayerFilter] = useState("");
-  const [assignCaptainRole, setAssignCaptainRole] = useState("");
+  const [assignPlayerId, setAssignPlayerId] = usePersistentState(CAPTAIN_ASSIGN_PLAYER_KEY, "");
+  const [assignPlayerFilter, setAssignPlayerFilter] = usePersistentState(CAPTAIN_ASSIGN_FILTER_KEY, "");
+  const [assignCaptainRole, setAssignCaptainRole] = usePersistentState(CAPTAIN_ASSIGN_ROLE_KEY, "");
   const [assigning, setAssigning] = useState(false);
+  const previousEventIdRef = useRef(selectedEventId);
 
   useEffect(() => {
     loadDirectory();
@@ -104,14 +160,23 @@ export default function CaptainPage() {
   }, []);
 
   useEffect(() => {
-    setSelectedTeamId("");
-    setRosterEntries([]);
-    setAssignPlayerId("");
-    setAssignPlayerFilter("");
+    const eventChanged = previousEventIdRef.current !== selectedEventId;
+    previousEventIdRef.current = selectedEventId;
+
+    if (eventChanged) {
+      setSelectedTeamId("");
+      setRosterEntries([]);
+      setAssignPlayerId("");
+      setAssignPlayerFilter("");
+      setAssignCaptainRole("");
+    }
 
     if (!selectedEventId) {
       setEventTeams([]);
       setEventTeamsLoading(false);
+      if (eventChanged) {
+        setRosterEntries([]);
+      }
       return;
     }
 
@@ -140,7 +205,13 @@ export default function CaptainPage() {
     return () => {
       isCancelled = true;
     };
-  }, [selectedEventId]);
+  }, [
+    selectedEventId,
+    setAssignCaptainRole,
+    setAssignPlayerFilter,
+    setAssignPlayerId,
+    setSelectedTeamId,
+  ]);
 
   useEffect(() => {
     if (!selectedEventId || !selectedTeamId) {
@@ -234,12 +305,14 @@ export default function CaptainPage() {
         return `${left.player.name || ""}`.localeCompare(`${right.player.name || ""}`);
       });
 
-    const primary = candidates.filter((entry) => entry.includeBySignal).slice(0, 6);
-    if (primary.length >= 6) return primary;
+    const primary = candidates
+      .filter((entry) => entry.includeBySignal)
+      .slice(0, PLAYER_RESULT_LIMIT);
+    if (primary.length >= PLAYER_RESULT_LIMIT) return primary;
 
     const fallback = candidates
       .filter((entry) => !entry.includeBySignal && entry.similarity > 0)
-      .slice(0, 6 - primary.length)
+      .slice(0, PLAYER_RESULT_LIMIT - primary.length)
       .map((entry) => ({
         ...entry,
         matchLabel: "Closest option",
@@ -280,7 +353,7 @@ export default function CaptainPage() {
       }
     }
 
-    return entries.slice(0, 12);
+    return entries.slice(0, PLAYER_RESULT_LIMIT);
   }, [filteredPlayers, playerFilter, playerForm.id, possibleDuplicates]);
 
   const rosterPlayerIds = useMemo(() => {
@@ -293,6 +366,11 @@ export default function CaptainPage() {
     }
     return ids;
   }, [rosterEntries]);
+
+  const sortedRosterEntries = useMemo(
+    () => [...rosterEntries].sort(compareRosterEntries),
+    [rosterEntries],
+  );
 
   const assignPlayerOptions = useMemo(() => {
     if (!selectedEventId || !selectedTeamId) {
@@ -315,7 +393,7 @@ export default function CaptainPage() {
       })
       .sort((left, right) => `${left.name || ""}`.localeCompare(`${right.name || ""}`));
 
-    return options.slice(0, 12);
+    return options.slice(0, PLAYER_RESULT_LIMIT);
   }, [assignPlayerFilter, playerDirectory, rosterPlayerIds, selectedEventId, selectedTeamId]);
 
   const selectedAssignPlayer = useMemo(
@@ -527,18 +605,6 @@ export default function CaptainPage() {
                     required
                   />
                 </Field>
-                <Field label="Jersey #" htmlFor="player-jersey">
-                  <Input
-                    id="player-jersey"
-                    type="number"
-                    value={playerForm.jersey_number}
-                    onChange={(event) => handlePlayerFieldChange("jersey_number", event.target.value)}
-                    min="0"
-                  />
-                </Field>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Gender code" htmlFor="player-gender">
                   <Select
                     id="player-gender"
@@ -551,6 +617,9 @@ export default function CaptainPage() {
                     <option value="W">W</option>
                   </Select>
                 </Field>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Birthday" htmlFor="player-birthday">
                   <Input
                     id="player-birthday"
@@ -558,6 +627,15 @@ export default function CaptainPage() {
                     value={playerForm.birthday}
                     onChange={(event) => handlePlayerFieldChange("birthday", event.target.value)}
                     required
+                  />
+                </Field>
+                <Field label="Jersey # (optional)" htmlFor="player-jersey">
+                  <Input
+                    id="player-jersey"
+                    type="number"
+                    value={playerForm.jersey_number}
+                    onChange={(event) => handlePlayerFieldChange("jersey_number", event.target.value)}
+                    min="0"
                   />
                 </Field>
               </div>
@@ -757,38 +835,55 @@ export default function CaptainPage() {
               )}
             </div>
 
-            <p className="text-xs text-ink-muted">
-              Selected:{" "}
-              {selectedAssignPlayer
-                ? `${selectedAssignPlayer.name || "Unnamed player"}${
-                    selectedAssignPlayer.jersey_number != null ? ` #${selectedAssignPlayer.jersey_number}` : ""
-                  }`
-                : "None"}
-            </p>
-          </Panel>
-
-          <form className="flex flex-wrap items-end gap-4 text-sm" onSubmit={handleAddToRoster}>
-            <Field label="Captain role" htmlFor="captain-role">
-              <Select
-                id="captain-role"
-                value={assignCaptainRole}
-                onChange={(event) => setAssignCaptainRole(event.target.value)}
-                disabled={!selectedTeamId || !selectedEventId}
-                className="is-compact"
-              >
-                <option value="">None</option>
-                <option value="captain">Captain</option>
-                <option value="spirit">Spirit captain</option>
-              </Select>
-            </Field>
-            <button
-              type="submit"
-              disabled={assigning || !selectedTeamId || !selectedEventId || !assignPlayerId}
-              className="sc-button disabled:cursor-not-allowed"
+            <form
+              className="space-y-3 rounded-xl border border-border/70 bg-surface px-3 py-3 text-sm"
+              onSubmit={handleAddToRoster}
             >
-              {assigning ? "Adding..." : "Add to roster"}
-            </button>
-          </form>
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                  Selected player
+                </p>
+                {selectedAssignPlayer ? (
+                  <>
+                    <p className="font-semibold text-ink">
+                      {selectedAssignPlayer.name || "Unnamed player"}
+                      {selectedAssignPlayer.jersey_number != null ? ` #${selectedAssignPlayer.jersey_number}` : ""}
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      {selectedAssignPlayer.birthday || "DOB unknown"} - {selectedAssignPlayer.gender_code || "-"}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-ink-muted">
+                    Choose a player from the list above to assign them to this roster.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-end gap-3">
+                <Field label="Captain role" htmlFor="captain-role" className="min-w-[11rem] flex-1">
+                  <Select
+                    id="captain-role"
+                    value={assignCaptainRole}
+                    onChange={(event) => setAssignCaptainRole(event.target.value)}
+                    disabled={!selectedTeamId || !selectedEventId}
+                    className="is-compact"
+                  >
+                    <option value="">None</option>
+                    <option value="captain">Captain</option>
+                    <option value="spirit">Spirit captain</option>
+                  </Select>
+                </Field>
+                <button
+                  type="submit"
+                  disabled={assigning || !selectedTeamId || !selectedEventId || !assignPlayerId}
+                  className="sc-button disabled:cursor-not-allowed"
+                >
+                  {assigning ? "Adding..." : "Add to roster"}
+                </button>
+              </div>
+            </form>
+          </Panel>
 
           {rosterAlert && (
             <div className={`sc-alert ${rosterAlert.tone === "error" ? "is-error" : "is-success"}`}>
@@ -799,7 +894,7 @@ export default function CaptainPage() {
           <Panel variant="muted" className="p-0">
             {rosterLoading ? (
               <div className="p-6 text-center text-sm text-ink-muted">Loading roster...</div>
-            ) : rosterEntries.length === 0 ? (
+            ) : sortedRosterEntries.length === 0 ? (
               <div className="p-6 text-center text-sm text-ink-muted">
                 {selectedTeamId
                   ? "No roster entries for this filter yet."
@@ -807,23 +902,37 @@ export default function CaptainPage() {
               </div>
             ) : (
               <ul className="divide-y divide-border">
-                {rosterEntries.map((entry) => (
+                {sortedRosterEntries.map((entry) => (
                   <li key={entry.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 text-sm">
                     <div>
-                      <p className="font-semibold text-ink">
-                        {entry.player?.name || "Unnamed player"}
-                        {entry.player?.jersey_number != null ? ` #${entry.player.jersey_number}` : ""}
-                      </p>
-                      <p className="text-xs text-ink-muted">
-                        {(entry.team?.name || "Team")} - {(entry.event?.name || "Event")}
-                        {entry.is_captain
-                          ? " ? Captain"
-                          : entry.is_spirit_captain
-                            ? " ? Spirit captain"
-                            : ""}
+                      <p className="flex flex-wrap items-center gap-2 font-semibold text-ink">
+                        {getRosterRoleTags(entry).length > 0 ? (
+                          <span className="flex flex-nowrap gap-1">
+                            {getRosterRoleTags(entry).map((tag) => (
+                              <span
+                                key={`${entry.id}-${tag.label}`}
+                                title={tag.title}
+                                className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
+                                style={{
+                                  background: "var(--sc-accent)",
+                                  color: "var(--sc-button-ink)",
+                                  borderColor: "var(--sc-accent-strong)",
+                                }}
+                              >
+                                {tag.label}
+                              </span>
+                            ))}
+                          </span>
+                        ) : null}
+                        <span>{entry.player?.name || "Unnamed player"}</span>
+                        {entry.player?.jersey_number != null ? (
+                          <span className="text-xs font-medium text-ink-muted">
+                            #{entry.player.jersey_number}
+                          </span>
+                        ) : null}
                       </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs">
+                    <div className="flex flex-nowrap items-center gap-2 text-xs">
                       <Select
                         className="is-compact"
                         value={entry.is_captain ? "captain" : entry.is_spirit_captain ? "spirit" : ""}
