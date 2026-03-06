@@ -57,7 +57,7 @@ export async function getOpenMatches(limit = 12) {
       const { data, error } = await supabase
         .from("matches")
         .select(MATCH_FIELDS)
-        .in("status", ["scheduled", "ready", "pending", "live"])
+        .in("status", ["scheduled", "ready", "pending", "Initialized", "live"])
         .order("start_time", { ascending: true })
         .limit(limit);
 
@@ -119,6 +119,8 @@ const MATCH_STATUS_CODES = new Set([
   "completed",
   "finished",
   "halftime",
+  "Initialized",
+  "initialized",
   "live",
   "scheduled",
 ]);
@@ -126,7 +128,7 @@ const MATCH_STATUS_CODES = new Set([
 export async function initialiseMatch(matchId, payload) {
   const desiredStatus = MATCH_STATUS_CODES.has(payload.status)
     ? payload.status
-    : "live";
+    : "Initialized";
 
   const updatePayload = {
     start_time: payload.start_time,

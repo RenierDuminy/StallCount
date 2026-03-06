@@ -84,6 +84,7 @@ export function useScoreKeeperActions(controller) {
           : new Date().toISOString(),
         starting_team_id: controller.setupForm.startingTeamId,
         abba_pattern: isAbbaEnabled ? controller.setupForm.abbaPattern : "none",
+        status: "Initialized",
         scorekeeper: controller.userId,
       };
 
