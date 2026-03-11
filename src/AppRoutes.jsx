@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
+import SeoManager from "./components/SeoManager";
 
 import AppLayout from "./components/AppLayout";
 import {
@@ -71,6 +72,7 @@ function ScrollToTop() {
 export default function AppRoutes() {
   return (
     <BrowserRouter>
+      <SeoManager />
       <ScrollToTop />
       <Routes>
         <Route element={<AppLayout />}>
