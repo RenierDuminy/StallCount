@@ -115,7 +115,7 @@ export default function ScoreKeeperView() {
     updatePossession,
     loadMatches,
     handleResumeSession,
-    handleDiscardResume
+    handleDiscardResume,
   } = data;
 
   const safeTeamAName = displayTeamA || "Team A";
@@ -150,13 +150,10 @@ export default function ScoreKeeperView() {
       return "Halftime time cap has been reached and will start HT after the point.";
     }
     if (hardCapReached) {
-      if ((rules.gameHardCapEndMode || "afterPoint") === "afterPoint") {
-        return "Hard cap has been reached and play will end after the point.";
-      }
-      return "Hard cap has been reached.";
+      return "Time cap reached, new match target set.";
     }
     if (softCapApplied) {
-      return "Soft cap has been reached and is now in effect.";
+      return "Time cap reached, new match target set.";
     }
     return null;
   })();

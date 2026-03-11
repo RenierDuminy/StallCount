@@ -50,6 +50,7 @@ import {
 const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
+const TIME_CAP_TARGET_LABEL = "Time cap reached, new match target set.";
 
 const OPTIMISTIC_PREFIX = "local-";
 
@@ -1074,19 +1075,9 @@ useEffect(() => {
 
   useEffect(() => {
     if (!timerRunning && !secondaryRunning) return undefined;
-    const hasScoreCapWinner = Boolean(
-      scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget)
-    );
-    const allowOvertime = matchStarted && !hasScoreCapWinner;
     const tick = () => {
       if (timerRunning) {
-        const remainingPrimary = getPrimaryRemainingSeconds();
-        if (!allowOvertime && remainingPrimary <= 0) {
-          setTimerSeconds(0);
-          commitPrimaryTimerState(0, false);
-        } else {
-          setTimerSeconds(remainingPrimary);
-        }
+        setTimerSeconds(getPrimaryRemainingSeconds());
       }
       if (secondaryRunning) {
         const remainingSecondary = getSecondaryRemainingSeconds();
@@ -1105,12 +1096,7 @@ useEffect(() => {
     secondaryRunning,
     getPrimaryRemainingSeconds,
     getSecondaryRemainingSeconds,
-    commitPrimaryTimerState,
     commitSecondaryTimerState,
-    matchStarted,
-    scoreTarget,
-    score.a,
-    score.b,
   ]);
 
 useEffect(() => {
@@ -1147,6 +1133,7 @@ useEffect(() => {
       rules.gamePointTarget || highest + increment
     );
     setScoreTarget(nextTarget);
+    setTimerLabel(TIME_CAP_TARGET_LABEL);
     setSoftCapApplied(true);
   }, [
     matchStarted,
@@ -1154,10 +1141,10 @@ useEffect(() => {
     rules.gameSoftCapMinutes,
     rules.matchDuration,
     rules.gameSoftCapMode,
-    rules.gamePointTarget,
-    timerSeconds,
-    score.a,
-    score.b,
+  rules.gamePointTarget,
+  timerSeconds,
+  score.a,
+  score.b,
   ]);
 
 useEffect(() => {
@@ -1169,9 +1156,12 @@ useEffect(() => {
     const nextTarget = Math.max(score.a, score.b) + 1;
     setScoreTarget(nextTarget);
     setTimeCapTargetApplied(true);
+    setTimerLabel(TIME_CAP_TARGET_LABEL);
   }
   if (rules.gameHardCapEndMode === "immediate") {
-    setTimerLabel("Time cap reached");
+    if (timeCapTargetMode !== "addOneToHighest") {
+      setTimerLabel(TIME_CAP_TARGET_LABEL);
+    }
     setTimerRunning(false);
   }
 }, [
@@ -1196,11 +1186,9 @@ useEffect(() => {
     scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget)
   );
   const softCapMode = rules.gameSoftCapMode || "none";
-  const softCapTarget = Math.max(score.a, score.b) + 1;
-  if (timerSeconds <= 0 && softCapMode === "addOneToHighest" && !hasScoreCapWinner) {
-    const nextLabel = `SOFT CAP, TARGET: ${softCapTarget}`;
-    if (timerLabel !== nextLabel) {
-      setTimerLabel(nextLabel);
+  if (softCapApplied && softCapMode !== "none" && !hasScoreCapWinner) {
+    if (timerLabel !== TIME_CAP_TARGET_LABEL) {
+      setTimerLabel(TIME_CAP_TARGET_LABEL);
     }
     return;
   }
@@ -1219,6 +1207,7 @@ useEffect(() => {
   matchStarted,
   hardCapReached,
   timerSeconds,
+  softCapApplied,
   scoreTarget,
   score.a,
   score.b,
@@ -2329,14 +2318,16 @@ const replaceSecondaryTimer = useCallback(
             (entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.MATCH_START && entry.timestamp
           );
           if (matchStartLog) {
-            const durationSeconds = (rules.matchDuration || DEFAULT_DURATION) * 60;
-            const elapsedSeconds = Math.max(
-              0,
-              Math.floor((Date.now() - new Date(matchStartLog.timestamp).getTime()) / 1000)
+            const matchStatus = String(
+              (activeMatch?.status || selectedMatch?.status || "").toLowerCase()
             );
-            const remainingSeconds = Math.max(0, durationSeconds - elapsedSeconds);
-            const shouldRunPrimary =
-              remainingSeconds > 0 && !stoppageActiveRef.current;
+            const isFinished = matchStatus === "finished" || matchStatus === "completed";
+            const durationSeconds = (rules.matchDuration || DEFAULT_DURATION) * 60;
+            const elapsedSeconds = Math.floor(
+              (Date.now() - new Date(matchStartLog.timestamp).getTime()) / 1000
+            );
+            const remainingSeconds = durationSeconds - elapsedSeconds;
+            const shouldRunPrimary = !isFinished && !stoppageActiveRef.current;
             commitPrimaryTimerState(remainingSeconds, shouldRunPrimary);
             setTimerLabel("Game time");
             setMatchStarted(true);
@@ -2353,7 +2344,7 @@ const replaceSecondaryTimer = useCallback(
         setLogsLoading(false);
       }
     },
-    [deriveLogsFromRows, matchLogMatchId]
+    [deriveLogsFromRows, matchLogMatchId, activeMatch?.status, selectedMatch?.status, rules.matchDuration]
   );
 
   useEffect(() => {

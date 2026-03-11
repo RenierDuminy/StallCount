@@ -43,6 +43,7 @@ const SpiritScoresPage = lazy(() => import("./pages/SpiritScoresPage"));
 const TournamentDirectorPage = lazy(() => import("./pages/TournamentDirectorPage"));
 const MediaAdminPage = lazy(() => import("./pages/MediaAdminPage"));
 const EventRostersPageLazy = lazy(() => import("./pages/EventRostersPage"));
+const EventRulesPageLazy = lazy(() => import("./pages/EventRulesPage"));
 
 const routeFallback = (
   <div className="sc-shell flex min-h-[40vh] items-center justify-center text-sm text-[var(--sc-ink-muted)]">
@@ -83,6 +84,7 @@ export default function AppRoutes() {
           <Route path="/events" element={<EventsPage />} />
           <Route path="/community" element={<CommunityPage />} />
           <Route path="/event-rosters" element={<EventRostersPageLazy />} />
+          <Route path="/event-rules" element={<EventRulesPageLazy />} />
           {eventWorkspaces.map((workspace) => (
             <Route
               key={workspace.path}

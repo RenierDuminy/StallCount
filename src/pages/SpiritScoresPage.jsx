@@ -186,7 +186,7 @@ export default function SpiritScoresPage() {
                 await updateMatchStatus(selectedMatchId, "completed");
 
                 setSubmitState({
-                  message: "Spirit scores submitted successfully.",
+                  message: "Spirit scores submitted",
                   variant: "success",
                 });
               } catch (err) {
