@@ -1107,6 +1107,14 @@ export default function ScrimmageView() {
                 : "recently"}.
             </p>
             <div className="rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-3 text-xs">
+              <button
+                type="button"
+                onClick={handleResumeSession}
+                disabled={resumeBusy}
+                className="mb-3 inline-flex w-full items-center justify-center rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {resumeBusy ? "Loading..." : "Resume session"}
+              </button>
               <p className="font-semibold uppercase tracking-wide text-[#0f5132]/70">
                 Snapshot
               </p>
@@ -1123,15 +1131,7 @@ export default function ScrimmageView() {
                 {resumeError}
               </p>
             )}
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={handleResumeSession}
-                disabled={resumeBusy}
-                className="inline-flex items-center justify-center rounded-full bg-[#0f5132] px-4 py-2 text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {resumeBusy ? "Loading..." : "Resume session"}
-              </button>
+            <div className="grid gap-2">
               <button
                 type="button"
                 onClick={handleStartNewMatch}

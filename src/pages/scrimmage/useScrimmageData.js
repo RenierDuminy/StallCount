@@ -44,6 +44,34 @@ function buildDummyRosters() {
   };
 }
 
+function normalizeSnapshotRosters(rawRosters) {
+  const normalizeTeam = (players) => {
+    if (!Array.isArray(players)) return [];
+    return players
+      .map((player) => {
+        const id = player?.id ? String(player.id) : "";
+        if (!id) return null;
+        const jerseyCandidate = Number(player?.jersey_number);
+        return {
+          id,
+          name: player?.name ? String(player.name) : "Player",
+          jersey_number:
+            Number.isFinite(jerseyCandidate) && jerseyCandidate >= 0
+              ? jerseyCandidate
+              : undefined,
+        };
+      })
+      .filter(Boolean);
+  };
+
+  const teamA = normalizeTeam(rawRosters?.teamA);
+  const teamB = normalizeTeam(rawRosters?.teamB);
+  if (!teamA.length && !teamB.length) {
+    return buildDummyRosters();
+  }
+  return { teamA, teamB };
+}
+
 function deriveElapsedTimerSnapshot(snapshot, fallbackSeconds, fallbackLabel) {
   const safeFallback = Number.isFinite(fallbackSeconds) ? fallbackSeconds : 0;
   const baseSeconds = Number.isFinite(snapshot?.seconds) ? snapshot.seconds : safeFallback;
@@ -360,11 +388,13 @@ export function useScrimmageData() {
     if (!sessionKey) return;
     const stored = loadScrimmageSession(sessionKey);
     if (stored?.data?.matchId === SCRIMMAGE_MATCH_ID) {
+      setRosters(normalizeSnapshotRosters(stored.data.rosters));
       setResumeCandidate(stored.data);
       setResumeHandled(false);
       setResumeError(null);
       setResumeBusy(false);
     } else {
+      setRosters(buildDummyRosters());
       setResumeCandidate(null);
       setResumeHandled(true);
       setResumeError(null);
@@ -384,6 +414,7 @@ export function useScrimmageData() {
     try {
       const snapshotRules = normalizeScrimmageRules(resumeCandidate.rules || DEFAULT_RULES);
       setRules(snapshotRules);
+      setRosters(normalizeSnapshotRosters(resumeCandidate.rosters));
       setSetupForm((prev) => ({
         ...prev,
         ...resumeCandidate.setupForm,
@@ -484,6 +515,10 @@ export function useScrimmageData() {
       rules: JSON.parse(JSON.stringify(rules)),
       score: { ...score },
       logs,
+      rosters: {
+        teamA: (rosters.teamA || []).map((player) => ({ ...player })),
+        teamB: (rosters.teamB || []).map((player) => ({ ...player })),
+      },
       timer: {
         seconds: getPrimaryRemainingSeconds(),
         running: timerRunning,
@@ -509,6 +544,7 @@ export function useScrimmageData() {
     rules,
     score,
     logs,
+    rosters,
     getPrimaryRemainingSeconds,
     timerRunning,
     timerLabel,
