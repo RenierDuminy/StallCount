@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Card,
   Panel,
@@ -139,6 +139,7 @@ const TeamTable = ({ rows }) => {
 };
 
 export default function Event5779WorkspacePage() {
+  const navigate = useNavigate();
   const [matches, setMatches] = useState([]);
   const [eventData, setEventData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -244,8 +245,30 @@ export default function Event5779WorkspacePage() {
     const liveOrFinal =
       isLiveMatch(match.status) || isFinishedMatch(match.status);
     const mediaDetails = getMatchMediaDetails(match);
+    const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
     return (
-      <Panel key={match.id} variant="tinted" className="space-y-4 p-4">
+      <Panel
+        key={match.id}
+        variant="tinted"
+        className={`space-y-4 p-4 ${
+          matchHref
+            ? "cursor-pointer transition focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50"
+            : ""
+        }`}
+        role={matchHref ? "link" : undefined}
+        tabIndex={matchHref ? 0 : undefined}
+        onClick={matchHref ? () => navigate(matchHref) : undefined}
+        onKeyDown={
+          matchHref
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  navigate(matchHref);
+                }
+              }
+            : undefined
+        }
+      >
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
@@ -285,6 +308,8 @@ export default function Event5779WorkspacePage() {
               target="_blank"
               rel="noreferrer"
               className="sc-button is-ghost text-xs"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
             >
               {mediaDetails.providerLabel || "Watch"}
             </a>

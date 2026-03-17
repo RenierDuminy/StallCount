@@ -13,6 +13,7 @@ export const EVENT_ID = "2fb09ada-9a69-47ae-bfc5-96a3bca759e9";
 export const EVENT_SLUG = "internal-draft-league-5";
 export const EVENT_NAME = "Internal Draft League 5";
 const MATCH_LIMIT = 200;
+const BUMPER_PLAYOFF_POOL_ID = "84d96b1b-2d4d-4dc6-99ba-ecf6871aa627";
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const WEEK_LABELS = ["W1", "W2", "W3", "W4", "W5"];
@@ -23,7 +24,6 @@ const MATCH_WEEK_SCHEDULE = [
   { key: "week-4", title: "Week 4", dateLabel: "10 Mar", month: 3, day: 10 },
   { key: "week-5", title: "Week 5", dateLabel: "17 Mar", month: 3, day: 17 },
 ];
-const WEEK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const RESULT_LABELS = {
   win: "Win",
   loss: "Loss",
@@ -84,37 +84,6 @@ const getMatchTimestamp = (match) => {
   if (!source) return null;
   const timestamp = new Date(source).getTime();
   return Number.isNaN(timestamp) ? null : timestamp;
-};
-
-const getWeekStartTimestampsForYear = (year) =>
-  MATCH_WEEK_SCHEDULE.map((week) => Date.UTC(year, week.month - 1, week.day));
-
-const getWeekIndexForTimestamp = (timestamp) => {
-  if (typeof timestamp !== "number") return MATCH_WEEK_SCHEDULE.length - 1;
-  const year = new Date(timestamp).getUTCFullYear();
-  if (!Number.isFinite(year)) return MATCH_WEEK_SCHEDULE.length - 1;
-
-  const starts = getWeekStartTimestampsForYear(year);
-  for (let index = 0; index < starts.length; index += 1) {
-    const start = starts[index];
-    const end =
-      index < starts.length - 1 ? starts[index + 1] : start + WEEK_WINDOW_MS;
-    if (timestamp >= start && timestamp < end) {
-      return index;
-    }
-  }
-
-  let closestIndex = 0;
-  let closestDistance = Infinity;
-  starts.forEach((start, index) => {
-    const distance = Math.abs(start - timestamp);
-    if (distance < closestDistance) {
-      closestDistance = distance;
-      closestIndex = index;
-    }
-  });
-
-  return closestIndex;
 };
 
 const getWeekKey = (timestamp) => {
@@ -234,22 +203,35 @@ export default function InternalDraftLeague5Page() {
 
     matches.forEach((match) => {
       const timestamp = getMatchTimestamp(match);
-      if (timestamp === null) {
-        buckets[MATCH_WEEK_SCHEDULE.length - 1].push(match);
-        return;
+      if (timestamp === null) return;
+      const matchDate = new Date(timestamp);
+      const weekIndex = MATCH_WEEK_SCHEDULE.findIndex(
+        (week) =>
+          week.month === matchDate.getUTCMonth() + 1 &&
+          week.day === matchDate.getUTCDate(),
+      );
+      if (weekIndex !== -1) {
+        buckets[weekIndex].push(match);
       }
-      const weekIndex = getWeekIndexForTimestamp(timestamp);
-      buckets[weekIndex].push(match);
     });
 
     return MATCH_WEEK_SCHEDULE.map((week, index) => ({
       key: week.key,
       title: `${week.title} (${week.dateLabel})`,
-      description: `Fixtures grouped for ${week.dateLabel}.`,
+      description: `Fixtures scheduled for ${week.dateLabel}.`,
       dataset: buckets[index].slice().sort(sortByStartTimeAsc),
       empty: `No matches scheduled for ${week.title.toLowerCase()}.`,
     }));
   }, [matches]);
+
+  const bumperPlayoffMatches = useMemo(
+    () =>
+      matches
+        .filter((match) => match?.pool_id === BUMPER_PLAYOFF_POOL_ID)
+        .slice()
+        .sort(sortByStartTimeAsc),
+    [matches],
+  );
 
   const teams = useMemo(() => {
     const map = new Map();
@@ -327,6 +309,7 @@ export default function InternalDraftLeague5Page() {
         return {
           team,
           weekResults,
+          rank: 0,
           played,
           winLossPct: formatWinLossPercentage(wins, draws, played),
           scoreDiff,
@@ -338,7 +321,11 @@ export default function InternalDraftLeague5Page() {
           b.points - a.points ||
           b.scoreDiff - a.scoreDiff ||
           a.team.name.localeCompare(b.team.name),
-      );
+      )
+      .map((row, index) => ({
+        ...row,
+        rank: index + 1,
+      }));
   }, [matches, matchesByWeek, teams]);
 
   const renderMatchCard = (match) => {
@@ -429,6 +416,7 @@ export default function InternalDraftLeague5Page() {
               <table className="min-w-full text-sm">
                 <thead className="bg-surface-muted text-xs uppercase tracking-wide text-ink">
                   <tr className="border-b border-border">
+                    <th className="px-3 py-2 text-center font-semibold">Rank</th>
                     <th className="px-3 py-2 text-left font-semibold">Team</th>
                     {WEEK_LABELS.map((label) => (
                       <th
@@ -456,6 +444,9 @@ export default function InternalDraftLeague5Page() {
                             : "var(--sc-surface-muted)",
                       }}
                     >
+                      <td className="px-3 py-2 text-center font-semibold">
+                        {row.rank}
+                      </td>
                       <td className="px-3 py-2 font-semibold">
                         {row.team.name}
                       </td>
@@ -513,6 +504,26 @@ export default function InternalDraftLeague5Page() {
             )}
           </Card>
         ))}
+
+        <Card className="space-y-4 p-5 sm:p-6">
+          <SectionHeader
+            eyebrow="Playoffs"
+            title="Bumper event playoffs"
+            description="Playoff matches linked to the Bumper playoff pool."
+          />
+          {bumperPlayoffMatches.length === 0 ? (
+            <Card
+              variant="muted"
+              className="p-5 text-center text-sm text-ink-muted"
+            >
+              No playoff matches linked yet.
+            </Card>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {bumperPlayoffMatches.map((match) => renderMatchCard(match))}
+            </div>
+          )}
+        </Card>
       </SectionShell>
     </div>
   );

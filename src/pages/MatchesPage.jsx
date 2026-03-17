@@ -1502,11 +1502,10 @@ function deriveMatchInsights(match, logs) {
   const halftimeEvents = [];
 
   const toClockMs = (value) => {
-    const parts = parseTimeParts(value);
-    if (!parts) return null;
-    return (
-      parts.hours * 3600000 + parts.minutes * 60000 + parts.seconds * 1000 + parts.milliseconds
-    );
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.getTime();
   };
 
   let timelineStart = toClockMs(match.start_time);
@@ -2130,28 +2129,16 @@ function formatGap(diffMs) {
   return `${minutes}:${seconds}`;
 }
 
-function parseTimeParts(value) {
-  if (!value) return null;
-  const text = typeof value === "string" ? value : value?.toISOString?.();
-  if (typeof text !== "string") return null;
-  const match = text.match(/(?:T|\s)(\d{2}):(\d{2}):(\d{2})(\.(\d+))?/);
-  if (!match) return null;
-  const milliText = match[5] ? match[5].padEnd(3, "0").slice(0, 3) : "0";
-  return {
-    hours: Number(match[1]),
-    minutes: Number(match[2]),
-    seconds: Number(match[3]),
-    milliseconds: Number(milliText),
-  };
-}
-
 function formatTimeLabel(ms, includeSeconds = false) {
   if (!Number.isFinite(ms)) return "--:--";
-  const hours = Math.floor(ms / 3600000) % 24;
-  const minutes = Math.floor((ms % 3600000) / 60000);
-  const seconds = Math.floor((ms % 60000) / 1000);
-  const base = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-  return includeSeconds ? `${base}:${String(seconds).padStart(2, "0")}` : base;
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return "--:--";
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(includeSeconds ? { second: "2-digit" } : {}),
+    hour12: false,
+  });
 }
 
 function formatDurationLong(ms) {

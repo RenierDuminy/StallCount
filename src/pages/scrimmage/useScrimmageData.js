@@ -119,6 +119,18 @@ function createLocalId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function normalizeSecondaryEventMeta(meta) {
+  if (!meta || typeof meta !== "object") return null;
+  if (!meta.endCode) return null;
+  return {
+    teamKey: meta.teamKey === "A" || meta.teamKey === "B" ? meta.teamKey : null,
+    startCode: meta.startCode || null,
+    startDescription: meta.startDescription || null,
+    endCode: meta.endCode || null,
+    endDescription: meta.endDescription || null,
+  };
+}
+
 function normalizePrimaryTimerState(seconds, running) {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds)) : 0;
   const clampedSeconds = Math.min(safeSeconds, MAX_SCRIMMAGE_TIMER_SECONDS);
@@ -199,6 +211,8 @@ export function useScrimmageData() {
     baseSeconds: getRuleTimeoutSeconds(DEFAULT_RULES),
     anchorTimestamp: null,
   });
+  const activeSecondaryEventRef = useRef(null);
+  const previousSecondaryRunningRef = useRef(false);
 
   const abbaPattern = useMemo(() => getRuleAbbaPattern(rules), [rules]);
 
@@ -279,6 +293,72 @@ export function useScrimmageData() {
   const appendLocalLog = useCallback((entry) => {
     setLogs((prev) => [...prev, entry]);
   }, []);
+
+  const appendSecondaryEventLog = useCallback(
+    (eventCode, eventDescription, teamKey, totalsOverride = null, timestamp = null) => {
+      if (!eventCode) return null;
+      const totals = totalsOverride || score;
+      const logEntry = {
+        id: createLocalId("secondary-event"),
+        eventCode,
+        eventDescription: eventDescription || "Match event",
+        team: teamKey === "A" || teamKey === "B" ? teamKey : null,
+        timestamp: timestamp || new Date().toISOString(),
+        totalA: totals?.a ?? 0,
+        totalB: totals?.b ?? 0,
+      };
+      appendLocalLog(logEntry);
+      return logEntry;
+    },
+    [appendLocalLog, score]
+  );
+
+  const finalizeSecondaryTimerEvent = useCallback(
+    (options = {}) => {
+      const meta = normalizeSecondaryEventMeta(activeSecondaryEventRef.current);
+      activeSecondaryEventRef.current = null;
+      if (!meta?.endCode) {
+        return null;
+      }
+      appendSecondaryEventLog(
+        meta.endCode,
+        meta.endDescription,
+        meta.teamKey,
+        options.totalsOverride || null,
+        options.timestamp || null
+      );
+      return meta;
+    },
+    [appendSecondaryEventLog]
+  );
+
+  const startTrackedSecondaryTimer = useCallback(
+    (duration, label, meta = null) => {
+      finalizeSecondaryTimerEvent();
+      const normalizedMeta = normalizeSecondaryEventMeta(meta);
+      if (normalizedMeta?.startCode) {
+        appendSecondaryEventLog(
+          normalizedMeta.startCode,
+          normalizedMeta.startDescription,
+          normalizedMeta.teamKey
+        );
+      }
+      activeSecondaryEventRef.current = normalizedMeta;
+      const nextDuration = Number.isFinite(duration) ? Math.max(0, Math.round(duration)) : 0;
+      setSecondaryTotalSeconds(nextDuration);
+      commitSecondaryTimerState(nextDuration, true);
+      setSecondaryLabel(label || DEFAULT_SECONDARY_LABEL);
+      setSecondaryFlashActive(false);
+      setSecondaryFlashPulse(false);
+    },
+    [
+      appendSecondaryEventLog,
+      commitSecondaryTimerState,
+      finalizeSecondaryTimerEvent,
+      setSecondaryFlashActive,
+      setSecondaryFlashPulse,
+    ]
+  );
 
   const resolveRosterName = useCallback(
     (playerId) => {
@@ -385,6 +465,13 @@ export function useScrimmageData() {
   ]);
 
   useEffect(() => {
+    if (previousSecondaryRunningRef.current && !secondaryRunning) {
+      finalizeSecondaryTimerEvent();
+    }
+    previousSecondaryRunningRef.current = secondaryRunning;
+  }, [secondaryRunning, finalizeSecondaryTimerEvent]);
+
+  useEffect(() => {
     if (!sessionKey) return;
     const stored = loadScrimmageSession(sessionKey);
     if (stored?.data?.matchId === SCRIMMAGE_MATCH_ID) {
@@ -413,14 +500,15 @@ export function useScrimmageData() {
 
     try {
       const snapshotRules = normalizeScrimmageRules(resumeCandidate.rules || DEFAULT_RULES);
+      const restoredScore = resumeCandidate.score || { a: 0, b: 0 };
+      const restoredLogs = Array.isArray(resumeCandidate.logs) ? [...resumeCandidate.logs] : [];
       setRules(snapshotRules);
       setRosters(normalizeSnapshotRosters(resumeCandidate.rosters));
       setSetupForm((prev) => ({
         ...prev,
         ...resumeCandidate.setupForm,
       }));
-      setScore(resumeCandidate.score || { a: 0, b: 0 });
-      setLogs(Array.isArray(resumeCandidate.logs) ? resumeCandidate.logs : []);
+      setScore(restoredScore);
       setTimeoutUsage({ ...DEFAULT_TIMEOUT_USAGE, ...(resumeCandidate.timeoutUsage || {}) });
       setPossessionTeam(resumeCandidate.possessionTeam || null);
       setMatchStarted(Boolean(resumeCandidate.matchStarted));
@@ -455,6 +543,34 @@ export function useScrimmageData() {
       secondaryTimerAnchorRef.current = secondaryTimer.running
         ? { baseSeconds: secondaryTimer.seconds, anchorTimestamp: Date.now() }
         : { baseSeconds: secondaryTimer.seconds, anchorTimestamp: null };
+      const restoredSecondaryEvent = normalizeSecondaryEventMeta(
+        resumeCandidate.activeSecondaryEvent
+      );
+      const shouldCloseRestoredSecondaryEvent =
+        Boolean(restoredSecondaryEvent?.endCode) &&
+        Boolean(resumeCandidate.secondaryTimer?.running) &&
+        !secondaryTimer.running;
+      if (shouldCloseRestoredSecondaryEvent) {
+        const savedAt = Number(resumeCandidate.secondaryTimer?.savedAt);
+        const savedSeconds = Number(resumeCandidate.secondaryTimer?.seconds);
+        const estimatedEndTimestamp =
+          Number.isFinite(savedAt) && Number.isFinite(savedSeconds)
+            ? new Date(savedAt + Math.max(0, savedSeconds) * 1000).toISOString()
+            : new Date().toISOString();
+        restoredLogs.push({
+          id: createLocalId("secondary-event"),
+          eventCode: restoredSecondaryEvent.endCode,
+          eventDescription: restoredSecondaryEvent.endDescription || "Match event",
+          team: restoredSecondaryEvent.teamKey,
+          timestamp: estimatedEndTimestamp,
+          totalA: restoredScore?.a ?? 0,
+          totalB: restoredScore?.b ?? 0,
+        });
+        activeSecondaryEventRef.current = null;
+      } else {
+        activeSecondaryEventRef.current = secondaryTimer.running ? restoredSecondaryEvent : null;
+      }
+      setLogs(restoredLogs);
 
       setConsoleReady(true);
       setResumeHandled(true);
@@ -493,6 +609,8 @@ export function useScrimmageData() {
       baseSeconds: getRuleTimeoutSeconds(DEFAULT_RULES),
       anchorTimestamp: null,
     };
+    activeSecondaryEventRef.current = null;
+    previousSecondaryRunningRef.current = false;
     clearScrimmageSession(sessionKey);
   }, [sessionKey]);
 
@@ -533,6 +651,9 @@ export function useScrimmageData() {
         savedAt: now,
         totalSeconds: secondaryTotalSeconds,
       },
+      activeSecondaryEvent: activeSecondaryEventRef.current
+        ? { ...activeSecondaryEventRef.current }
+        : null,
       timeoutUsage: { ...timeoutUsage },
       possessionTeam,
       stoppageActive,
@@ -754,8 +875,11 @@ export function useScrimmageData() {
     getSecondaryRemainingSeconds,
     commitPrimaryTimerState,
     commitSecondaryTimerState,
+    startTrackedSecondaryTimer,
+    finalizeSecondaryTimerEvent,
     buildSessionSnapshot,
     appendLocalLog,
+    appendSecondaryEventLog,
     updatePossession,
     loadMatches,
     handleResumeSession,
@@ -766,5 +890,6 @@ export function useScrimmageData() {
     secondaryResetTriggeredRef,
     primaryTimerAnchorRef,
     secondaryTimerAnchorRef,
+    activeSecondaryEventRef,
   };
 }

@@ -21,6 +21,7 @@ CREATE TABLE public.bracket_nodes (
   bracket_id uuid NOT NULL,
   round integer NOT NULL,
   position integer NOT NULL,
+  name text,
   match_id uuid UNIQUE,
   source_a jsonb NOT NULL,
   source_b jsonb NOT NULL,

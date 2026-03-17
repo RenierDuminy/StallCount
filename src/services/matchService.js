@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import { getCachedQuery } from "../utils/queryCache";
+import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
 
 const RECENT_MATCHES_CACHE_TTL_MS = 30 * 1000;
 const OPEN_MATCHES_CACHE_TTL_MS = 30 * 1000;
@@ -175,6 +175,34 @@ export async function updateMatchStatus(matchId, nextStatus = "finished") {
 
   if (error) {
     throw new Error(error.message || "Failed to update match status");
+  }
+
+  return data || null;
+}
+
+export async function updateMatchParticipants(matchId, payload = {}) {
+  if (!matchId) {
+    throw new Error("Match ID is required to update participants.");
+  }
+
+  const updatePayload = {
+    team_a: payload.teamAId || null,
+    team_b: payload.teamBId || null,
+  };
+
+  const { data, error } = await supabase
+    .from("matches")
+    .update(updatePayload)
+    .eq("id", matchId)
+    .select(MATCH_FIELDS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to update match participants");
+  }
+
+  if (data?.event_id) {
+    invalidateCachedQueries(`matches:event:${data.event_id}`);
   }
 
   return data || null;

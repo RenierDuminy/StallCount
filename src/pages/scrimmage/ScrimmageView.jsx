@@ -125,6 +125,7 @@ export default function ScrimmageView() {
     secondaryTimerBg,
     secondaryResetTriggeredRef,
     commitSecondaryTimerState,
+    finalizeSecondaryTimerEvent,
     setSecondaryTotalSeconds,
     setSecondaryLabel,
     setSecondaryFlashActive,
@@ -705,6 +706,7 @@ export default function ScrimmageView() {
       setSecondaryFlashPulse(false);
       return;
     }
+    finalizeSecondaryTimerEvent();
     const duration = discussionSeconds;
     commitSecondaryTimerState(duration, true);
     setSecondaryTotalSeconds(duration);

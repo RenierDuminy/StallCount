@@ -1,5 +1,8 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { Card, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
+import { normaliseRoleList } from "../utils/accessControl";
 
 const ADMIN_MODULES = [
   {
@@ -73,6 +76,14 @@ const ADMIN_MODULES = [
     accent: "bg-slate-200 text-slate-800",
   },
   {
+    label: "Playoff structure",
+    description:
+      "Inspect bracket definitions, linked playoff matches, and future source-based resolution work.",
+    to: "/admin/playoff-structure",
+    accent: "bg-orange-100 text-orange-700",
+    allowedRoles: ["admin", "administrator", "sys_admin", "tournament_director"],
+  },
+  {
     label: "Media",
     description:
       "Attach or edit stream links for existing matches without leaving the admin suite.",
@@ -95,6 +106,26 @@ const ADMIN_MODULES = [
 ];
 
 export default function AdminPage() {
+  const { roles } = useAuth();
+  const visibleModules = useMemo(() => {
+    return ADMIN_MODULES.filter((module) => {
+      if (!Array.isArray(module.allowedRoles) || module.allowedRoles.length === 0) {
+        return true;
+      }
+
+      if (!Array.isArray(roles)) {
+        return false;
+      }
+
+      return roles.some((assignment) => {
+        const roleNames = normaliseRoleList(
+          assignment?.roleName || assignment?.role?.name || assignment?.name || "",
+        );
+        return roleNames.some((roleName) => module.allowedRoles.includes(roleName));
+      });
+    });
+  }, [roles]);
+
   return (
     <div className="pb-16 text-ink">
       <SectionShell as="header" className="py-6">
@@ -109,7 +140,7 @@ export default function AdminPage() {
 
       <SectionShell as="main" className="space-y-6 py-6">
         <div className="grid gap-6 md:grid-cols-3">
-          {ADMIN_MODULES.map((module) => (
+          {visibleModules.map((module) => (
             <Panel
               key={module.label}
               variant="tinted"

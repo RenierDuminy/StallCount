@@ -155,6 +155,22 @@ const toDateTimeLocalValue = (value) => {
   )}:${pad(date.getMinutes())}`;
 };
 
+const createEmptyMatchForm = (overrides = {}) => {
+  return {
+    id: null,
+    poolId: "",
+    matchPoolId: "",
+    teamA: "",
+    teamAId: "",
+    teamB: "",
+    teamBId: "",
+    start: "",
+    status: "scheduled",
+    venueRefId: "",
+    ...overrides,
+  };
+};
+
 const formatTeamOptionLabel = (team) => {
   if (!team) return "";
   return team.short_name ? `${team.name} (${team.short_name})` : team.name;
@@ -175,6 +191,45 @@ const formatVenueOptionLabel = (venue) => {
   const location =
     (venue.location || "Location TBD").trim() || "Location TBD";
   return `${city} - ${location} - ${name}`;
+};
+
+const findTopDivisionTeamSuggestion = (value, divisionTeams = []) => {
+  const input = (value || "").trim().toLowerCase();
+  if (!divisionTeams.length) {
+    return null;
+  }
+
+  const exactMatch =
+    divisionTeams.find((team) => {
+      const displayLabel = (team?.displayLabel || team?.name || "").trim().toLowerCase();
+      const name = (team?.name || "").trim().toLowerCase();
+      const shortName = (team?.shortName || "").trim().toLowerCase();
+      return displayLabel === input || name === input || shortName === input;
+    }) || null;
+
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  if (input) {
+    const partialMatch =
+      divisionTeams.find((team) => {
+        const displayLabel = (team?.displayLabel || team?.name || "").trim().toLowerCase();
+        const name = (team?.name || "").trim().toLowerCase();
+        const shortName = (team?.shortName || "").trim().toLowerCase();
+        return (
+          displayLabel.includes(input) ||
+          name.includes(input) ||
+          shortName.includes(input)
+        );
+      }) || null;
+
+    if (partialMatch) {
+      return partialMatch;
+    }
+  }
+
+  return divisionTeams[0] || null;
 };
 
 const normalizeSortValue = (value) =>
@@ -393,31 +448,8 @@ export default function EventSetupWizardPage() {
   );
   const [matchForm, setMatchForm] = useState(() =>
     persistedDraft.matchForm && typeof persistedDraft.matchForm === "object"
-      ? {
-          id: null,
-          poolId: "",
-          matchPoolId: "",
-          teamA: "",
-          teamAId: "",
-          teamB: "",
-          teamBId: "",
-          start: "",
-          status: "scheduled",
-          venueRefId: "",
-          ...persistedDraft.matchForm,
-        }
-      : {
-          id: null,
-          poolId: "",
-          matchPoolId: "",
-          teamA: "",
-          teamAId: "",
-          teamB: "",
-          teamBId: "",
-          start: "",
-          status: "scheduled",
-          venueRefId: "",
-        },
+      ? createEmptyMatchForm(persistedDraft.matchForm)
+      : createEmptyMatchForm(),
   );
   const [rules, setRules] = useState(() =>
     persistedDraft.rules && typeof persistedDraft.rules === "object"
@@ -475,18 +507,7 @@ export default function EventSetupWizardPage() {
     setDivisionTeamForm({ divisionId: "", name: "" });
     setPoolForm({ id: null, divisionId: "", name: "" });
     setTeamForm({ id: null, poolId: "", teamId: "", name: "", seed: "" });
-    setMatchForm({
-      id: null,
-      poolId: "",
-      matchPoolId: "",
-      teamA: "",
-      teamAId: "",
-      teamB: "",
-      teamBId: "",
-      start: "",
-      status: "scheduled",
-      venueRefId: "",
-    });
+    setMatchForm(createEmptyMatchForm());
   }, []);
 
   const poolOptions = useMemo(
@@ -1059,18 +1080,7 @@ export default function EventSetupWizardPage() {
     );
     setMatchForm((prev) =>
       prev.poolId === poolId
-        ? {
-            id: null,
-            poolId: "",
-            matchPoolId: "",
-            teamA: "",
-            teamAId: "",
-            teamB: "",
-            teamBId: "",
-            start: "",
-            status: "scheduled",
-            venueRefId: "",
-          }
+        ? createEmptyMatchForm()
         : prev,
     );
   };
@@ -1365,18 +1375,12 @@ export default function EventSetupWizardPage() {
         matches: [...matches, next].slice().sort(compareMatchSchedule),
       };
     });
-    setMatchForm({
-      id: null,
-      poolId,
-      matchPoolId: poolId,
-      teamA: "",
-      teamAId: "",
-      teamB: "",
-      teamBId: "",
-      start: "",
-      status: "scheduled",
-      venueRefId: "",
-    });
+    setMatchForm(
+      createEmptyMatchForm({
+        poolId,
+        matchPoolId: poolId,
+      }),
+    );
   };
 
   useEffect(() => {
@@ -3045,6 +3049,34 @@ export default function EventSetupWizardPage() {
     const canPlanMatches =
       Boolean(currentDivisionForMatches) &&
       (currentDivisionForMatches.divisionTeams || []).length > 0;
+    const handleMatchTeamTabComplete = (field) => (event) => {
+      if (
+        event.key !== "Tab" ||
+        event.shiftKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey
+      ) {
+        return;
+      }
+      const suggestion = findTopDivisionTeamSuggestion(
+        event.currentTarget.value,
+        currentDivisionForMatches?.divisionTeams || [],
+      );
+      if (!suggestion) {
+        return;
+      }
+      const label = suggestion.displayLabel || suggestion.name || "";
+      if (!label) {
+        return;
+      }
+      const idField = field === "teamA" ? "teamAId" : "teamBId";
+      setMatchForm((prev) => ({
+        ...prev,
+        [field]: label,
+        [idField]: suggestion.teamId || "",
+      }));
+    };
     return (
     <div className="wizard-stack-lg">
       {teamOptionsLoading && (
@@ -3230,6 +3262,7 @@ export default function EventSetupWizardPage() {
               onChange={(event) =>
                 setMatchForm((prev) => ({ ...prev, teamA: event.target.value }))
               }
+              onKeyDown={handleMatchTeamTabComplete("teamA")}
               list={matchDivisionDataListId}
               autoComplete="off"
               placeholder={
@@ -3245,6 +3278,7 @@ export default function EventSetupWizardPage() {
               onChange={(event) =>
                 setMatchForm((prev) => ({ ...prev, teamB: event.target.value }))
               }
+              onKeyDown={handleMatchTeamTabComplete("teamB")}
               list={matchDivisionDataListId}
               autoComplete="off"
               placeholder={

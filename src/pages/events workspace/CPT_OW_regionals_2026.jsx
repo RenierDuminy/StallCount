@@ -10,8 +10,8 @@ import {
 } from "../../components/ui/primitives";
 import { getMatchesByEvent } from "../../services/matchService";
 import { getEventHierarchy } from "../../services/leagueService";
-export const EVENT_ID = "0d3369f9-8461-4f02-b343-5679bb17d644";
-export const EVENT_SLUG = "ctfda-ow-league";
+export const EVENT_ID = "fcaea487-42a2-4aa3-ae89-21b29904ade6";
+export const EVENT_SLUG = "cpt-ow-regionals-2026";
 const MATCH_LIMIT = 400;
 const CURRENT_MATCH_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_MATCH_STATUSES = new Set(["finished", "completed"]);
@@ -93,27 +93,14 @@ const buildPoolMatchBuckets = (matches = []) => {
   matches.forEach((match) => {
     const poolId = match.pool_id || "unassigned";
     if (!buckets[poolId]) {
-      buckets[poolId] = { current: [], finished: [], other: [] };
+      buckets[poolId] = [];
     }
-    const normalizedStatus = (match.status || "").toLowerCase();
-    if (CURRENT_MATCH_STATUSES.has(normalizedStatus)) {
-      buckets[poolId].current.push(match);
-      return;
-    }
-    if (FINISHED_MATCH_STATUSES.has(normalizedStatus)) {
-      buckets[poolId].finished.push(match);
-      return;
-    }
-    buckets[poolId].other.push(match);
+    buckets[poolId].push(match);
   });
   Object.values(buckets).forEach((bucket) => {
-    bucket.current.sort(
+    bucket.sort(
       (a, b) =>
         new Date(a.start_time).getTime() - new Date(b.start_time).getTime(),
-    );
-    bucket.finished.sort(
-      (a, b) =>
-        new Date(b.start_time).getTime() - new Date(a.start_time).getTime(),
     );
   });
   return buckets;
@@ -153,6 +140,21 @@ const formatScoreDiff = (value) => {
   return value > 0 ? `+${value}` : `${value}`;
 };
 
+const sortStandingsRows = (rows = []) =>
+  [...rows].sort(
+    (a, b) =>
+      b.wins - a.wins ||
+      a.losses - b.losses ||
+      b.scoreDiff - a.scoreDiff ||
+      a.name.localeCompare(b.name),
+  );
+
+const withStandingRanks = (rows = []) =>
+  sortStandingsRows(rows).map((row, index) => ({
+    ...row,
+    rank: index + 1,
+  }));
+
 const buildDivisionStandings = (division, matchesByPool = {}) => {
   const standings = new Map(
     buildDivisionTeams(division).map((team) => [
@@ -169,8 +171,10 @@ const buildDivisionStandings = (division, matchesByPool = {}) => {
   );
 
   (division?.pools || []).forEach((pool) => {
-    const poolMatches = matchesByPool[pool.id] || {};
-    const finishedMatches = poolMatches.finished || [];
+    const poolMatches = matchesByPool[pool.id] || [];
+    const finishedMatches = poolMatches.filter((match) =>
+      FINISHED_MATCH_STATUSES.has((match?.status || "").toString().trim().toLowerCase()),
+    );
 
     finishedMatches.forEach((match) => {
       if (
@@ -205,13 +209,7 @@ const buildDivisionStandings = (division, matchesByPool = {}) => {
     });
   });
 
-  return Array.from(standings.values()).sort(
-    (a, b) =>
-      b.wins - a.wins ||
-      a.losses - b.losses ||
-      b.scoreDiff - a.scoreDiff ||
-      a.name.localeCompare(b.name),
-  );
+  return withStandingRanks(Array.from(standings.values()));
 };
 
 const TeamTable = ({ rows, columns }) => {
@@ -300,7 +298,7 @@ const renderMatchRow = (match, options = {}) => {
     />
   );
 };
-export default function DROwLeague26Page() {
+export default function CptOwRegionals2026Page() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [eventData, setEventData] = useState(null);
@@ -353,14 +351,17 @@ export default function DROwLeague26Page() {
       try {
         const [structure, matches] = await Promise.all([
           getEventHierarchy(EVENT_ID),
-          getMatchesByEvent(EVENT_ID, MATCH_LIMIT, { includeFinished: true }),
+          getMatchesByEvent(EVENT_ID, MATCH_LIMIT, {
+            includeFinished: true,
+            forceRefresh: true,
+          }),
         ]);
         if (ignore) return;
         setEventData(structure);
         setMatchesByPool(buildPoolMatchBuckets(matches));
       } catch (err) {
         if (!ignore) {
-          setError(err.message || "Unable to load OW League data.");
+          setError(err.message || "Unable to load event data.");
         }
       } finally {
         if (!ignore) {
@@ -392,6 +393,7 @@ export default function DROwLeague26Page() {
       window.clearTimeout(clearTimer);
     };
   }, [copyToast]);
+
   return (
     <div className="pb-16 text-ink">
       {copyToast && (
@@ -409,7 +411,7 @@ export default function DROwLeague26Page() {
         <Card className="space-y-4 border border-white/80 p-6 sm:p-8">
           <SectionHeader
             eyebrow="Operations Workspace"
-            title="OW League overview"
+            title="OW Regionals overview"
             description="Monitor the league structure along with live and completed matches grouped by pools."
           />
           <Panel variant="muted" className="p-4 text-sm text-ink">
@@ -504,6 +506,12 @@ export default function DROwLeague26Page() {
                   );
                   const divisionColumns = [
                     {
+                      key: "rank",
+                      label: "Rank",
+                      align: "center",
+                      render: (row) => row.rank ?? "--",
+                    },
+                    {
                       key: "team",
                       label: "Team",
                       render: (row) =>
@@ -565,11 +573,7 @@ export default function DROwLeague26Page() {
                       ) : (
                         <div className="space-y-4">
                           {division.pools.map((pool) => {
-                            const poolMatches = matchesByPool[pool.id] || {
-                              current: [],
-                              finished: [],
-                              other: [],
-                            };
+                            const poolMatches = matchesByPool[pool.id] || [];
                             return (
                               <Panel
                                 key={pool.id}
@@ -590,94 +594,23 @@ export default function DROwLeague26Page() {
                                 <div className="space-y-4">
                                   <div>
                                     <p className="text-xs uppercase tracking-wide text-ink-muted">
-                                      Teams
+                                      Matches
                                     </p>
-                                    <TeamTable
-                                      rows={(pool.teams || [])
-                                        .map((entry) => ({
-                                          id:
-                                            entry.team?.id ||
-                                            `${pool.id}-${entry.seed}-${entry.team?.name}`,
-                                          name: entry.team?.name || "Team",
-                                          shortName:
-                                            entry.team?.short_name || null,
-                                          seed:
-                                            typeof entry.seed === "number" &&
-                                            !Number.isNaN(entry.seed)
-                                              ? entry.seed
-                                              : null,
-                                        }))
-                                        .sort((a, b) => {
-                                          if (a.seed !== null && b.seed !== null) {
-                                            return a.seed - b.seed || a.name.localeCompare(b.name);
-                                          }
-                                          if (a.seed !== null) return -1;
-                                          if (b.seed !== null) return 1;
-                                          return a.name.localeCompare(b.name);
-                                        })}
-                                      columns={[
-                                        {
-                                          key: "seed",
-                                          label: "Seed",
-                                          render: (row) =>
-                                            row.seed !== null
-                                              ? `#${row.seed}`
-                                              : "--",
-                                        },
-                                        {
-                                          key: "name",
-                                          label: "Team",
-                                          render: (row) =>
-                                            row.shortName
-                                              ? `${row.name} (${row.shortName})`
-                                              : row.name,
-                                        },
-                                      ]}
-                                    />
-                                  </div>
-                                  <div className="space-y-3">
-                                    <div>
-                                      <p className="text-xs uppercase tracking-wide text-ink-muted">
-                                        Current matches
+                                    {poolMatches.length === 0 ? (
+                                      <p className="text-sm text-ink-muted">
+                                        No matches scheduled yet
                                       </p>
-                                      {poolMatches.current.length === 0 ? (
-                                        <p className="text-sm text-ink-muted">
-                                          None live right now
-                                        </p>
-                                      ) : (
-                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
-                                          {poolMatches.current.map((match) =>
-                                            renderMatchRow(match, { showScore: true }),
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div>
-                                      <p className="text-xs uppercase tracking-wide text-ink-muted">
-                                        Finished matches
-                                      </p>
-                                      {poolMatches.finished.length === 0 ? (
-                                        <p className="text-sm text-ink-muted">
-                                          No results recorded yet
-                                        </p>
-                                      ) : (
-                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
-                                          {poolMatches.finished.map((match) =>
-                                            renderMatchRow(match, { showScore: true }),
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                    {poolMatches.other.length > 0 && (
-                                      <div>
-                                        <p className="text-xs uppercase tracking-wide text-ink-muted">
-                                          Scheduled
-                                        </p>
-                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
-                                          {poolMatches.other.map((match) =>
-                                            renderMatchRow(match, { showScore: false }),
-                                          )}
-                                        </div>
+                                    ) : (
+                                      <div className="mt-2 grid gap-2 md:grid-cols-2">
+                                        {poolMatches.map((match) =>
+                                          renderMatchRow(match, {
+                                            showScore: FINISHED_MATCH_STATUSES.has(
+                                              (match?.status || "").toString().trim().toLowerCase(),
+                                            ) || CURRENT_MATCH_STATUSES.has(
+                                              (match?.status || "").toString().trim().toLowerCase(),
+                                            ),
+                                          }),
+                                        )}
                                       </div>
                                     )}
                                   </div>

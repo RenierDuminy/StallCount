@@ -384,43 +384,40 @@ export function useScrimmageActions(controller) {
       [teamKey]: (prev?.[teamKey] || 0) + 1,
     }));
 
-    const logEntry = {
-      id: createLocalId("timeout"),
-      eventCode: MATCH_LOG_EVENT_CODES.TIMEOUT_START,
-      eventDescription: "Timeout",
-      team: teamKey,
-      timestamp: new Date().toISOString(),
-      totalA: controller.score.a,
-      totalB: controller.score.b,
-    };
-    controller.appendLocalLog(logEntry);
-
     const timeoutSeconds = getRuleTimeoutSeconds(controller.rules);
-    controller.commitSecondaryTimerState(timeoutSeconds, true);
-    controller.setSecondaryTotalSeconds(timeoutSeconds);
-    controller.setSecondaryLabel("Timeout");
+    controller.startTrackedSecondaryTimer(timeoutSeconds, "Timeout", {
+      teamKey,
+      startCode: MATCH_LOG_EVENT_CODES.TIMEOUT_START,
+      startDescription: "Timeout",
+      endCode: MATCH_LOG_EVENT_CODES.TIMEOUT_END,
+      endDescription: "Timeout ended",
+    });
   }
 
   function handleHalfTimeTrigger() {
-    const logEntry = {
-      id: createLocalId("halftime"),
-      eventCode: MATCH_LOG_EVENT_CODES.HALFTIME_START,
-      eventDescription: "Halftime",
-      timestamp: new Date().toISOString(),
-      totalA: controller.score.a,
-      totalB: controller.score.b,
-    };
-    controller.appendLocalLog(logEntry);
-
     const elapsed = controller.getPrimaryRemainingSeconds();
     controller.commitPrimaryTimerState(elapsed, false);
 
     const breakSeconds = Math.max(0, getRuleHalftimeBreakMinutes(controller.rules) * 60);
     if (breakSeconds > 0) {
-      controller.commitSecondaryTimerState(breakSeconds, true);
-      controller.setSecondaryTotalSeconds(breakSeconds);
-      controller.setSecondaryLabel("Halftime");
+      controller.startTrackedSecondaryTimer(breakSeconds, "Halftime", {
+        startCode: MATCH_LOG_EVENT_CODES.HALFTIME_START,
+        startDescription: "Halftime",
+        endCode: MATCH_LOG_EVENT_CODES.HALFTIME_END,
+        endDescription: "Halftime ended",
+      });
+      return;
     }
+    controller.appendSecondaryEventLog(
+      MATCH_LOG_EVENT_CODES.HALFTIME_START,
+      "Halftime",
+      null
+    );
+    controller.appendSecondaryEventLog(
+      MATCH_LOG_EVENT_CODES.HALFTIME_END,
+      "Halftime ended",
+      null
+    );
   }
 
   function handleGameStoppage() {

@@ -42,6 +42,7 @@ const EventAccessPage = lazy(() => import("./pages/EventAccessPage"));
 const SignupManagementPage = lazy(() => import("./pages/SignupManagementPage"));
 const SpiritScoresPage = lazy(() => import("./pages/SpiritScoresPage"));
 const TournamentDirectorPage = lazy(() => import("./pages/TournamentDirectorPage"));
+const PlayoffStructurePage = lazy(() => import("./pages/PlayoffStructurePage"));
 const MediaAdminPage = lazy(() => import("./pages/MediaAdminPage"));
 const EventRostersPageLazy = lazy(() => import("./pages/EventRostersPage"));
 const EventRulesPageLazy = lazy(() => import("./pages/EventRulesPage"));
@@ -156,6 +157,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute allowedPermissions={TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS}>
                 <TournamentDirectorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/playoff-structure"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "administrator", "sys_admin", "tournament_director"]}>
+                <PlayoffStructurePage />
               </ProtectedRoute>
             }
           />
