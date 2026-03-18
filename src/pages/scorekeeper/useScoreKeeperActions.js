@@ -198,14 +198,38 @@ export function useScoreKeeperActions(controller) {
     controller.setSecondaryFlashPulse(false);
   }
 
-  function handleStartMatch() {
+  async function handleStartMatch() {
     if (!controller.consoleReady) return;
+    controller.setConsoleError(null);
+    const matchToStart = controller.activeMatch || controller.selectedMatch || null;
+    if (matchToStart?.id) {
+      const optimisticMatch = { ...matchToStart, status: "live" };
+      controller.setActiveMatch(optimisticMatch);
+      controller.setMatches((prev) =>
+        prev.map((match) => (match.id === optimisticMatch.id ? { ...match, status: "live" } : match))
+      );
+      try {
+        const updated = await updateMatchStatus(matchToStart.id, "live");
+        if (updated) {
+          controller.setActiveMatch(updated);
+          controller.setMatches((prev) =>
+            prev.map((match) => (match.id === updated.id ? updated : match))
+          );
+        }
+      } catch (err) {
+        controller.setConsoleError(
+          err instanceof Error
+            ? `${err.message} Scorekeeping started locally, but the live status did not sync.`
+            : "Scorekeeping started locally, but the live status did not sync."
+        );
+      }
+    }
     if (!controller.timerRunning) {
       handleToggleTimer();
     }
     controller.setMatchStarted(true);
     controller.setTimerLabel("Game time");
-    logMatchStartEvent();
+    void logMatchStartEvent();
     const receivingTeam =
       controller.matchStartingTeamKey === "A"
         ? "B"
@@ -231,7 +255,7 @@ export function useScoreKeeperActions(controller) {
       pullTeamId === controller.teamAId ? "A" : pullTeamId === controller.teamBId ? "B" : null;
     const timestamp = new Date().toISOString();
     const optimisticId = `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const appended = controller.appendLocalLog({
+    controller.appendLocalLog({
       team: teamKey,
       timestamp,
       scorerId: null,

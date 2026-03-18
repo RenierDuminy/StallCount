@@ -177,6 +177,12 @@ export async function updateMatchStatus(matchId, nextStatus = "finished") {
     throw new Error(error.message || "Failed to update match status");
   }
 
+  if (data?.event_id) {
+    invalidateCachedQueries(`matches:event:${data.event_id}`);
+  }
+  invalidateCachedQueries("matches:open");
+  invalidateCachedQueries("matches:recent");
+
   return data || null;
 }
 
