@@ -488,6 +488,12 @@ export default function CptOwRegionals2026Page() {
                 >
                   View event rosters
                 </Link>
+                <Link
+                  to={`/players?eventId=${encodeURIComponent(EVENT_ID)}`}
+                  className="sc-button"
+                >
+                  Player standings
+                </Link>
               </div>
             </Card>
             {eventData.divisions.length === 0 ? (

@@ -5,7 +5,7 @@ import { getEventsList } from "../services/leagueService";
 import { getTableCount } from "../services/statsService";
 import { getRecentMatches, getOpenMatches, getMatchesByIds } from "../services/matchService";
 import { getRecentLiveEvents } from "../services/liveEventService";
-import { getSubscriptions, upsertSubscription, deleteSubscriptionById } from "../services/subscriptionService";
+import { getSubscriptions } from "../services/subscriptionService";
 import { getCurrentUser } from "../services/userService";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabaseClient";
@@ -422,12 +422,17 @@ export default function HomePage() {
     return map;
   }, [safeLiveEvents]);
 
-  const liveNowMatch = useMemo(
-    () => safeOpenMatches.find((match) => isMatchLive(match?.status)),
-    [safeOpenMatches],
-  );
+  const liveHeroMatches = useMemo(() => {
+    return [...safeOpenMatches]
+      .filter((match) => isMatchLive(match?.status))
+      .sort((a, b) => {
+        const aTime = a?.start_time ? new Date(a.start_time).getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b?.start_time ? new Date(b.start_time).getTime() : Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      });
+  }, [safeOpenMatches]);
 
-  const liveNowEvent = liveNowMatch ? liveEventLookup.get(liveNowMatch.id) || null : null;
+  const liveNowMatch = liveHeroMatches[0] || null;
 
   const nextMatchCandidate = useMemo(() => {
     const now = Date.now();
@@ -451,6 +456,20 @@ export default function HomePage() {
 
   const heroCardMatch = liveNowMatch || nextMatchCandidate || null;
   const heroCardIsLive = Boolean(liveNowMatch);
+  const showMultiLiveHero = liveHeroMatches.length > 1;
+  const heroFeaturedMatches = useMemo(
+    () =>
+      showMultiLiveHero
+        ? liveHeroMatches
+        : heroCardMatch
+          ? [heroCardMatch]
+          : [],
+    [showMultiLiveHero, liveHeroMatches, heroCardMatch],
+  );
+  const heroFeaturedMatchIds = useMemo(
+    () => heroFeaturedMatches.map((match) => match?.id).filter(Boolean),
+    [heroFeaturedMatches],
+  );
 
   const nextScheduledMatch = useMemo(() => {
     const now = Date.now();
@@ -480,8 +499,6 @@ export default function HomePage() {
   }, [safeOpenMatches, heroCardIsLive, heroCardMatch]);
 
   const isLoggedIn = Boolean(session?.user);
-  const profileId = session?.user?.id ?? null;
-
   const teamLookup = useMemo(
     () =>
       buildTeamLookup({
@@ -506,15 +523,6 @@ export default function HomePage() {
     });
     return map;
   }, [followedPlayers]);
-
-  const subscriptionLookup = useMemo(() => {
-    const map = new Map();
-    (subscriptions || []).forEach((sub) => {
-      const key = `${normalizeTargetType(sub.target_type)}:${sub.target_id}`;
-      map.set(key, sub);
-    });
-    return map;
-  }, [subscriptions]);
 
   const mySubscriptionsPreview = useMemo(() => {
     const seen = new Set();
@@ -553,17 +561,6 @@ export default function HomePage() {
     [mySubscriptionsPreview, teamLookup, matchLookup, playerLookup, eventLookup],
   );
 
-  const heroClockLabel = deriveClockLabel(liveNowMatch, liveNowEvent);
-  const heroPointStatus = derivePointStatus(liveNowEvent);
-  const heroLastEvent = formatLiveEventSummary(liveNowEvent, liveNowMatch);
-  const nextMatchCountdown =
-    !heroCardIsLive && nextMatchCandidate?.start_time ? formatCountdown(nextMatchCandidate.start_time) : null;
-  const heroCardSubscription = heroCardMatch ? subscriptionLookup.get(`match:${heroCardMatch.id}`) || null : null;
-  const heroStreamUrl = heroCardMatch ? resolveStreamUrl(heroCardMatch) : null;
-  const heroTrackerHref = heroCardMatch ? buildMatchLink(heroCardMatch.id) : "/matches";
-  const heroNotificationHref = heroCardMatch ? `/notifications?targetType=match&targetId=${heroCardMatch.id}` : "/notifications";
-  const heroCardMatchId = heroCardMatch?.id || null;
-
   const activeTimelineEvents = useMemo(() => filterActiveEvents(safeEvents), [safeEvents]);
   const filteredTimelineEvents = useMemo(() => filterTimelineEvents(safeEvents), [safeEvents]);
   const timelineEmptyMessage = "No upcoming events on the calendar.";
@@ -598,14 +595,9 @@ export default function HomePage() {
       .map(({ match }) => match);
   }, [streamMatches]);
 
-  const spotlightEvent = useMemo(
-    () => pickSpotlightEvent(filteredTimelineEvents, safeEvents),
-    [filteredTimelineEvents, safeEvents],
-  );
-
   const forYouLoading = personalizedLoading || myTeamsLoading || myMatchesLoading;
   const liveAndUpcomingMatches = useMemo(() => {
-    const filtered = safeOpenMatches.filter((match) => match?.id !== heroCardMatchId);
+    const filtered = safeOpenMatches.filter((match) => !heroFeaturedMatchIds.includes(match?.id));
     const sortByStartTime = (list) =>
       list.sort((a, b) => {
         const aTime = a?.start_time ? new Date(a.start_time).getTime() : Number.MAX_SAFE_INTEGER;
@@ -615,18 +607,18 @@ export default function HomePage() {
     const liveMatches = sortByStartTime(filtered.filter((match) => isMatchLive(match.status)));
     const upcomingMatches = sortByStartTime(filtered.filter((match) => !isMatchLive(match.status)));
     return [...liveMatches, ...upcomingMatches].slice(0, MAX_UPCOMING_MATCHES);
-  }, [safeOpenMatches, heroCardMatchId]);
+  }, [safeOpenMatches, heroFeaturedMatchIds]);
   const latestResults = useMemo(() => {
     return safeLatestMatches
       .map((match) => ({ match, completedTime: getMatchCompletionTime(match) }))
       .filter(
         ({ match, completedTime }) =>
-          Boolean(match?.id) && match.id !== heroCardMatchId && isMatchFinal(match?.status) && completedTime !== null,
+          Boolean(match?.id) && isMatchFinal(match?.status) && completedTime !== null,
       )
       .sort((a, b) => (b.completedTime ?? 0) - (a.completedTime ?? 0))
       .slice(0, MAX_FINALS_RESULTS)
       .map(({ match }) => match);
-  }, [safeLatestMatches, heroCardMatchId]);
+  }, [safeLatestMatches]);
 
   const heroStats = [
     { label: "teams", value: stats.teams },
@@ -653,37 +645,6 @@ export default function HomePage() {
     }
   }
 
-  async function handleFollowMatch(matchId) {
-    if (!matchId) return;
-    if (!profileId) {
-      setHeroActionStatus("Sign in to follow matches.");
-      return;
-    }
-    try {
-      const row = await upsertSubscription({
-        profileId,
-        targetType: "match",
-        targetId: matchId,
-        topics: ["live", "final"],
-      });
-      setSubscriptions((prev) => upsertSubscriptionState(prev, row));
-      setHeroActionStatus("Match added to your alerts.");
-    } catch (err) {
-      setHeroActionStatus(err?.message || "Unable to follow this match.");
-    }
-  }
-
-  async function handleUnfollowSubscriptionRow(row) {
-    if (!row?.id) return;
-    try {
-      await deleteSubscriptionById(row.id);
-      setSubscriptions((prev) => prev.filter((sub) => sub.id !== row.id));
-      setHeroActionStatus("Subscription removed.");
-    } catch (err) {
-      setHeroActionStatus(err?.message || "Unable to update subscription.");
-    }
-  }
-
   async function handleShareMatch(match) {
     if (!match) return;
     const link = buildMatchLink(match.id, { absolute: true });
@@ -707,160 +668,174 @@ export default function HomePage() {
     }
   }
 
-  const handleToggleHeroSubscription = () => {
-    if (!heroCardMatch) return;
-    if (heroCardSubscription) {
-      void handleUnfollowSubscriptionRow(heroCardSubscription);
-    } else {
-      void handleFollowMatch(heroCardMatch.id);
-    }
+  const renderHeroMatchCard = (match, options = {}) => {
+    const { compact = false } = options;
+    if (!match) return null;
+
+    const live = isMatchLive(match.status);
+    const liveEvent = live ? liveEventLookup.get(match.id) || null : null;
+    const pointStatus = live ? derivePointStatus(liveEvent) : null;
+    const liveClockLabel = live ? deriveClockLabel(match, liveEvent) : null;
+    const lastEvent = live ? formatLiveEventSummary(liveEvent, match) : null;
+    const trackerHref = buildMatchLink(match.id);
+    const notificationHref = `/notifications?targetType=match&targetId=${match.id}`;
+    const streamUrl = resolveStreamUrl(match);
+
+    return (
+      <Card
+        key={match.id}
+        variant="muted"
+        className={`sc-frosted sc-live-card ${compact ? "p-4" : "p-5"} ${
+          live ? "is-live border-2 border-rose-500/70 bg-rose-500/10" : ""
+        }`}
+      >
+        <div className={`flex flex-col gap-5 ${streamUrl ? "sm:flex-row sm:items-center sm:justify-between" : ""}`}>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              <span>{live ? "Live now" : "Next up"}</span>
+              {live && (
+                <span className="sc-live-badge inline-flex items-center gap-2 rounded-full border border-rose-400/60 bg-rose-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-100">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-200 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-200" />
+                  </span>
+                  Live
+                </span>
+              )}
+              {pointStatus && live && <Chip as="span">{pointStatus} point</Chip>}
+            </div>
+            {live && (
+              <div className="flex flex-wrap items-baseline gap-3">
+                <p className="sc-live-score text-3xl font-semibold text-rose-50">{formatLiveScore(match)}</p>
+                <span className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-100/90">
+                  Live match
+                </span>
+              </div>
+            )}
+            <p className={`font-semibold ${compact ? "text-xl" : "text-2xl"} ${live ? "text-rose-50" : "text-ink"}`}>
+              {formatMatchup(match)}
+            </p>
+            {live ? (
+              <p className="text-sm text-ink-muted">{liveClockLabel || "Waiting for next score update"}</p>
+            ) : (
+              <div className="space-y-1">
+                <p className="text-sm text-ink-muted">Scheduled: {formatHeadingDateTime(match.start_time)}</p>
+                {formatVenueDetails(match) && <p className="text-xs text-ink-muted">{formatVenueDetails(match)}</p>}
+              </div>
+            )}
+            {live && (
+              <p className="text-xs uppercase tracking-wide text-ink-muted">
+                Last event: <span className="text-ink">{lastEvent || "No logs yet"}</span>
+              </p>
+            )}
+          </div>
+          {streamUrl && (
+            <a
+              href={streamUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="sc-live-watch group inline-flex items-center gap-3 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-4 py-3 text-rose-50"
+            >
+              <span className="flex h-14 w-14 items-center justify-center rounded-full border border-rose-300/50 bg-rose-500/20">
+                <img src="/youtube.png" alt="" className="h-9 w-9" aria-hidden="true" />
+              </span>
+              <span className="text-xs font-semibold uppercase tracking-[0.3em]">Watch</span>
+            </a>
+          )}
+        </div>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <Link to={live ? trackerHref : notificationHref} className="sc-button text-center">
+            {live ? "Open live tracker" : "Notifications"}
+          </Link>
+          <button
+            type="button"
+            onClick={() => void handleShareMatch(match)}
+            className="sc-button is-ghost"
+          >
+            Share
+          </button>
+          {!streamUrl && (
+            <Panel
+              variant="dashed"
+              className="flex items-center justify-center px-3 py-2 text-center text-xs uppercase tracking-wide text-ink-muted"
+            >
+              No stream linked
+            </Panel>
+          )}
+        </div>
+      </Card>
+    );
   };
 
   return (
     <div className="pb-20 text-ink">
       <SectionShell as="header" className="space-y-6 pt-8 pb-2">
         <Card className="sc-hero p-6 sm:p-8 lg:p-10">
-          <div className="grid gap-8 lg:grid-cols-[1.05fr,0.95fr] lg:items-start">
-            <div className="space-y-6">
-              <div className="space-y-4">
-                <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
-                  Live now, next up, and standings - at a glance
-                </h1>
+          <div className="space-y-8">
+            <div className={showMultiLiveHero ? "space-y-6" : "grid gap-8 lg:grid-cols-[1.05fr,0.95fr] lg:items-start"}>
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
+                    Live now, next up, and standings - at a glance
+                  </h1>
+                </div>
+                <div className="sc-metric-row">
+                  {heroStats.map((item) => (
+                    <Metric key={item.label} className="sc-metric--stacked" value={loading ? "..." : item.value} label={item.label} />
+                  ))}
+                </div>
+                {heroActionStatus && (
+                  <p className="text-xs font-semibold text-accent">{heroActionStatus}</p>
+                )}
               </div>
-              <div className="sc-metric-row">
-                {heroStats.map((item) => (
-                  <Metric key={item.label} className="sc-metric--stacked" value={loading ? "..." : item.value} label={item.label} />
-                ))}
-              </div>
-              {heroActionStatus && (
-                <p className="text-xs font-semibold text-accent">{heroActionStatus}</p>
+              {!showMultiLiveHero && (
+                <div className="space-y-4">
+                  {heroCardMatch ? (
+                    renderHeroMatchCard(heroCardMatch)
+                  ) : (
+                    <Card variant="muted" className="sc-frosted sc-live-card p-5">
+                      <p className="text-2xl font-semibold text-ink">No matches scheduled</p>
+                      <p className="mt-2 text-sm text-ink-muted">Add matches to see them here.</p>
+                    </Card>
+                  )}
+                  <Panel variant="tinted" className="p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                      <span>Next scheduled</span>
+                      {nextScheduledMatch?.start_time && (
+                        <span>{formatHeadingDateTime(nextScheduledMatch.start_time)}</span>
+                      )}
+                    </div>
+                    <p className="text-sm text-ink">{myNextMatchAnswer}</p>
+                  </Panel>
+                  {error && (
+                    <p className="rounded-2xl border border-rose-400/30 bg-rose-950/50 p-4 text-sm font-semibold text-rose-100">
+                      {error}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
-            <div className="space-y-4">
-              <Card
-                variant="muted"
-                className={`sc-frosted sc-live-card p-5 ${
-                  heroCardIsLive ? "is-live border-2 border-rose-500/70 bg-rose-500/10" : ""
-                }`}
-              >
-                <div className={`flex flex-col gap-5 ${heroStreamUrl ? "sm:flex-row sm:items-center sm:justify-between" : ""}`}>
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                      <span>{heroCardIsLive ? "Live now" : "Next up"}</span>
-                      {heroCardIsLive && (
-                        <span className="sc-live-badge inline-flex items-center gap-2 rounded-full border border-rose-400/60 bg-rose-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-100">
-                          <span className="relative flex h-2 w-2">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-200 opacity-75" />
-                            <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-200" />
-                          </span>
-                          Live
-                        </span>
-                      )}
-                      {heroPointStatus && heroCardIsLive && <Chip as="span">{heroPointStatus} point</Chip>}
-                    </div>
-                    {heroCardIsLive && heroCardMatch && (
-                      <div className="flex flex-wrap items-baseline gap-3">
-                        <p className="sc-live-score text-3xl font-semibold text-rose-50">
-                          {formatLiveScore(heroCardMatch)}
-                        </p>
-                        <span className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-100/90">
-                          Live match
-                        </span>
-                      </div>
-                    )}
-                    <p className={`text-2xl font-semibold ${heroCardIsLive ? "text-rose-50" : "text-ink"}`}>
-                      {heroCardMatch ? formatMatchup(heroCardMatch) : "No matches scheduled"}
-                    </p>
-                    {heroCardIsLive ? (
-                      <p className="text-sm text-ink-muted">
-                        {heroClockLabel || "Waiting for next score update"}
-                      </p>
-                    ) : heroCardMatch ? (
-                      <div className="space-y-1">
-                        {nextMatchCountdown && (
-                          <div className="flex items-center gap-2 text-rose-50">
-                            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-10 w-10">
-                              <path
-                                fill="currentColor"
-                                d="M12 2a1 1 0 0 1 1 1v1.05a7.95 7.95 0 0 1 3.75 1.56l.75-.75a1 1 0 1 1 1.4 1.42l-.74.74A8 8 0 1 1 12 4.05V3a1 1 0 0 1 1-1zm0 4a6 6 0 1 0 6 6 6.01 6.01 0 0 0-6-6zm-.5 2a1 1 0 0 1 1 1v3.2l2.3 1.3a1 1 0 1 1-1 1.74l-2.8-1.6A1 1 0 0 1 11 13V9a1 1 0 0 1 1-1z"
-                              />
-                            </svg>
-                            <p className="text-3xl font-semibold">{nextMatchCountdown}</p>
-                          </div>
-                        )}
-                        <p className="text-sm text-ink-muted">
-                          Scheduled: {formatHeadingDateTime(heroCardMatch.start_time)}
-                        </p>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-ink-muted">Add matches to see them here.</p>
-                    )}
-                    {heroCardIsLive && (
-                      <p className="text-xs uppercase tracking-wide text-ink-muted">
-                        Last event: <span className="text-ink">{heroLastEvent || "No logs yet"}</span>
-                      </p>
-                    )}
-                    {!heroCardIsLive && heroCardMatch && formatVenueDetails(heroCardMatch) && (
-                      <p className="text-xs text-ink-muted">{formatVenueDetails(heroCardMatch)}</p>
+            {showMultiLiveHero && (
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {liveHeroMatches.map((match) => renderHeroMatchCard(match, { compact: true }))}
+                </div>
+                <Panel variant="tinted" className="p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    <span>Next scheduled</span>
+                    {nextScheduledMatch?.start_time && (
+                      <span>{formatHeadingDateTime(nextScheduledMatch.start_time)}</span>
                     )}
                   </div>
-                  {heroStreamUrl && (
-                    <a
-                      href={heroStreamUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="sc-live-watch group inline-flex items-center gap-3 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-4 py-3 text-rose-50"
-                    >
-                      <span className="flex h-14 w-14 items-center justify-center rounded-full border border-rose-300/50 bg-rose-500/20">
-                        <img src="/youtube.png" alt="" className="h-9 w-9" aria-hidden="true" />
-                      </span>
-                      <span className="text-xs font-semibold uppercase tracking-[0.3em]">Watch</span>
-                    </a>
-                  )}
-                </div>
-                <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                  {heroCardIsLive ? (
-                    <Link to={heroTrackerHref} className="sc-button text-center">
-                      Open live tracker
-                    </Link>
-                  ) : (
-                    <Link to={heroNotificationHref} className="sc-button text-center">
-                      Notifications
-                    </Link>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => void handleShareMatch(heroCardMatch)}
-                    className="sc-button is-ghost"
-                    disabled={!heroCardMatch}
-                  >
-                    Share
-                  </button>
-                  {!heroStreamUrl && (
-                    <Panel
-                      variant="dashed"
-                      className="flex items-center justify-center px-3 py-2 text-center text-xs uppercase tracking-wide text-ink-muted"
-                    >
-                      No stream linked
-                    </Panel>
-                  )}
-                </div>
-              </Card>
-              <Panel variant="tinted" className="p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  <span>Next scheduled</span>
-                  {nextScheduledMatch?.start_time && (
-                    <span>{formatHeadingDateTime(nextScheduledMatch.start_time)}</span>
-                  )}
-                </div>
-                <p className="text-sm text-ink">{myNextMatchAnswer}</p>
-              </Panel>
-              {error && (
-                <p className="rounded-2xl border border-rose-400/30 bg-rose-950/50 p-4 text-sm font-semibold text-rose-100">
-                  {error}
-                </p>
-              )}
-            </div>
+                  <p className="text-sm text-ink">{myNextMatchAnswer}</p>
+                </Panel>
+                {error && (
+                  <p className="rounded-2xl border border-rose-400/30 bg-rose-950/50 p-4 text-sm font-semibold text-rose-100">
+                    {error}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </Card>
       </SectionShell>
@@ -1300,14 +1275,6 @@ function formatMatchTime(timestamp) {
   })}`;
 }
 
-function formatScheduledShort(timestamp) {
-  if (!timestamp) return "Start time pending";
-  const date = new Date(timestamp);
-  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-  const day = date.toLocaleDateString([], { day: "2-digit", month: "short", year: "2-digit" });
-  return `${time}, ${day}`;
-}
-
 function formatHeadingDateTime(timestamp) {
   if (!timestamp) return "Start time pending";
   const date = new Date(timestamp);
@@ -1355,12 +1322,6 @@ function formatMatchMeta(match) {
     parts.push(formatMatchTime(match.start_time));
   }
   return parts.join(" | ") || "Details pending";
-}
-
-function formatMatchVenue(match) {
-  if (match.venue?.name) return match.venue.name;
-  if (match.event?.name) return match.event.name;
-  return match.start_time ? formatMatchTime(match.start_time) : "Venue TBD";
 }
 
 function formatVenueDetails(match) {
@@ -1584,37 +1545,6 @@ function formatLiveEventSummary(liveEvent, match) {
   return teamName ? `${teamName} ${liveEvent.event_type || "event"}` : liveEvent.event_type || "Live event";
 }
 
-function formatCountdown(timestamp) {
-  if (!timestamp) return null;
-  const target = new Date(timestamp).getTime();
-  const diffMs = target - Date.now();
-  if (diffMs <= 0) return "Now";
-  const totalMinutes = Math.max(1, Math.ceil(diffMs / 60000));
-  const totalHours = Math.floor(totalMinutes / 60);
-  let days = Math.floor(totalHours / 24);
-  let hours = totalHours % 24;
-  let minutes = totalMinutes % 60;
-
-  const parts = [];
-  if (days > 0) parts.push(`${days}d`);
-  if (hours > 0 || days > 0) parts.push(`${hours}h`);
-  if (totalMinutes < 60) {
-    let approxMinutes = Math.max(10, Math.round(minutes / 10) * 10);
-    if (approxMinutes === 60) {
-      approxMinutes = 50;
-    }
-    parts.push(`~${approxMinutes}min`);
-  }
-  return parts.join(" ");
-}
-
-function pickSpotlightEvent(filteredEvents, allEvents) {
-  if (filteredEvents && filteredEvents.length > 0) {
-    return filteredEvents[0];
-  }
-  return allEvents?.[0] || null;
-}
-
 function filterTimelineEvents(events = []) {
   const now = Date.now();
   return events
@@ -1658,12 +1588,6 @@ function getMatchCompletionTime(match) {
   const ms = new Date(timestamp).getTime();
   return Number.isNaN(ms) ? null : ms;
 }
-function upsertSubscriptionState(list = [], row) {
-  const next = list.filter((item) => item.id !== row.id);
-  next.unshift(row);
-  return next;
-}
-
 function isMatchLive(status) {
   return LIVE_STATUSES.has((status || "").toLowerCase());
 }

@@ -6,6 +6,7 @@ import {
   SectionHeader,
   SectionShell,
 } from "../../components/ui/primitives";
+import { getEventHierarchy } from "../../services/leagueService";
 import { getMatchesByEvent } from "../../services/matchService";
 import { getMatchMediaDetails } from "../../utils/matchMedia";
 
@@ -13,7 +14,9 @@ export const EVENT_ID = "2fb09ada-9a69-47ae-bfc5-96a3bca759e9";
 export const EVENT_SLUG = "internal-draft-league-5";
 export const EVENT_NAME = "Internal Draft League 5";
 const MATCH_LIMIT = 200;
-const BUMPER_PLAYOFF_POOL_ID = "84d96b1b-2d4d-4dc6-99ba-ecf6871aa627";
+const PLAYOFF_POOL_NAME = "Playoffs";
+const PLAYOFF_POOL_FALLBACK_ID = "84d96b1b-2d4d-4dc6-99ba-ecf6871aa627";
+const PLAYOFFS_COLUMN_LABEL = "Playoffs";
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const WEEK_LABELS = ["W1", "W2", "W3", "W4", "W5"];
@@ -163,7 +166,164 @@ const formatWinLossPercentage = (wins, draws, played) => {
   return `${(ratio * 100).toFixed(1)}%`;
 };
 
+const normalizeText = (value) =>
+  (typeof value === "string" ? value.trim().toLowerCase() : "");
+
+const getEventPools = (eventData) =>
+  (eventData?.divisions || []).flatMap((division) => division?.pools || []);
+
+const getResolvedPlayoffPool = (eventData, matches = []) => {
+  const pools = getEventPools(eventData);
+  const namedPool = pools.find(
+    (pool) => normalizeText(pool?.name) === normalizeText(PLAYOFF_POOL_NAME),
+  );
+  if (namedPool?.id) {
+    return namedPool;
+  }
+
+  const fallbackPool = pools.find((pool) => pool?.id === PLAYOFF_POOL_FALLBACK_ID);
+  if (fallbackPool?.id) {
+    return fallbackPool;
+  }
+
+  if (matches.some((match) => match?.pool_id === PLAYOFF_POOL_FALLBACK_ID)) {
+    return {
+      id: PLAYOFF_POOL_FALLBACK_ID,
+      name: PLAYOFF_POOL_NAME,
+    };
+  }
+
+  return null;
+};
+
+const buildTeams = (eventData, matches = []) => {
+  const map = new Map();
+
+  getEventPools(eventData).forEach((pool) => {
+    (pool?.teams || []).forEach((entry) => {
+      if (!entry?.team?.id) return;
+      map.set(entry.team.id, {
+        id: entry.team.id,
+        name: entry.team.name || "Team",
+      });
+    });
+  });
+
+  matches.forEach((match) => {
+    if (match.team_a?.id) {
+      map.set(match.team_a.id, {
+        id: match.team_a.id,
+        name: match.team_a.name || "Team A",
+      });
+    }
+    if (match.team_b?.id) {
+      map.set(match.team_b.id, {
+        id: match.team_b.id,
+        name: match.team_b.name || "Team B",
+      });
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+};
+
+const getTeamStats = (matches, teamId) => {
+  let wins = 0;
+  let losses = 0;
+  let draws = 0;
+  let scored = 0;
+  let conceded = 0;
+
+  matches.forEach((match) => {
+    if (!isFinishedMatch(match.status)) return;
+    if (typeof match.score_a !== "number" || typeof match.score_b !== "number") {
+      return;
+    }
+
+    if (match.team_a?.id === teamId) {
+      scored += match.score_a;
+      conceded += match.score_b;
+      if (match.score_a > match.score_b) wins += 1;
+      else if (match.score_a < match.score_b) losses += 1;
+      else draws += 1;
+      return;
+    }
+
+    if (match.team_b?.id === teamId) {
+      scored += match.score_b;
+      conceded += match.score_a;
+      if (match.score_b > match.score_a) wins += 1;
+      else if (match.score_b < match.score_a) losses += 1;
+      else draws += 1;
+    }
+  });
+
+  const played = wins + losses + draws;
+  return {
+    played,
+    wins,
+    losses,
+    draws,
+    scored,
+    conceded,
+    scoreDiff: scored - conceded,
+    points: wins * 3 + losses * 1 + draws * 2,
+    winLossPct: formatWinLossPercentage(wins, draws, played),
+  };
+};
+
+const getTeamPlayoffMatch = (playoffMatches, teamId) =>
+  playoffMatches
+    .filter(
+      (match) => match.team_a?.id === teamId || match.team_b?.id === teamId,
+    )
+    .sort(sortByStartTimeAsc)
+    .at(-1) || null;
+
+const getMatchWinnerId = (match) => {
+  if (!isFinishedMatch(match?.status)) return null;
+  if (typeof match?.score_a !== "number" || typeof match?.score_b !== "number") {
+    return null;
+  }
+  if (match.score_a === match.score_b) {
+    return null;
+  }
+  return match.score_a > match.score_b ? match.team_a?.id || null : match.team_b?.id || null;
+};
+
+const getPlayoffPlacementEntries = (match, seedLookup) => {
+  const teamAId = match.team_a?.id;
+  const teamBId = match.team_b?.id;
+  const seedA = teamAId ? seedLookup.get(teamAId) : null;
+  const seedB = teamBId ? seedLookup.get(teamBId) : null;
+  const winnerId = getMatchWinnerId(match);
+
+  if (
+    !teamAId ||
+    !teamBId ||
+    !Number.isInteger(seedA) ||
+    !Number.isInteger(seedB) ||
+    !winnerId
+  ) {
+    return null;
+  }
+
+  const lowerSeed = Math.min(seedA, seedB);
+  const higherSeed = Math.max(seedA, seedB);
+
+  if (higherSeed - lowerSeed !== 1 || lowerSeed % 2 === 0) {
+    return null;
+  }
+
+  const loserId = winnerId === teamAId ? teamBId : teamAId;
+  return [
+    { teamId: winnerId, rank: lowerSeed },
+    { teamId: loserId, rank: higherSeed },
+  ];
+};
+
 export default function InternalDraftLeague5Page() {
+  const [eventData, setEventData] = useState(null);
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -175,10 +335,14 @@ export default function InternalDraftLeague5Page() {
       setLoading(true);
       setError(null);
       try {
-        const rows = await getMatchesByEvent(EVENT_ID, MATCH_LIMIT, {
-          includeFinished: true,
-        });
+        const [structure, rows] = await Promise.all([
+          getEventHierarchy(EVENT_ID),
+          getMatchesByEvent(EVENT_ID, MATCH_LIMIT, {
+            includeFinished: true,
+          }),
+        ]);
         if (!ignore) {
+          setEventData(structure);
           setMatches(rows || []);
         }
       } catch (err) {
@@ -198,10 +362,26 @@ export default function InternalDraftLeague5Page() {
     };
   }, []);
 
+  const playoffPool = useMemo(
+    () => getResolvedPlayoffPool(eventData, matches),
+    [eventData, matches],
+  );
+
+  const playoffPoolId = playoffPool?.id || null;
+  const playoffPoolLabel = playoffPool?.name || PLAYOFF_POOL_NAME;
+
+  const leagueMatches = useMemo(
+    () =>
+      matches.filter((match) =>
+        playoffPoolId ? match?.pool_id !== playoffPoolId : true,
+      ),
+    [matches, playoffPoolId],
+  );
+
   const sections = useMemo(() => {
     const buckets = Array.from({ length: MATCH_WEEK_SCHEDULE.length }, () => []);
 
-    matches.forEach((match) => {
+    leagueMatches.forEach((match) => {
       const timestamp = getMatchTimestamp(match);
       if (timestamp === null) return;
       const matchDate = new Date(timestamp);
@@ -218,39 +398,23 @@ export default function InternalDraftLeague5Page() {
     return MATCH_WEEK_SCHEDULE.map((week, index) => ({
       key: week.key,
       title: `${week.title} (${week.dateLabel})`,
-      description: `Fixtures scheduled for ${week.dateLabel}.`,
       dataset: buckets[index].slice().sort(sortByStartTimeAsc),
       empty: `No matches scheduled for ${week.title.toLowerCase()}.`,
     }));
-  }, [matches]);
+  }, [leagueMatches]);
 
-  const bumperPlayoffMatches = useMemo(
+  const playoffMatches = useMemo(
     () =>
       matches
-        .filter((match) => match?.pool_id === BUMPER_PLAYOFF_POOL_ID)
+        .filter((match) => (playoffPoolId ? match?.pool_id === playoffPoolId : false))
         .slice()
         .sort(sortByStartTimeAsc),
-    [matches],
+    [matches, playoffPoolId],
   );
 
   const teams = useMemo(() => {
-    const map = new Map();
-    matches.forEach((match) => {
-      if (match.team_a?.id) {
-        map.set(match.team_a.id, {
-          id: match.team_a.id,
-          name: match.team_a.name || "Team A",
-        });
-      }
-      if (match.team_b?.id) {
-        map.set(match.team_b.id, {
-          id: match.team_b.id,
-          name: match.team_b.name || "Team B",
-        });
-      }
-    });
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [matches]);
+    return buildTeams(eventData, matches);
+  }, [eventData, matches]);
 
   const matchesPerWeek = Math.max(
     1,
@@ -258,12 +422,12 @@ export default function InternalDraftLeague5Page() {
   );
 
   const matchesByWeek = useMemo(
-    () => buildWeekBuckets(matches, WEEK_LABELS.length, matchesPerWeek),
-    [matches, matchesPerWeek],
+    () => buildWeekBuckets(leagueMatches, WEEK_LABELS.length, matchesPerWeek),
+    [leagueMatches, matchesPerWeek],
   );
 
   const standingsRows = useMemo(() => {
-    return teams
+    const seededRows = teams
       .map((team) => {
         const weekResults = WEEK_LABELS.map((label, index) => {
           const match = matchesByWeek[index]?.find(
@@ -276,44 +440,21 @@ export default function InternalDraftLeague5Page() {
             : RESULT_LABELS.empty;
           return { label, outcome };
         });
-
-        let wins = 0;
-        let losses = 0;
-        let draws = 0;
-        let scored = 0;
-        let conceded = 0;
-        weekResults.forEach((entry) => {
-          if (entry.outcome === RESULT_LABELS.win) wins += 1;
-          if (entry.outcome === RESULT_LABELS.loss) losses += 1;
-          if (entry.outcome === RESULT_LABELS.draw) draws += 1;
-        });
-
-        matches.forEach((match) => {
-          if (!isFinishedMatch(match.status)) return;
-          if (typeof match.score_a !== "number" || typeof match.score_b !== "number") {
-            return;
-          }
-          if (match.team_a?.id === team.id) {
-            scored += match.score_a;
-            conceded += match.score_b;
-          } else if (match.team_b?.id === team.id) {
-            scored += match.score_b;
-            conceded += match.score_a;
-          }
-        });
-
-        const played = wins + losses + draws;
-        const points = wins * 3 + losses * 1 + draws * 2;
-        const scoreDiff = scored - conceded;
+        const leagueStats = getTeamStats(leagueMatches, team.id);
+        const playoffMatch = getTeamPlayoffMatch(playoffMatches, team.id);
 
         return {
           team,
           weekResults,
+          seedRank: 0,
           rank: 0,
-          played,
-          winLossPct: formatWinLossPercentage(wins, draws, played),
-          scoreDiff,
-          points,
+          playoffOutcome: playoffMatch
+            ? getTeamOutcome(playoffMatch, team.id)
+            : RESULT_LABELS.empty,
+          played: leagueStats.played,
+          winLossPct: leagueStats.winLossPct,
+          scoreDiff: leagueStats.scoreDiff,
+          points: leagueStats.points,
         };
       })
       .sort(
@@ -324,9 +465,38 @@ export default function InternalDraftLeague5Page() {
       )
       .map((row, index) => ({
         ...row,
-        rank: index + 1,
+        seedRank: index + 1,
       }));
-  }, [matches, matchesByWeek, teams]);
+
+    const seedLookup = new Map(
+      seededRows.map((row) => [row.team.id, row.seedRank]),
+    );
+    const finalRankByTeam = new Map(
+      seededRows.map((row) => [row.team.id, row.seedRank]),
+    );
+
+    playoffMatches
+      .filter((match) => getMatchWinnerId(match))
+      .forEach((match) => {
+        const placementEntries = getPlayoffPlacementEntries(match, seedLookup);
+        if (!placementEntries) return;
+        placementEntries.forEach(({ teamId, rank }) => {
+          finalRankByTeam.set(teamId, rank);
+        });
+      });
+
+    return seededRows
+      .map((row) => ({
+        ...row,
+        rank: finalRankByTeam.get(row.team.id) ?? row.seedRank,
+      }))
+      .sort(
+        (a, b) =>
+          a.rank - b.rank ||
+          a.seedRank - b.seedRank ||
+          a.team.name.localeCompare(b.team.name),
+      );
+  }, [leagueMatches, matchesByWeek, playoffMatches, teams]);
 
   const renderMatchCard = (match) => {
     const liveOrFinal =
@@ -395,7 +565,7 @@ export default function InternalDraftLeague5Page() {
           <SectionHeader
             eyebrow="Standings"
             title="League results"
-            description="Week-by-week outcomes with updated points totals."
+            description="W1-W5 results set playoff seeding, and the Playoffs pool decides the final ranking."
           />
           {loading && teams.length === 0 ? (
             <Card
@@ -426,7 +596,9 @@ export default function InternalDraftLeague5Page() {
                         {label}
                       </th>
                     ))}
-                    <th className="px-3 py-2 text-center font-semibold">MP</th>
+                    <th className="px-3 py-2 text-center font-semibold">
+                      {PLAYOFFS_COLUMN_LABEL}
+                    </th>
                     <th className="px-3 py-2 text-center font-semibold">W-L%</th>
                     <th className="px-3 py-2 text-center font-semibold">+/-</th>
                     <th className="px-3 py-2 text-center font-semibold">Pts</th>
@@ -458,7 +630,9 @@ export default function InternalDraftLeague5Page() {
                           {result.outcome}
                         </td>
                       ))}
-                      <td className="px-3 py-2 text-center">{row.played}</td>
+                      <td className="px-3 py-2 text-center">
+                        {row.playoffOutcome}
+                      </td>
                       <td className="px-3 py-2 text-center">
                         {row.winLossPct}
                       </td>
@@ -479,7 +653,6 @@ export default function InternalDraftLeague5Page() {
         {sections.map((section) => (
           <Card key={section.key} className="space-y-4 p-5 sm:p-6">
             <SectionHeader
-              eyebrow="Matches"
               title={section.title}
               description={section.description}
             />
@@ -508,10 +681,10 @@ export default function InternalDraftLeague5Page() {
         <Card className="space-y-4 p-5 sm:p-6">
           <SectionHeader
             eyebrow="Playoffs"
-            title="Bumper event playoffs"
-            description="Playoff matches linked to the Bumper playoff pool."
+            title={`${playoffPoolLabel} pool`}
+            description="Playoff matches linked to the playoffs pool."
           />
-          {bumperPlayoffMatches.length === 0 ? (
+          {playoffMatches.length === 0 ? (
             <Card
               variant="muted"
               className="p-5 text-center text-sm text-ink-muted"
@@ -520,7 +693,7 @@ export default function InternalDraftLeague5Page() {
             </Card>
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
-              {bumperPlayoffMatches.map((match) => renderMatchCard(match))}
+              {playoffMatches.map((match) => renderMatchCard(match))}
             </div>
           )}
         </Card>
