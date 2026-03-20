@@ -140,6 +140,7 @@ const INITIAL_VENUE_FORM = {
 
 const matchStatuses = ["scheduled", "ready", "pending", "live", "finished"];
 const WIZARD_DRAFT_STORAGE_KEY = "stallcount:event-setup-wizard:draft:v1";
+const WIZARD_STEP_STALE_MS = 1000 * 60 * 60 * 2;
 const createId = () =>
   `tmp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -298,30 +299,58 @@ const readPersistedWizardDraft = () => {
   }
 };
 
-const Stepper = ({ current }) => (
+const cloneHierarchySnapshot = (value) => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return null;
+  }
+};
+
+const resolveInitialWizardStep = (draft) => {
+  if (!Number.isInteger(draft?.step)) {
+    return 0;
+  }
+  if (typeof draft?.updatedAt !== "number") {
+    return 0;
+  }
+  if (Date.now() - draft.updatedAt > WIZARD_STEP_STALE_MS) {
+    return 0;
+  }
+  return Math.min(Math.max(draft.step, 0), STEPS.length - 1);
+};
+
+const Stepper = ({ current, onStepSelect }) => (
   <ol className="wizard-stepper">
     {STEPS.map((step, index) => {
       const isActive = index === current;
       const isComplete = index < current;
       return (
-        <li
-          key={step.key}
-          className={mergeClassNames(
-            "wizard-stepper__pill",
-            isActive && "is-active",
-            isComplete && "is-complete",
-          )}
-        >
-          <span
+        <li key={step.key}>
+          <button
+            type="button"
             className={mergeClassNames(
-              "wizard-stepper__badge",
+              "wizard-stepper__pill",
               isActive && "is-active",
-              !isActive && isComplete && "is-complete",
+              isComplete && "is-complete",
             )}
+            onClick={() => onStepSelect(index)}
+            aria-current={isActive ? "step" : undefined}
           >
-            {isComplete ? String.fromCharCode(10003) : index + 1}
-          </span>
-          {step.title}
+            <span
+              className={mergeClassNames(
+                "wizard-stepper__badge",
+                isActive && "is-active",
+                !isActive && isComplete && "is-complete",
+              )}
+            >
+              {isComplete ? String.fromCharCode(10003) : index + 1}
+            </span>
+            {step.title}
+          </button>
         </li>
       );
     })}
@@ -341,10 +370,11 @@ export default function EventSetupWizardPage() {
     persistedDraftRef.current = readPersistedWizardDraft() || {};
   }
   const persistedDraft = persistedDraftRef.current;
-
-  const [step, setStep] = useState(() =>
-    Number.isInteger(persistedDraft.step) ? persistedDraft.step : 0,
+  const originalHierarchyRef = useRef(
+    cloneHierarchySnapshot(persistedDraft.originalHierarchy),
   );
+
+  const [step, setStep] = useState(() => resolveInitialWizardStep(persistedDraft));
   const [event, setEvent] = useState(() =>
     persistedDraft.event && typeof persistedDraft.event === "object"
       ? { ...INITIAL_EVENT, ...persistedDraft.event }
@@ -496,6 +526,7 @@ export default function EventSetupWizardPage() {
       .find((pool) => pool.id === activePoolId) || null;
 
   const resetWizardState = useCallback(() => {
+    originalHierarchyRef.current = null;
     setEvent(INITIAL_EVENT);
     setRules(cloneDefaultRules());
     setDivisions([]);
@@ -596,7 +627,9 @@ export default function EventSetupWizardPage() {
       return;
     }
     const draft = {
+      updatedAt: Date.now(),
       step,
+      originalHierarchy: originalHierarchyRef.current,
       event,
       divisions,
       eventVenues,
@@ -644,6 +677,7 @@ export default function EventSetupWizardPage() {
     if (!payload?.event) {
       return;
     }
+    originalHierarchyRef.current = cloneHierarchySnapshot(payload);
     const sourceRules =
       payload.event.rules && typeof payload.event.rules === "object"
         ? mergeRuleDefaults(cloneDefaultRules(), payload.event.rules)
@@ -3752,9 +3786,17 @@ export default function EventSetupWizardPage() {
         eventVenues,
       };
       const payload = isEditingExistingEvent
-        ? { ...payloadBase, eventId: selectedEventId }
+        ? {
+            ...payloadBase,
+            eventId: selectedEventId,
+            originalHierarchy: originalHierarchyRef.current,
+          }
         : payloadBase;
       const result = await action(payload);
+      if (isEditingExistingEvent && selectedEventId) {
+        const refreshedHierarchy = await getEventHierarchy(selectedEventId);
+        originalHierarchyRef.current = cloneHierarchySnapshot(refreshedHierarchy);
+      }
       setSubmissionState({
         status: "success",
         error: null,
@@ -3791,7 +3833,7 @@ export default function EventSetupWizardPage() {
             title="Event setup wizard"
             description="Walk through event creation from high level to granular pools."
           />
-          <Stepper current={step} />
+          <Stepper current={step} onStepSelect={setStep} />
         </Card>
       </SectionShell>
 

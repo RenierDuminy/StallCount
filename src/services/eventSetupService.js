@@ -480,6 +480,141 @@ const persistEventVenues = async (eventId, cleanedEventVenues) => {
   return { count: linkPayload.length, venueIdLookup };
 };
 
+const hasOwnKeys = (value) => Object.keys(value).length > 0;
+
+const areJsonValuesEqual = (left, right) =>
+  JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+
+const buildFlatRecordChanges = (nextRecord, previousRecord, keys) => {
+  if (!previousRecord) {
+    return { ...nextRecord };
+  }
+  return keys.reduce((changes, key) => {
+    if (nextRecord[key] !== previousRecord[key]) {
+      changes[key] = nextRecord[key];
+    }
+    return changes;
+  }, {});
+};
+
+const buildHierarchyIndex = (hierarchy) => {
+  const hierarchyEventId = normalizeText(hierarchy?.event?.id);
+  const index = {
+    event: null,
+    venueById: new Map(),
+    venueIds: new Set(),
+    divisionById: new Map(),
+    divisionIds: new Set(),
+    poolById: new Map(),
+    poolIds: new Set(),
+    divisionTeamByKey: new Map(),
+    divisionTeamKeys: new Set(),
+    poolTeamByKey: new Map(),
+    poolTeamKeys: new Set(),
+    matchById: new Map(),
+    matchIds: new Set(),
+  };
+
+  if (!hierarchy || typeof hierarchy !== "object") {
+    return index;
+  }
+
+  if (hierarchy.event && typeof hierarchy.event === "object") {
+    index.event = {
+      name: normalizeText(hierarchy.event.name),
+      type: normalizeEventType(hierarchy.event.type),
+      start_date: normalizeDate(hierarchy.event.start_date),
+      end_date: normalizeDate(hierarchy.event.end_date),
+      location: normalizeText(hierarchy.event.location) || null,
+      rules: parseRulesJson(hierarchy.event.rules),
+    };
+  }
+
+  (hierarchy.eventVenues ?? []).forEach((venue) => {
+    const venueId = normalizeText(venue?.venueId || venue?.id);
+    if (!isUuid(venueId)) {
+      return;
+    }
+    index.venueIds.add(venueId);
+    index.venueById.set(venueId, {
+      name: normalizeText(venue?.name),
+      city: normalizeText(venue?.city) || null,
+      location: normalizeText(venue?.location) || null,
+      notes: normalizeText(venue?.notes) || null,
+      latitude: toNullableNumber(venue?.latitude),
+      longitude: toNullableNumber(venue?.longitude),
+    });
+  });
+
+  (hierarchy.divisions ?? []).forEach((division) => {
+    const divisionId = normalizeText(division?.id);
+    if (isUuid(divisionId)) {
+      index.divisionIds.add(divisionId);
+      index.divisionById.set(divisionId, {
+        name: normalizeText(division?.name),
+        level: normalizeText(division?.level) || null,
+      });
+    }
+
+    (division?.divisionTeams ?? []).forEach((team) => {
+      if (!isUuid(divisionId) || !team?.teamId) {
+        return;
+      }
+      const key = `${divisionId}:${team.teamId}`;
+      index.divisionTeamKeys.add(key);
+      index.divisionTeamByKey.set(key, {
+        division_id: divisionId,
+        team_id: team.teamId,
+      });
+    });
+
+    (division?.pools ?? []).forEach((pool) => {
+      const poolId = normalizeText(pool?.id);
+      if (isUuid(poolId)) {
+        index.poolIds.add(poolId);
+        index.poolById.set(poolId, {
+          division_id: isUuid(divisionId) ? divisionId : null,
+          name: normalizeText(pool?.name),
+        });
+      }
+
+      (pool?.teams ?? []).forEach((team) => {
+        if (!isUuid(poolId) || !team?.teamId) {
+          return;
+        }
+        const key = `${poolId}:${team.teamId}`;
+        index.poolTeamKeys.add(key);
+        index.poolTeamByKey.set(key, {
+          pool_id: poolId,
+          team_id: team.teamId,
+          seed: toNullableNumber(team.seed),
+        });
+      });
+
+      (pool?.matches ?? []).forEach((match) => {
+        const matchId = normalizeText(match?.id);
+        if (!isUuid(matchId)) {
+          return;
+        }
+        const venueId = normalizeText(match?.venueRefId || match?.venueId) || null;
+        index.matchIds.add(matchId);
+        index.matchById.set(matchId, {
+          event_id: hierarchyEventId || null,
+          division_id: isUuid(divisionId) ? divisionId : null,
+          pool_id: isUuid(poolId) ? poolId : null,
+          team_a: match?.teamAId || "",
+          team_b: match?.teamBId || "",
+          status: normalizeMatchStatus(match?.status),
+          start_time: normalizeTimestamp(match?.start),
+          venue_id: venueId,
+        });
+      });
+    });
+  });
+
+  return index;
+};
+
 const deleteExistingHierarchy = async (eventId) => {
   const { error: eventVenueDeleteError } = await supabase
     .from("event_venues")
@@ -652,7 +787,7 @@ export async function createEventHierarchy(payload) {
 }
 
 export async function replaceEventHierarchy(payload) {
-  const { eventId, event, divisions, eventVenues } = payload || {};
+  const { eventId, event, divisions, eventVenues, originalHierarchy } = payload || {};
   const normalizedEventId = normalizeText(eventId);
   if (!normalizedEventId) {
     throw new Error("Event identifier is required.");
@@ -670,7 +805,7 @@ export async function replaceEventHierarchy(payload) {
     );
   }
 
-  const updatePayload = {
+  const nextEventRecord = {
     name,
     type: normalizeEventType(event?.type),
     start_date: normalizeDate(event?.start_date),
@@ -678,132 +813,161 @@ export async function replaceEventHierarchy(payload) {
     location: normalizeText(event?.location) || null,
     rules: parsedRules,
   };
+  const originalIndex = buildHierarchyIndex(originalHierarchy);
+  const originalEvent = originalIndex.event;
+  const updatePayload = buildFlatRecordChanges(
+    nextEventRecord,
+    originalEvent,
+    ["name", "type", "start_date", "end_date", "location"],
+  );
+  if (!originalEvent || !areJsonValuesEqual(nextEventRecord.rules, originalEvent.rules)) {
+    updatePayload.rules = nextEventRecord.rules;
+  }
 
-  const { error: updateError } = await supabase
-    .from("events")
-    .update(updatePayload)
-    .eq("id", normalizedEventId);
+  if (hasOwnKeys(updatePayload)) {
+    const { error: updateError } = await supabase
+      .from("events")
+      .update(updatePayload)
+      .eq("id", normalizedEventId);
 
-  if (updateError) {
-    throw new Error(updateError.message || "Failed to update event.");
+    if (updateError) {
+      throw new Error(updateError.message || "Failed to update event.");
+    }
   }
 
   const cleanedDivisions = cleanDivisionsInput(divisions);
   const cleanedEventVenues = cleanEventVenuesInput(eventVenues);
-  const { data: existingDivisions, error: existingDivisionsError } =
-    await supabase
-      .from("divisions")
-      .select("id")
-      .eq("event_id", normalizedEventId);
-  if (existingDivisionsError) {
-    throw new Error(
-      existingDivisionsError.message || "Failed to load existing divisions.",
-    );
-  }
-  const existingDivisionIds = (existingDivisions ?? []).map((row) => row.id);
 
-  const { data: existingPools, error: existingPoolsError } =
-    existingDivisionIds.length > 0
-      ? await supabase
-          .from("pools")
-          .select("id, division_id")
-          .in("division_id", existingDivisionIds)
-      : { data: [], error: null };
-  if (existingPoolsError) {
-    throw new Error(existingPoolsError.message || "Failed to load pools.");
-  }
-  const existingPoolIds = (existingPools ?? []).map((row) => row.id);
+  const venueIdLookup = new Map();
+  const venueInsertPayload = [];
+  const venueInsertClientRefs = [];
+  const venueUpdateOperations = [];
 
-  const { data: existingMatches, error: existingMatchesError } =
-    await supabase
-      .from("matches")
-      .select("id")
-      .eq("event_id", normalizedEventId);
-  if (existingMatchesError) {
-    throw new Error(existingMatchesError.message || "Failed to load matches.");
-  }
-  const existingMatchIds = (existingMatches ?? []).map((row) => row.id);
-
-  const { data: existingDivisionTeams, error: existingDivisionTeamsError } =
-    existingDivisionIds.length > 0
-      ? await supabase
-          .from("division_teams")
-          .select("division_id, team_id")
-          .in("division_id", existingDivisionIds)
-      : { data: [], error: null };
-  if (existingDivisionTeamsError) {
-    throw new Error(
-      existingDivisionTeamsError.message ||
-        "Failed to load division teams.",
-    );
-  }
-
-  const { data: existingPoolTeams, error: existingPoolTeamsError } =
-    existingPoolIds.length > 0
-      ? await supabase
-          .from("pool_teams")
-          .select("pool_id, team_id")
-          .in("pool_id", existingPoolIds)
-      : { data: [], error: null };
-  if (existingPoolTeamsError) {
-    throw new Error(
-      existingPoolTeamsError.message || "Failed to load pool teams.",
-    );
-  }
-
-  const { data: existingEventVenues, error: existingEventVenuesError } =
-    await supabase
-      .from("event_venues")
-      .select("venue_id")
-      .eq("event_id", normalizedEventId);
-  if (existingEventVenuesError) {
-    throw new Error(
-      existingEventVenuesError.message || "Failed to load event venues.",
-    );
-  }
-
-  const { count: eventVenueCount, venueIdLookup } = await persistEventVenues(
-    normalizedEventId,
-    cleanedEventVenues,
-  );
-
-  const desiredVenueIds = new Set();
   cleanedEventVenues.forEach((venue) => {
+    const baseRecord = {
+      name: venue.name,
+      city: venue.city,
+      location: venue.location,
+      notes: venue.notes,
+      latitude: venue.latitude,
+      longitude: venue.longitude,
+    };
     const clientId = venue.id || venue.venueId || null;
-    const resolvedId = venue.venueId || venueIdLookup.get(clientId);
-    if (resolvedId) {
-      desiredVenueIds.add(resolvedId);
+    const existingVenueId = normalizeText(venue.venueId || venue.id);
+    if (isUuid(existingVenueId)) {
+      venueIdLookup.set(existingVenueId, existingVenueId);
+      if (clientId) {
+        venueIdLookup.set(clientId, existingVenueId);
+      }
+      const originalVenue = originalIndex.venueById.get(existingVenueId);
+      const changes = buildFlatRecordChanges(
+        baseRecord,
+        originalVenue,
+        ["name", "city", "location", "notes", "latitude", "longitude"],
+      );
+      if (!originalVenue || hasOwnKeys(changes)) {
+        venueUpdateOperations.push({ id: existingVenueId, changes });
+      }
+    } else {
+      venueInsertPayload.push(baseRecord);
+      venueInsertClientRefs.push(clientId || `client_${Math.random()}`);
     }
   });
 
-  if (desiredVenueIds.size === 0) {
-    const { error: deleteAllVenuesError } = await supabase
+  for (const operation of venueUpdateOperations) {
+    const { error: venueUpdateError } = await supabase
+      .from("venues")
+      .update(operation.changes)
+      .eq("id", operation.id);
+
+    if (venueUpdateError) {
+      if (isRlsViolation(venueUpdateError)) {
+        throw new Error(
+          "Your Supabase policies currently block inserting venues. Assign an existing venue or update the RLS policy to allow inserts for admin accounts.",
+        );
+      }
+      throw new Error(venueUpdateError.message || "Failed to save venues.");
+    }
+  }
+
+  const insertedVenueLookup = new Map();
+  if (venueInsertPayload.length) {
+    const { data: insertedVenues, error: venueInsertError } = await supabase
+      .from("venues")
+      .insert(venueInsertPayload)
+      .select("id");
+
+    if (venueInsertError) {
+      if (isRlsViolation(venueInsertError)) {
+        throw new Error(
+          "Your Supabase policies currently block inserting venues. Assign an existing venue or update the RLS policy to allow inserts for admin accounts.",
+        );
+      }
+      throw new Error(venueInsertError.message || "Failed to create venues.");
+    }
+
+    (insertedVenues ?? []).forEach((row, index) => {
+      const clientId = venueInsertClientRefs[index];
+      if (row?.id && clientId) {
+        insertedVenueLookup.set(clientId, row.id);
+        venueIdLookup.set(clientId, row.id);
+        venueIdLookup.set(row.id, row.id);
+      }
+    });
+  }
+
+  const desiredVenueIds = new Set();
+  const linkPayload = [];
+  const linkKeys = new Set();
+  cleanedEventVenues.forEach((venue) => {
+    const clientId = venue.id || venue.venueId || null;
+    const resolvedId =
+      normalizeText(venue.venueId) ||
+      insertedVenueLookup.get(clientId) ||
+      venueIdLookup.get(clientId);
+    if (resolvedId) {
+      desiredVenueIds.add(resolvedId);
+      const dedupeKey = `${normalizedEventId}:${resolvedId}`;
+      if (!linkKeys.has(dedupeKey)) {
+        linkKeys.add(dedupeKey);
+        linkPayload.push({
+          event_id: normalizedEventId,
+          venue_id: resolvedId,
+        });
+      }
+    }
+  });
+
+  if (linkPayload.length) {
+    const { error: eventVenueError } = await supabase
       .from("event_venues")
-      .delete()
-      .eq("event_id", normalizedEventId);
-    if (deleteAllVenuesError) {
+      .upsert(linkPayload, { onConflict: "event_id,venue_id" });
+    if (eventVenueError) {
       throw new Error(
-        deleteAllVenuesError.message || "Failed to remove event venues.",
+        eventVenueError.message || "Failed to link venues to event.",
       );
     }
-  } else {
-    const desiredVenueIdsList = Array.from(desiredVenueIds).map(
-      (id) => `"${id}"`,
-    );
+  }
+
+  const eventVenueLinksToDelete = Array.from(originalIndex.venueIds).filter(
+    (venueId) => !desiredVenueIds.has(venueId),
+  );
+  if (eventVenueLinksToDelete.length) {
     const { error: deleteVenuesError } = await supabase
       .from("event_venues")
       .delete()
       .eq("event_id", normalizedEventId)
-      .not("venue_id", "in", `(${desiredVenueIdsList.join(",")})`);
+      .in("venue_id", eventVenueLinksToDelete);
     if (deleteVenuesError) {
       throw new Error(
         deleteVenuesError.message || "Failed to remove event venues.",
       );
     }
   }
+  const eventVenueCount = desiredVenueIds.size;
 
   const divisionIdLookup = new Map();
-  const divisionUpsertPayload = [];
+  const divisionUpdateOperations = [];
   const divisionInsertPayload = [];
   const divisionInsertClientIds = [];
 
@@ -816,12 +980,15 @@ export async function replaceEventHierarchy(payload) {
     const rawId = normalizeText(division.id);
     if (isUuid(rawId)) {
       divisionIdLookup.set(rawId, rawId);
-      divisionUpsertPayload.push({
-        id: rawId,
-        event_id: normalizedEventId,
-        name,
-        level,
-      });
+      const originalDivision = originalIndex.divisionById.get(rawId);
+      const changes = buildFlatRecordChanges(
+        { name, level },
+        originalDivision,
+        ["name", "level"],
+      );
+      if (!originalDivision || hasOwnKeys(changes)) {
+        divisionUpdateOperations.push({ id: rawId, changes });
+      }
     } else {
       divisionInsertPayload.push({
         event_id: normalizedEventId,
@@ -832,13 +999,14 @@ export async function replaceEventHierarchy(payload) {
     }
   });
 
-  if (divisionUpsertPayload.length) {
-    const { error: divisionUpsertError } = await supabase
+  for (const operation of divisionUpdateOperations) {
+    const { error: divisionUpdateError } = await supabase
       .from("divisions")
-      .upsert(divisionUpsertPayload, { onConflict: "id" });
-    if (divisionUpsertError) {
+      .update(operation.changes)
+      .eq("id", operation.id);
+    if (divisionUpdateError) {
       throw new Error(
-        divisionUpsertError.message || "Failed to update divisions.",
+        divisionUpdateError.message || "Failed to update divisions.",
       );
     }
   }
@@ -867,7 +1035,7 @@ export async function replaceEventHierarchy(payload) {
   );
 
   const poolIdLookup = new Map();
-  const poolUpsertPayload = [];
+  const poolUpdateOperations = [];
   const poolInsertPayload = [];
   const poolInsertClientIds = [];
 
@@ -886,11 +1054,15 @@ export async function replaceEventHierarchy(payload) {
         const poolId = normalizeText(pool.id);
         if (isUuid(poolId)) {
           poolIdLookup.set(poolId, poolId);
-          poolUpsertPayload.push({
-            id: poolId,
-            division_id: divisionId,
-            name: poolName,
-          });
+          const originalPool = originalIndex.poolById.get(poolId);
+          const changes = buildFlatRecordChanges(
+            { division_id: divisionId, name: poolName },
+            originalPool,
+            ["division_id", "name"],
+          );
+          if (!originalPool || hasOwnKeys(changes)) {
+            poolUpdateOperations.push({ id: poolId, changes });
+          }
         } else {
           poolInsertPayload.push({
             division_id: divisionId,
@@ -901,12 +1073,13 @@ export async function replaceEventHierarchy(payload) {
       });
   });
 
-  if (poolUpsertPayload.length) {
-    const { error: poolUpsertError } = await supabase
+  for (const operation of poolUpdateOperations) {
+    const { error: poolUpdateError } = await supabase
       .from("pools")
-      .upsert(poolUpsertPayload, { onConflict: "id" });
-    if (poolUpsertError) {
-      throw new Error(poolUpsertError.message || "Failed to update pools.");
+      .update(operation.changes)
+      .eq("id", operation.id);
+    if (poolUpdateError) {
+      throw new Error(poolUpdateError.message || "Failed to update pools.");
     }
   }
 
@@ -949,14 +1122,8 @@ export async function replaceEventHierarchy(payload) {
     });
   });
 
-  const existingDivisionTeamKeys = new Set(
-    (existingDivisionTeams ?? []).map(
-      (row) => `${row.division_id}:${row.team_id}`,
-    ),
-  );
-
   const divisionTeamsToInsert = desiredDivisionTeamRows.filter(
-    (row) => !existingDivisionTeamKeys.has(`${row.division_id}:${row.team_id}`),
+    (row) => !originalIndex.divisionTeamKeys.has(`${row.division_id}:${row.team_id}`),
   );
   if (divisionTeamsToInsert.length) {
     const { error: divisionTeamsInsertError } = await supabase
@@ -970,7 +1137,7 @@ export async function replaceEventHierarchy(payload) {
     }
   }
 
-  const divisionTeamsToDelete = Array.from(existingDivisionTeamKeys).filter(
+  const divisionTeamsToDelete = Array.from(originalIndex.divisionTeamKeys).filter(
     (key) => !desiredDivisionTeamKeys.has(key),
   );
   for (const key of divisionTeamsToDelete) {
@@ -986,7 +1153,7 @@ export async function replaceEventHierarchy(payload) {
   }
 
   const desiredPoolTeamKeys = new Set();
-  const desiredPoolTeamRows = [];
+  const poolTeamsToUpsert = [];
   cleanedDivisions.forEach((division) => {
     (division.pools || []).forEach((pool) => {
       const poolKey = normalizeText(pool.id);
@@ -999,19 +1166,23 @@ export async function replaceEventHierarchy(payload) {
         const key = `${poolId}:${team.teamId}`;
         if (desiredPoolTeamKeys.has(key)) return;
         desiredPoolTeamKeys.add(key);
-        desiredPoolTeamRows.push({
+        const row = {
           pool_id: poolId,
           team_id: team.teamId,
           seed: toNullableNumber(team.seed),
-        });
+        };
+        const originalPoolTeam = originalIndex.poolTeamByKey.get(key);
+        if (!originalPoolTeam || originalPoolTeam.seed !== row.seed) {
+          poolTeamsToUpsert.push(row);
+        }
       });
     });
   });
 
-  if (desiredPoolTeamRows.length) {
+  if (poolTeamsToUpsert.length) {
     const { error: poolTeamsUpsertError } = await supabase
       .from("pool_teams")
-      .upsert(desiredPoolTeamRows, { onConflict: "pool_id,team_id" });
+      .upsert(poolTeamsToUpsert, { onConflict: "pool_id,team_id" });
     if (poolTeamsUpsertError) {
       throw new Error(
         poolTeamsUpsertError.message || "Failed to update pool teams.",
@@ -1019,13 +1190,7 @@ export async function replaceEventHierarchy(payload) {
     }
   }
 
-  const existingPoolTeamKeys = new Set(
-    (existingPoolTeams ?? []).map(
-      (row) => `${row.pool_id}:${row.team_id}`,
-    ),
-  );
-
-  const poolTeamsToDelete = Array.from(existingPoolTeamKeys).filter(
+  const poolTeamsToDelete = Array.from(originalIndex.poolTeamKeys).filter(
     (key) => !desiredPoolTeamKeys.has(key),
   );
   for (const key of poolTeamsToDelete) {
@@ -1041,7 +1206,7 @@ export async function replaceEventHierarchy(payload) {
   }
 
   const desiredMatchIds = new Set();
-  const matchUpsertPayload = [];
+  const matchUpdateOperations = [];
   const matchInsertPayload = [];
 
   cleanedDivisions.forEach((division) => {
@@ -1078,7 +1243,24 @@ export async function replaceEventHierarchy(payload) {
         const matchId = normalizeText(match.id);
         if (isUuid(matchId)) {
           desiredMatchIds.add(matchId);
-          matchUpsertPayload.push({ id: matchId, ...payload });
+          const originalMatch = originalIndex.matchById.get(matchId);
+          const changes = buildFlatRecordChanges(
+            payload,
+            originalMatch,
+            [
+              "event_id",
+              "division_id",
+              "pool_id",
+              "team_a",
+              "team_b",
+              "status",
+              "start_time",
+              "venue_id",
+            ],
+          );
+          if (!originalMatch || hasOwnKeys(changes)) {
+            matchUpdateOperations.push({ id: matchId, changes });
+          }
         } else {
           matchInsertPayload.push(payload);
         }
@@ -1086,12 +1268,13 @@ export async function replaceEventHierarchy(payload) {
     });
   });
 
-  if (matchUpsertPayload.length) {
-    const { error: matchUpsertError } = await supabase
+  for (const operation of matchUpdateOperations) {
+    const { error: matchUpdateError } = await supabase
       .from("matches")
-      .upsert(matchUpsertPayload, { onConflict: "id" });
-    if (matchUpsertError) {
-      throw new Error(matchUpsertError.message || "Failed to update matches.");
+      .update(operation.changes)
+      .eq("id", operation.id);
+    if (matchUpdateError) {
+      throw new Error(matchUpdateError.message || "Failed to update matches.");
     }
   }
 
@@ -1104,7 +1287,7 @@ export async function replaceEventHierarchy(payload) {
     }
   }
 
-  const matchesToDelete = existingMatchIds.filter(
+  const matchesToDelete = Array.from(originalIndex.matchIds).filter(
     (id) => !desiredMatchIds.has(id),
   );
   if (matchesToDelete.length) {
@@ -1117,7 +1300,7 @@ export async function replaceEventHierarchy(payload) {
     }
   }
 
-  const poolsToDelete = existingPoolIds.filter(
+  const poolsToDelete = Array.from(originalIndex.poolIds).filter(
     (id) => !desiredPoolIds.has(id),
   );
   if (poolsToDelete.length) {
@@ -1130,7 +1313,7 @@ export async function replaceEventHierarchy(payload) {
     }
   }
 
-  const divisionsToDelete = existingDivisionIds.filter(
+  const divisionsToDelete = Array.from(originalIndex.divisionIds).filter(
     (id) => !desiredDivisionIds.has(id),
   );
   if (divisionsToDelete.length) {
