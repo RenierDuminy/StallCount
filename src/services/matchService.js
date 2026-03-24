@@ -114,6 +114,82 @@ export async function getMatchById(matchId) {
   return data || null;
 }
 
+export async function createMatch(payload = {}) {
+  if (!payload.eventId) {
+    throw new Error("Event ID is required to create a match.");
+  }
+
+  const insertPayload = {
+    event_id: payload.eventId,
+    division_id: payload.divisionId || null,
+    pool_id: payload.poolId || null,
+    venue_id: payload.venueId || null,
+    team_a: payload.teamAId || null,
+    team_b: payload.teamBId || null,
+    status:
+      typeof payload.status === "string" && payload.status.trim()
+        ? payload.status.trim()
+        : "scheduled",
+    start_time: payload.startTime || null,
+  };
+
+  const { data, error } = await supabase
+    .from("matches")
+    .insert(insertPayload)
+    .select(MATCH_FIELDS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to create match");
+  }
+
+  if (data?.event_id) {
+    invalidateCachedQueries(`matches:event:${data.event_id}`);
+  }
+  invalidateCachedQueries("matches:open");
+  invalidateCachedQueries("matches:recent");
+
+  return data || null;
+}
+
+export async function updateMatch(matchId, payload = {}) {
+  if (!matchId) {
+    throw new Error("Match ID is required to update a match.");
+  }
+
+  const updatePayload = {};
+
+  if ("divisionId" in payload) updatePayload.division_id = payload.divisionId || null;
+  if ("poolId" in payload) updatePayload.pool_id = payload.poolId || null;
+  if ("venueId" in payload) updatePayload.venue_id = payload.venueId || null;
+  if ("startTime" in payload) updatePayload.start_time = payload.startTime || null;
+  if ("status" in payload) {
+    updatePayload.status =
+      typeof payload.status === "string" && payload.status.trim()
+        ? payload.status.trim()
+        : "scheduled";
+  }
+
+  const { data, error } = await supabase
+    .from("matches")
+    .update(updatePayload)
+    .eq("id", matchId)
+    .select(MATCH_FIELDS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to update match");
+  }
+
+  if (data?.event_id) {
+    invalidateCachedQueries(`matches:event:${data.event_id}`);
+  }
+  invalidateCachedQueries("matches:open");
+  invalidateCachedQueries("matches:recent");
+
+  return data || null;
+}
+
 const MATCH_STATUS_CODES = new Set([
   "canceled",
   "completed",

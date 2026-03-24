@@ -429,7 +429,7 @@ export default function ScoreKeeperView() {
     const actorId = options.find((player) => player.id === resolvedActor)?.id || resolvedActor || null;
     setPossessionActorId(actorId || "");
     const isBlock = possessionResult === "block";
-    const eventTeamKey = isBlock ? nextTeam : blockTeam;
+    const eventTeamKey = nextTeam;
     const editingIndex = possessionEditIndex;
     resetPossessionModalState();
     if (editingIndex !== null) {
@@ -509,11 +509,7 @@ export default function ScoreKeeperView() {
     const loggedTeam = log?.team || null;
     const nextTeam = isBlockLog
       ? loggedTeam
-      : loggedTeam === "A"
-        ? "B"
-        : loggedTeam === "B"
-          ? "A"
-          : null;
+      : loggedTeam;
     setPendingPossessionTeam(nextTeam);
     setPossessionPreviewTeam(nextTeam);
     setPossessionResult(isBlockLog ? "block" : "throwaway");

@@ -163,6 +163,7 @@ const buildDivisionStandings = (division, matchesByPool = {}) => {
         shortName: team.shortName,
         wins: 0,
         losses: 0,
+        points: 0,
         scoreDiff: 0,
       },
     ]),
@@ -189,6 +190,7 @@ const buildDivisionStandings = (division, matchesByPool = {}) => {
         teamA.scoreDiff += match.score_a - match.score_b;
         if (match.score_a > match.score_b) {
           teamA.wins += 1;
+          teamA.points += 1;
         } else if (match.score_a < match.score_b) {
           teamA.losses += 1;
         }
@@ -198,6 +200,7 @@ const buildDivisionStandings = (division, matchesByPool = {}) => {
         teamB.scoreDiff += match.score_b - match.score_a;
         if (match.score_b > match.score_a) {
           teamB.wins += 1;
+          teamB.points += 1;
         } else if (match.score_b < match.score_a) {
           teamB.losses += 1;
         }
@@ -207,6 +210,7 @@ const buildDivisionStandings = (division, matchesByPool = {}) => {
 
   return Array.from(standings.values()).sort(
     (a, b) =>
+      b.points - a.points ||
       b.wins - a.wins ||
       a.losses - b.losses ||
       b.scoreDiff - a.scoreDiff ||
@@ -300,7 +304,7 @@ const renderMatchRow = (match, options = {}) => {
     />
   );
 };
-export default function DROwLeague26Page() {
+export default function CPTOWLeague2026Page() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [eventData, setEventData] = useState(null);
@@ -510,6 +514,12 @@ export default function DROwLeague26Page() {
                         row.shortName
                           ? `${row.name} (${row.shortName})`
                           : row.name,
+                    },
+                    {
+                      key: "points",
+                      label: "Points",
+                      align: "center",
+                      render: (row) => row.points,
                     },
                     {
                       key: "record",

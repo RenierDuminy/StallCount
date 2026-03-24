@@ -50,6 +50,7 @@ import {
 const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
+const SOFT_CAP_TIMER_LABEL = "Soft Cap";
 const TIME_CAP_TARGET_LABEL = "Time cap reached, new match target set.";
 
 const OPTIMISTIC_PREFIX = "local-";
@@ -1133,7 +1134,7 @@ useEffect(() => {
       rules.gamePointTarget || highest + increment
     );
     setScoreTarget(nextTarget);
-    setTimerLabel(TIME_CAP_TARGET_LABEL);
+    setTimerLabel(SOFT_CAP_TIMER_LABEL);
     setSoftCapApplied(true);
   }, [
     matchStarted,
@@ -1187,8 +1188,8 @@ useEffect(() => {
   );
   const softCapMode = rules.gameSoftCapMode || "none";
   if (softCapApplied && softCapMode !== "none" && !hasScoreCapWinner) {
-    if (timerLabel !== TIME_CAP_TARGET_LABEL) {
-      setTimerLabel(TIME_CAP_TARGET_LABEL);
+    if (timerLabel !== SOFT_CAP_TIMER_LABEL) {
+      setTimerLabel(SOFT_CAP_TIMER_LABEL);
     }
     return;
   }
@@ -2062,11 +2063,7 @@ const replaceSecondaryTimer = useCallback(
           return;
         }
 
-        const derivedEventTeamKey =
-          eventTeamKey ||
-          (eventTypeIdOverride ? teamKey : previousTeam) ||
-          teamKey ||
-          null;
+        const derivedEventTeamKey = eventTeamKey || teamKey || previousTeam || null;
 
         const targetTeamId =
           derivedEventTeamKey === "A" ? teamAId : derivedEventTeamKey === "B" ? teamBId : null;

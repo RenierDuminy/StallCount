@@ -477,3 +477,52 @@ export async function resolveBracketMatchesForEvent({ eventId, standingsIndex, b
     skipped,
   };
 }
+
+export async function clearBracketMatchAssignmentsForEvent({ eventId, brackets }) {
+  const structure = Array.isArray(brackets) ? brackets : await getBracketsByEvent(eventId);
+  const flatNodes = structure.flatMap((bracket) => bracket?.nodes || []);
+  const cleared = [];
+  const skipped = [];
+
+  for (const node of flatNodes) {
+    const nodeName = getNodeDisplayName(node);
+
+    if (!node?.match_id) {
+      skipped.push({
+        nodeId: node.id,
+        nodeName,
+        reason: "node has no linked match",
+      });
+      continue;
+    }
+
+    const hasAssignedTeams = Boolean(node.match?.team_a?.id || node.match?.team_b?.id);
+    if (!hasAssignedTeams) {
+      skipped.push({
+        nodeId: node.id,
+        nodeName,
+        reason: "match already clear",
+      });
+      continue;
+    }
+
+    const updatedMatch = await updateMatchParticipants(node.match_id, {
+      teamAId: null,
+      teamBId: null,
+    });
+
+    cleared.push({
+      nodeId: node.id,
+      nodeName,
+      matchId: node.match_id,
+      match: updatedMatch,
+    });
+  }
+
+  return {
+    brackets: structure,
+    clearedCount: cleared.length,
+    cleared,
+    skipped,
+  };
+}

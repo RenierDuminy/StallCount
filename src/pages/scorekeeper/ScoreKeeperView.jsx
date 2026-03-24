@@ -96,6 +96,7 @@ export default function ScoreKeeperView() {
     canEndMatch,
     possessionLeader,
     halfRemainingLabel,
+    scoreTarget,
     softCapApplied,
     hardCapReached,
     sortedRosters,
@@ -146,14 +147,19 @@ export default function ScoreKeeperView() {
         : "Unknown";
   const attentionBannerMessage = (() => {
     if (!matchStarted) return null;
+    const softCapMode = rules.gameSoftCapMode || "none";
     if (halftimeTimeCapArmed && !halftimeStartLogged && !halftimeEndLogged) {
       return "Halftime time cap has been reached and will start HT after the point.";
     }
     if (hardCapReached) {
       return "Time cap reached, new match target set.";
     }
-    if (softCapApplied) {
-      return "Time cap reached, new match target set.";
+    if (
+      softCapApplied &&
+      softCapMode !== "none" &&
+      Number.isFinite(scoreTarget)
+    ) {
+      return `Soft cap reached, new match target of ${scoreTarget}.`;
     }
     return null;
   })();
@@ -466,7 +472,7 @@ export default function ScoreKeeperView() {
     const actorId = options.find((player) => player.id === resolvedActor)?.id || resolvedActor || null;
     setPossessionActorId(actorId || "");
     const isBlock = possessionResult === "block";
-    const eventTeamKey = isBlock ? nextTeam : blockTeam;
+    const eventTeamKey = nextTeam;
     const editingIndex = possessionEditIndex;
     resetPossessionModalState();
     if (editingIndex !== null) {
@@ -546,11 +552,7 @@ export default function ScoreKeeperView() {
     const loggedTeam = log?.team || null;
     const nextTeam = isBlockLog
       ? loggedTeam
-      : loggedTeam === "A"
-        ? "B"
-        : loggedTeam === "B"
-          ? "A"
-          : null;
+      : loggedTeam;
     setPendingPossessionTeam(nextTeam);
     setPossessionPreviewTeam(nextTeam);
     setPossessionResult(isBlockLog ? "block" : "throwaway");
@@ -744,7 +746,7 @@ export default function ScoreKeeperView() {
             </div>
 
             {attentionBannerMessage && (
-              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+              <p className="rounded-2xl border border-red-500 bg-red-200 px-3 py-2 text-sm font-bold text-red-900 shadow-[0_0_0_1px_rgba(239,68,68,0.15)]">
                 {attentionBannerMessage}
               </p>
             )}

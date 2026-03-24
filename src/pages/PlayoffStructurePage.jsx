@@ -12,10 +12,11 @@ import {
 } from "../components/ui/primitives";
 import usePersistentState from "../hooks/usePersistentState";
 import { getEventHierarchy, getEventsList } from "../services/leagueService";
-import { getMatchesByEvent } from "../services/matchService";
+import { createMatch, getMatchesByEvent, updateMatch } from "../services/matchService";
 import {
   createBracket,
   createBracketNode,
+  clearBracketMatchAssignmentsForEvent,
   deleteBracket,
   deleteBracketNode,
   getBracketsByEvent,
@@ -44,6 +45,11 @@ const SIDE_OPTIONS = [
   { value: "", label: "None" },
   { value: "A", label: "A side" },
   { value: "B", label: "B side" },
+];
+const LINKED_MATCH_STATUS_OPTIONS = [
+  { value: "scheduled", label: "Scheduled" },
+  { value: "ready", label: "Ready" },
+  { value: "pending", label: "Pending" },
 ];
 
 function normalizeText(value) {
@@ -75,6 +81,39 @@ function formatDateTime(value) {
   } catch {
     return "Time TBC";
   }
+}
+
+function parseDateTimeLocalInput(value) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (!trimmed) {
+    return null;
+  }
+
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Match start time is invalid.");
+  }
+
+  return date.toISOString();
+}
+
+function formatDateTimeLocalInput(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 function formatBracketType(value) {
@@ -122,6 +161,18 @@ function formatMatchLabel(match) {
   const when = formatDateTime(match?.start_time);
   const status = formatMatchStatus(match?.status);
   return `${formatMatchup(match)} - ${when} - ${status}`;
+}
+
+function formatVenueLabel(venue) {
+  if (!venue || typeof venue !== "object") {
+    return "Venue";
+  }
+
+  const parts = [venue.city, venue.location, venue.name]
+    .map((part) => (typeof part === "string" ? part.trim() : ""))
+    .filter(Boolean);
+
+  return parts.length ? parts.join(", ") : "Venue";
 }
 
 function isFinishedStatus(status) {
@@ -328,6 +379,27 @@ function createEmptyNodeForm() {
     advanceToLoserSide: "",
   };
 }
+
+function createEmptyLinkedMatchForm(defaults = {}) {
+  return {
+    divisionId: defaults.divisionId || "",
+    poolId: defaults.poolId || "",
+    venueId: defaults.venueId || "",
+    startTime: defaults.startTime || "",
+    status: defaults.status || "scheduled",
+  };
+}
+
+function mapLinkedMatchToForm(match) {
+  return createEmptyLinkedMatchForm({
+    divisionId: match?.division_id || "",
+    poolId: match?.pool_id || "",
+    venueId: match?.venue_id || "",
+    startTime: formatDateTimeLocalInput(match?.start_time),
+    status: match?.status || "scheduled",
+  });
+}
+
 function mapBracketToForm(bracket) {
   return {
     name: bracket?.name || "",
@@ -515,6 +587,29 @@ function summarizeResolveResult(result) {
   return parts.join(" ");
 }
 
+function summarizeClearResult(result) {
+  const cleared = result?.clearedCount || 0;
+  const skipped = Array.isArray(result?.skipped) ? result.skipped : [];
+
+  if (!cleared && !skipped.length) {
+    return "No playoff assignments cleared.";
+  }
+
+  const parts = [];
+  parts.push(cleared ? `Cleared ${cleared} playoff match assignment${cleared === 1 ? "" : "s"}.` : "No playoff assignments cleared.");
+
+  if (skipped.length) {
+    const preview = skipped
+      .slice(0, 3)
+      .map((entry) => `${entry.nodeName}: ${entry.reason}`)
+      .join(" | ");
+    const extraCount = skipped.length - Math.min(skipped.length, 3);
+    parts.push(extraCount > 0 ? `${preview} | ${extraCount} more` : preview);
+  }
+
+  return parts.join(" ");
+}
+
 function getNodeReferenceConflicts(nodeId, nodes) {
   if (!nodeId) return [];
   return (nodes || []).filter((node) => {
@@ -668,10 +763,15 @@ export default function PlayoffStructurePage() {
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [bracketForm, setBracketForm] = useState(createEmptyBracketForm);
   const [nodeForm, setNodeForm] = useState(createEmptyNodeForm);
+  const [showCreateMatchForm, setShowCreateMatchForm] = useState(false);
+  const [createMatchForm, setCreateMatchForm] = useState(createEmptyLinkedMatchForm);
+  const [linkedMatchFormMode, setLinkedMatchFormMode] = useState("create");
   const [loading, setLoading] = useState(false);
   const [bracketBusy, setBracketBusy] = useState(false);
   const [nodeBusy, setNodeBusy] = useState(false);
+  const [createMatchBusy, setCreateMatchBusy] = useState(false);
   const [resolveBusy, setResolveBusy] = useState(false);
+  const [clearBusy, setClearBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -820,6 +920,26 @@ export default function PlayoffStructurePage() {
     [poolOptions],
   );
 
+  const venueOptions = useMemo(
+    () =>
+      (eventData?.venues || []).map((venue) => ({
+        id: venue.id,
+        name: formatVenueLabel(venue),
+      })),
+    [eventData?.venues],
+  );
+
+  useEffect(() => {
+    setShowCreateMatchForm(false);
+    setLinkedMatchFormMode("create");
+    setCreateMatchForm(
+      createEmptyLinkedMatchForm({
+        divisionId: divisions.length === 1 ? divisions[0].id : "",
+        venueId: venueOptions.length === 1 ? venueOptions[0].id : "",
+      }),
+    );
+  }, [divisions, selectedEventId, selectedNodeId, venueOptions]);
+
   const teamOptions = useMemo(() => {
     const teamMap = new Map();
 
@@ -861,6 +981,11 @@ export default function PlayoffStructurePage() {
     [matches],
   );
 
+  const currentLinkedMatch = useMemo(
+    () => matches.find((match) => match.id === nodeForm.matchId) || null,
+    [matches, nodeForm.matchId],
+  );
+
   const nodeById = useMemo(
     () => new Map(selectedBracketNodes.map((node) => [node.id, node])),
     [selectedBracketNodes],
@@ -884,6 +1009,14 @@ export default function PlayoffStructurePage() {
     }),
     [divisionById, nodeById, poolById, teamById],
   );
+
+  const createMatchPoolOptions = useMemo(() => {
+    if (!createMatchForm.divisionId) {
+      return poolOptions;
+    }
+
+    return poolOptions.filter((pool) => pool.divisionId === createMatchForm.divisionId);
+  }, [createMatchForm.divisionId, poolOptions]);
 
   const stats = useMemo(() => {
     const nodeCount = brackets.reduce((total, bracket) => total + (bracket?.nodes?.length || 0), 0);
@@ -1000,7 +1133,121 @@ export default function PlayoffStructurePage() {
     setError("");
     setSelectedNodeId("");
     setNodeForm(createEmptyNodeForm());
+    setShowCreateMatchForm(false);
+    setLinkedMatchFormMode("create");
   }, [selectedBracketId]);
+
+  const openCreateLinkedForm = useCallback(() => {
+    if (!selectedEventId) {
+      setError("Choose an event before creating a linked match.");
+      return;
+    }
+
+    setMessage("");
+    setError("");
+    setLinkedMatchFormMode("create");
+    setCreateMatchForm(
+      createEmptyLinkedMatchForm({
+        divisionId: divisions.length === 1 ? divisions[0].id : "",
+        venueId: venueOptions.length === 1 ? venueOptions[0].id : "",
+      }),
+    );
+    setShowCreateMatchForm(true);
+  }, [divisions, selectedEventId, venueOptions]);
+
+  const openEditLinkedForm = useCallback(() => {
+    if (!currentLinkedMatch) {
+      setError("Choose a linked match before editing.");
+      return;
+    }
+
+    setMessage("");
+    setError("");
+    setLinkedMatchFormMode("edit");
+    setCreateMatchForm(mapLinkedMatchToForm(currentLinkedMatch));
+    setShowCreateMatchForm(true);
+  }, [currentLinkedMatch]);
+
+  const handleToggleLinkedMatchForm = useCallback(() => {
+    if (showCreateMatchForm && linkedMatchFormMode === "create") {
+      setShowCreateMatchForm(false);
+      setLinkedMatchFormMode("create");
+      return;
+    }
+
+    openCreateLinkedForm();
+  }, [linkedMatchFormMode, openCreateLinkedForm, showCreateMatchForm]);
+
+  const handleSaveLinkedMatch = useCallback(async () => {
+    if (!selectedEventId) {
+      setError("Choose an event before working with a linked match.");
+      return;
+    }
+
+    setCreateMatchBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const selectedPool = poolById.get(createMatchForm.poolId || "") || null;
+      const divisionId = createMatchForm.divisionId || selectedPool?.divisionId || null;
+
+      if (
+        selectedPool?.divisionId &&
+        createMatchForm.divisionId &&
+        selectedPool.divisionId !== createMatchForm.divisionId
+      ) {
+        throw new Error("Selected pool does not belong to the chosen division.");
+      }
+
+      const payload = {
+        eventId: selectedEventId,
+        divisionId,
+        poolId: selectedPool?.id || null,
+        venueId: createMatchForm.venueId || null,
+        status: createMatchForm.status || "scheduled",
+        startTime: parseDateTimeLocalInput(createMatchForm.startTime),
+      };
+
+      const saved =
+        linkedMatchFormMode === "edit" && currentLinkedMatch?.id
+          ? await updateMatch(currentLinkedMatch.id, payload)
+          : await createMatch(payload);
+
+      if (!saved?.id) {
+        throw new Error(
+          linkedMatchFormMode === "edit"
+            ? "Match was updated but no match id was returned."
+            : "Match was created but no match id was returned.",
+        );
+      }
+
+      setMatches((current) => {
+        const next = [...current.filter((match) => match.id !== saved.id), saved];
+        next.sort((left, right) => {
+          const leftTime = left?.start_time ? new Date(left.start_time).getTime() : Number.MAX_SAFE_INTEGER;
+          const rightTime = right?.start_time ? new Date(right.start_time).getTime() : Number.MAX_SAFE_INTEGER;
+          return leftTime - rightTime;
+        });
+        return next;
+      });
+      setNodeForm((current) => ({ ...current, matchId: saved.id }));
+      setShowCreateMatchForm(false);
+      setLinkedMatchFormMode("create");
+      setMessage(
+        linkedMatchFormMode === "edit"
+          ? "Updated the linked values. Save node to keep the link."
+          : "Created a new linked entry and selected it for this node. Save node to keep the link.",
+      );
+    } catch (saveError) {
+      setError(
+        saveError?.message ||
+          (linkedMatchFormMode === "edit" ? "Failed to update linked values." : "Failed to create linked entry."),
+      );
+    } finally {
+      setCreateMatchBusy(false);
+    }
+  }, [createMatchForm, currentLinkedMatch, linkedMatchFormMode, poolById, selectedEventId]);
 
   const handleSaveNode = useCallback(async () => {
     if (!selectedBracketId) {
@@ -1129,6 +1376,37 @@ export default function PlayoffStructurePage() {
     }
   }, [brackets, eventData, loadSelectedEventData, matches, selectedEventId]);
 
+  const handleClearPlayoffAssignments = useCallback(async () => {
+    if (!selectedEventId) {
+      setError("Choose an event before clearing playoff assignments.");
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm("Clear assigned teams from all linked playoff matches for this event?");
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setClearBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const result = await clearBracketMatchAssignmentsForEvent({
+        eventId: selectedEventId,
+        brackets,
+      });
+      await loadSelectedEventData();
+      setMessage(summarizeClearResult(result));
+    } catch (clearError) {
+      setError(clearError?.message || "Failed to clear playoff assignments.");
+    } finally {
+      setClearBusy(false);
+    }
+  }, [brackets, loadSelectedEventData, selectedEventId]);
+
   return (
     <div className="pb-16 text-ink">
       <SectionShell as="header" className="py-6">
@@ -1152,9 +1430,17 @@ export default function PlayoffStructurePage() {
                 </button>
                 <button
                   type="button"
+                  onClick={handleClearPlayoffAssignments}
+                  className="sc-button is-ghost"
+                  disabled={clearBusy || loading || !selectedEventId}
+                >
+                  {clearBusy ? "Clearing..." : "Clear playoff assignments"}
+                </button>
+                <button
+                  type="button"
                   onClick={handleResolvePlayoffs}
                   className="sc-button"
-                  disabled={resolveBusy || loading || !selectedEventId}
+                  disabled={resolveBusy || clearBusy || loading || !selectedEventId}
                 >
                   {resolveBusy ? "Resolving..." : "Resolve playoffs"}
                 </button>
@@ -1484,16 +1770,34 @@ export default function PlayoffStructurePage() {
 
                       <Field
                         label="Linked match"
-                        hint="Choose the scheduled match this node should populate."
+                        hint="Choose the scheduled match this node should populate, or create one here."
                         action={
-                          nodeForm.matchId ? (
-                            <Link
-                              to={`/matches?matchId=${nodeForm.matchId}`}
+                          <div className="flex flex-wrap items-center gap-3">
+                            {nodeForm.matchId ? (
+                              <>
+                                <Link
+                                  to={`/matches?matchId=${nodeForm.matchId}`}
+                                  className="text-xs text-emerald-200 underline-offset-2 hover:underline"
+                                >
+                                  Open
+                                </Link>
+                                <button
+                                  type="button"
+                                  onClick={openEditLinkedForm}
+                                  className="text-xs text-emerald-200 underline-offset-2 hover:underline"
+                                >
+                                  Edit
+                                </button>
+                              </>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={handleToggleLinkedMatchForm}
                               className="text-xs text-emerald-200 underline-offset-2 hover:underline"
                             >
-                              Open match
-                            </Link>
-                          ) : null
+                              {showCreateMatchForm && linkedMatchFormMode === "create" ? "Hide" : "Create"}
+                            </button>
+                          </div>
                         }
                       >
                         <Select
@@ -1509,6 +1813,142 @@ export default function PlayoffStructurePage() {
                         </Select>
                       </Field>
                     </div>
+
+                    {showCreateMatchForm ? (
+                      <Panel variant="muted" className="space-y-4 p-4">
+                        <SectionHeader
+                          title={linkedMatchFormMode === "edit" ? "Edit linked values" : "Create linked"}
+                          description={
+                            linkedMatchFormMode === "edit"
+                              ? "Edit the selected linked values here, then save the node if the link should remain."
+                              : "Create a scheduled shell for this node, then save the node to persist the link."
+                          }
+                        />
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                          <Field label="Division">
+                            <Select
+                              value={createMatchForm.divisionId}
+                              onChange={(event) =>
+                                setCreateMatchForm((current) => ({
+                                  ...current,
+                                  divisionId: event.target.value,
+                                  poolId: "",
+                                }))
+                              }
+                              disabled={createMatchBusy}
+                            >
+                              <option value="">No division</option>
+                              {divisionOptions.map((division) => (
+                                <option key={division.id} value={division.id}>
+                                  {division.name}
+                                </option>
+                              ))}
+                            </Select>
+                          </Field>
+
+                          <Field label="Pool">
+                            <Select
+                              value={createMatchForm.poolId}
+                              onChange={(event) =>
+                                setCreateMatchForm((current) => ({
+                                  ...current,
+                                  poolId: event.target.value,
+                                }))
+                              }
+                              disabled={createMatchBusy}
+                            >
+                              <option value="">No pool</option>
+                              {createMatchPoolOptions.map((pool) => (
+                                <option key={pool.id} value={pool.id}>
+                                  {pool.divisionName ? `${pool.divisionName} - ` : ""}
+                                  {pool.name}
+                                </option>
+                              ))}
+                            </Select>
+                          </Field>
+
+                          <Field label="Venue">
+                            <Select
+                              value={createMatchForm.venueId}
+                              onChange={(event) =>
+                                setCreateMatchForm((current) => ({
+                                  ...current,
+                                  venueId: event.target.value,
+                                }))
+                              }
+                              disabled={createMatchBusy}
+                            >
+                              <option value="">Venue TBC</option>
+                              {venueOptions.map((venue) => (
+                                <option key={venue.id} value={venue.id}>
+                                  {venue.name}
+                                </option>
+                              ))}
+                            </Select>
+                          </Field>
+
+                          <Field label="Start time">
+                            <Input
+                              type="datetime-local"
+                              value={createMatchForm.startTime}
+                              onChange={(event) =>
+                                setCreateMatchForm((current) => ({
+                                  ...current,
+                                  startTime: event.target.value,
+                                }))
+                              }
+                              disabled={createMatchBusy}
+                            />
+                          </Field>
+
+                          <Field label="Status">
+                            <Select
+                              value={createMatchForm.status}
+                              onChange={(event) =>
+                                setCreateMatchForm((current) => ({
+                                  ...current,
+                                  status: event.target.value,
+                                }))
+                              }
+                              disabled={createMatchBusy}
+                            >
+                              {LINKED_MATCH_STATUS_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </Select>
+                          </Field>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleSaveLinkedMatch}
+                            className="sc-button is-ghost"
+                            disabled={createMatchBusy}
+                          >
+                            {createMatchBusy
+                              ? linkedMatchFormMode === "edit"
+                                ? "Saving..."
+                                : "Creating..."
+                              : linkedMatchFormMode === "edit"
+                                ? "Save"
+                                : "Create and select"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowCreateMatchForm(false);
+                              setLinkedMatchFormMode("create");
+                            }}
+                            className="sc-button is-ghost"
+                            disabled={createMatchBusy}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </Panel>
+                    ) : null}
 
                     <div className="grid gap-4 xl:grid-cols-2">
                       <SourceEditor
