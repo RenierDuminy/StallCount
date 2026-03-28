@@ -513,6 +513,7 @@ export type SpiritScoreRow = {
   match_id: string;
   rated_team_id: string;
   total: number | null;
+  comments: string | null;
   rules_knowledge: number | null;
   fouls_contact: number | null;
   positive_attitude: number | null;
@@ -541,6 +542,7 @@ export async function getSpiritScoresForMatches(matchIds: string[]): Promise<Spi
         match_id,
         rated_team_id,
         total,
+        comments,
         rules_knowledge,
         fouls_contact,
         positive_attitude,

@@ -1006,8 +1006,16 @@ function buildSpiritReport(scores, match) {
     const rows = byTeam.get(teamId) || [];
     if (!rows.length) return null;
     const values = {};
+    const notes = [];
     let total = 0;
     let totalCount = 0;
+
+    rows.forEach((row) => {
+      const note = typeof row?.comments === "string" ? row.comments.trim() : "";
+      if (note) {
+        notes.push(note);
+      }
+    });
 
     SPIRIT_DIMENSIONS.forEach((dim) => {
       let sum = 0;
@@ -1042,6 +1050,7 @@ function buildSpiritReport(scores, match) {
       total,
       maxTotal,
       totalCount,
+      notes,
     };
   };
 
@@ -1071,6 +1080,18 @@ function SpiritRadarCard({ title, data, tone }) {
         <div className="rounded-2xl border border-border bg-white p-1">
           <SpiritRadarChart values={data.values} tone={tone} title={title} totalLabel={totalLabel} />
         </div>
+        {data?.notes?.length ? (
+          <div className="mt-3 rounded-2xl border border-border bg-surface-muted px-3 py-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Notes</p>
+            <div className="mt-2 space-y-2 text-sm text-ink">
+              {data.notes.map((note, index) => (
+                <p key={`${title}-note-${index}`} className="leading-relaxed">
+                  {note}
+                </p>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

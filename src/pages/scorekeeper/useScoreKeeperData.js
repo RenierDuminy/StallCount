@@ -2125,7 +2125,7 @@ const replaceSecondaryTimer = useCallback(
       return;
     }
     setHalftimeBreakActive(false);
-    const nextTeam = matchStartingTeamKey === "A" ? "B" : matchStartingTeamKey === "B" ? "A" : null;
+    const nextTeam = matchStartingTeamKey;
     if (!nextTeam) return;
     void updatePossession(nextTeam, { logTurnover: false });
   }, [

@@ -328,6 +328,39 @@ export default function CaptainPage() {
     playerForm.name,
   ]);
 
+  const duplicateBanner = useMemo(() => {
+    const formName = normalizeName(playerForm.name);
+    if (!formName) return null;
+
+    const hasExactNameMatch = playerDirectory.some((player) => {
+      if (!player || player.id === playerForm.id) return false;
+      return normalizeName(player.name) === formName;
+    });
+
+    if (!hasExactNameMatch) return null;
+
+    const hasPossibleDuplication = playerDirectory.some((player) => {
+      if (!player || player.id === playerForm.id) return false;
+      return (
+        normalizeName(player.name) === formName &&
+        String(player.gender_code || "") === String(playerForm.gender_code || "") &&
+        String(player.birthday || "") === String(playerForm.birthday || "")
+      );
+    });
+
+    if (hasPossibleDuplication) {
+      return {
+        tone: "danger",
+        message: "Warning: Possible duplication",
+      };
+    }
+
+    return {
+      tone: "caution",
+      message: "Caution: Existing name found",
+    };
+  }, [playerDirectory, playerForm.birthday, playerForm.gender_code, playerForm.id, playerForm.name]);
+
   const playerOptions = useMemo(() => {
     const entries = [];
     const seen = new Set();
@@ -399,6 +432,11 @@ export default function CaptainPage() {
   const selectedAssignPlayer = useMemo(
     () => playerDirectory.find((player) => player.id === assignPlayerId) || null,
     [assignPlayerId, playerDirectory],
+  );
+
+  const assignAlreadyLinked = useMemo(
+    () => Boolean(assignPlayerId) && rosterPlayerIds.has(assignPlayerId),
+    [assignPlayerId, rosterPlayerIds],
   );
 
   async function loadDirectory() {
@@ -507,6 +545,10 @@ export default function CaptainPage() {
         tone: "error",
         message: "Select a team, event, and player before adding.",
       });
+      return;
+    }
+    if (rosterPlayerIds.has(assignPlayerId)) {
+      setRosterAlert(null);
       return;
     }
 
@@ -654,6 +696,19 @@ export default function CaptainPage() {
                   Clear form
                 </button>
               </div>
+
+              {duplicateBanner && (
+                <div
+                  className={[
+                    "rounded-xl border px-3 py-2 text-sm font-medium",
+                    duplicateBanner.tone === "danger"
+                      ? "border-red-500/50 bg-red-500/10 text-red-200"
+                      : "border-yellow-400/50 bg-yellow-400/10 text-yellow-100",
+                  ].join(" ")}
+                >
+                  {duplicateBanner.message}
+                </div>
+              )}
             </form>
           </div>
 
@@ -820,7 +875,6 @@ export default function CaptainPage() {
                         <p className="truncate text-ink-muted">
                           {player.birthday || "DOB unknown"} - {player.gender_code || "-"}
                         </p>
-                        <p className="truncate text-[11px] text-ink-muted/90">Available to assign</p>
                       </div>
                       <button
                         type="button"
@@ -876,12 +930,24 @@ export default function CaptainPage() {
                 </Field>
                 <button
                   type="submit"
-                  disabled={assigning || !selectedTeamId || !selectedEventId || !assignPlayerId}
+                  disabled={
+                    assigning ||
+                    !selectedTeamId ||
+                    !selectedEventId ||
+                    !assignPlayerId ||
+                    assignAlreadyLinked
+                  }
                   className="sc-button disabled:cursor-not-allowed"
                 >
                   {assigning ? "Adding..." : "Add to roster"}
                 </button>
               </div>
+
+              {assignAlreadyLinked && (
+                <div className="rounded-xl border border-yellow-400/50 bg-yellow-400/10 px-3 py-2 text-sm font-medium text-yellow-100">
+                  Already assigned
+                </div>
+              )}
             </form>
           </Panel>
 
