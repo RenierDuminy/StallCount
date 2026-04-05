@@ -98,6 +98,14 @@ const ADMIN_MODULES = [
     accent: "bg-lime-100 text-lime-700",
   },
   {
+    label: "Custom scripts",
+    description:
+      "View, edit, and run bundled admin JS scripts with local browser overrides.",
+    to: "/admin/custom-scripts",
+    accent: "bg-stone-200 text-stone-800",
+    allowedRoles: ["admin"],
+  },
+  {
     label: "Spirit scores",
     description: "Capture and review spirit scores for completed matches.",
     to: "/spirit-scores",

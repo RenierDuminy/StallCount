@@ -36,6 +36,7 @@ const SysAdminPage = lazy(() => import("./pages/SysAdminPage"));
 const UserPage = lazy(() => import("./pages/UserPage"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
+const CustomScriptsPage = lazy(() => import("./pages/CustomScriptsPage"));
 const AdminScoreboardDebugPage = lazy(() => import("./pages/AdminScoreboardDebugPage"));
 const AdminAccessPage = lazy(() => import("./pages/AdminAccessPage"));
 const EventAccessPage = lazy(() => import("./pages/EventAccessPage"));
@@ -181,6 +182,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute allowedPermissions={EVENT_SETUP_ACCESS_PERMISSIONS}>
                 <EventSetupWizardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/custom-scripts"
+            element={
+              <ProtectedRoute allowedPermissions={SYS_ADMIN_ACCESS_PERMISSIONS}>
+                <CustomScriptsPage />
               </ProtectedRoute>
             }
           />
