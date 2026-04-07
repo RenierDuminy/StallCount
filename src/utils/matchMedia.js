@@ -110,3 +110,11 @@ export function getMatchMediaDetails(match) {
     status: match.media_status || primary.status || "",
   };
 }
+
+export function getMatchMediaUrl(match) {
+  return getMatchMediaDetails(match)?.url || null;
+}
+
+export function hasMatchMedia(match) {
+  return Boolean(getMatchMediaUrl(match));
+}

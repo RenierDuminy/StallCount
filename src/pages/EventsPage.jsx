@@ -4,7 +4,7 @@ import { getEventsList } from "../services/leagueService";
 import { getMatchesByEvent } from "../services/matchService";
 import { hydrateVenueLookup } from "../services/venueService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
-import { resolveMediaProviderLabel } from "../utils/matchMedia";
+import { getMatchMediaDetails } from "../utils/matchMedia";
 import { getEventWorkspacePath } from "./eventWorkspaces";
 
 const EVENT_WORKSPACE_LABEL = "Open event overview";
@@ -465,9 +465,9 @@ export default function EventsPage() {
                   match.status === "halftime" ||
                   match.status === "finished" ||
                   match.status === "completed";
-                const rawMediaUrl = typeof match.media_url === "string" ? match.media_url.trim() : "";
-                const mediaUrl = rawMediaUrl && /^https?:\/\//i.test(rawMediaUrl) ? rawMediaUrl : null;
-                const mediaProviderLabel = resolveMediaProviderLabel(match.media_provider, mediaUrl);
+                const mediaDetails = getMatchMediaDetails(match);
+                const mediaUrl = mediaDetails?.url || null;
+                const mediaProviderLabel = mediaDetails?.providerLabel || "Stream";
                 const handleMediaClick = (event) => {
                   event.stopPropagation();
                   if (isNavigable) {

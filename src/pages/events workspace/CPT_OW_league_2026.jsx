@@ -8,8 +8,10 @@ import {
   SectionShell,
   Chip,
 } from "../../components/ui/primitives";
+import { MatchMediaButton } from "../../components/MatchMediaButton";
 import { getMatchesByEvent } from "../../services/matchService";
 import { getEventHierarchy } from "../../services/leagueService";
+import { getMatchMediaDetails } from "../../utils/matchMedia";
 export const EVENT_ID = "0d3369f9-8461-4f02-b343-5679bb17d644";
 export const EVENT_SLUG = "ctfda-ow-league";
 const MATCH_LIMIT = 400;
@@ -287,6 +289,7 @@ const renderMatchRow = (match, options = {}) => {
   const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
   const component = matchHref ? Link : "article";
   const linkProps = matchHref ? { to: matchHref } : {};
+  const mediaDetails = getMatchMediaDetails(match);
   return (
     <MatchCard
       key={match.id}
@@ -300,6 +303,8 @@ const renderMatchRow = (match, options = {}) => {
       score={showScore ? formatScoreLine(match) : null}
       status={formatMatchStatus(match.status, showScore ? "Final" : "Scheduled")}
       scoreAlign={showScore ? "right" : "left"}
+      trailing={mediaDetails ? <MatchMediaButton media={mediaDetails} /> : null}
+      trailingPosition="header"
       {...linkProps}
     />
   );

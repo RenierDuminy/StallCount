@@ -11,7 +11,7 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabaseClient";
 import { getPlayersByIds } from "../services/playerService";
 import { Card, Chip, MatchCard, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
-import { resolveMediaProviderLabel } from "../utils/matchMedia";
+import { getMatchMediaDetails, getMatchMediaUrl, hasMatchMedia } from "../utils/matchMedia";
 
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
@@ -1290,17 +1290,11 @@ function formatMatchup(match) {
 }
 
 function matchHasStream(match) {
-  if (!match) return false;
-  if (typeof match.media_url === "string" && match.media_url.trim()) return true;
-  if (match.has_media) return true;
-  const primaryUrl = match.media_link?.primary?.url;
-  return typeof primaryUrl === "string" && primaryUrl.trim().length > 0;
+  return hasMatchMedia(match);
 }
 
 function formatMediaProvider(match) {
-  const provider = match?.media_provider;
-  const url = resolveStreamUrl(match);
-  return resolveMediaProviderLabel(provider, url);
+  return getMatchMediaDetails(match)?.providerLabel || "Stream";
 }
 
 function formatLiveScore(match) {
@@ -1343,11 +1337,7 @@ function buildMatchLink(matchId, options = {}) {
 }
 
 function resolveStreamUrl(match) {
-  if (!match) return null;
-  if (typeof match.media_url === "string" && match.media_url.trim()) return match.media_url;
-  const primaryUrl = match.media_link?.primary?.url;
-  if (typeof primaryUrl === "string" && primaryUrl.trim()) return primaryUrl;
-  return null;
+  return getMatchMediaUrl(match);
 }
 
 function normalizeTargetType(type) {

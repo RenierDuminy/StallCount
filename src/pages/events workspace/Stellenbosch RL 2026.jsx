@@ -8,10 +8,12 @@ import {
   SectionHeader,
   SectionShell,
 } from "../../components/ui/primitives";
+import { MatchMediaButton } from "../../components/MatchMediaButton";
 import { useAuth } from "../../context/AuthContext";
 import { getEventHierarchy } from "../../services/leagueService";
 import { getMatchesByEvent } from "../../services/matchService";
 import { executeCustomScript } from "../../services/customScriptService";
+import { getMatchMediaDetails } from "../../utils/matchMedia";
 import {
   userHasAnyRole,
   SYS_ADMIN_ACCESS_ROLES,
@@ -819,6 +821,7 @@ export default function StellenboschRl2026WorkspacePage() {
     const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
     const component = matchHref ? Link : "article";
     const linkProps = matchHref ? { to: matchHref } : {};
+    const mediaDetails = getMatchMediaDetails(match);
     return (
       <MatchCard
         key={match.id}
@@ -834,6 +837,8 @@ export default function StellenboschRl2026WorkspacePage() {
         venue={match.venue}
         meta={formatMatchTime(match.start_time)}
         status={formatMatchStatus(match.status)}
+        trailing={mediaDetails ? <MatchMediaButton media={mediaDetails} /> : null}
+        trailingPosition="header"
         {...linkProps}
       />
     );

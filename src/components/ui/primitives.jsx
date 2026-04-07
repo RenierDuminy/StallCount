@@ -175,6 +175,7 @@ export function MatchCard({
   phase,
   scoreAlign = "left",
   trailing,
+  trailingPosition = "footer",
   ...props
 }) {
   const venueLabel = (() => {
@@ -203,7 +204,9 @@ export function MatchCard({
   const finishedTeamANameClass = finishedScoreParts ? getFinishedTeamNameSizeClass(finishedScoreParts.teamA) : "";
   const finishedTeamBNameClass = finishedScoreParts ? getFinishedTeamNameSizeClass(finishedScoreParts.teamB) : "";
   const showTitle = !(matchPhase === MATCH_CARD_PHASES.finished && isMatchupTitle(title));
-  const footerJustify = trailing
+  const trailingInHeader = trailing && trailingPosition === "header";
+  const trailingInFooter = trailing && !trailingInHeader;
+  const footerJustify = trailingInFooter
     ? "justify-between"
     : matchPhase === MATCH_CARD_PHASES.finished
       ? "justify-center"
@@ -221,12 +224,15 @@ export function MatchCard({
       {...props}
     >
       <div className="flex flex-col gap-2">
-        <div>
-          {eyebrow ? <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{eyebrow}</p> : null}
-          {showTitle && title ? <h3 className="text-lg font-semibold text-ink">{title}</h3> : null}
-          {venueLabel ? (
-            <p className="text-xs font-semibold text-ink-muted">{venueLabel}</p>
-          ) : null}
+        <div className={cx("flex gap-3", trailingInHeader ? "items-start justify-between" : "")}>
+          <div className="min-w-0">
+            {eyebrow ? <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{eyebrow}</p> : null}
+            {showTitle && title ? <h3 className="text-lg font-semibold text-ink">{title}</h3> : null}
+            {venueLabel ? (
+              <p className="text-xs font-semibold text-ink-muted">{venueLabel}</p>
+            ) : null}
+          </div>
+          {trailingInHeader ? <div className="shrink-0">{trailing}</div> : null}
         </div>
         {meta || actions ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -235,7 +241,7 @@ export function MatchCard({
           </div>
         ) : null}
       </div>
-      {displayScore || displayStatus || trailing ? (
+      {displayScore || displayStatus || trailingInFooter ? (
         <div className={cx("flex min-w-0 items-center gap-3", footerJustify)}>
           {displayScore || displayStatus ? (
             <div className={cx("min-w-0", scoreAlignClass)}>
@@ -303,7 +309,7 @@ export function MatchCard({
           ) : (
             <div />
           )}
-          {trailing || null}
+          {trailingInFooter ? trailing : null}
         </div>
       ) : null}
     </Panel>
