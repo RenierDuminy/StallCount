@@ -8,6 +8,7 @@ const DEFAULT_CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSFcNFojsDqBt5T2oca1kMuHvskIqBKnSP6lx5qdX2780Rlbxsl-_6NDaguRieY1x63OQIjU7M6z-Hy/pub?gid=1391076276&single=true&output=csv";
 const DEFAULT_DOB_MODE = "dmy";
 const SAST_UTC_OFFSET_HOURS = 2;
+const SCHEDULE_HOUR_SAST = 17;
 const EVENT_HIERARCHY_SELECT = `
   id,
   name,
@@ -72,30 +73,23 @@ function createDateForSastTime({ year, monthIndex, day, hour, minute = 0 }) {
 
 function getRosterScriptScheduleSnapshot(value = new Date()) {
   const parts = getSastDateParts(value);
-  const currentSlotHour = parts.hour >= 12 ? 12 : 0;
+  const isTodaysSlotActive = parts.hour >= SCHEDULE_HOUR_SAST;
   const currentSlotAt = createDateForSastTime({
     year: parts.year,
     monthIndex: parts.monthIndex,
-    day: parts.day,
-    hour: currentSlotHour,
+    day: isTodaysSlotActive ? parts.day : parts.day - 1,
+    hour: SCHEDULE_HOUR_SAST,
   });
-  const nextSlotAt =
-    parts.hour < 12
-      ? createDateForSastTime({
-          year: parts.year,
-          monthIndex: parts.monthIndex,
-          day: parts.day,
-          hour: 12,
-        })
-      : createDateForSastTime({
-          year: parts.year,
-          monthIndex: parts.monthIndex,
-          day: parts.day + 1,
-          hour: 0,
-        });
+  const nextSlotAt = createDateForSastTime({
+    year: parts.year,
+    monthIndex: parts.monthIndex,
+    day: isTodaysSlotActive ? parts.day + 1 : parts.day,
+    hour: SCHEDULE_HOUR_SAST,
+  });
+  const currentSlotParts = getSastDateParts(currentSlotAt);
 
   return {
-    currentSlotKey: `${parts.year}-${padNumber(parts.monthIndex + 1)}-${padNumber(parts.day)}T${padNumber(currentSlotHour)}:00`,
+    currentSlotKey: `${currentSlotParts.year}-${padNumber(currentSlotParts.monthIndex + 1)}-${padNumber(currentSlotParts.day)}T${padNumber(SCHEDULE_HOUR_SAST)}:00`,
     currentSlotAt,
     nextSlotAt,
   };

@@ -28,6 +28,7 @@ export const EVENT_NAME = "Stellenbosch RL 2026";
 const MATCH_LIMIT = 200;
 const SAST_TIMEZONE = "Africa/Johannesburg";
 const SAST_UTC_OFFSET_HOURS = 2;
+const AUTO_ROSTER_SYNC_HOUR_SAST = 17;
 const AUTO_ROSTER_SYNC_INTERVAL_MS = 30 * 1000;
 const ROSTER_SCRIPT_SLUG = "STB_RL_26_update_rosters";
 const SUMMARY_RULES_HREF = "/rules/stellenbosch-rl-2026-rules-summary.pdf";
@@ -441,30 +442,23 @@ const formatDurationUntil = (milliseconds) => {
 
 const getRosterScriptScheduleSnapshot = (value = new Date()) => {
   const parts = getSastDateParts(value);
-  const currentSlotHour = parts.hour >= 12 ? 12 : 0;
+  const isTodaysSlotActive = parts.hour >= AUTO_ROSTER_SYNC_HOUR_SAST;
   const currentSlotAt = createDateForSastTime({
     year: parts.year,
     monthIndex: parts.monthIndex,
-    day: parts.day,
-    hour: currentSlotHour,
+    day: isTodaysSlotActive ? parts.day : parts.day - 1,
+    hour: AUTO_ROSTER_SYNC_HOUR_SAST,
   });
-  const nextSlotAt =
-    parts.hour < 12
-      ? createDateForSastTime({
-          year: parts.year,
-          monthIndex: parts.monthIndex,
-          day: parts.day,
-          hour: 12,
-        })
-      : createDateForSastTime({
-          year: parts.year,
-          monthIndex: parts.monthIndex,
-          day: parts.day + 1,
-          hour: 0,
-        });
+  const nextSlotAt = createDateForSastTime({
+    year: parts.year,
+    monthIndex: parts.monthIndex,
+    day: isTodaysSlotActive ? parts.day + 1 : parts.day,
+    hour: AUTO_ROSTER_SYNC_HOUR_SAST,
+  });
+  const currentSlotParts = getSastDateParts(currentSlotAt);
 
   return {
-    currentSlotKey: `${parts.year}-${padNumber(parts.monthIndex + 1)}-${padNumber(parts.day)}T${padNumber(currentSlotHour)}:00`,
+    currentSlotKey: `${currentSlotParts.year}-${padNumber(currentSlotParts.monthIndex + 1)}-${padNumber(currentSlotParts.day)}T${padNumber(AUTO_ROSTER_SYNC_HOUR_SAST)}:00`,
     currentSlotLabel: formatSastScheduleTime(currentSlotAt),
     currentSlotAt,
     nextSlotAt,
@@ -835,7 +829,7 @@ export default function StellenboschRl2026WorkspacePage() {
             <Panel variant="muted" className="space-y-2 p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <Chip>Auto roster sync</Chip>
-                <Chip variant="ghost">00:00 and 12:00 SAST</Chip>
+                <Chip variant="ghost">Daily at 17:00 SAST</Chip>
               </div>
               <p className="text-sm text-ink-muted">
                 This roster sync now runs automatically on the backend, independent of whether this page is open.
