@@ -111,6 +111,29 @@ export function getMatchMediaDetails(match) {
   };
 }
 
+export function getMatchMediaProviderLabel(match) {
+  if (!match) return "Stream";
+
+  const mediaLink = parseMediaLink(match.media_link);
+  const primary = mediaLink?.primary || {};
+  const vodEntries = Array.isArray(mediaLink?.vod) ? mediaLink.vod : [];
+  const candidateUrls = [
+    sanitizeUrl(match.media_url),
+    sanitizeUrl(primary.url),
+    ...vodEntries.map((entry) => sanitizeUrl(entry?.url)),
+  ].filter(Boolean);
+  const url = candidateUrls.find((value) => /^https?:\/\//i.test(value)) || "";
+  const providerCandidates = [
+    match.media_provider,
+    primary.provider,
+    ...vodEntries.map((entry) => entry?.provider),
+  ];
+  const provider =
+    providerCandidates.find((value) => typeof value === "string" && value.trim()) || "";
+
+  return resolveMediaProviderLabel(provider, url);
+}
+
 export function getMatchMediaUrl(match) {
   return getMatchMediaDetails(match)?.url || null;
 }

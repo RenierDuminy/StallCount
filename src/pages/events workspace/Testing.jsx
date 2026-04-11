@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Card,
-  Panel,
   SectionHeader,
   SectionShell,
 } from "../../components/ui/primitives";
+import { StandardEventMatchCard } from "../../components/StandardEventMatchCard";
 import { getMatchesByEvent } from "../../services/matchService";
-import { getMatchMediaDetails } from "../../utils/matchMedia";
 
 export const EVENT_ID = "4473483d-bc4d-443b-b93e-65375c35a8b4";
 export const EVENT_SLUG = "testing";
@@ -159,58 +158,17 @@ export default function DRTestingPage() {
   const renderMatchCard = (match) => {
     const liveOrFinal =
       isLiveMatch(match.status) || isFinishedMatch(match.status);
-    const mediaDetails = getMatchMediaDetails(match);
+
     return (
-      <Panel key={match.id} variant="tinted" className="space-y-4 p-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              {match.event?.name || "Match"}
-            </p>
-            <h3 className="text-lg font-semibold text-ink">
-              {formatMatchup(match)}
-            </h3>
-            <p className="text-xs text-ink-muted">
-              {formatMatchTime(match.start_time)}
-            </p>
-          </div>
-          <div className="text-right">
-            {liveOrFinal ? (
-              <>
-                <p className="text-2xl font-semibold text-accent">
-                  {formatScoreLine(match)}
-                </p>
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  {formatMatchStatus(match.status)}
-                </p>
-              </>
-            ) : (
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                {formatMatchStatus(match.status)}
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-ink-muted">
-            {match.venue?.name || "Venue TBC"}
-          </p>
-          {mediaDetails ? (
-            <a
-              href={mediaDetails.url}
-              target="_blank"
-              rel="noreferrer"
-              className="sc-button is-ghost text-xs"
-            >
-              {mediaDetails.providerLabel || "Watch"}
-            </a>
-          ) : (
-            <span className="text-xs text-ink-muted">
-              No media link attached
-            </span>
-          )}
-        </div>
-      </Panel>
+      <StandardEventMatchCard
+        key={match.id}
+        match={match}
+        eyebrow={match.event?.name || "Match"}
+        title={formatMatchup(match)}
+        meta={formatMatchTime(match.start_time)}
+        score={liveOrFinal ? formatScoreLine(match) : null}
+        status={formatMatchStatus(match.status)}
+      />
     );
   };
 

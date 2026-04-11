@@ -19,7 +19,12 @@ export type EventRow = {
   end_date: string | null;
   location: string | null;
   created_at: string;
+  status?: string | null;
   rules?: Record<string, unknown> | null;
+};
+
+type GetEventsListOptions = {
+  status?: string | null;
 };
 
 export type EventPoolTeam = {
@@ -99,15 +104,25 @@ export async function getRecentEvents(limit = 4): Promise<EventRow[]> {
   );
 }
 
-export async function getEventsList(limit = 12): Promise<EventRow[]> {
+export async function getEventsList(limit = 12, options: GetEventsListOptions = {}): Promise<EventRow[]> {
+  const normalizedStatus =
+    typeof options.status === "string" && options.status.trim().length > 0
+      ? options.status.trim().toLowerCase()
+      : null;
   return getCachedQuery(
-    `events:list:${limit}`,
+    `events:list:${limit}:${normalizedStatus || "all"}`,
     async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("events")
-        .select("id, name, type, start_date, end_date, location, created_at, rules")
+        .select('id, name, type, start_date, end_date, location, created_at, status:Status, rules')
         .order("start_date", { ascending: true })
         .limit(limit);
+
+      if (normalizedStatus) {
+        query = query.eq("Status", normalizedStatus);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         throw new Error(error.message || "Failed to load events");

@@ -9,6 +9,7 @@ const rawScriptModules = import.meta.glob("../customScripts/*.js", {
 });
 
 const OVERRIDE_STORAGE_KEY = "stallcount:custom-script-overrides:v1";
+const SERVER_ONLY_SCRIPT_SLUGS = new Set(["STB_RL_26_update_rosters"]);
 
 const slugFromPath = (path) => {
   const match = /\/([^/]+)\.js$/.exec(path);
@@ -125,6 +126,12 @@ export function resetCustomScriptOverride(slug) {
 }
 
 export async function executeCustomScript({ slug, source, context = {} }) {
+  if (SERVER_ONLY_SCRIPT_SLUGS.has(slug) && !context?.allowBrowserExecution) {
+    throw new Error(
+      `${slug} is server-run only. Use the backend roster sync endpoint instead of the in-browser runner.`,
+    );
+  }
+
   const bundledScript = getBundledCatalog().find((entry) => entry.slug === slug) || null;
   const activeSource =
     typeof source === "string" && source.length > 0

@@ -16,8 +16,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -26,8 +26,18 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "audit_log",
+    "policyname": "audit_log_read_public",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "using_expression": "true",
+    "with_check": null
   },
   {
     "schemaname": "public",
@@ -36,8 +46,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -86,8 +96,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -136,8 +146,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -186,8 +196,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -236,8 +246,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -266,8 +276,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -316,8 +326,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -366,8 +376,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -386,8 +396,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -436,8 +446,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -456,8 +466,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -506,8 +516,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -526,8 +536,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -576,8 +586,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -596,8 +606,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -646,8 +656,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -696,8 +706,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -746,8 +756,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -796,8 +806,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -846,8 +856,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -876,7 +886,7 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "SELECT",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (auth.uid() = id) OR has_permission('role_edit'::text))",
+    "using_expression": "((auth.role() = 'service_role'::text) OR (auth.uid() = id) OR has_permission('role_edit'::text) OR (EXISTS ( SELECT 1\n   FROM ((event_user_roles eur\n     JOIN role_permissions rp ON ((rp.role_id = eur.role_id)))\n     JOIN permissions p ON ((p.id = rp.permission_id)))\n  WHERE ((eur.user_id = auth.uid()) AND (lower(p.key) = 'role_edit'::text)))))",
     "with_check": null
   },
   {
@@ -896,8 +906,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -946,8 +956,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -966,8 +976,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -986,8 +996,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -1036,8 +1046,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -1086,8 +1096,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -1106,8 +1116,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -1146,8 +1156,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -1196,28 +1206,28 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
     "tablename": "team_roster",
-    "policyname": "team_roster_delete_team_delete",
+    "policyname": "team_roster_delete_roster_delete",
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "DELETE",
-    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('team_delete'::text) OR has_event_permission('team_delete'::text, event_id))",
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('roster_delete'::text) OR has_event_permission('roster_delete'::text, event_id))",
     "with_check": null
   },
   {
     "schemaname": "public",
     "tablename": "team_roster",
-    "policyname": "team_roster_insert_team_insert",
+    "policyname": "team_roster_insert_roster_insert",
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "INSERT",
     "using_expression": null,
-    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('team_insert'::text) OR has_event_permission('team_insert'::text, event_id))"
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('roster_insert'::text) OR has_event_permission('roster_insert'::text, event_id))"
   },
   {
     "schemaname": "public",
@@ -1232,12 +1242,12 @@
   {
     "schemaname": "public",
     "tablename": "team_roster",
-    "policyname": "team_roster_update_team_update",
+    "policyname": "team_roster_update_roster_update",
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "UPDATE",
-    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('team_update'::text) OR has_event_permission('team_update'::text, event_id))",
-    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('team_update'::text) OR has_event_permission('team_update'::text, event_id))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('roster_update'::text) OR has_event_permission('roster_update'::text, event_id))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('roster_update'::text) OR has_event_permission('roster_update'::text, event_id))"
   },
   {
     "schemaname": "public",
@@ -1246,8 +1256,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -1296,8 +1306,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -1326,8 +1336,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -1376,8 +1386,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",
@@ -1396,8 +1406,8 @@
     "permissive": "PERMISSIVE",
     "roles": "{public}",
     "cmd": "ALL",
-    "using_expression": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))",
-    "with_check": "((auth.role() = 'service_role'::text) OR (EXISTS ( SELECT 1\n   FROM user_roles ur\n  WHERE ((ur.user_id = auth.uid()) AND (ur.role_id = 11)))))"
+    "using_expression": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))",
+    "with_check": "((auth.role() = 'service_role'::text) OR has_permission('admin_override'::text))"
   },
   {
     "schemaname": "public",

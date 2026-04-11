@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { initialiseMatch, updateMatchStatus } from "../../services/matchService";
 import { updateScore } from "../../services/realtimeService";
 import {
@@ -19,6 +20,7 @@ import {
 
 export function useScoreKeeperActions(controller) {
   const DB_WRITES_DISABLED = false;
+  const scoreSubmitInFlightRef = useRef(false);
 
   function cancelPrimaryHoldReset() {
     if (controller.primaryResetRef.current) {
@@ -76,13 +78,17 @@ export function useScoreKeeperActions(controller) {
     controller.setInitialising(true);
     controller.setConsoleError(null);
     try {
+      const nextStatus =
+        normalizedStatus === "scheduled"
+          ? "Initialized"
+          : controller.selectedMatch.status || "Initialized";
       const payload = {
         start_time: controller.setupForm.startTime
           ? new Date(controller.setupForm.startTime).toISOString()
           : new Date().toISOString(),
         starting_team_id: controller.setupForm.startingTeamId,
         abba_pattern: isAbbaEnabled ? controller.setupForm.abbaPattern : "none",
-        status: "Initialized",
+        status: nextStatus,
         scorekeeper: controller.userId,
       };
 
@@ -437,6 +443,7 @@ export function useScoreKeeperActions(controller) {
 
   async function handleScoreModalSubmit(event) {
     event.preventDefault();
+    if (scoreSubmitInFlightRef.current) return;
     if (!controller.scoreModalState.team) return;
     if (!controller.scoreForm.scorerId || !controller.scoreForm.assistId) {
       return;
@@ -460,24 +467,29 @@ export function useScoreKeeperActions(controller) {
         : controller.scoreForm.assistId || null;
     const normalizedAssistId = isCalahan ? null : normalizedAssistSelection;
 
-    if (controller.scoreModalState.mode === "edit" && controller.scoreModalState.logIndex !== null) {
-      await handleUpdateLog(controller.scoreModalState.logIndex, {
-        scorerId: normalizedScorerId,
-        assistId: normalizedAssistId || null,
-        eventCode: isCalahan ? MATCH_LOG_EVENT_CODES.CALAHAN : MATCH_LOG_EVENT_CODES.SCORE,
-      });
-    } else {
-      const submittedTimestamp =
-        controller.scoreModalState.openedAt || new Date().toISOString();
-      await handleAddScore(
-        controller.scoreModalState.team,
-        normalizedScorerId,
-        normalizedAssistId || null,
-        { isCalahan, timestamp: submittedTimestamp }
-      );
-    }
+    scoreSubmitInFlightRef.current = true;
+    try {
+      if (controller.scoreModalState.mode === "edit" && controller.scoreModalState.logIndex !== null) {
+        await handleUpdateLog(controller.scoreModalState.logIndex, {
+          scorerId: normalizedScorerId,
+          assistId: normalizedAssistId || null,
+          eventCode: isCalahan ? MATCH_LOG_EVENT_CODES.CALAHAN : MATCH_LOG_EVENT_CODES.SCORE,
+        });
+      } else {
+        const submittedTimestamp =
+          controller.scoreModalState.openedAt || new Date().toISOString();
+        await handleAddScore(
+          controller.scoreModalState.team,
+          normalizedScorerId,
+          normalizedAssistId || null,
+          { isCalahan, timestamp: submittedTimestamp }
+        );
+      }
 
-    closeScoreModal();
+      closeScoreModal();
+    } finally {
+      scoreSubmitInFlightRef.current = false;
+    }
   }
 
   async function handleUpdateLog(index, updates) {

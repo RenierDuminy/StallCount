@@ -16,12 +16,27 @@ CREATE TABLE public.audit_log (
   CONSTRAINT audit_log_pkey PRIMARY KEY (id),
   CONSTRAINT audit_log_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.profiles(id)
 );
+CREATE TABLE public.automation_job_state (
+  job_key text NOT NULL,
+  lock_token uuid,
+  lock_acquired_at timestamp with time zone,
+  last_started_at timestamp with time zone,
+  last_finished_at timestamp with time zone,
+  last_attempted_slot_key text,
+  last_attempted_at timestamp with time zone,
+  last_ok boolean,
+  last_message text,
+  last_successful_slot_key text,
+  last_successful_run_at timestamp with time zone,
+  last_processed_signup_timestamp timestamp with time zone,
+  updated_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT automation_job_state_pkey PRIMARY KEY (job_key)
+);
 CREATE TABLE public.bracket_nodes (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   bracket_id uuid NOT NULL,
   round integer NOT NULL,
   position integer NOT NULL,
-  name text,
   match_id uuid UNIQUE,
   source_a jsonb NOT NULL,
   source_b jsonb NOT NULL,
@@ -29,6 +44,7 @@ CREATE TABLE public.bracket_nodes (
   advance_to_winner_side character CHECK (advance_to_winner_side = ANY (ARRAY['A'::bpchar, 'B'::bpchar])),
   advance_to_loser uuid,
   advance_to_loser_side character CHECK (advance_to_loser_side = ANY (ARRAY['A'::bpchar, 'B'::bpchar])),
+  name character varying,
   CONSTRAINT bracket_nodes_pkey PRIMARY KEY (id),
   CONSTRAINT bracket_nodes_bracket_id_fkey FOREIGN KEY (bracket_id) REFERENCES public.brackets(id),
   CONSTRAINT bracket_nodes_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
@@ -279,6 +295,7 @@ CREATE TABLE public.roles (
   name text NOT NULL UNIQUE,
   description text,
   level smallint,
+  scope text NOT NULL DEFAULT 'event'::text CHECK (scope = ANY (ARRAY['global'::text, 'event'::text])),
   CONSTRAINT roles_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.scoreboard_device_subscriptions (
@@ -385,11 +402,11 @@ CREATE TABLE public.user_roles (
 CREATE TABLE public.venues (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
-  location text,
+  location text NOT NULL,
   notes text,
   latitude double precision CHECK (latitude IS NULL OR latitude >= '-90'::integer::double precision AND latitude <= 90::double precision),
   longitude double precision CHECK (longitude IS NULL OR longitude >= '-180'::integer::double precision AND longitude <= 180::double precision),
-  city text,
+  city text NOT NULL,
   CONSTRAINT venues_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.webhook_deliveries (

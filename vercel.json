@@ -1,5 +1,11 @@
 {
   "installCommand": "npm install",
   "buildCommand": "npm run build",
+  "crons": [
+    {
+      "path": "/api/stb-rl-26-roster-sync",
+      "schedule": "0 10,22 * * *"
+    }
+  ],
   "rewrites": [{ "source": "/((?!.*\\.).*)", "destination": "/index.html" }]
 }

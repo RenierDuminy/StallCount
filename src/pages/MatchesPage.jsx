@@ -280,7 +280,6 @@ export default function MatchesPage() {
       <header className="sc-shell py-4 sm:py-6">
         <div className="sc-card-base space-y-3 p-5 sm:p-7">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="sc-chip">Matches</span>
             <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
               Select a Event and Match to view
             </span>

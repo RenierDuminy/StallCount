@@ -3,7 +3,13 @@ import { Link } from "react-router-dom";
 import { getAllTeams, getTeamsByIds, getTeamMatches } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
 import { getTableCount } from "../services/statsService";
-import { getRecentMatches, getOpenMatches, getMatchesByIds } from "../services/matchService";
+import {
+  getRecentMatches,
+  getOpenMatches,
+  getMatchesByIds,
+  getRecentFinalMatches,
+  getRecentMatchesWithMedia,
+} from "../services/matchService";
 import { getRecentLiveEvents } from "../services/liveEventService";
 import { getSubscriptions } from "../services/subscriptionService";
 import { getCurrentUser } from "../services/userService";
@@ -11,7 +17,12 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabaseClient";
 import { getPlayersByIds } from "../services/playerService";
 import { Card, Chip, MatchCard, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
-import { getMatchMediaDetails, getMatchMediaUrl, hasMatchMedia } from "../utils/matchMedia";
+import {
+  getMatchMediaDetails,
+  getMatchMediaProviderLabel,
+  getMatchMediaUrl,
+  hasMatchMedia,
+} from "../utils/matchMedia";
 
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
@@ -26,6 +37,8 @@ export default function HomePage() {
   const [events, setEvents] = useState([]);
   const [latestMatches, setLatestMatches] = useState([]);
   const [openMatches, setOpenMatches] = useState([]);
+  const [recentBroadcastMatches, setRecentBroadcastMatches] = useState([]);
+  const [recentFinalMatches, setRecentFinalMatches] = useState([]);
   const [liveEvents, setLiveEvents] = useState([]);
   const [stats, setStats] = useState({ teams: 0, players: 0, events: 0 });
   const [loading, setLoading] = useState(true);
@@ -110,6 +123,8 @@ export default function HomePage() {
           toSettled(getEventsList(40)),
           toSettled(getRecentMatches(50)),
           toSettled(getOpenMatches(20)),
+          toSettled(getRecentMatchesWithMedia(5)),
+          toSettled(getRecentFinalMatches(MAX_FINALS_RESULTS)),
           toSettled(getRecentLiveEvents(50)),
           toSettled(getTableCount("player")),
           toSettled(getTableCount("teams")),
@@ -123,6 +138,8 @@ export default function HomePage() {
           eventsResult,
           latestMatchesResult,
           openMatchesResult,
+          recentBroadcastMatchesResult,
+          recentFinalMatchesResult,
           liveEventsResult,
           playersCountResult,
           teamsCountResult,
@@ -157,6 +174,21 @@ export default function HomePage() {
         } else {
           failures.push("upcoming matches");
           console.error("[HomePage] Failed to load open matches:", openMatchesResult.reason);
+        }
+
+        if (recentBroadcastMatchesResult.status === "fulfilled") {
+          setRecentBroadcastMatches(recentBroadcastMatchesResult.value);
+        } else {
+          console.error(
+            "[HomePage] Failed to load recent matches with media:",
+            recentBroadcastMatchesResult.reason,
+          );
+        }
+
+        if (recentFinalMatchesResult.status === "fulfilled") {
+          setRecentFinalMatches(recentFinalMatchesResult.value);
+        } else {
+          console.error("[HomePage] Failed to load recent final matches:", recentFinalMatchesResult.reason);
         }
 
         if (liveEventsResult.status === "fulfilled") {
@@ -572,7 +604,7 @@ export default function HomePage() {
         map.set(match.id, match);
       }
     });
-    return Array.from(map.values()).filter((match) => matchHasStream(match));
+    return Array.from(map.values()).filter((match) => matchHasStream(match) || Boolean(match?.has_media));
   }, [safeOpenMatches, safeLatestMatches]);
 
   const upcomingStreamMatches = useMemo(() => {
@@ -587,13 +619,10 @@ export default function HomePage() {
   }, [streamMatches]);
 
   const recentStreamMatches = useMemo(() => {
-    return streamMatches
-      .filter((match) => (match?.status || "").toLowerCase() === "completed")
-      .map((match) => ({ match, completedTime: getMatchCompletionTime(match) }))
-      .sort((a, b) => (b.completedTime ?? 0) - (a.completedTime ?? 0))
-      .slice(0, 10)
-      .map(({ match }) => match);
-  }, [streamMatches]);
+    return recentBroadcastMatches
+      .filter((match) => matchHasStream(match) || Boolean(match?.has_media))
+      .slice(0, 5);
+  }, [recentBroadcastMatches]);
 
   const forYouLoading = personalizedLoading || myTeamsLoading || myMatchesLoading;
   const liveAndUpcomingMatches = useMemo(() => {
@@ -609,7 +638,7 @@ export default function HomePage() {
     return [...liveMatches, ...upcomingMatches].slice(0, MAX_UPCOMING_MATCHES);
   }, [safeOpenMatches, heroFeaturedMatchIds]);
   const latestResults = useMemo(() => {
-    return safeLatestMatches
+    return recentFinalMatches
       .map((match) => ({ match, completedTime: getMatchCompletionTime(match) }))
       .filter(
         ({ match, completedTime }) =>
@@ -618,7 +647,7 @@ export default function HomePage() {
       .sort((a, b) => (b.completedTime ?? 0) - (a.completedTime ?? 0))
       .slice(0, MAX_FINALS_RESULTS)
       .map(({ match }) => match);
-  }, [safeLatestMatches]);
+  }, [recentFinalMatches]);
 
   const heroStats = [
     { label: "teams", value: stats.teams },
@@ -843,7 +872,6 @@ export default function HomePage() {
         <SectionShell as="section">
           <Card className="space-y-5 p-5 sm:p-6">
             <SectionHeader
-              eyebrow="For you"
               title="My teams, matches, alerts"
               description="All your followed teams, matches, and subscriptions in one place."
               divider
@@ -952,7 +980,7 @@ export default function HomePage() {
       <main className="space-y-12">
         <SectionShell as="section">
           <Card className="space-y-5 p-5 sm:p-6 lg:p-7">
-            <SectionHeader eyebrow="Timeline" title="Active events" />
+            <SectionHeader title="Active events" />
             {loading && safeEvents.length === 0 ? (
               <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
                 Loading events...
@@ -1119,11 +1147,52 @@ export default function HomePage() {
           </SectionShell>
         )}
 
+        {renderFinals && (
+          <SectionShell as="section">
+            <Card className="space-y-4 p-5 sm:p-6">
+              <SectionHeader
+                title="Latest results"
+                action={
+                  <Link to="/events" className="sc-button is-ghost">
+                    Match archive
+                  </Link>
+                }
+              />
+              {loading && latestResults.length === 0 ? (
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                  Loading results...
+                </Card>
+              ) : latestResults.length === 0 ? (
+                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                  No finals saved yet.
+                </Card>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {latestResults.map((match) => (
+                    <MatchCard
+                      key={match.id}
+                      as={Link}
+                      to={`/matches?matchId=${match.id}`}
+                      variant="tinted"
+                      eyebrow={match.event?.name || "Match"}
+                      title={formatMatchup(match)}
+                      venue={match.venue}
+                      meta={formatMatchMeta(match)}
+                      score={formatLiveScore(match)}
+                      status={formatMatchStatus(match.status) || "Final"}
+                      scoreAlign="right"
+                    />
+                  ))}
+                </div>
+              )}
+            </Card>
+          </SectionShell>
+        )}
+
         {renderMatches && (
           <SectionShell as="section">
             <Card className="space-y-4 p-5 sm:p-6">
               <SectionHeader
-                eyebrow="Matches"
                 title="Live & upcoming"
               />
               {loading && liveAndUpcomingMatches.length === 0 ? (
@@ -1174,49 +1243,6 @@ export default function HomePage() {
                       />
                     );
                   })}
-                </div>
-              )}
-            </Card>
-          </SectionShell>
-        )}
-
-        {renderFinals && (
-          <SectionShell as="section">
-            <Card className="space-y-4 p-5 sm:p-6">
-              <SectionHeader
-                eyebrow="Finals"
-                title="Latest results"
-                action={
-                  <Link to="/events" className="sc-button is-ghost">
-                    Match archive
-                  </Link>
-                }
-              />
-              {loading && latestResults.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                  Loading results...
-                </Card>
-              ) : latestResults.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                  No finals saved yet.
-                </Card>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {latestResults.map((match) => (
-                    <MatchCard
-                      key={match.id}
-                      as={Link}
-                      to={`/matches?matchId=${match.id}`}
-                      variant="tinted"
-                      eyebrow={match.event?.name || "Match"}
-                      title={formatMatchup(match)}
-                      venue={match.venue}
-                      meta={formatMatchMeta(match)}
-                      score={formatLiveScore(match)}
-                      status={formatMatchStatus(match.status) || "Final"}
-                      scoreAlign="right"
-                    />
-                  ))}
                 </div>
               )}
             </Card>
@@ -1294,7 +1320,7 @@ function matchHasStream(match) {
 }
 
 function formatMediaProvider(match) {
-  return getMatchMediaDetails(match)?.providerLabel || "Stream";
+  return getMatchMediaDetails(match)?.providerLabel || getMatchMediaProviderLabel(match);
 }
 
 function formatLiveScore(match) {

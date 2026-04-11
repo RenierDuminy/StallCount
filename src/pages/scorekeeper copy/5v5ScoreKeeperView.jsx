@@ -637,6 +637,9 @@ export default function ScoreKeeperView() {
               </div>
             </div>
 
+            <div className="grid gap-2 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+              <div className="space-y-2">
+
             <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-3">
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800">
@@ -656,7 +659,17 @@ export default function ScoreKeeperView() {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTimeModalOpen(true)}
+                  disabled={!matchStarted}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    matchStarted ? "bg-[#1e3a8a] text-white hover:bg-[#162e6a]" : "bg-slate-200 text-slate-600"
+                  }`}
+                >
+                  Additional time options
+                </button>
                 <button
                   type="button"
                   onClick={handleStartDiscussionTimer}
@@ -671,32 +684,6 @@ export default function ScoreKeeperView() {
                   DISCUSSION-START/STOP
                 </button>
               </div>
-              <div className="grid grid-cols-1 gap-2 text-center text-sm font-semibold text-slate-800">
-                <div className="rounded border border-slate-400 bg-white px-2 py-1">
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={rules.timeoutSeconds ?? ""}
-                    onChange={(event) =>
-                      handleRuleChange("timeoutSeconds", Math.max(0, Number(event.target.value) || 0))
-                    }
-                    aria-label="Timeout duration (seconds)"
-                    inputMode="numeric"
-                    className="w-full border-none bg-transparent text-center text-sm font-semibold text-slate-800 focus:outline-none focus:ring-0"
-                  />
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTimeModalOpen(true)}
-                disabled={!matchStarted}
-                className={`w-full rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  matchStarted ? "bg-[#1e3a8a] text-white hover:bg-[#162e6a]" : "bg-slate-200 text-slate-600"
-                }`}
-              >
-                Additional time options
-              </button>
             </div>
 
             {consoleError && (
@@ -711,91 +698,92 @@ export default function ScoreKeeperView() {
             )}
 
             <div className="space-y-2 rounded-3xl border border-[#0f5132]/40 bg-white p-1.5">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                </div>
-                {matchEventsError && (
-                  <p className="text-xs text-rose-600">{matchEventsError}</p>
-                )}
-                <div className="space-y-2">
-                  {!matchStarted ? (
-                    <button
-                      type="button"
-                      onClick={handleStartMatch}
-                      disabled={!isStartMatchReady}
-                      className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
-                        isStartMatchReady
-                          ? "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
-                          : "bg-slate-300 text-slate-600"
-                      } disabled:cursor-not-allowed`}
-                    >
-                      Start match
-                    </button>
-                  ) : (
-                    <div className="space-y-1.5">
-                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openScoreModal("A")}
+              <div className="space-y-2">
+                {!matchStarted ? (
+                  <button
+                    type="button"
+                    onClick={handleStartMatch}
+                    disabled={!isStartMatchReady}
+                    className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
+                      isStartMatchReady
+                        ? "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
+                        : "bg-slate-300 text-slate-600"
+                    } disabled:cursor-not-allowed`}
+                  >
+                    Start match
+                  </button>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => openScoreModal("A")}
                         className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-                        >
-                          Add score - {displayTeamAShort}
-                        </button>
-                        <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
+                      >
+                        Add score - {displayTeamAShort}
+                      </button>
+                      <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
+                        {nextAbbaDescriptor ? (
                           <div className="flex justify-center">
-                            {nextAbbaDescriptor ? (
-                              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#0f5132] text-base font-extrabold text-white">
-                                {nextAbbaDescriptor}
-                              </span>
-                            ) : (
-                              <span>ABBA disabled</span>
-                            )}
+                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#0f5132] text-base font-extrabold text-white">
+                              {nextAbbaDescriptor}
+                            </span>
                           </div>
-                          <p className="text-lg font-semibold text-[#0f5132]">
-                            {score.a} - {score.b}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => openScoreModal("B")}
-                        className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-                        >
-                          Add score - {displayTeamBShort}
-                        </button>
+                        ) : null}
+                        <p className="text-lg font-semibold text-[#0f5132]">
+                          {score.a} - {score.b}
+                        </p>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => openScoreModal("B")}
+                        className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                      >
+                        Add score - {displayTeamBShort}
+                      </button>
                     </div>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  {logsLoading ? (
-                    <div className="rounded-2xl border border-dashed border-[#0f5132]/30 px-3 py-2 text-center text-xs text-slate-500">
-                      Syncing logs...
-                    </div>
-                  ) : logs.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-[#0f5132]/30 px-3 py-2 text-center text-xs text-slate-500">
-                      No match events captured yet. Use the buttons above to log an event.
-                    </div>
-                  ) : (
-                    (() => {
-                      const seen = new Set();
-                      return orderedLogs
-                        .filter((log) => {
-                          const key = log.optimisticId || log.id;
-                          if (key && seen.has(key)) {
-                            return false;
-                          }
-                          if (key) {
-                            seen.add(key);
-                          }
-                          return true;
-                        })
-                        .map((log) => {
-                          const chronologicalIndex = logs.findIndex((entry) => entry.id === log.id);
-                          const editIndex =
-                            chronologicalIndex >= 0 ? chronologicalIndex : logs.indexOf(log);
-                          return renderMatchEventCard(log, { chronologicalIndex, editIndex });
-                        });
-                    })()
-                  )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="space-y-2 rounded-3xl border border-[#0f5132]/40 bg-white p-1.5">
+              {matchEventsError && (
+                <p className="text-xs text-rose-600">{matchEventsError}</p>
+              )}
+              <div className="space-y-2">
+                {logsLoading ? (
+                  <div className="rounded-2xl border border-dashed border-[#0f5132]/30 px-3 py-2 text-center text-xs text-slate-500">
+                    Syncing logs...
+                  </div>
+                ) : logs.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[#0f5132]/30 px-3 py-2 text-center text-xs text-slate-500">
+                    No match events captured yet. Use the buttons above to log an event.
+                  </div>
+                ) : (
+                  (() => {
+                    const seen = new Set();
+                    return orderedLogs
+                      .filter((log) => {
+                        const key = log.optimisticId || log.id;
+                        if (key && seen.has(key)) {
+                          return false;
+                        }
+                        if (key) {
+                          seen.add(key);
+                        }
+                        return true;
+                      })
+                      .map((log) => {
+                        const chronologicalIndex = logs.findIndex((entry) => entry.id === log.id);
+                        const editIndex =
+                          chronologicalIndex >= 0 ? chronologicalIndex : logs.indexOf(log);
+                        return renderMatchEventCard(log, { chronologicalIndex, editIndex });
+                      });
+                  })()
+                )}
                 <button
                   type="button"
                   onClick={() => setEndMatchModalOpen(true)}
@@ -824,6 +812,8 @@ export default function ScoreKeeperView() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
 
             {rostersError && (
               <p className="rounded-3xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -1081,6 +1071,21 @@ export default function ScoreKeeperView() {
                       onChange={(event) =>
                         handleRuleChange(
                           "timeoutsTotal",
+                          Math.max(0, Number(event.target.value) || 0)
+                        )
+                      }
+                      className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                  </label>
+                  <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                    <span className="shrink-0">Discussion duration (sec)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={rules.discussionSeconds}
+                      onChange={(event) =>
+                        handleRuleChange(
+                          "discussionSeconds",
                           Math.max(0, Number(event.target.value) || 0)
                         )
                       }

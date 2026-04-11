@@ -171,7 +171,7 @@ export function ScorekeeperPopups({
       )}
 
       {setupOpen && (
-        <ActionModal title="Match setup" onClose={onSetupClose}>
+        <ActionModal title="Match setup" onClose={onSetupClose} alignTop scrollable>
           <form className="space-y-4" onSubmit={onSetupSubmit}>
             <div className="space-y-2">
               <div>
@@ -390,6 +390,22 @@ export function ScorekeeperPopups({
                     setRules((prev) => ({
                       ...prev,
                       timeoutSeconds: Number(event.target.value) || 0,
+                    }));
+                  }}
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                <span className="shrink-0">Discussion duration (sec)</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={rules.discussionSeconds}
+                  onChange={(event) => {
+                    if (!setRules) return;
+                    setRules((prev) => ({
+                      ...prev,
+                      discussionSeconds: Number(event.target.value) || 0,
                     }));
                   }}
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"

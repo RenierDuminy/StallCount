@@ -257,6 +257,61 @@ export async function getAccessControlUsers(limit = 500) {
   });
 }
 
+export async function getEventLinkedUsers(eventId) {
+  if (!eventId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("event_user_roles")
+    .select(
+      `
+        id,
+        user_id,
+        role_id,
+        event_id,
+        created_at,
+        granted_by,
+        role:roles(id, name, description, scope),
+        event:events(id, name, start_date, end_date),
+        user:profiles!event_user_roles_user_id_fkey(id, email, full_name, created_at)
+      `,
+    )
+    .eq("event_id", eventId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message || "Failed to load linked users");
+  }
+
+  const grouped = new Map();
+
+  (data ?? []).forEach((row) => {
+    const userId = row?.user?.id || row?.user_id || null;
+    if (!userId) return;
+
+    const mappedEventRole = mapEventRoleAssignments([row])[0];
+    if (!mappedEventRole) return;
+
+    const existing = grouped.get(userId) || {
+      id: userId,
+      email: row?.user?.email || "",
+      fullName: row?.user?.full_name || "",
+      createdAt: row?.user?.created_at || null,
+      eventRoles: [],
+    };
+
+    existing.eventRoles = [...existing.eventRoles, mappedEventRole];
+    grouped.set(userId, existing);
+  });
+
+  return Array.from(grouped.values()).sort((left, right) => {
+    const leftLabel = left.fullName || left.email || "";
+    const rightLabel = right.fullName || right.email || "";
+    return leftLabel.localeCompare(rightLabel);
+  });
+}
+
 export async function getAccessControlEvents(limit = 500) {
   let query = supabase
     .from("events")

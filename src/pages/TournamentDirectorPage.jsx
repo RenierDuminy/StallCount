@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
   getBaseTableName,
   insertTableRow,
@@ -9,7 +10,10 @@ import {
 import { getAllTeams } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
 import { listSchemaTables, listTableColumns, pickRecencyColumn } from "../services/schemaService";
+import { invalidateTournamentOverview } from "../services/tournamentDirectorService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
+import TournamentOverviewPanel from "./tournamentDirector/TournamentOverviewPanel";
+import LinkedUsersPanel from "./tournamentDirector/LinkedUsersPanel";
 
 const LIMIT_OPTIONS = [20, 50, 100, 200];
 const VIEW_ONLY_TABLES = [
@@ -64,6 +68,7 @@ function parseJsonPayload(raw, onError) {
 }
 
 export default function TournamentDirectorPage() {
+  const { roles, rolesLoading } = useAuth();
   const tables = useMemo(
     () => listSchemaTables().filter((table) => ALLOWED_TABLE_SET.has(table)),
     []
@@ -87,6 +92,7 @@ export default function TournamentDirectorPage() {
   const [selectedRow, setSelectedRow] = useState(null);
   const [editPayload, setEditPayload] = useState("");
   const [primaryKey, setPrimaryKey] = useState("id");
+  const [workspace, setWorkspace] = useState("overview");
   const [teams, setTeams] = useState([]);
   const [eventsList, setEventsList] = useState([]);
   const [venues, setVenues] = useState([]);
@@ -111,6 +117,33 @@ export default function TournamentDirectorPage() {
     const q = tableSearch.toLowerCase();
     return tables.filter((t) => t.toLowerCase().includes(q));
   }, [tableSearch, tables]);
+
+  const accessibleEvents = useMemo(() => {
+    if (!Array.isArray(eventsList) || eventsList.length === 0) {
+      return [];
+    }
+
+    if (!Array.isArray(roles)) {
+      return rolesLoading ? [] : eventsList;
+    }
+
+    const hasGlobalAccess = roles.some((assignment) => assignment?.scope === "global");
+    if (hasGlobalAccess) {
+      return eventsList;
+    }
+
+    const allowedEventIds = new Set(
+      roles
+        .filter((assignment) => assignment?.scope === "event" && typeof assignment?.eventId === "string")
+        .map((assignment) => assignment.eventId),
+    );
+
+    if (allowedEventIds.size === 0) {
+      return [];
+    }
+
+    return eventsList.filter((event) => allowedEventIds.has(event.id));
+  }, [eventsList, roles, rolesLoading]);
 
   useEffect(() => {
     const nextOrder = pickRecencyColumn(selectedTable);
@@ -249,6 +282,9 @@ export default function TournamentDirectorPage() {
     try {
       const saved = await insertTableRow("matches", payload);
       setMatchMessage("Match created successfully.");
+      if (payload.event_id) {
+        invalidateTournamentOverview(payload.event_id);
+      }
       if (saved?.id) {
         setSelectedTable("matches");
         setSelectedRow(saved);
@@ -270,15 +306,38 @@ export default function TournamentDirectorPage() {
             eyebrow="Tournament director"
             eyebrowVariant="tag"
             title="Tournament director"
-            description="Desktop control room for reading, creating, and editing any tournament data in Supabase."
+            description="Switch between overview, linked-user coordination, and the full Supabase data editor."
             action={
               <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWorkspace("overview")}
+                  className={`sc-button ${workspace === "overview" ? "bg-[#0a3d29] text-white" : ""}`}
+                >
+                  Tournament overview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWorkspace("data")}
+                  className={`sc-button ${workspace === "data" ? "bg-[#0a3d29] text-white" : ""}`}
+                >
+                  Data studio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWorkspace("users")}
+                  className={`sc-button ${workspace === "users" ? "bg-[#0a3d29] text-white" : ""}`}
+                >
+                  Linked users
+                </button>
                 <Link to="/admin" className="sc-button">
                   Back to admin hub
                 </Link>
-                <button type="button" onClick={loadRows} className="sc-button">
-                  Refresh data
-                </button>
+                {workspace === "data" ? (
+                  <button type="button" onClick={loadRows} className="sc-button">
+                    Refresh data
+                  </button>
+                ) : null}
               </div>
             }
           />
@@ -292,6 +351,11 @@ export default function TournamentDirectorPage() {
       </SectionShell>
 
       <SectionShell as="main" className="pb-16">
+        {workspace === "overview" ? (
+          <TournamentOverviewPanel eventsList={accessibleEvents} />
+        ) : workspace === "users" ? (
+          <LinkedUsersPanel eventsList={accessibleEvents} />
+        ) : (
         <div className="grid gap-6 xl:grid-cols-[320px,minmax(0,1fr)]">
           <Card variant="light" className="space-y-5 p-5 xl:sticky xl:top-6">
             <div className="flex items-center justify-between gap-2">
@@ -389,8 +453,10 @@ export default function TournamentDirectorPage() {
                     onChange={(event) => setMatchForm((prev) => ({ ...prev, eventId: event.target.value }))}
                     className={`${LIGHT_INPUT_CLASS} appearance-none`}
                   >
-                    <option value="">Select event (optional)</option>
-                    {eventsList.map((event) => (
+                    <option value="">
+                      {rolesLoading ? "Loading access..." : accessibleEvents.length ? "Select event (optional)" : "No accessible events"}
+                    </option>
+                    {accessibleEvents.map((event) => (
                       <option key={event.id} value={event.id}>
                         {event.name}
                       </option>
@@ -774,6 +840,7 @@ export default function TournamentDirectorPage() {
             )}
           </div>
         </div>
+        )}
       </SectionShell>
     </div>
   );

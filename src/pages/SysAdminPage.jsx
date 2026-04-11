@@ -1082,7 +1082,7 @@ export default function SysAdminPage() {
                                   {item.ref.table}
                                 </p>
                                 <p className="text-xs text-ink-muted">
-                                  FK: {item.ref.columns?.join(", ")} ->{" "}
+                                  FK: {item.ref.columns?.join(", ")}{" -> "}
                                   {item.ref.referencesTable}.{item.ref.referencesColumns?.join(", ")}
                                 </p>
                                 {item.ref.onDelete && (

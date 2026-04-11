@@ -3,17 +3,19 @@ import { Link } from "react-router-dom";
 import {
   Card,
   Chip,
-  MatchCard,
   Panel,
   SectionHeader,
   SectionShell,
 } from "../../components/ui/primitives";
-import { MatchMediaButton } from "../../components/MatchMediaButton";
+import { StandardEventMatchCard } from "../../components/StandardEventMatchCard";
 import { useAuth } from "../../context/AuthContext";
 import { getEventHierarchy } from "../../services/leagueService";
 import { getMatchesByEvent } from "../../services/matchService";
 import { executeCustomScript } from "../../services/customScriptService";
-import { getMatchMediaDetails } from "../../utils/matchMedia";
+import {
+  getStbRl26RosterSyncStatus,
+  invokeStbRl26RosterSync,
+} from "../../services/stbRl26RosterSyncService";
 import {
   userHasAnyRole,
   SYS_ADMIN_ACCESS_ROLES,
@@ -28,8 +30,6 @@ const SAST_TIMEZONE = "Africa/Johannesburg";
 const SAST_UTC_OFFSET_HOURS = 2;
 const AUTO_ROSTER_SYNC_INTERVAL_MS = 30 * 1000;
 const ROSTER_SCRIPT_SLUG = "STB_RL_26_update_rosters";
-const ROSTER_SCRIPT_TIMER_STORAGE_KEY =
-  "stallcount:custom-script-timer:STB_RL_26_update_rosters:v1";
 const SUMMARY_RULES_HREF = "/rules/stellenbosch-rl-2026-rules-summary.pdf";
 const FULL_RULES_HREF = "/rules/stellenbosch-rl-2026-rules.pdf";
 const RULE_DOCUMENTS = [
@@ -393,35 +393,6 @@ const sortByStartTimeAsc = (left, right) => {
 
 const padNumber = (value) => String(value).padStart(2, "0");
 
-const readStorageJson = (storageKey, fallbackValue) => {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return fallbackValue;
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(storageKey);
-    if (!rawValue) {
-      return fallbackValue;
-    }
-    const parsed = JSON.parse(rawValue);
-    return parsed && typeof parsed === "object" ? parsed : fallbackValue;
-  } catch {
-    return fallbackValue;
-  }
-};
-
-const writeStorageJson = (storageKey, value) => {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(storageKey, JSON.stringify(value));
-  } catch {
-    // Ignore storage failures. The timer can still run for the current session.
-  }
-};
-
 const getSastDateParts = (value = new Date()) => {
   const shifted = new Date(value.getTime() + SAST_UTC_OFFSET_HOURS * 60 * 60 * 1000);
   return {
@@ -502,20 +473,6 @@ const getRosterScriptScheduleSnapshot = (value = new Date()) => {
   };
 };
 
-const readRosterTimerState = () =>
-  readStorageJson(ROSTER_SCRIPT_TIMER_STORAGE_KEY, {
-    lastAttemptedSlotKey: "",
-    lastAttemptedAt: "",
-    lastAttemptOk: null,
-    lastAttemptMessage: "",
-    lastSuccessfulUpdateAt: "",
-    lastProcessedSignupTimestamp: "",
-  });
-
-const writeRosterTimerState = (nextValue) => {
-  writeStorageJson(ROSTER_SCRIPT_TIMER_STORAGE_KEY, nextValue);
-};
-
 function DayScheduleColumn({ day, matches, renderMatchCard, loading }) {
   return (
     <div className="rounded-2xl border border-border bg-surface-muted/70 p-3">
@@ -573,12 +530,26 @@ export default function StellenboschRl2026WorkspacePage() {
   const [autoSyncSchedule, setAutoSyncSchedule] = useState(() =>
     getRosterScriptScheduleSnapshot(),
   );
-  const [timerState, setTimerState] = useState(() => readRosterTimerState());
+  const [timerState, setTimerState] = useState(null);
   const [scriptRunState, setScriptRunState] = useState({
     running: false,
     message: "",
     tone: "success",
   });
+
+  const refreshTimerState = useCallback(async () => {
+    try {
+      const nextState = await getStbRl26RosterSyncStatus();
+      setTimerState(nextState || null);
+    } catch (fetchError) {
+      if (import.meta.env.DEV) {
+        setTimerState(null);
+        return null;
+      }
+      throw fetchError;
+    }
+    return null;
+  }, []);
 
   const loadWorkspace = useCallback(async (ignoreRef) => {
     setLoading(true);
@@ -624,17 +595,21 @@ export default function StellenboschRl2026WorkspacePage() {
 
   useEffect(() => {
     setAutoSyncSchedule(getRosterScriptScheduleSnapshot());
-    setTimerState(readRosterTimerState());
+    if (canRunAdminScripts) {
+      refreshTimerState().catch(() => {});
+    }
 
     const intervalId = window.setInterval(() => {
       setAutoSyncSchedule(getRosterScriptScheduleSnapshot());
-      setTimerState(readRosterTimerState());
+      if (canRunAdminScripts) {
+        refreshTimerState().catch(() => {});
+      }
     }, AUTO_ROSTER_SYNC_INTERVAL_MS);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [canRunAdminScripts, refreshTimerState]);
 
   const workspaceTitle = eventData?.name || EVENT_NAME;
   const configuredDivisions = getConfiguredDivisions(eventData);
@@ -693,49 +668,39 @@ export default function StellenboschRl2026WorkspacePage() {
     });
 
     try {
-      const previousTimerState = readRosterTimerState();
-      const output = await executeCustomScript({
-        slug: ROSTER_SCRIPT_SLUG,
-        context: {
-          eventId: EVENT_ID,
-          trigger,
-          forceFullSync,
-          slotKey: activeScheduleSlot.currentSlotKey,
-          slotLabel: activeScheduleSlot.currentSlotLabel,
-          useBundledSource: true,
-        },
-      });
+      let output;
+      try {
+        output = await invokeStbRl26RosterSync({ forceFullSync });
+      } catch (backendError) {
+        if (!import.meta.env.DEV) {
+          throw backendError;
+        }
 
-      const nextTimerState = {
-        lastAttemptedSlotKey: activeScheduleSlot.currentSlotKey,
-        lastAttemptedAt: output?.finishedAt || new Date().toISOString(),
-        lastAttemptOk: Boolean(output?.ok),
-        lastAttemptMessage: output?.ok
-          ? output?.result?.message || ""
-          : output?.error?.message || "",
-        lastSuccessfulUpdateAt: output?.ok
-          ? output?.result?.lastSuccessfulRunAt || output?.finishedAt || new Date().toISOString()
-          : previousTimerState?.lastSuccessfulUpdateAt || "",
-        lastProcessedSignupTimestamp: output?.ok
-          ? output?.result?.lastProcessedSignupTimestamp || ""
-          : previousTimerState?.lastProcessedSignupTimestamp || "",
-      };
-      writeRosterTimerState(nextTimerState);
-      setTimerState(nextTimerState);
+        output = await executeCustomScript({
+          slug: ROSTER_SCRIPT_SLUG,
+          context: {
+            eventId: EVENT_ID,
+            trigger,
+            forceFullSync,
+            slotKey: activeScheduleSlot.currentSlotKey,
+            slotLabel: activeScheduleSlot.currentSlotLabel,
+            useBundledSource: true,
+            allowBrowserExecution: true,
+          },
+        });
+      }
+
       setAutoSyncSchedule(getRosterScriptScheduleSnapshot());
 
       if (output.ok) {
         await loadWorkspace();
+        await refreshTimerState().catch(() => {});
         setScriptRunState({
           running: false,
           message:
-            trigger === "timer"
-              ? `Auto roster sync (${activeScheduleSlot.currentSlotLabel}) completed. ${
-                  output.result?.message || ""
-                }`.trim()
-              : forceFullSync
-                ? output.result?.message ||
-                  "Full roster sync completed. Event data has been refreshed."
+            forceFullSync
+              ? output.result?.message ||
+                "Full roster sync completed. Event data has been refreshed."
               : output.result?.message ||
                 "Roster update script completed. Event data has been refreshed.",
           tone: "success",
@@ -743,15 +708,12 @@ export default function StellenboschRl2026WorkspacePage() {
         return output;
       }
 
+      await refreshTimerState().catch(() => {});
       setScriptRunState({
         running: false,
         message:
-          trigger === "timer"
-            ? `Auto roster sync (${activeScheduleSlot.currentSlotLabel}) failed. ${
-                output.error?.message || "Script failed."
-              }`.trim()
-            : forceFullSync
-              ? output.error?.message || "Full roster sync failed."
+          forceFullSync
+            ? output.error?.message || "Full roster sync failed."
             : output.error?.message || "Roster update script failed.",
         tone: "error",
       });
@@ -759,7 +721,7 @@ export default function StellenboschRl2026WorkspacePage() {
     } finally {
       scriptRunLockRef.current = false;
     }
-  }, [loadWorkspace]);
+  }, [loadWorkspace, refreshTimerState]);
 
   const handleRunRosterUpdate = useCallback(async () => {
     await runRosterUpdate({
@@ -776,70 +738,15 @@ export default function StellenboschRl2026WorkspacePage() {
     });
   }, [runRosterUpdate]);
 
-  useEffect(() => {
-    if (!canRunAdminScripts) {
-      return undefined;
-    }
-
-    let cancelled = false;
-
-    const checkAutoRun = async () => {
-      const scheduleSlot = getRosterScriptScheduleSnapshot();
-      const storedTimerState = readRosterTimerState();
-
-      if (cancelled) {
-        return;
-      }
-
-      setAutoSyncSchedule(scheduleSlot);
-      setTimerState(storedTimerState);
-
-      if (scriptRunLockRef.current) {
-        return;
-      }
-
-      if (storedTimerState?.lastAttemptedSlotKey === scheduleSlot.currentSlotKey) {
-        return;
-      }
-
-      await runRosterUpdate({
-        trigger: "timer",
-        scheduleSlot,
-      });
-    };
-
-    checkAutoRun();
-    const intervalId = window.setInterval(checkAutoRun, AUTO_ROSTER_SYNC_INTERVAL_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [canRunAdminScripts, runRosterUpdate]);
-
   const renderScheduledMatchCard = (match) => {
-    const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
-    const component = matchHref ? Link : "article";
-    const linkProps = matchHref ? { to: matchHref } : {};
-    const mediaDetails = getMatchMediaDetails(match);
     return (
-      <MatchCard
+      <StandardEventMatchCard
         key={match.id}
-        as={component}
-        variant="tinted"
-        className={
-          matchHref
-            ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50"
-            : ""
-        }
+        match={match}
         eyebrow={match.venue?.name || "Venue TBC"}
         title={formatMatchup(match)}
-        venue={match.venue}
         meta={formatMatchTime(match.start_time)}
         status={formatMatchStatus(match.status)}
-        trailing={mediaDetails ? <MatchMediaButton media={mediaDetails} /> : null}
-        trailingPosition="header"
-        {...linkProps}
       />
     );
   };
@@ -931,28 +838,28 @@ export default function StellenboschRl2026WorkspacePage() {
                 <Chip variant="ghost">00:00 and 12:00 SAST</Chip>
               </div>
               <p className="text-sm text-ink-muted">
-                While an admin has this page open, the roster script will run once per slot.
+                This roster sync now runs automatically on the backend, independent of whether this page is open.
                 Next run: {autoSyncSchedule.nextSlotLabel} ({formatDurationUntil(autoSyncSchedule.millisUntilNextSlot)}).
               </p>
               <p className="text-xs text-ink-muted">
                 Current slot: {autoSyncSchedule.currentSlotLabel}.
-                {timerState.lastSuccessfulUpdateAt ? (
+                {timerState?.last_successful_run_at ? (
                   <>
-                    {" "}Last successful update: {formatSastScheduleTime(timerState.lastSuccessfulUpdateAt)}.
+                    {" "}Last successful update: {formatSastScheduleTime(timerState.last_successful_run_at)}.
                   </>
                 ) : null}
-                {timerState.lastProcessedSignupTimestamp ? (
+                {timerState?.last_processed_signup_timestamp ? (
                   <>
-                    {" "}Latest signup timestamp: {formatSastScheduleTime(timerState.lastProcessedSignupTimestamp)}.
+                    {" "}Latest signup timestamp: {formatSastScheduleTime(timerState.last_processed_signup_timestamp)}.
                   </>
                 ) : null}
-                {timerState.lastAttemptedAt ? (
+                {timerState?.last_attempted_at ? (
                   <>
-                    {" "}Last attempt: {formatSastScheduleTime(timerState.lastAttemptedAt)} (
-                    {timerState.lastAttemptOk ? "success" : "failed"}).
+                    {" "}Last attempt: {formatSastScheduleTime(timerState.last_attempted_at)} (
+                    {timerState.last_ok ? "success" : "failed"}).
                   </>
                 ) : (
-                  " No slot has been processed in this browser yet."
+                  " No backend attempt has been recorded yet."
                 )}
               </p>
             </Panel>

@@ -7,7 +7,6 @@ import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui
 import { getMatchMediaDetails } from "../utils/matchMedia";
 import { getEventWorkspacePath } from "./eventWorkspaces";
 
-const EVENT_WORKSPACE_LABEL = "Open event overview";
 const MATCHES_REFRESH_INTERVAL_MS = 30 * 1000;
 const RULE_FORMAT_LABELS = {
   wfdfChampionship: "WFDF Championship",
@@ -42,6 +41,7 @@ export default function EventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialEventId = searchParams.get("eventId") || null;
   const [events, setEvents] = useState([]);
+  const [eventStatusTab, setEventStatusTab] = useState("current");
   const [selectedEventId, setSelectedEventId] = useState(initialEventId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -79,11 +79,25 @@ export default function EventsPage() {
 
   const requestedEventId = searchParams.get("eventId") || null;
 
+  const filteredEvents = useMemo(() => {
+    const allowedStatuses =
+      eventStatusTab === "past"
+        ? new Set(["completed"])
+        : eventStatusTab === "upcoming"
+          ? new Set(["scheduled"])
+          : new Set(["live"]);
+
+    return events.filter((event) => {
+      const status = (event?.status || "").toString().trim().toLowerCase();
+      return allowedStatuses.has(status);
+    });
+  }, [eventStatusTab, events]);
+
   useEffect(() => {
     if (!events.length) return;
     let nextId = requestedEventId;
-    if (!nextId || !events.some((evt) => evt.id === nextId)) {
-      nextId = events[0]?.id || null;
+    if (!nextId || !filteredEvents.some((evt) => evt.id === nextId)) {
+      nextId = filteredEvents[0]?.id || null;
     }
     setSelectedEventId(nextId);
     if (nextId) {
@@ -93,11 +107,11 @@ export default function EventsPage() {
     } else if (requestedEventId) {
       setSearchParams({}, { replace: true });
     }
-  }, [events, requestedEventId, setSearchParams]);
+  }, [events, filteredEvents, requestedEventId, setSearchParams]);
 
   const selectedEvent = useMemo(
-    () => events.find((evt) => evt.id === selectedEventId) || null,
-    [events, selectedEventId],
+    () => filteredEvents.find((evt) => evt.id === selectedEventId) || null,
+    [filteredEvents, selectedEventId],
   );
 
   useEffect(() => {
@@ -293,14 +307,11 @@ export default function EventsPage() {
     return rows.length ? rows : null;
   }, [selectedEventRules]);
 
-  const selectedEventWorkspacePath = selectedEvent ? getEventWorkspacePath(selectedEvent.id) : null;
-
   return (
     <div className="pb-16 text-ink">
       <SectionShell as="header" className="py-6">
         <Card className="space-y-4 p-6 sm:p-8">
           <SectionHeader
-            eyebrow="Divisions"
             title="Division control center"
             description="Select a tournament to view its calendar, venue posture, rule set, and live fixtures."
           >
@@ -314,40 +325,70 @@ export default function EventsPage() {
         <div className="grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
           <Card className="space-y-4 p-6">
             <SectionHeader
-              eyebrow="Events"
               title="Select an event"
               action={
-                <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  {loading ? "Loading..." : `${events.length} total`}
-                </span>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+                  <div className="grid w-full grid-cols-3 gap-2 sm:w-auto">
+                    {[
+                      { key: "current", label: "Current" },
+                      { key: "upcoming", label: "Upcoming" },
+                      { key: "past", label: "Past" },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setEventStatusTab(tab.key)}
+                        className={`${eventStatusTab === tab.key ? "sc-button" : "sc-button is-ghost"} min-w-0 justify-center px-3`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-right whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    {loading ? "Loading..." : `${filteredEvents.length} shown`}
+                  </span>
+                </div>
               }
             />
-            {loading && events.length === 0 ? (
+            {loading && filteredEvents.length === 0 ? (
               <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
                 Loading events...
               </Card>
-            ) : events.length === 0 ? (
+            ) : filteredEvents.length === 0 ? (
               <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                No events registered yet.
+                No events match this status.
               </Card>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {events.map((event) => {
+                {filteredEvents.map((event) => {
                   const isActive = event.id === selectedEventId;
+                  const eventWorkspacePath = getEventWorkspacePath(event.id);
                   return (
-                    <button
-                      key={event.id}
-                      type="button"
-                      onClick={() => handleSelectEvent(event.id)}
-                      className={`${isActive ? "sc-button is-square" : "sc-button is-ghost is-square"} is-option transition hover:-translate-y-0.5`}
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-wide opacity-80">{event.type || "Event"}</p>
-                      <p className="text-base font-semibold leading-tight">{event.name}</p>
-                      <p className="text-xs opacity-80">
-                        {formatDate(event.start_date)} - {formatDate(event.end_date)}
-                      </p>
-                      {event.location && <p className="text-xs opacity-80">Location: {event.location}</p>}
-                    </button>
+                    <div key={event.id} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectEvent(event.id)}
+                        className={`${isActive ? "sc-button is-square" : "sc-button is-ghost is-square"} is-option min-h-[88px] w-full justify-start border-white pr-14 text-left transition hover:-translate-y-0.5`}
+                        style={{ borderColor: "rgba(255, 255, 255, 0.9)" }}
+                      >
+                        <p className="text-base font-semibold leading-tight">{event.name}</p>
+                      </button>
+                      {eventWorkspacePath ? (
+                        <Link
+                          to={eventWorkspacePath}
+                          className={`absolute right-2 top-2 flex h-9 w-9 min-h-0 min-w-0 items-center justify-center rounded-full p-0 text-sm transition ${
+                            isActive
+                              ? "border border-white bg-white/95 text-[var(--sc-button-ink)] hover:bg-white"
+                              : "sc-button border-white"
+                          }`}
+                          style={{ borderColor: "rgba(255, 255, 255, 0.9)" }}
+                          aria-label={`Open ${event.name} overview`}
+                          title={`Open ${event.name} overview`}
+                        >
+                          &#8599;
+                        </Link>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>
@@ -366,21 +407,13 @@ export default function EventsPage() {
                   <p className="text-xs uppercase tracking-wide text-ink-muted">Name</p>
                   <p className="text-base font-semibold text-ink">{selectedEvent.name}</p>
                 </Panel>
+                <Panel variant="muted" className="p-3">
+                  <p className="text-xs uppercase tracking-wide text-ink-muted">Dates</p>
+                  <p className="font-semibold text-ink">
+                    {formatDate(selectedEvent.start_date)} - {formatDate(selectedEvent.end_date)}
+                  </p>
+                </Panel>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Panel variant="muted" className="p-3">
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">Start date</p>
-                    <p className="font-semibold text-ink">{formatDate(selectedEvent.start_date)}</p>
-                  </Panel>
-                  <Panel variant="muted" className="p-3">
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">End date</p>
-                    <p className="font-semibold text-ink">{formatDate(selectedEvent.end_date)}</p>
-                  </Panel>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Panel variant="muted" className="p-3">
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">Event type</p>
-                    <p className="font-semibold text-ink">{selectedEvent.type || "Not specified"}</p>
-                  </Panel>
                   <Panel variant="muted" className="p-3">
                     <p className="text-xs uppercase tracking-wide text-ink-muted">Location</p>
                     <p className="font-semibold text-ink">{selectedEvent.location || "TBD"}</p>
@@ -388,36 +421,10 @@ export default function EventsPage() {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <Panel variant="muted" className="p-3">
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">Format</p>
-                    <p className="font-semibold text-ink">{formatLabel || "Not specified"}</p>
-                  </Panel>
-                  <Panel variant="muted" className="p-3">
                     <p className="text-xs uppercase tracking-wide text-ink-muted">Division</p>
                     <p className="font-semibold text-ink">{divisionLabel || "Not specified"}</p>
                   </Panel>
-                  <Panel variant="muted" className="p-3">
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">Timeouts</p>
-                    <p className="font-semibold text-ink">{timeoutsLabel || "Not specified"}</p>
-                  </Panel>
                 </div>
-                {rulesSummary && (
-                  <Panel variant="muted" className="space-y-2 p-3">
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">Rules snapshot</p>
-                    <div className="grid gap-1.5 sm:grid-cols-2">
-                      {rulesSummary.map((row) => (
-                        <Panel key={row.label} variant="tinted" className="p-3">
-                          <p className="text-[11px] uppercase tracking-wide text-ink-muted">{row.label}</p>
-                          <p className="text-sm font-semibold text-ink">{row.value}</p>
-                        </Panel>
-                      ))}
-                    </div>
-                  </Panel>
-                )}
-                {selectedEventWorkspacePath && (
-                  <Link to={selectedEventWorkspacePath} className="sc-button justify-center">
-                    {EVENT_WORKSPACE_LABEL}
-                  </Link>
-                )}
               </div>
             )}
           </Card>
@@ -425,14 +432,12 @@ export default function EventsPage() {
 
         <Card className="space-y-4 p-6">
           <SectionHeader
-            eyebrow="Scoreboard"
-            description="Monitor matches and their state"
             action={
               <div className="inline-flex flex-wrap items-center gap-2">
                 {[
-                  { key: "current", label: "Current Games" },
-                  { key: "upcoming", label: "Upcoming Games" },
-                  { key: "past", label: "Recent Games" },
+                  { key: "current", label: "Current" },
+                  { key: "upcoming", label: "Upcoming" },
+                  { key: "past", label: "Recent" },
                 ].map((tab) => (
                   <button
                     key={tab.key}

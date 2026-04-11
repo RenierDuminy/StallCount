@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import { getEventsList } from "../../services/leagueService";
 import { getMatchesByEvent, getMatchById } from "../../services/matchService";
 import { getPlayersByTeam } from "../../services/playerService";
+import { getRoleCatalog } from "../../services/userService";
 import {
   MATCH_LOG_EVENT_CODES,
   getMatchLogs,
@@ -46,6 +47,12 @@ import {
   TIMER_TICK_INTERVAL_MS,
   ABBA_LINE_SEQUENCE,
 } from "./scorekeeperConstants";
+import {
+  ADMIN_OVERRIDE_PERMISSIONS,
+  SCOREKEEPER_ACCESS_PERMISSIONS,
+  normalisePermissionList,
+  normaliseRoleList,
+} from "../../utils/accessControl";
 
 const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
@@ -497,8 +504,70 @@ function computeRemainingSeconds(anchor, isRunning, fallback = 0, options = {}) 
   return raw;
 }
 
+function buildRoleCatalogLookup(roleCatalog) {
+  const lookup = new Map();
+  (Array.isArray(roleCatalog) ? roleCatalog : []).forEach((role) => {
+    if (!role) return;
+    if (role.id !== undefined && role.id !== null) {
+      lookup.set(`id:${String(role.id)}`, role);
+    }
+    const roleSlug = normaliseRoleList(role.name || "")[0] || null;
+    if (roleSlug) {
+      lookup.set(`slug:${roleSlug}`, role);
+    }
+  });
+  return lookup;
+}
+
+function getRolePermissionKeys(role) {
+  return normalisePermissionList(
+    (Array.isArray(role?.permissions) ? role.permissions : []).map((permission) =>
+      typeof permission === "string"
+        ? permission
+        : permission?.key || permission?.name || permission?.value || "",
+    ),
+  );
+}
+
+function getAccessibleScorekeeperEventIds(assignments, roleCatalog) {
+  const allowedPermissionKeys = new Set(
+    normalisePermissionList([...SCOREKEEPER_ACCESS_PERMISSIONS, ...ADMIN_OVERRIDE_PERMISSIONS]),
+  );
+  const roleLookup = buildRoleCatalogLookup(roleCatalog);
+  const eventIds = new Set();
+  let hasGlobalScorekeeperAccess = false;
+
+  (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
+    const roleId = assignment?.roleId;
+    const roleSlug =
+      normaliseRoleList(
+        assignment?.roleName || assignment?.role?.name || assignment?.name || "",
+      )[0] || null;
+    const role =
+      (roleId !== undefined && roleId !== null
+        ? roleLookup.get(`id:${String(roleId)}`)
+        : null) || (roleSlug ? roleLookup.get(`slug:${roleSlug}`) : null);
+    if (!role) return;
+
+    const hasScorekeeperPermission = getRolePermissionKeys(role).some((permissionKey) =>
+      allowedPermissionKeys.has(permissionKey),
+    );
+    if (!hasScorekeeperPermission) return;
+
+    const eventId = assignment?.eventId ?? null;
+    if (eventId) {
+      eventIds.add(eventId);
+      return;
+    }
+
+    hasGlobalScorekeeperAccess = true;
+  });
+
+  return hasGlobalScorekeeperAccess ? null : eventIds;
+}
+
 export function useScoreKeeperData() {
-  const { session } = useAuth();
+  const { session, roles } = useAuth();
   const userId = session?.user?.id ?? null;
 
   const [events, setEvents] = useState([]);
@@ -560,7 +629,7 @@ const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
 const [secondaryFlashRateMs, setSecondaryFlashRateMs] = useState(400);
 const [possessionTeam, setPossessionTeam] = useState(null);
 const [halftimeTriggered, setHalftimeTriggered] = useState(false);
-const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
+const [, setHalftimeBreakActive] = useState(false);
   const [halftimeTriggerType, setHalftimeTriggerType] = useState("unknown");
   const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
   const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
@@ -632,15 +701,31 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
     setEventsLoading(true);
     setEventsError(null);
     try {
-      const data = await getEventsList(12);
-      setEvents(data);
+      if (!Array.isArray(roles)) {
+        setEvents([]);
+        return;
+      }
+
+      const [data, roleCatalog] = await Promise.all([
+        getEventsList(12, { status: "live" }),
+        getRoleCatalog(),
+      ]);
+      const accessibleEventIds = getAccessibleScorekeeperEventIds(roles, roleCatalog);
+      const filteredEvents =
+        accessibleEventIds === null
+          ? data
+          : data.filter((event) => accessibleEventIds.has(event.id));
+      setEvents(filteredEvents);
+      setSelectedEventId((previous) =>
+        previous && filteredEvents.some((event) => event.id === previous) ? previous : null,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to load events.";
       setEventsError(message);
     } finally {
       setEventsLoading(false);
     }
-  }, []);
+  }, [roles]);
 
   const loadMatches = useCallback(
     async (eventIdOverride, options = {}) => {
@@ -704,6 +789,7 @@ const secondaryTimerAnchorRef = useRef({
   anchorTimestamp: null,
 });
 const activeSecondaryEventRef = useRef(null);
+const secondaryTimerCompletedRef = useRef(false);
 const previousSecondaryRunningRef = useRef(false);
 const previousPrimaryRunningRef = useRef(false);
 const stoppageActiveRef = useRef(false);
@@ -1083,6 +1169,7 @@ useEffect(() => {
       if (secondaryRunning) {
         const remainingSecondary = getSecondaryRemainingSeconds();
         if (remainingSecondary <= 0) {
+          secondaryTimerCompletedRef.current = true;
           commitSecondaryTimerState(0, false);
         } else {
           setSecondarySeconds(remainingSecondary);
@@ -1619,23 +1706,24 @@ const recordPendingEntry = useCallback(
     const queueId = optimisticId || createQueueId("match-log");
 
     void (async () => {
-      try {
-        await enqueueMatchLogEntry(dbPayload, {
-          id: queueId,
-          lastAttemptAt: Date.now(),
-        });
-        await refreshPendingEntries();
-      } catch (err) {
-        console.error("[ScoreKeeper] Failed to queue match log entry:", err);
-      }
+      const queueForRetry = async () => {
+        try {
+          await enqueueMatchLogEntry(dbPayload, { id: queueId });
+          await refreshPendingEntries();
+        } catch (err) {
+          console.error("[ScoreKeeper] Failed to queue match log entry:", err);
+        }
+      };
 
       if (DB_WRITES_DISABLED) {
         console.warn("[ScoreKeeper] DB writes are temporarily disabled. Skipping save.", dbPayload);
+        await queueForRetry();
         setConsoleError((prev) => prev || "Scorekeeper is in offline mode; changes aren't being saved.");
         return;
       }
 
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        await queueForRetry();
         setConsoleError(
           (prev) =>
             prev || "Scorekeeper is offline; changes are queued and will sync when online."
@@ -1655,10 +1743,11 @@ const recordPendingEntry = useCallback(
         }
       } catch (err) {
         console.error("[ScoreKeeper] Failed to persist match log entry:", err);
+        await queueForRetry();
+        await markOfflineQueueFailure(queueId);
         setConsoleError((prev) =>
           prev || (err instanceof Error ? err.message : "Failed to submit match log entry.")
         );
-        await markOfflineQueueFailure(queueId);
       }
     })();
   },
@@ -1886,8 +1975,14 @@ const replaceSecondaryTimer = useCallback(
     ]
   );
 
+  const clearSecondaryTimerEvent = useCallback(() => {
+    activeSecondaryEventRef.current = null;
+    secondaryTimerCompletedRef.current = false;
+  }, []);
+
   const finalizeSecondaryTimerEvent = useCallback(async () => {
     const meta = activeSecondaryEventRef.current;
+    secondaryTimerCompletedRef.current = false;
     if (!meta) {
       return null;
     }
@@ -1902,7 +1997,7 @@ const replaceSecondaryTimer = useCallback(
 
   const startTrackedSecondaryTimer = useCallback(
     async (duration, label, meta = null) => {
-      await finalizeSecondaryTimerEvent();
+      clearSecondaryTimerEvent();
       if (meta?.eventStartCode) {
         await logSimpleEvent(meta.eventStartCode, { teamKey: meta.teamKey ?? null });
       }
@@ -1921,13 +2016,101 @@ const replaceSecondaryTimer = useCallback(
         startSecondaryTimer(duration, label);
       }
     },
-    [finalizeSecondaryTimerEvent, logSimpleEvent, startSecondaryTimer, replaceSecondaryTimer]
+    [clearSecondaryTimerEvent, logSimpleEvent, startSecondaryTimer, replaceSecondaryTimer]
+  );
+
+  const updatePossession = useCallback(
+    async (
+      teamKey,
+      { logTurnover = true, actorId = null, eventTypeIdOverride = null, eventTeamKey = null } = {}
+    ) => {
+      const previousTeam = possessionTeam;
+      if (!teamKey || teamKey === previousTeam) return;
+      if (logTurnover && !matchStarted) return;
+      setPossessionTeam(teamKey);
+
+      if (!logTurnover || !consoleReady || !activeMatch?.id) return;
+
+      try {
+        const resolvedEventTypeId =
+          eventTypeIdOverride ?? (await resolveEventTypeIdLocal(MATCH_LOG_EVENT_CODES.TURNOVER));
+        if (!resolvedEventTypeId) {
+          setConsoleError(
+            "Missing `turnover` event type in match_events. Please add it in Supabase before logging."
+          );
+          return;
+        }
+
+        const derivedEventTeamKey = eventTeamKey || teamKey || previousTeam || null;
+
+        const targetTeamId =
+          derivedEventTeamKey === "A" ? teamAId : derivedEventTeamKey === "B" ? teamBId : null;
+
+        if (!targetTeamId) {
+          setConsoleError("Missing team mapping for turnover entry.");
+          return;
+        }
+
+        const timestamp = new Date().toISOString();
+        const optimisticId = `${OPTIMISTIC_PREFIX}${Date.now()}`;
+        const totalsSnapshot = score;
+        const appended = appendLocalLog({
+          team: derivedEventTeamKey,
+          timestamp,
+          scorerId: actorId || null,
+          assistId: null,
+          totals: totalsSnapshot,
+          eventDescription: describeEvent(resolvedEventTypeId),
+          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
+          optimisticId,
+        });
+        const entry = {
+          matchId: activeMatch.id,
+          eventTypeId: resolvedEventTypeId,
+          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
+          teamId: targetTeamId,
+          scorerId: actorId || null,
+          createdAt: timestamp,
+          abbaLine: appended.scoreOrderIndex !== null ? appended.abbaLine : null,
+          optimisticId,
+        };
+        recordPendingEntry(entry);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to log turnover.";
+        setConsoleError(message);
+      }
+    },
+    [
+      possessionTeam,
+      matchStarted,
+      consoleReady,
+      activeMatch?.id,
+      teamAId,
+      teamBId,
+      recordPendingEntry,
+      appendLocalLog,
+      describeEvent,
+      resolveEventTypeIdLocal,
+      setConsoleError,
+      score,
+    ]
   );
 
   useEffect(() => {
     if (previousSecondaryRunningRef.current && !secondaryRunning) {
       void (async () => {
-        const meta = await finalizeSecondaryTimerEvent();
+        const completedNaturally = secondaryTimerCompletedRef.current;
+        const meta = completedNaturally ? await finalizeSecondaryTimerEvent() : null;
+        if (!completedNaturally) {
+          clearSecondaryTimerEvent();
+        }
+        if (meta?.endCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
+          setHalftimeBreakActive(false);
+          const nextTeam = matchStartingTeamKey;
+          if (nextTeam) {
+            void updatePossession(nextTeam, { logTurnover: false });
+          }
+        }
         const followUp = meta?.followUp;
         if (followUp && followUp.seconds > 0) {
           startSecondaryTimer(followUp.seconds, followUp.label);
@@ -1935,7 +2118,14 @@ const replaceSecondaryTimer = useCallback(
       })();
     }
     previousSecondaryRunningRef.current = secondaryRunning;
-  }, [secondaryRunning, finalizeSecondaryTimerEvent, startSecondaryTimer]);
+  }, [
+    secondaryRunning,
+    clearSecondaryTimerEvent,
+    finalizeSecondaryTimerEvent,
+    startSecondaryTimer,
+    matchStartingTeamKey,
+    updatePossession,
+  ]);
 
   useEffect(() => {
     if (!previousPrimaryRunningRef.current && timerRunning && stoppageActiveRef.current) {
@@ -2041,100 +2231,6 @@ const replaceSecondaryTimer = useCallback(
     triggerHalftime,
   ]);
 
-  const updatePossession = useCallback(
-    async (
-      teamKey,
-      { logTurnover = true, actorId = null, eventTypeIdOverride = null, eventTeamKey = null } = {}
-    ) => {
-      const previousTeam = possessionTeam;
-      if (!teamKey || teamKey === previousTeam) return;
-      if (logTurnover && !matchStarted) return;
-      setPossessionTeam(teamKey);
-
-      if (!logTurnover || !consoleReady || !activeMatch?.id) return;
-
-      try {
-        const resolvedEventTypeId =
-          eventTypeIdOverride ?? (await resolveEventTypeIdLocal(MATCH_LOG_EVENT_CODES.TURNOVER));
-        if (!resolvedEventTypeId) {
-          setConsoleError(
-            "Missing `turnover` event type in match_events. Please add it in Supabase before logging."
-          );
-          return;
-        }
-
-        const derivedEventTeamKey = eventTeamKey || teamKey || previousTeam || null;
-
-        const targetTeamId =
-          derivedEventTeamKey === "A" ? teamAId : derivedEventTeamKey === "B" ? teamBId : null;
-
-        if (!targetTeamId) {
-          setConsoleError("Missing team mapping for turnover entry.");
-          return;
-        }
-
-        const timestamp = new Date().toISOString();
-        const optimisticId = `${OPTIMISTIC_PREFIX}${Date.now()}`;
-        const totalsSnapshot = score;
-        const appended = appendLocalLog({
-          team: derivedEventTeamKey,
-          timestamp,
-          scorerId: actorId || null,
-          assistId: null,
-          totals: totalsSnapshot,
-          eventDescription: describeEvent(resolvedEventTypeId),
-          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
-          optimisticId,
-        });
-        const entry = {
-          matchId: activeMatch.id,
-          eventTypeId: resolvedEventTypeId,
-          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
-          teamId: targetTeamId,
-          scorerId: actorId || null,
-          createdAt: timestamp,
-          abbaLine: appended.scoreOrderIndex !== null ? appended.abbaLine : null,
-          optimisticId,
-        };
-        recordPendingEntry(entry);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to log turnover.";
-        setConsoleError(message);
-      }
-    },
-    [
-      possessionTeam,
-      matchStarted,
-      consoleReady,
-      activeMatch?.id,
-      teamAId,
-      teamBId,
-      recordPendingEntry,
-      appendLocalLog,
-      describeEvent,
-      resolveEventTypeIdLocal,
-      setConsoleError,
-      score,
-    ]
-  );
-
-  useEffect(() => {
-    if (!halftimeBreakActive) return;
-    const normalizedSecondaryLabel = (secondaryLabel || "").toLowerCase();
-    if (secondaryRunning || normalizedSecondaryLabel !== "half time") {
-      return;
-    }
-    setHalftimeBreakActive(false);
-    const nextTeam = matchStartingTeamKey;
-    if (!nextTeam) return;
-    void updatePossession(nextTeam, { logTurnover: false });
-  }, [
-    halftimeBreakActive,
-    secondaryRunning,
-    secondaryLabel,
-    matchStartingTeamKey,
-    updatePossession,
-  ]);
   const matchLogMatchId = activeMatch?.id || selectedMatch?.id || null;
   const currentMatchScore = useMemo(
     () => ({

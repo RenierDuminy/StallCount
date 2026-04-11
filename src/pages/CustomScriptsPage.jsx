@@ -17,6 +17,9 @@ import {
   resetCustomScriptOverride,
   saveCustomScriptOverride,
 } from "../services/customScriptService";
+import { invokeStbRl26RosterSync } from "../services/stbRl26RosterSyncService";
+
+const SERVER_RUN_ONLY_SCRIPT_SLUGS = new Set(["STB_RL_26_update_rosters"]);
 
 const formatTimestamp = (value) => {
   if (!value) return "Never";
@@ -78,6 +81,7 @@ export default function CustomScriptsPage() {
     () => scripts.find((script) => script.slug === selectedSlug) || null,
     [scripts, selectedSlug],
   );
+  const isServerRunOnlyScript = SERVER_RUN_ONLY_SCRIPT_SLUGS.has(selectedSlug);
 
   const isDirty = Boolean(selectedScript) && draftSource !== selectedScript.source;
 
@@ -115,13 +119,15 @@ export default function CustomScriptsPage() {
     if (!selectedScript) return;
 
     setRunState({ running: true, output: null, error: "" });
-    const output = await executeCustomScript({
-      slug: selectedScript.slug,
-      source: draftSource,
-      context: {
-        eventId: eventId || null,
-      },
-    });
+    const output = isServerRunOnlyScript
+      ? await invokeStbRl26RosterSync()
+      : await executeCustomScript({
+          slug: selectedScript.slug,
+          source: draftSource,
+          context: {
+            eventId: eventId || null,
+          },
+        });
 
     setRunState({
       running: false,
@@ -228,6 +234,11 @@ export default function CustomScriptsPage() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                       Actions
                     </p>
+                    {isServerRunOnlyScript ? (
+                      <p className="text-xs text-ink-muted">
+                        This script runs through the backend runner. Local browser overrides are not used when you run it here.
+                      </p>
+                    ) : null}
                     <button
                       type="button"
                       className="sc-button w-full"

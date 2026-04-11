@@ -4,6 +4,19 @@ import { useAuth } from "../context/AuthContext";
 import { Card, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
 import { normaliseRoleList } from "../utils/accessControl";
 
+const ADMIN_MODULE_PRIORITY = [
+  "Score keeper",
+  "Score keeper 5v5",
+  "Spirit scores",
+  "Captain",
+  "Event access control",
+  "Media",
+  "Event setup",
+  "Tournament director",
+  "Playoff structure",
+];
+const ADMIN_MODULE_DIVIDER_AFTER = new Set(["Spirit scores", "Playoff structure"]);
+
 const ADMIN_MODULES = [
   {
     label: "Score keeper",
@@ -116,6 +129,10 @@ const ADMIN_MODULES = [
 export default function AdminPage() {
   const { roles } = useAuth();
   const visibleModules = useMemo(() => {
+    const priorityLookup = new Map(
+      ADMIN_MODULE_PRIORITY.map((label, index) => [label.toLowerCase(), index]),
+    );
+
     return ADMIN_MODULES.filter((module) => {
       if (!Array.isArray(module.allowedRoles) || module.allowedRoles.length === 0) {
         return true;
@@ -131,6 +148,23 @@ export default function AdminPage() {
         );
         return roleNames.some((roleName) => module.allowedRoles.includes(roleName));
       });
+    }).sort((left, right) => {
+      const leftPriority = priorityLookup.get(left.label.toLowerCase());
+      const rightPriority = priorityLookup.get(right.label.toLowerCase());
+
+      if (leftPriority !== undefined && rightPriority !== undefined) {
+        return leftPriority - rightPriority;
+      }
+
+      if (leftPriority !== undefined) {
+        return -1;
+      }
+
+      if (rightPriority !== undefined) {
+        return 1;
+      }
+
+      return left.label.localeCompare(right.label);
     });
   }, [roles]);
 
@@ -149,23 +183,30 @@ export default function AdminPage() {
       <SectionShell as="main" className="space-y-6 py-6">
         <div className="grid gap-6 md:grid-cols-3">
           {visibleModules.map((module) => (
-            <Panel
-              key={module.label}
-              variant="tinted"
-              className="flex h-full flex-col justify-between p-6 transition hover:-translate-y-0.5"
-            >
-              <header className="space-y-2">
-                <span
-                  className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${module.accent}`}
-                >
-                  {module.label}
-                </span>
-                <p className="text-sm text-ink-muted">{module.description}</p>
-              </header>
-              <Link to={module.to} className="mt-6 sc-button">
-                Open {module.label}
-              </Link>
-            </Panel>
+            <div key={module.label} className="contents">
+              <Panel
+                variant="tinted"
+                className="flex h-full flex-col justify-between p-6 transition hover:-translate-y-0.5"
+              >
+                <header className="space-y-2">
+                  <span
+                    className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${module.accent}`}
+                  >
+                    {module.label}
+                  </span>
+                  <p className="text-sm text-ink-muted">{module.description}</p>
+                </header>
+                <Link to={module.to} className="mt-6 sc-button">
+                  Open {module.label}
+                </Link>
+              </Panel>
+              {ADMIN_MODULE_DIVIDER_AFTER.has(module.label) ? (
+                <div
+                  aria-hidden="true"
+                  className="md:col-span-3 h-px w-full bg-slate-200"
+                />
+              ) : null}
+            </div>
           ))}
         </div>
       </SectionShell>

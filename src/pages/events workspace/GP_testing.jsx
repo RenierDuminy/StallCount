@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Card,
   Panel,
   SectionHeader,
   SectionShell,
 } from "../../components/ui/primitives";
+import { StandardEventMatchCard } from "../../components/StandardEventMatchCard";
 import { getMatchesByEvent } from "../../services/matchService";
 import { getEventHierarchy } from "../../services/leagueService";
-import { getMatchMediaDetails } from "../../utils/matchMedia";
 
 export const EVENT_ID = "5779fbcf-d4a8-4567-93b6-dfebd88f5686";
 export const EVENT_SLUG = "GP_testing";
@@ -139,7 +139,6 @@ const TeamTable = ({ rows }) => {
 };
 
 export default function Event5779WorkspacePage() {
-  const navigate = useNavigate();
   const [matches, setMatches] = useState([]);
   const [eventData, setEventData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -244,82 +243,16 @@ export default function Event5779WorkspacePage() {
   const renderMatchCard = (match) => {
     const liveOrFinal =
       isLiveMatch(match.status) || isFinishedMatch(match.status);
-    const mediaDetails = getMatchMediaDetails(match);
-    const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
     return (
-      <Panel
+      <StandardEventMatchCard
         key={match.id}
-        variant="tinted"
-        className={`space-y-4 p-4 ${
-          matchHref
-            ? "cursor-pointer transition focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50"
-            : ""
-        }`}
-        role={matchHref ? "link" : undefined}
-        tabIndex={matchHref ? 0 : undefined}
-        onClick={matchHref ? () => navigate(matchHref) : undefined}
-        onKeyDown={
-          matchHref
-            ? (event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  navigate(matchHref);
-                }
-              }
-            : undefined
-        }
-      >
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              {match.event?.name || "Match"}
-            </p>
-            <h3 className="text-lg font-semibold text-ink">
-              {formatMatchup(match)}
-            </h3>
-            <p className="text-xs text-ink-muted">
-              {formatMatchTime(match.start_time)}
-            </p>
-          </div>
-          <div className="text-right">
-            {liveOrFinal ? (
-              <>
-                <p className="text-2xl font-semibold text-accent">
-                  {formatScoreLine(match)}
-                </p>
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  {formatMatchStatus(match.status)}
-                </p>
-              </>
-            ) : (
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                {formatMatchStatus(match.status)}
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-ink-muted">
-            {match.venue?.name || "Venue TBC"}
-          </p>
-          {mediaDetails ? (
-            <a
-              href={mediaDetails.url}
-              target="_blank"
-              rel="noreferrer"
-              className="sc-button is-ghost text-xs"
-              onClick={(event) => event.stopPropagation()}
-              onKeyDown={(event) => event.stopPropagation()}
-            >
-              {mediaDetails.providerLabel || "Watch"}
-            </a>
-          ) : (
-            <span className="text-xs text-ink-muted">
-              No media link attached
-            </span>
-          )}
-        </div>
-      </Panel>
+        match={match}
+        eyebrow={match.event?.name || "Match"}
+        title={formatMatchup(match)}
+        meta={formatMatchTime(match.start_time)}
+        score={liveOrFinal ? formatScoreLine(match) : null}
+        status={formatMatchStatus(match.status)}
+      />
     );
   };
 

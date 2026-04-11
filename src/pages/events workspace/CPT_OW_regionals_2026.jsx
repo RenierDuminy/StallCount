@@ -2,16 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Card,
-  MatchCard,
   Panel,
   SectionHeader,
   SectionShell,
   Chip,
 } from "../../components/ui/primitives";
-import { MatchMediaButton } from "../../components/MatchMediaButton";
+import { StandardEventMatchCard } from "../../components/StandardEventMatchCard";
 import { getMatchesByEvent } from "../../services/matchService";
 import { getEventHierarchy } from "../../services/leagueService";
-import { getMatchMediaDetails } from "../../utils/matchMedia";
 export const EVENT_ID = "fcaea487-42a2-4aa3-ae89-21b29904ade6";
 export const EVENT_SLUG = "cpt-ow-regionals-2026";
 const MATCH_LIMIT = 400;
@@ -280,26 +278,15 @@ const TeamTable = ({ rows, columns }) => {
 };
 const renderMatchRow = (match, options = {}) => {
   const { showScore = false } = options;
-  const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
-  const component = matchHref ? Link : "article";
-  const linkProps = matchHref ? { to: matchHref } : {};
-  const mediaDetails = getMatchMediaDetails(match);
   return (
-    <MatchCard
+    <StandardEventMatchCard
       key={match.id}
-      as={component}
-      variant="tinted"
-      className={matchHref ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50" : ""}
+      match={match}
       eyebrow={match.event?.name || "Match"}
       title={formatMatchup(match)}
-      venue={match.venue}
       meta={formatDateTime(match.start_time)}
       score={showScore ? formatScoreLine(match) : null}
       status={formatMatchStatus(match.status, showScore ? "Final" : "Scheduled")}
-      scoreAlign={showScore ? "right" : "left"}
-      trailing={mediaDetails ? <MatchMediaButton media={mediaDetails} /> : null}
-      trailingPosition="header"
-      {...linkProps}
     />
   );
 };
@@ -417,12 +404,7 @@ export default function CptOwRegionals2026Page() {
           <SectionHeader
             eyebrow="Operations Workspace"
             title="OW Regionals overview"
-            description="Monitor the league structure along with live and completed matches grouped by pools."
           />
-          <Panel variant="muted" className="p-4 text-sm text-ink">
-            This workspace is still under construction. Data below refreshes
-            whenever you open the page and will expand as more tooling ships.
-          </Panel>
         </Card>
         {error && <div className="sc-alert is-error">{error}</div>}
         {loading ? (

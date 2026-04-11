@@ -7,7 +7,7 @@ module.exports = async function stbRl26UpdateRosters({
   log,
 }) {
   const EXPECTED_EVENT_ID = "e6a34716-f9d6-4d70-bc1a-b610a04e3eaf";
-  const SCRIPT_VERSION = "2026-04-05-header-debug-1";
+  const SCRIPT_VERSION = "2026-04-09-server-state-1";
   const SIGNUP_CSV_URL_STORAGE_KEY = "stallcount:signup-management:csv-url:v1";
   const SIGNUP_DOB_MODE_STORAGE_KEY = "stallcount:signup-management:dob-mode:v1";
   const SCRIPT_STATE_STORAGE_KEY = "stallcount:custom-script:STB_RL_26_update_rosters:state:v1";
@@ -122,6 +122,28 @@ module.exports = async function stbRl26UpdateRosters({
 
   function normalizeName(value) {
     return normalizeText(value).toLowerCase();
+  }
+
+  async function findExistingPlayerByIdentity(fullName, birthday) {
+    const normalizedPlayerName = normalizeName(fullName);
+    if (!normalizedPlayerName || !birthday) {
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from("player")
+      .select("id, name, gender_code, birthday, description, identity_name")
+      .eq("identity_name", normalizedPlayerName)
+      .eq("birthday", birthday)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message || `Unable to look up player row for ${fullName}.`);
+    }
+
+    return data || null;
   }
 
   function normalizeTeamName(value) {
@@ -545,11 +567,23 @@ module.exports = async function stbRl26UpdateRosters({
 
   const storedCsvUrl = normalizeGoogleSheetsCsvUrl(readStorageValue(SIGNUP_CSV_URL_STORAGE_KEY));
   const storedDobMode = normalizeText(readStorageValue(SIGNUP_DOB_MODE_STORAGE_KEY)).toLowerCase();
+  const contextDobMode = normalizeText(context.dobMode).toLowerCase();
   const bundledCsvUrl = normalizeGoogleSheetsCsvUrl(CSV_URL);
   const csvUrl = normalizeGoogleSheetsCsvUrl(context.csvUrl || storedCsvUrl || bundledCsvUrl);
   const dobMode =
-    ["auto", "dmy", "mdy"].includes(storedDobMode) ? storedDobMode : DEFAULT_DOB_MODE;
-  const scriptState = readStorageJson(SCRIPT_STATE_STORAGE_KEY, emptyState);
+    ["auto", "dmy", "mdy"].includes(contextDobMode)
+      ? contextDobMode
+      : ["auto", "dmy", "mdy"].includes(storedDobMode)
+        ? storedDobMode
+        : DEFAULT_DOB_MODE;
+  const contextScriptState =
+    context.scriptState && typeof context.scriptState === "object"
+      ? {
+          ...emptyState,
+          ...context.scriptState,
+        }
+      : null;
+  const scriptState = contextScriptState || readStorageJson(SCRIPT_STATE_STORAGE_KEY, emptyState);
   const lastSuccessfulRunAt = normalizeText(scriptState.lastSuccessfulRunAt);
   const forceFullSync = Boolean(
     context.forceFullSync || context.ignoreRecentRunFilter || context.processAllRows,
@@ -821,6 +855,13 @@ module.exports = async function stbRl26UpdateRosters({
     }
 
     if (!player) {
+      const existingPlayer = await findExistingPlayerByIdentity(fullName, birthday);
+      if (existingPlayer) {
+        player = existingPlayer;
+        playersByKey.set(playerKey, [player]);
+        return player;
+      }
+
       const description = buildSignupDescription(signup);
       const { data: createdPlayer, error: createPlayerError } = await supabase
         .from("player")
@@ -834,6 +875,15 @@ module.exports = async function stbRl26UpdateRosters({
         .single();
 
       if (createPlayerError) {
+        if (createPlayerError.code === "23505") {
+          const concurrentPlayer = await findExistingPlayerByIdentity(fullName, birthday);
+          if (concurrentPlayer) {
+            player = concurrentPlayer;
+            playersByKey.set(playerKey, [player]);
+            return player;
+          }
+        }
+
         throw new Error(createPlayerError.message || `Unable to create player row for ${fullName}.`);
       }
 
@@ -1055,7 +1105,11 @@ module.exports = async function stbRl26UpdateRosters({
     lastProcessedSignupTimestamp:
       latestProcessedSignupTimestamp || summary.previousProcessedSignupTimestamp || "",
   };
-  writeStorageJson(SCRIPT_STATE_STORAGE_KEY, nextScriptState);
+  if (typeof context.onStateChange === "function") {
+    await context.onStateChange(nextScriptState);
+  } else {
+    writeStorageJson(SCRIPT_STATE_STORAGE_KEY, nextScriptState);
+  }
 
   summary.lastSuccessfulRunAt = nextScriptState.lastSuccessfulRunAt;
   summary.lastProcessedSignupTimestamp = nextScriptState.lastProcessedSignupTimestamp || null;

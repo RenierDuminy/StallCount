@@ -100,6 +100,48 @@ export async function getMatchesByEvent(eventId, limit = 24, options = {}) {
   );
 }
 
+export async function getRecentMatchesWithMedia(limit = 5) {
+  return getCachedQuery(
+    `matches:recent-with-media:${limit}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("matches")
+        .select(MATCH_FIELDS)
+        .or("has_media.eq.true,media_url.not.is.null,media_link.not.is.null")
+        .order("start_time", { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        throw new Error(error.message || "Failed to load recent matches with media");
+      }
+
+      return data ?? [];
+    },
+    { ttlMs: RECENT_MATCHES_CACHE_TTL_MS },
+  );
+}
+
+export async function getRecentFinalMatches(limit = 16) {
+  return getCachedQuery(
+    `matches:recent-finals:${limit}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("matches")
+        .select(MATCH_FIELDS)
+        .in("status", ["finished", "completed"])
+        .order("start_time", { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        throw new Error(error.message || "Failed to load recent final matches");
+      }
+
+      return data ?? [];
+    },
+    { ttlMs: RECENT_MATCHES_CACHE_TTL_MS },
+  );
+}
+
 export async function getMatchById(matchId) {
   const { data, error } = await supabase
     .from("matches")
@@ -148,6 +190,7 @@ export async function createMatch(payload = {}) {
   }
   invalidateCachedQueries("matches:open");
   invalidateCachedQueries("matches:recent");
+  invalidateCachedQueries("matches:recent-finals");
 
   return data || null;
 }
@@ -305,6 +348,12 @@ export async function updateMatchMediaLink(matchId, mediaPayload) {
   if (error) {
     throw new Error(error.message || "Failed to update match media link");
   }
+
+  if (data?.event_id) {
+    invalidateCachedQueries(`matches:event:${data.event_id}`);
+  }
+  invalidateCachedQueries("matches:recent");
+  invalidateCachedQueries("matches:recent-with-media");
 
   return data || null;
 }

@@ -16,6 +16,7 @@ const NAV_LINKS = [
 const ROLE_LINKS = [
   { label: "User", to: "/user" },
   { label: "Notifications", to: "/notifications" },
+  { label: "Tournament director", to: "/tournament-director" },
   { label: "Admin tools", to: "/admin" },
 ];
 
@@ -36,6 +37,14 @@ export default function SiteHeader() {
   const { canInstall, promptInstall } = useInstallPrompt();
   const user = session?.user ?? null;
   const hasLoadedRoles = Array.isArray(roles);
+  const showTournamentDirector = hasLoadedRoles
+    ? roles.some((role) => {
+        const normalizedRoleNames = normaliseRoleList(
+          role?.roleName || role?.role?.name || role?.name || "",
+        );
+        return normalizedRoleNames.includes("tournament_director");
+      })
+    : false;
   const showAdminTools = hasLoadedRoles
     ? roles.some((role) => {
         const normalizedRoleNames = normaliseRoleList(
@@ -48,6 +57,9 @@ export default function SiteHeader() {
       })
     : false;
   const roleLinks = ROLE_LINKS.filter((link) => {
+    if (link.to === "/tournament-director") {
+      return showTournamentDirector;
+    }
     if (link.to === "/admin") {
       return showAdminTools;
     }

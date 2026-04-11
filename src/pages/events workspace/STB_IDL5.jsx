@@ -2,13 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Card,
-  MatchCard,
   SectionHeader,
   SectionShell,
 } from "../../components/ui/primitives";
+import { StandardEventMatchCard } from "../../components/StandardEventMatchCard";
 import { getEventHierarchy } from "../../services/leagueService";
 import { getMatchesByEvent } from "../../services/matchService";
-import { getMatchMediaDetails } from "../../utils/matchMedia";
 
 export const EVENT_ID = "2fb09ada-9a69-47ae-bfc5-96a3bca759e9";
 export const EVENT_SLUG = "internal-draft-league-5";
@@ -501,40 +500,17 @@ export default function InternalDraftLeague5Page() {
   const renderMatchCard = (match) => {
     const liveOrFinal =
       isLiveMatch(match.status) || isFinishedMatch(match.status);
-    const mediaDetails = getMatchMediaDetails(match);
-    const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
-    const component = matchHref ? Link : "article";
-    const linkProps = matchHref ? { to: matchHref } : {};
     const statusLabel = formatMatchStatus(match.status);
 
     return (
-      <MatchCard
+      <StandardEventMatchCard
         key={match.id}
-        as={component}
-        variant="tinted"
-        className={matchHref ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50" : ""}
+        match={match}
         eyebrow={match.event?.name || "Match"}
         title={formatMatchup(match)}
-        venue={match.venue}
         meta={formatMatchTime(match.start_time)}
-        actions={
-          mediaDetails ? (
-            <a
-              href={mediaDetails.url}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(event) => event.stopPropagation()}
-              className="sc-button is-ghost text-xs"
-            >
-              {mediaDetails.providerLabel || "Watch"}
-            </a>
-          ) : (
-            <span className="text-xs text-ink-muted">No media link attached</span>
-          )
-        }
         score={liveOrFinal ? formatScoreLine(match) : null}
         status={statusLabel}
-        {...linkProps}
       />
     );
   };
