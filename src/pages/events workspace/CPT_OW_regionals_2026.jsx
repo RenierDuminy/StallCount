@@ -60,6 +60,24 @@ const formatMatchStatus = (status, fallback = "Scheduled") => {
 const normalizeSortText = (value) =>
   (typeof value === "string" ? value.trim().toLowerCase() : "");
 
+const normalizeTeamOrderKey = (value) =>
+  normalizeSortText(value).replace(/[^a-z0-9]+/g, "");
+
+const OPEN_DIVISION_FINAL_STANDING_ORDER = [
+  "Mutiny",
+  "Zephyr",
+  "Maties Ma'Gents",
+  "Gradient",
+  "UCT Man Cubs",
+];
+
+const WOMEN_DIVISION_FINAL_STANDING_ORDER = [
+  "Hot Sauce",
+  "UCT Bengals",
+  "Maties Ma'Ladies",
+  "Craft",
+];
+
 const sortVenuesByCityLocationName = (venues = []) =>
   [...venues].sort((left, right) => {
     const leftCity = normalizeSortText(left?.city);
@@ -140,20 +158,57 @@ const formatScoreDiff = (value) => {
   return value > 0 ? `+${value}` : `${value}`;
 };
 
-const sortStandingsRows = (rows = []) =>
-  [...rows].sort(
-    (a, b) =>
-      b.wins - a.wins ||
-      a.losses - b.losses ||
-      b.scoreDiff - a.scoreDiff ||
-      a.name.localeCompare(b.name),
-  );
+const compareStandingsRows = (a, b) =>
+  b.wins - a.wins ||
+  a.losses - b.losses ||
+  b.scoreDiff - a.scoreDiff ||
+  a.name.localeCompare(b.name);
+
+const sortStandingsRows = (rows = []) => [...rows].sort(compareStandingsRows);
 
 const withStandingRanks = (rows = []) =>
   sortStandingsRows(rows).map((row, index) => ({
     ...row,
     rank: index + 1,
   }));
+
+const applyDivisionStandingOverride = (division, rows = []) => {
+  const divisionName = normalizeSortText(division?.name);
+  const divisionOrder = divisionName.includes("open")
+    ? OPEN_DIVISION_FINAL_STANDING_ORDER
+    : divisionName.includes("women")
+      ? WOMEN_DIVISION_FINAL_STANDING_ORDER
+      : null;
+
+  if (!divisionOrder) {
+    return withStandingRanks(rows);
+  }
+
+  const orderLookup = new Map(
+    divisionOrder.map((teamName, index) => [
+      normalizeTeamOrderKey(teamName),
+      index,
+    ]),
+  );
+
+  return [...rows]
+    .sort((a, b) => {
+      const orderA = orderLookup.get(normalizeTeamOrderKey(a.name));
+      const orderB = orderLookup.get(normalizeTeamOrderKey(b.name));
+      const hasOrderA = orderA !== undefined;
+      const hasOrderB = orderB !== undefined;
+
+      if (hasOrderA && hasOrderB) return orderA - orderB;
+      if (hasOrderA) return -1;
+      if (hasOrderB) return 1;
+
+      return compareStandingsRows(a, b);
+    })
+    .map((row, index) => ({
+      ...row,
+      rank: index + 1,
+    }));
+};
 
 const buildDivisionStandings = (division, matchesByPool = {}) => {
   const standings = new Map(
@@ -209,7 +264,7 @@ const buildDivisionStandings = (division, matchesByPool = {}) => {
     });
   });
 
-  return withStandingRanks(Array.from(standings.values()));
+  return applyDivisionStandingOverride(division, Array.from(standings.values()));
 };
 
 const TeamTable = ({ rows, columns }) => {

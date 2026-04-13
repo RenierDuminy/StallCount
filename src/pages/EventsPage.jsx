@@ -364,30 +364,35 @@ export default function EventsPage() {
                   const isActive = event.id === selectedEventId;
                   const eventWorkspacePath = getEventWorkspacePath(event.id);
                   return (
-                    <div key={event.id} className="relative">
+                    <div
+                      key={event.id}
+                      className={`${isActive ? "sc-button is-square" : "sc-button is-ghost is-square"} flex min-h-[88px] w-full overflow-hidden rounded-[var(--sc-radius-md)] p-0`}
+                      style={{ borderColor: "rgba(255, 255, 255, 0.9)" }}
+                    >
                       <button
                         type="button"
                         onClick={() => handleSelectEvent(event.id)}
-                        className={`${isActive ? "sc-button is-square" : "sc-button is-ghost is-square"} is-option min-h-[88px] w-full justify-start border-white pr-14 text-left transition hover:-translate-y-0.5`}
-                        style={{ borderColor: "rgba(255, 255, 255, 0.9)" }}
+                        className="is-option flex min-h-[88px] flex-1 items-center justify-start border-0 bg-transparent px-4 text-left text-inherit shadow-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-inset"
                       >
                         <p className="text-base font-semibold leading-tight">{event.name}</p>
                       </button>
                       {eventWorkspacePath ? (
                         <Link
                           to={eventWorkspacePath}
-                          className={`absolute right-2 top-2 flex h-9 w-9 min-h-0 min-w-0 items-center justify-center rounded-full p-0 text-sm transition ${
-                            isActive
-                              ? "border border-white bg-white/95 text-[var(--sc-button-ink)] hover:bg-white"
-                              : "sc-button border-white"
-                          }`}
-                          style={{ borderColor: "rgba(255, 255, 255, 0.9)" }}
+                          className="flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l border-white/30 bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-inherit transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-inset"
                           aria-label={`Open ${event.name} overview`}
                           title={`Open ${event.name} overview`}
                         >
-                          &#8599;
+                          Open
                         </Link>
-                      ) : null}
+                      ) : (
+                        <span
+                          className="flex min-h-[88px] w-20 shrink-0 items-center justify-center border-l border-white/20 bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-ink-muted"
+                          aria-hidden="true"
+                        >
+                          Open
+                        </span>
+                      )}
                     </div>
                   );
                 })}
