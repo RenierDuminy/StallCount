@@ -31,6 +31,8 @@ const SAST_UTC_OFFSET_HOURS = 2;
 const AUTO_ROSTER_SYNC_HOUR_SAST = 17;
 const AUTO_ROSTER_SYNC_INTERVAL_MS = 30 * 1000;
 const ROSTER_SCRIPT_SLUG = "STB_RL_26_update_rosters";
+const LIVE_STATUSES = new Set(["live", "halftime"]);
+const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const SUMMARY_RULES_HREF = "/rules/stellenbosch-rl-2026-rules-summary.pdf";
 const FULL_RULES_HREF = "/rules/stellenbosch-rl-2026-rules.pdf";
 const RULE_DOCUMENTS = [
@@ -350,12 +352,24 @@ const formatMatchup = (match) => {
   return `${teamA} vs ${teamB}`;
 };
 
+const formatScoreLine = (match) => {
+  const scoreA =
+    typeof match.score_a === "number" ? match.score_a.toString() : "-";
+  const scoreB =
+    typeof match.score_b === "number" ? match.score_b.toString() : "-";
+  return `${scoreA} - ${scoreB}`;
+};
+
 const formatMatchStatus = (status) => {
   if (!status) return "Scheduled";
   const normalized = status.toString().trim().toLowerCase();
   if (!normalized) return "Scheduled";
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
+
+const isLiveMatch = (status) => LIVE_STATUSES.has((status || "").toLowerCase());
+const isFinishedMatch = (status) =>
+  FINISHED_STATUSES.has((status || "").toLowerCase());
 
 const formatMatchTime = (value) => {
   if (!value) {
@@ -477,9 +491,9 @@ function DayScheduleColumn({ day, matches, renderMatchCard, loading }) {
         <p className="text-sm font-semibold text-ink">{day.date}</p>
       </div>
       {loading ? (
-        <p className="text-sm text-ink-muted">Loading scheduled matches...</p>
+        <p className="text-sm text-ink-muted">Loading matches...</p>
       ) : matches.length === 0 ? (
-        <p className="text-sm text-ink-muted">No scheduled matches linked yet.</p>
+        <p className="text-sm text-ink-muted">No matches linked yet.</p>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
           {matches.map((match) => renderMatchCard(match))}
@@ -613,10 +627,10 @@ export default function StellenboschRl2026WorkspacePage() {
     configuredDivisions.length > 0
       ? "Configured event structure"
       : "Fixture handbook structure";
-  const scheduledMatches = useMemo(
+  const datedMatches = useMemo(
     () =>
       (matches || [])
-        .filter((match) => (match?.status || "").toLowerCase() === "scheduled")
+        .filter((match) => formatDateKey(match.start_time))
         .sort(sortByStartTimeAsc),
     [matches],
   );
@@ -627,7 +641,7 @@ export default function StellenboschRl2026WorkspacePage() {
         weeks: phase.weeks.map((week) => {
           const days = week.days.map((day) => ({
             ...day,
-            matches: scheduledMatches.filter(
+            matches: datedMatches.filter(
               (match) => formatDateKey(match.start_time) === day.id,
             ),
           }));
@@ -641,7 +655,7 @@ export default function StellenboschRl2026WorkspacePage() {
           };
         }),
       })),
-    [scheduledMatches],
+    [datedMatches],
   );
 
   const runRosterUpdate = useCallback(async ({
@@ -732,7 +746,10 @@ export default function StellenboschRl2026WorkspacePage() {
     });
   }, [runRosterUpdate]);
 
-  const renderScheduledMatchCard = (match) => {
+  const renderMatchCard = (match) => {
+    const liveOrFinal =
+      isLiveMatch(match.status) || isFinishedMatch(match.status);
+
     return (
       <StandardEventMatchCard
         key={match.id}
@@ -740,6 +757,7 @@ export default function StellenboschRl2026WorkspacePage() {
         eyebrow={match.venue?.name || "Venue TBC"}
         title={formatMatchup(match)}
         meta={formatMatchTime(match.start_time)}
+        score={liveOrFinal ? formatScoreLine(match) : null}
         status={formatMatchStatus(match.status)}
       />
     );
@@ -976,7 +994,7 @@ export default function StellenboschRl2026WorkspacePage() {
                 <WeekScheduleCard
                   key={week.id}
                   week={week}
-                  renderMatchCard={renderScheduledMatchCard}
+                  renderMatchCard={renderMatchCard}
                   loading={loading}
                 />
               ))}
