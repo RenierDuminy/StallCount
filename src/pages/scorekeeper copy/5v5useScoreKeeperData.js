@@ -9,6 +9,7 @@ import {
   getMatchLogs,
   getMatchEventDefinitions,
   createMatchLogEntry,
+  createMatchLogOptimisticId,
 } from "../../services/matchLogService";
 import { supabase } from "../../services/supabaseClient";
 import { hydrateVenueLookup } from "../../services/venueService";
@@ -471,6 +472,34 @@ function deriveTimerStateFromSnapshot(
   };
 }
 
+function normalizeTrackedSecondaryEvent(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") return null;
+
+  const endCode = typeof snapshot.endCode === "string" ? snapshot.endCode.trim() : "";
+  if (!endCode) return null;
+
+  return {
+    endCode,
+    teamKey: snapshot.teamKey === "A" || snapshot.teamKey === "B" ? snapshot.teamKey : null,
+  };
+}
+
+function getLastUnmatchedEventStart(entries, startCode, endCode) {
+  if (!Array.isArray(entries) || !startCode || !endCode) return null;
+  const openStarts = [];
+  entries.forEach((entry) => {
+    if (!entry) return;
+    if (entry.eventCode === startCode) {
+      openStarts.push(entry);
+      return;
+    }
+    if (entry.eventCode === endCode && openStarts.length > 0) {
+      openStarts.pop();
+    }
+  });
+  return openStarts.length > 0 ? openStarts[openStarts.length - 1] : null;
+}
+
 function normalizeSeconds(value, fallback = 0, options = {}) {
   const { min = 0, max = null } = options;
   const numeric = Number.isFinite(value) ? value : fallback;
@@ -623,7 +652,7 @@ const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
 const [secondaryFlashRateMs, setSecondaryFlashRateMs] = useState(400);
 const [possessionTeam, setPossessionTeam] = useState(null);
 const [halftimeTriggered, setHalftimeTriggered] = useState(false);
-const [, setHalftimeBreakActive] = useState(false);
+const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
 const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
 const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
   const [resumeCandidate, setResumeCandidate] = useState(null);
@@ -783,10 +812,13 @@ const secondaryTimerAnchorRef = useRef({
 });
 const activeSecondaryEventRef = useRef(null);
 const secondaryTimerCompletedRef = useRef(false);
+const restoreTrackedSecondaryCompletionRef = useRef(false);
+const halftimeReconciliationKeyRef = useRef(null);
 const previousSecondaryRunningRef = useRef(false);
 const previousPrimaryRunningRef = useRef(false);
 const stoppageActiveRef = useRef(false);
 const appliedEventRulesRef = useRef(null);
+const [trackedSecondaryEventVersion, setTrackedSecondaryEventVersion] = useState(0);
   const [matchStarted, setMatchStarted] = useState(false);
   const consoleReady = Boolean(activeMatch);
 
@@ -875,6 +907,11 @@ useEffect(() => {
   void refreshPendingEntries();
 }, [refreshPendingEntries]);
 
+const setTrackedSecondaryEvent = useCallback((nextEvent) => {
+  activeSecondaryEventRef.current = normalizeTrackedSecondaryEvent(nextEvent);
+  setTrackedSecondaryEventVersion((version) => version + 1);
+}, []);
+
 const clearLocalMatchState = useCallback(() => {
   setActiveMatch(null);
   setSelectedMatchId(null);
@@ -906,6 +943,7 @@ const clearLocalMatchState = useCallback(() => {
     primaryResetRef.current = null;
     secondaryResetRef.current = null;
     secondaryResetTriggeredRef.current = false;
+    setTrackedSecondaryEvent(null);
     matchIdRef.current = null;
     if (userId) {
       clearScorekeeperSession(userId);
@@ -914,6 +952,7 @@ const clearLocalMatchState = useCallback(() => {
     userId,
     commitPrimaryTimerState,
     commitSecondaryTimerState,
+    setTrackedSecondaryEvent,
   ]);
 
   const applyEventRules = useCallback(
@@ -1556,9 +1595,11 @@ useEffect(() => {
         savedAt: now,
         totalSeconds: secondaryTotalSeconds,
       },
+      activeSecondaryEvent: normalizeTrackedSecondaryEvent(activeSecondaryEventRef.current),
       timeoutUsage: { ...timeoutUsage },
       possessionTeam,
       halftimeTriggered,
+      halftimeBreakActive,
       stoppageActive,
       scoreTarget,
       softCapApplied,
@@ -1584,6 +1625,7 @@ useEffect(() => {
     timeoutUsage,
     possessionTeam,
     halftimeTriggered,
+    halftimeBreakActive,
     stoppageActive,
     secondaryTotalSeconds,
     scoreTarget,
@@ -1595,6 +1637,14 @@ useEffect(() => {
     getPrimaryRemainingSeconds,
     getSecondaryRemainingSeconds,
   ]);
+
+  const persistSessionImmediately = useCallback(() => {
+    if (!resumeHandled || !userId) return;
+    const snapshot = buildSessionSnapshot();
+    if (snapshot) {
+      saveScorekeeperSession(userId, snapshot);
+    }
+  }, [buildSessionSnapshot, resumeHandled, userId]);
 
   useEffect(() => {
     if (!resumeHandled || !userId) return undefined;
@@ -1635,6 +1685,21 @@ useEffect(() => {
       window.removeEventListener("beforeunload", persistNow);
     };
   }, [buildSessionSnapshot, resumeHandled, userId]);
+
+  useEffect(() => {
+    if (!resumeHandled || !userId) return;
+    if (!activeSecondaryEventRef.current && trackedSecondaryEventVersion === 0) return;
+    persistSessionImmediately();
+  }, [
+    persistSessionImmediately,
+    resumeHandled,
+    userId,
+    trackedSecondaryEventVersion,
+    secondaryRunning,
+    secondaryTotalSeconds,
+    secondaryLabel,
+    halftimeBreakActive,
+  ]);
 const cleanupOptimisticLog = useCallback(
   (optimisticId) => {
     if (!optimisticId) return;
@@ -1689,7 +1754,8 @@ const recordPendingEntry = useCallback(
     };
     if (normalizedEntry.eventTypeId) {
       dbPayload.eventTypeId = normalizedEntry.eventTypeId;
-    } else if (normalizedEntry.eventCode) {
+    }
+    if (normalizedEntry.eventCode) {
       dbPayload.eventTypeCode = normalizedEntry.eventCode;
     }
 
@@ -1901,7 +1967,7 @@ const rosterNameLookup = useMemo(() => {
   );
 
   const logSimpleEvent = useCallback(
-    async (eventCode, { teamKey = null } = {}) => {
+    async (eventCode, { teamKey = null, timestamp: providedTimestamp = null, optimisticId: providedOptimisticId = null } = {}) => {
       if (!consoleReady || !activeMatch?.id) return;
       try {
         const eventTypeId = await resolveEventTypeIdLocal(eventCode);
@@ -1911,8 +1977,8 @@ const rosterNameLookup = useMemo(() => {
           );
           return;
         }
-        const timestamp = new Date().toISOString();
-        const optimisticId = `${OPTIMISTIC_PREFIX}${Date.now()}`;
+        const timestamp = providedTimestamp || new Date().toISOString();
+        const optimisticId = providedOptimisticId || createMatchLogOptimisticId();
         const appended = appendLocalLog({
           team: teamKey,
           timestamp,
@@ -1952,21 +2018,24 @@ const rosterNameLookup = useMemo(() => {
   );
 
   const clearSecondaryTimerEvent = useCallback(() => {
-    activeSecondaryEventRef.current = null;
+    setTrackedSecondaryEvent(null);
     secondaryTimerCompletedRef.current = false;
-  }, []);
+    setHalftimeBreakActive(false);
+  }, [setTrackedSecondaryEvent]);
 
   const finalizeSecondaryTimerEvent = useCallback(async () => {
     const meta = activeSecondaryEventRef.current;
     secondaryTimerCompletedRef.current = false;
     if (!meta) {
-      return;
+      return null;
     }
-    activeSecondaryEventRef.current = null;
+    setTrackedSecondaryEvent(null);
+    setHalftimeBreakActive(false);
     if (meta.endCode) {
       await logSimpleEvent(meta.endCode, { teamKey: meta.teamKey ?? null });
     }
-  }, [logSimpleEvent]);
+    return meta;
+  }, [logSimpleEvent, setTrackedSecondaryEvent]);
 
   const halftimeTriggerLockRef = useRef(false);
 
@@ -1977,16 +2046,18 @@ const rosterNameLookup = useMemo(() => {
         await logSimpleEvent(meta.eventStartCode, { teamKey: meta.teamKey ?? null });
       }
       if (meta?.eventEndCode) {
-        activeSecondaryEventRef.current = {
+        setTrackedSecondaryEvent({
           endCode: meta.eventEndCode,
           teamKey: meta.teamKey ?? null,
-        };
+        });
+        setHalftimeBreakActive(meta.eventEndCode === MATCH_LOG_EVENT_CODES.HALFTIME_END);
       } else {
-        activeSecondaryEventRef.current = null;
+        setTrackedSecondaryEvent(null);
+        setHalftimeBreakActive(false);
       }
       startSecondaryTimer(duration, label);
     },
-    [clearSecondaryTimerEvent, logSimpleEvent, startSecondaryTimer]
+    [clearSecondaryTimerEvent, logSimpleEvent, startSecondaryTimer, setTrackedSecondaryEvent]
   );
 
   const updatePossession = useCallback(
@@ -2022,6 +2093,7 @@ const rosterNameLookup = useMemo(() => {
         }
 
         const timestamp = new Date().toISOString();
+        const optimisticId = createMatchLogOptimisticId();
         const totalsSnapshot = score;
         const appended = appendLocalLog({
           team: derivedEventTeamKey,
@@ -2031,6 +2103,7 @@ const rosterNameLookup = useMemo(() => {
           totals: totalsSnapshot,
           eventDescription: describeEvent(resolvedEventTypeId),
           eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
+          optimisticId,
         });
         const entry = {
           matchId: activeMatch.id,
@@ -2040,6 +2113,7 @@ const rosterNameLookup = useMemo(() => {
           scorerId: actorId || null,
           createdAt: timestamp,
           abbaLine: appended.scoreOrderIndex !== null ? appended.abbaLine : null,
+          optimisticId,
         };
         recordPendingEntry(entry);
       } catch (err) {
@@ -2068,9 +2142,6 @@ const rosterNameLookup = useMemo(() => {
       void (async () => {
         const completedNaturally = secondaryTimerCompletedRef.current;
         const meta = completedNaturally ? await finalizeSecondaryTimerEvent() : null;
-        if (!completedNaturally) {
-          clearSecondaryTimerEvent();
-        }
         if (meta?.endCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
           setHalftimeBreakActive(false);
           const nextTeam = matchStartingTeamKey;
@@ -2083,10 +2154,143 @@ const rosterNameLookup = useMemo(() => {
     previousSecondaryRunningRef.current = secondaryRunning;
   }, [
     secondaryRunning,
-    clearSecondaryTimerEvent,
     finalizeSecondaryTimerEvent,
     matchStartingTeamKey,
     updatePossession,
+  ]);
+
+  useEffect(() => {
+    if (!restoreTrackedSecondaryCompletionRef.current || !consoleReady) return;
+    restoreTrackedSecondaryCompletionRef.current = false;
+    void (async () => {
+      const meta = await finalizeSecondaryTimerEvent();
+      if (meta?.endCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
+        const nextTeam = matchStartingTeamKey;
+        if (nextTeam) {
+          void updatePossession(nextTeam, { logTurnover: false });
+        }
+      }
+    })();
+  }, [consoleReady, finalizeSecondaryTimerEvent, matchStartingTeamKey, updatePossession]);
+
+  const hasPendingMatchLogEventCode = useCallback(
+    (targetMatchId, eventCode) => {
+      if (!targetMatchId || !eventCode) return false;
+      return pendingEntries.some((item) => {
+        if (item?.kind !== "match_log") return false;
+        if (item?.payload?.matchId !== targetMatchId) return false;
+        if (item.payload?.eventTypeCode === eventCode) return true;
+        if (!Number.isFinite(item.payload?.eventTypeId)) return false;
+        return matchEventOptions.some(
+          (option) => option.id === item.payload.eventTypeId && option.code === eventCode
+        );
+      });
+    },
+    [matchEventOptions, pendingEntries]
+  );
+
+  useEffect(() => {
+    if (!consoleReady || !matchLogMatchId) return;
+
+    const breakSeconds = Math.max(1, (rules.halftimeBreakMinutes || 0) * 60);
+    const halftimeLabelActive = (secondaryLabel || "").toLowerCase() === "half time";
+    const trackedEvent = activeSecondaryEventRef.current;
+    const trackedHalftimeActive =
+      trackedEvent?.endCode === MATCH_LOG_EVENT_CODES.HALFTIME_END;
+    const openHalftimeStart = getLastUnmatchedEventStart(
+      logs,
+      MATCH_LOG_EVENT_CODES.HALFTIME_START,
+      MATCH_LOG_EVENT_CODES.HALFTIME_END
+    );
+
+    if (!openHalftimeStart) {
+      halftimeReconciliationKeyRef.current = null;
+      if (trackedHalftimeActive) {
+        setTrackedSecondaryEvent(null);
+      }
+      if (halftimeBreakActive) {
+        setHalftimeBreakActive(false);
+      }
+      if (trackedHalftimeActive && halftimeLabelActive) {
+        commitSecondaryTimerState(0, false);
+        setSecondaryTotalSeconds(breakSeconds);
+      }
+      return;
+    }
+
+    setHalftimeTriggered(true);
+
+    const halftimeStartTimestamp =
+      openHalftimeStart.timestamp || openHalftimeStart.createdAt || openHalftimeStart.created_at || null;
+    const halftimeStartMs = halftimeStartTimestamp
+      ? new Date(halftimeStartTimestamp).getTime()
+      : Number.NaN;
+    if (!Number.isFinite(halftimeStartMs)) return;
+
+    const reconciliationKey = `${matchLogMatchId}:${halftimeStartTimestamp}`;
+    const pendingHalftimeEnd = hasPendingMatchLogEventCode(
+      matchLogMatchId,
+      MATCH_LOG_EVENT_CODES.HALFTIME_END
+    );
+
+    if (pendingHalftimeEnd) {
+      halftimeReconciliationKeyRef.current = reconciliationKey;
+      if (trackedHalftimeActive) {
+        setTrackedSecondaryEvent(null);
+      }
+      if (halftimeBreakActive) {
+        setHalftimeBreakActive(false);
+      }
+      if (halftimeLabelActive) {
+        commitSecondaryTimerState(0, false);
+        setSecondaryTotalSeconds(breakSeconds);
+      }
+      return;
+    }
+
+    if (trackedHalftimeActive) {
+      halftimeReconciliationKeyRef.current = reconciliationKey;
+      return;
+    }
+
+    const expectedEndMs = halftimeStartMs + breakSeconds * 1000;
+    if (Date.now() >= expectedEndMs) {
+      if (halftimeReconciliationKeyRef.current === reconciliationKey) {
+        return;
+      }
+      halftimeReconciliationKeyRef.current = reconciliationKey;
+      const optimisticId =
+        `${OPTIMISTIC_PREFIX}reconcile-halftime-end-${matchLogMatchId}-${halftimeStartMs}`;
+      void logSimpleEvent(MATCH_LOG_EVENT_CODES.HALFTIME_END, {
+        timestamp: new Date(expectedEndMs).toISOString(),
+        optimisticId,
+      });
+      return;
+    }
+
+    halftimeReconciliationKeyRef.current = reconciliationKey;
+    setTrackedSecondaryEvent({
+      endCode: MATCH_LOG_EVENT_CODES.HALFTIME_END,
+      teamKey: null,
+    });
+    setHalftimeBreakActive(true);
+    setSecondaryTotalSeconds(breakSeconds);
+    setSecondaryLabel("Half time");
+    commitSecondaryTimerState(
+      Math.max(1, Math.ceil((expectedEndMs - Date.now()) / 1000)),
+      true
+    );
+  }, [
+    consoleReady,
+    matchLogMatchId,
+    rules.halftimeBreakMinutes,
+    secondaryLabel,
+    logs,
+    halftimeBreakActive,
+    hasPendingMatchLogEventCode,
+    logSimpleEvent,
+    setTrackedSecondaryEvent,
+    commitSecondaryTimerState,
   ]);
 
   useEffect(() => {
@@ -2372,14 +2576,16 @@ const rosterNameLookup = useMemo(() => {
             (entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.MATCH_START && entry.timestamp
           );
           if (matchStartLog) {
-            const durationSeconds = (rules.matchDuration || DEFAULT_DURATION) * 60;
-            const elapsedSeconds = Math.max(
-              0,
-              Math.floor((Date.now() - new Date(matchStartLog.timestamp).getTime()) / 1000)
+            const matchStatus = String(
+              (activeMatch?.status || selectedMatch?.status || "").toLowerCase()
             );
-            const remainingSeconds = Math.max(0, durationSeconds - elapsedSeconds);
-            const shouldRunPrimary =
-              remainingSeconds > 0 && !stoppageActiveRef.current;
+            const isFinished = matchStatus === "finished" || matchStatus === "completed";
+            const durationSeconds = (rules.matchDuration || DEFAULT_DURATION) * 60;
+            const elapsedSeconds = Math.floor(
+              (Date.now() - new Date(matchStartLog.timestamp).getTime()) / 1000
+            );
+            const remainingSeconds = durationSeconds - elapsedSeconds;
+            const shouldRunPrimary = !isFinished && !stoppageActiveRef.current;
             commitPrimaryTimerState(remainingSeconds, shouldRunPrimary);
             setTimerLabel("Game time");
             setMatchStarted(true);
@@ -2396,7 +2602,7 @@ const rosterNameLookup = useMemo(() => {
         setLogsLoading(false);
       }
     },
-    [deriveLogsFromRows, matchLogMatchId]
+    [deriveLogsFromRows, matchLogMatchId, activeMatch?.status, selectedMatch?.status, rules.matchDuration, commitPrimaryTimerState]
   );
 
   useEffect(() => {
@@ -2437,6 +2643,7 @@ const rosterNameLookup = useMemo(() => {
     setTimeoutUsage(snapshot.timeoutUsage ?? { ...DEFAULT_TIMEOUT_USAGE });
     setPossessionTeam(snapshot.possessionTeam ?? null);
     setHalftimeTriggered(Boolean(snapshot.halftimeTriggered));
+    setHalftimeBreakActive(Boolean(snapshot.halftimeBreakActive));
     setStoppageActive(Boolean(snapshot.stoppageActive));
     setMatchStarted(resumeWasStarted);
     setScoreTarget(
@@ -2459,8 +2666,7 @@ const rosterNameLookup = useMemo(() => {
       ((snapshot.rules?.matchDuration ?? rules.matchDuration ?? DEFAULT_DURATION) || DEFAULT_DURATION) * 60,
       snapshot.timer?.label || DEFAULT_TIMER_LABEL
     );
-    const shouldRunPrimary =
-      restoredPrimary.running && !Boolean(snapshot.stoppageActive);
+    const shouldRunPrimary = restoredPrimary.running && !snapshot.stoppageActive;
     commitPrimaryTimerState(restoredPrimary.seconds, shouldRunPrimary);
     setTimerLabel(restoredPrimary.label || DEFAULT_TIMER_LABEL);
 
@@ -2473,6 +2679,11 @@ const rosterNameLookup = useMemo(() => {
       snapshot.secondaryTimer,
       secondaryFallback,
       snapshot.secondaryTimer?.label || DEFAULT_SECONDARY_LABEL
+    );
+    const restoredTrackedSecondaryEvent = normalizeTrackedSecondaryEvent(snapshot.activeSecondaryEvent);
+    setTrackedSecondaryEvent(restoredTrackedSecondaryEvent);
+    restoreTrackedSecondaryCompletionRef.current = Boolean(
+      restoredTrackedSecondaryEvent && !restoredSecondary.running && restoredSecondary.seconds <= 0
     );
     commitSecondaryTimerState(restoredSecondary.seconds, restoredSecondary.running);
     setSecondaryLabel(restoredSecondary.label || DEFAULT_SECONDARY_LABEL);
@@ -2567,6 +2778,7 @@ const rosterNameLookup = useMemo(() => {
     fetchRostersForTeams,
     loadMatchEventDefinitions,
     refreshMatchLogs,
+    setTrackedSecondaryEvent,
   ]);
 
   const handleDiscardResume = useCallback(() => {
@@ -2654,6 +2866,7 @@ const rosterNameLookup = useMemo(() => {
     setPossessionTeam,
     halftimeTriggered,
     setHalftimeTriggered,
+    halftimeBreakActive,
     halftimeTimeCapArmed,
     setHalftimeTimeCapArmed,
     halftimeCapTargetScore,

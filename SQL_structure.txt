@@ -160,6 +160,7 @@ CREATE TABLE public.match_logs (
   secondary_actor_id uuid,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   abba_line text,
+  optimistic_id text,
   CONSTRAINT match_logs_pkey PRIMARY KEY (id),
   CONSTRAINT match_logs_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
   CONSTRAINT match_logs_event_type_id_fkey FOREIGN KEY (event_type_id) REFERENCES public.match_events(id),

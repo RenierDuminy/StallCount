@@ -79,6 +79,7 @@ export function ScorekeeperPopups({
     open: timeOpen,
     onClose: onTimeClose,
     stoppageActive,
+    halftimeBreakActive,
     halftimeDisabled,
     halftimeTypeLabel,
     onHalfTime,
@@ -719,7 +720,7 @@ export function ScorekeeperPopups({
                       onTimeout("A");
                     }
                   }}
-                  disabled={stoppageActive || remainingTimeouts.A === 0}
+                  disabled={stoppageActive || halftimeBreakActive || remainingTimeouts.A === 0}
                   className="mt-1.5 w-full rounded-full bg-[#162e6a] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1e4fd7] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Timeout {displayTeamAShort || "A"}
@@ -749,7 +750,7 @@ export function ScorekeeperPopups({
                       onTimeout("B");
                     }
                   }}
-                  disabled={stoppageActive || remainingTimeouts.B === 0}
+                  disabled={stoppageActive || halftimeBreakActive || remainingTimeouts.B === 0}
                   className="mt-1.5 w-full rounded-full bg-[#162e6a] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[#1e4fd7] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Timeout {displayTeamBShort || "B"}
@@ -784,7 +785,8 @@ export function ScorekeeperPopups({
                   onGameStoppage();
                 }
               }}
-              className="w-full rounded-full bg-[#b91c1c] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#991b1b]"
+              disabled={!stoppageActive && halftimeBreakActive}
+              className="w-full rounded-full bg-[#b91c1c] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#991b1b] disabled:cursor-not-allowed disabled:opacity-40"
             >
               {stoppageActive ? "End stoppage" : "Game stoppage"}
             </button>

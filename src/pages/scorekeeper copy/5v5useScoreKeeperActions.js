@@ -1,8 +1,10 @@
 import { useRef } from "react";
 import { initialiseMatch, updateMatchStatus } from "../../services/matchService";
+import { removeOfflineQueueItem } from "../../services/offlineQueue";
 import { updateScore } from "../../services/realtimeService";
 import {
   MATCH_LOG_EVENT_CODES,
+  createMatchLogOptimisticId,
   deleteMatchLogEntry,
   updateMatchLogEntry,
   updateMatchLogEntryByTimestamp,
@@ -258,6 +260,7 @@ export function useScoreKeeperActions(controller) {
     const teamKey =
       pullTeamId === controller.teamAId ? "A" : pullTeamId === controller.teamBId ? "B" : null;
     const timestamp = new Date().toISOString();
+    const optimisticId = createMatchLogOptimisticId();
     controller.appendLocalLog({
       team: teamKey,
       timestamp,
@@ -266,6 +269,7 @@ export function useScoreKeeperActions(controller) {
       totals: controller.score,
       eventDescription: controller.describeEvent(eventTypeId),
       eventCode: MATCH_LOG_EVENT_CODES.MATCH_START,
+      optimisticId,
     });
     const entry = {
       matchId: controller.activeMatch.id,
@@ -274,6 +278,7 @@ export function useScoreKeeperActions(controller) {
       teamId: teamKey ? pullTeamId : null,
       createdAt: timestamp,
       abbaLine: null,
+      optimisticId,
     };
     controller.recordPendingEntry(entry);
   }
@@ -307,7 +312,7 @@ export function useScoreKeeperActions(controller) {
     controller.setScore(nextTotals);
 
     const timestamp = providedTimestamp || new Date().toISOString();
-    const optimisticId = `${Math.random().toString(16).slice(2)}`;
+    const optimisticId = createMatchLogOptimisticId();
     const appended = controller.appendLocalLog({
       team,
       timestamp,
@@ -561,7 +566,118 @@ export function useScoreKeeperActions(controller) {
     if (!targetLog) return;
 
     try {
-      await deleteMatchLogEntry(targetLog.id);
+      const timeoutCodes = new Set([
+        MATCH_LOG_EVENT_CODES.TIMEOUT_START,
+        MATCH_LOG_EVENT_CODES.TIMEOUT_END,
+      ]);
+      const halftimeCodes = new Set([
+        MATCH_LOG_EVENT_CODES.HALFTIME_START,
+        MATCH_LOG_EVENT_CODES.HALFTIME_END,
+      ]);
+      const isTimeoutLog = timeoutCodes.has(targetLog.eventCode);
+      const isHalftimeLog = halftimeCodes.has(targetLog.eventCode);
+      const logs = controller.logs;
+
+      const findPair = (startCode, endCode, restrictTeam) => {
+        if (targetLog.eventCode === startCode) {
+          for (let i = index + 1; i < logs.length; i += 1) {
+            const candidate = logs[i];
+            if (!candidate) continue;
+            if (candidate.eventCode !== endCode) continue;
+            if (restrictTeam && candidate.team !== targetLog.team) continue;
+            return candidate;
+          }
+        } else if (targetLog.eventCode === endCode) {
+          for (let i = index - 1; i >= 0; i -= 1) {
+            const candidate = logs[i];
+            if (!candidate) continue;
+            if (candidate.eventCode !== startCode) continue;
+            if (restrictTeam && candidate.team !== targetLog.team) continue;
+            return candidate;
+          }
+        }
+        return null;
+      };
+
+      let pairedLog = null;
+      if (isTimeoutLog) {
+        pairedLog = findPair(
+          MATCH_LOG_EVENT_CODES.TIMEOUT_START,
+          MATCH_LOG_EVENT_CODES.TIMEOUT_END,
+          Boolean(targetLog.team)
+        );
+      } else if (isHalftimeLog) {
+        pairedLog = findPair(
+          MATCH_LOG_EVENT_CODES.HALFTIME_START,
+          MATCH_LOG_EVENT_CODES.HALFTIME_END,
+          false
+        );
+      }
+
+      const logsToDelete = [targetLog];
+      if (pairedLog && pairedLog !== targetLog) {
+        logsToDelete.push(pairedLog);
+      }
+
+      const serverIds = new Set();
+      const localIds = new Set();
+      const optimisticIds = new Set();
+      logsToDelete.forEach((log) => {
+        if (!log) return;
+        const id = log.id;
+        const isLocal =
+          log.isOptimistic ||
+          (typeof id === "string" && id.startsWith("local-"));
+        if (isLocal) {
+          if (id) {
+            localIds.add(id);
+          }
+          if (log.optimisticId) {
+            optimisticIds.add(log.optimisticId);
+          }
+        } else if (id) {
+          serverIds.add(id);
+        }
+      });
+
+      if (localIds.size > 0 || optimisticIds.size > 0) {
+        const queueIdsToRemove = Array.isArray(controller.pendingEntries)
+          ? controller.pendingEntries
+              .filter((entry) => {
+                if (entry?.kind !== "match_log") return false;
+                if (localIds.has(entry.id)) return true;
+                if (entry.optimisticId && optimisticIds.has(entry.optimisticId)) return true;
+                if (entry.payload?.optimisticId && optimisticIds.has(entry.payload.optimisticId)) {
+                  return true;
+                }
+                return false;
+              })
+              .map((entry) => entry.id)
+          : [];
+        controller.setLogs((prev) =>
+          prev.filter((entry) => {
+            if (localIds.has(entry.id)) return false;
+            if (entry.optimisticId && optimisticIds.has(entry.optimisticId)) return false;
+            return true;
+          })
+        );
+        if (typeof controller.setPendingEntries === "function") {
+          controller.setPendingEntries((prev) =>
+            prev.filter((entry) => {
+              if (localIds.has(entry?.id)) return false;
+              const optimisticId = entry?.payload?.optimisticId || entry?.optimisticId;
+              return !(optimisticId && optimisticIds.has(optimisticId));
+            })
+          );
+        }
+        for (const queueId of queueIdsToRemove) {
+          await removeOfflineQueueItem(queueId);
+        }
+      }
+
+      for (const id of serverIds) {
+        await deleteMatchLogEntry(id);
+      }
       const isScoreLog =
         targetLog.eventCode === MATCH_LOG_EVENT_CODES.SCORE ||
         targetLog.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
@@ -581,6 +697,20 @@ export function useScoreKeeperActions(controller) {
       if (totals) {
         await syncActiveMatchScore(totals);
       }
+      if (isTimeoutLog) {
+        const teamKey = targetLog.team || pairedLog?.team;
+        if (teamKey) {
+          controller.setTimeoutUsage((prev) => ({
+            ...prev,
+            [teamKey]: Math.max((prev[teamKey] || 0) - 1, 0),
+          }));
+        }
+      }
+      if (isHalftimeLog) {
+        controller.setHalftimeTriggered(false);
+        controller.setHalftimeTimeCapArmed(false);
+        controller.setHalftimeCapTargetScore(null);
+      }
       closeScoreModal();
     } catch (err) {
       controller.setConsoleError(
@@ -590,6 +720,10 @@ export function useScoreKeeperActions(controller) {
   }
 
   async function handleTimeoutTrigger(team) {
+    if (controller.halftimeBreakActive) {
+      controller.setConsoleError("Timeouts cannot be started during halftime.");
+      return;
+    }
     if (!controller.consoleReady) return;
     const remaining = Math.max(controller.rules.timeoutsTotal - controller.timeoutUsage[team], 0);
     if (remaining === 0) return;
@@ -628,6 +762,10 @@ export function useScoreKeeperActions(controller) {
   }
 
   async function handleGameStoppage() {
+    if (controller.halftimeBreakActive) {
+      controller.setConsoleError("Game stoppage cannot start during halftime.");
+      return;
+    }
     controller.commitPrimaryTimerState(controller.getPrimaryRemainingSeconds(), false);
     controller.commitSecondaryTimerState(controller.getSecondaryRemainingSeconds(), false);
     controller.setSecondaryFlashActive(false);

@@ -163,9 +163,9 @@ const MATCH_LOG_SELECT_LEGACY =
   "id, match_id, event_type_id, team_id, actor_id, secondary_actor_id, abba_line, created_at, event:match_events!match_logs_event_type_id_fkey(id, code, description), actor:player!match_logs_actor_id_fkey(id, name), secondary_actor:player!match_logs_secondary_actor_id_fkey(id, name)";
 
 const prefersOptimisticId =
-  typeof import.meta !== "undefined" &&
-  typeof import.meta.env !== "undefined" &&
-  import.meta.env?.VITE_SUPPORTS_MATCH_LOG_OPTIMISTIC_ID === "true";
+  typeof import.meta !== "undefined" && typeof import.meta.env !== "undefined"
+    ? import.meta.env?.VITE_SUPPORTS_MATCH_LOG_OPTIMISTIC_ID !== "false"
+    : true;
 
 let matchLogsSupportsOptimisticId: boolean = Boolean(prefersOptimisticId);
 
@@ -173,6 +173,17 @@ function isMissingOptimisticColumn(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const message = "message" in error ? String((error as any).message || "") : "";
   return message.toLowerCase().includes("optimistic_id");
+}
+
+export function createMatchLogOptimisticId(prefix = "local") {
+  const normalizedPrefix =
+    typeof prefix === "string" && prefix.trim().length > 0 ? prefix.trim() : "local";
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${normalizedPrefix}-${crypto.randomUUID()}`;
+  }
+  return `${normalizedPrefix}-${Date.now().toString(16)}-${Math.random()
+    .toString(16)
+    .slice(2)}`;
 }
 
 async function ensureDefaultMatchEvents() {
@@ -210,6 +221,31 @@ async function resolveEventTypeId(eventTypeCode: string): Promise<number> {
   return id;
 }
 
+async function findMatchLogByOptimisticId(matchId: string, optimisticId: string) {
+  if (!matchLogsSupportsOptimisticId || !matchId || !optimisticId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("match_logs")
+    .select(MATCH_LOG_SELECT)
+    .eq("match_id", matchId)
+    .eq("optimistic_id", optimisticId)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(1);
+
+  if (error) {
+    if (isMissingOptimisticColumn(error)) {
+      matchLogsSupportsOptimisticId = false;
+      return null;
+    }
+    throw new Error(error.message || "Failed to fetch match log by optimistic id");
+  }
+
+  return (Array.isArray(data) ? data[0] : null) as MatchLogRow | null;
+}
+
 export async function getMatchLogs(matchId: string) {
   const selectClause = matchLogsSupportsOptimisticId ? MATCH_LOG_SELECT : MATCH_LOG_SELECT_LEGACY;
   const { data, error } = await supabase
@@ -230,6 +266,13 @@ export async function getMatchLogs(matchId: string) {
 }
 
 export async function createMatchLogEntry(input: MatchLogInput) {
+  if (matchLogsSupportsOptimisticId && input.matchId && input.optimisticId) {
+    const existing = await findMatchLogByOptimisticId(input.matchId, input.optimisticId);
+    if (existing) {
+      return existing;
+    }
+  }
+
   const resolvedEventTypeId =
     typeof input.eventTypeId === "number" && Number.isFinite(input.eventTypeId)
       ? input.eventTypeId
@@ -265,6 +308,12 @@ export async function createMatchLogEntry(input: MatchLogInput) {
     if (matchLogsSupportsOptimisticId && isMissingOptimisticColumn(error)) {
       matchLogsSupportsOptimisticId = false;
       return createMatchLogEntry(input);
+    }
+    if (matchLogsSupportsOptimisticId && input.matchId && input.optimisticId) {
+      const existing = await findMatchLogByOptimisticId(input.matchId, input.optimisticId);
+      if (existing) {
+        return existing;
+      }
     }
     throw new Error(error?.message || "Failed to create match log");
   }

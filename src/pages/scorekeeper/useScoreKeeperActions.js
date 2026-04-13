@@ -1,9 +1,11 @@
 import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { initialiseMatch, updateMatchStatus } from "../../services/matchService";
+import { removeOfflineQueueItem } from "../../services/offlineQueue";
 import { updateScore } from "../../services/realtimeService";
 import {
   MATCH_LOG_EVENT_CODES,
+  createMatchLogOptimisticId,
   deleteMatchLogEntry,
   updateMatchLogEntry,
   updateMatchLogEntryByTimestamp,
@@ -260,7 +262,7 @@ export function useScoreKeeperActions(controller) {
     const teamKey =
       pullTeamId === controller.teamAId ? "A" : pullTeamId === controller.teamBId ? "B" : null;
     const timestamp = new Date().toISOString();
-    const optimisticId = `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const optimisticId = createMatchLogOptimisticId();
     controller.appendLocalLog({
       team: teamKey,
       timestamp,
@@ -312,7 +314,7 @@ export function useScoreKeeperActions(controller) {
     controller.setScore(nextTotals);
 
     const timestamp = providedTimestamp || new Date().toISOString();
-    const optimisticId = `${Math.random().toString(16).slice(2)}`;
+    const optimisticId = createMatchLogOptimisticId();
     const appended = controller.appendLocalLog({
       team,
       timestamp,
@@ -639,6 +641,19 @@ export function useScoreKeeperActions(controller) {
       });
 
       if (localIds.size > 0 || optimisticIds.size > 0) {
+        const queueIdsToRemove = Array.isArray(controller.pendingEntries)
+          ? controller.pendingEntries
+              .filter((entry) => {
+                if (entry?.kind !== "match_log") return false;
+                if (localIds.has(entry.id)) return true;
+                if (entry.optimisticId && optimisticIds.has(entry.optimisticId)) return true;
+                if (entry.payload?.optimisticId && optimisticIds.has(entry.payload.optimisticId)) {
+                  return true;
+                }
+                return false;
+              })
+              .map((entry) => entry.id)
+          : [];
         controller.setLogs((prev) =>
           prev.filter((entry) => {
             if (localIds.has(entry.id)) return false;
@@ -649,10 +664,14 @@ export function useScoreKeeperActions(controller) {
         if (typeof controller.setPendingEntries === "function") {
           controller.setPendingEntries((prev) =>
             prev.filter((entry) => {
-              const optimisticId = entry?.optimisticId;
+              if (localIds.has(entry?.id)) return false;
+              const optimisticId = entry?.payload?.optimisticId || entry?.optimisticId;
               return !(optimisticId && optimisticIds.has(optimisticId));
             })
           );
+        }
+        for (const queueId of queueIdsToRemove) {
+          await removeOfflineQueueItem(queueId);
         }
       }
 
@@ -702,6 +721,10 @@ export function useScoreKeeperActions(controller) {
   }
 
   async function handleTimeoutTrigger(team) {
+    if (controller.halftimeBreakActive) {
+      controller.setConsoleError("Timeouts cannot be started during halftime.");
+      return;
+    }
     if (!controller.consoleReady) return;
     const remaining = Math.max(controller.rules.timeoutsTotal - controller.timeoutUsage[team], 0);
     if (remaining === 0) return;
@@ -767,6 +790,10 @@ export function useScoreKeeperActions(controller) {
   }
 
   async function handleGameStoppage() {
+    if (controller.halftimeBreakActive) {
+      controller.setConsoleError("Game stoppage cannot start during halftime.");
+      return;
+    }
     controller.commitPrimaryTimerState(controller.getPrimaryRemainingSeconds(), false);
     controller.commitSecondaryTimerState(controller.getSecondaryRemainingSeconds(), false);
     controller.setSecondaryFlashActive(false);
