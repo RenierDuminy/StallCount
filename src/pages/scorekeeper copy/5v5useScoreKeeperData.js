@@ -2189,6 +2189,8 @@ const rosterNameLookup = useMemo(() => {
     [matchEventOptions, pendingEntries]
   );
 
+  const matchLogMatchId = activeMatch?.id || selectedMatch?.id || null;
+
   useEffect(() => {
     if (!consoleReady || !matchLogMatchId) return;
 
@@ -2397,7 +2399,6 @@ const rosterNameLookup = useMemo(() => {
     triggerHalftime,
   ]);
 
-  const matchLogMatchId = activeMatch?.id || selectedMatch?.id || null;
   const currentMatchScore = useMemo(
     () => ({
       a: activeMatch?.score_a ?? selectedMatch?.score_a ?? 0,
