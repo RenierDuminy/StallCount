@@ -7,7 +7,7 @@ module.exports = async function stbRl26UpdateRosters({
   log,
 }) {
   const EXPECTED_EVENT_ID = "e6a34716-f9d6-4d70-bc1a-b610a04e3eaf";
-  const SCRIPT_VERSION = "2026-04-09-server-state-1";
+  const SCRIPT_VERSION = "2026-04-14-simplified-1";
   const SIGNUP_CSV_URL_STORAGE_KEY = "stallcount:signup-management:csv-url:v1";
   const SIGNUP_DOB_MODE_STORAGE_KEY = "stallcount:signup-management:dob-mode:v1";
   const SCRIPT_STATE_STORAGE_KEY = "stallcount:custom-script:STB_RL_26_update_rosters:state:v1";
@@ -80,18 +80,17 @@ module.exports = async function stbRl26UpdateRosters({
     teamOption("Venustia", "b7d93f26-e409-4410-88b4-23682126988b"),
     teamOption("Valkyries", "abf01658-1261-475b-90a6-c4614a6ce49d"),
   ];
-
-  const HEADER_CANDIDATES = {
-    timestamp: ["timestamp"],
-    email: ["email address", "email"],
-    fullName: ["name and surname", "full name", "name surname"],
-    studentNumber: ["student number", "student no", "student number/employee number"],
-    phoneNumber: ["phone number", "phone", "cellphone number", "cell number"],
-    birthday: ["birth day", "birthday", "date of birth", "dob"],
-    gender: ["gender", "sex"],
-    primaryTeam: ["who will you be playing for"],
-    secondaryTeam: ["who will you be playing for 2", "who will you be playing for 2?", "who will you be playing for_2"],
+  const TEAM_RESOLUTION_CONFIG = {
+    primary: {
+      options: PRIMARY_TEAM_OPTIONS,
+      fallbackNames: ["Barbarians"],
+    },
+    secondary: {
+      options: SECONDARY_TEAM_OPTIONS,
+      fallbackNames: ["Valkyries (CSCs + unaffiliated)", "Valkyries"],
+    },
   };
+
   const FIXED_HEADER_INDEXES = {
     timestamp: 0,
     email: 1,
@@ -108,16 +107,20 @@ module.exports = async function stbRl26UpdateRosters({
     lastSuccessfulRunAt: "",
     lastProcessedSignupTimestamp: "",
   };
+  let currentBreadcrumb = "script:start";
+
+  function setBreadcrumb(label, details = "") {
+    currentBreadcrumb = details ? `${label} | ${details}` : label;
+    log(`[breadcrumb] ${currentBreadcrumb}`);
+  }
+
+  function withBreadcrumb(error, fallbackMessage) {
+    const message = error instanceof Error ? error.message : String(error || fallbackMessage);
+    return new Error(`[${SCRIPT_VERSION}] ${message}. Breadcrumb: ${currentBreadcrumb}`);
+  }
 
   function normalizeText(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
-  }
-
-  function normalizeHeaderName(value) {
-    return normalizeText(value)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim();
   }
 
   function normalizeName(value) {
@@ -132,18 +135,16 @@ module.exports = async function stbRl26UpdateRosters({
 
     const { data, error } = await supabase
       .from("player")
-      .select("id, name, gender_code, birthday, description, identity_name")
-      .eq("identity_name", normalizedPlayerName)
+      .select("id, name, gender_code, birthday, description")
       .eq("birthday", birthday)
       .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+      .limit(20);
 
     if (error) {
       throw new Error(error.message || `Unable to look up player row for ${fullName}.`);
     }
 
-    return data || null;
+    return (data || []).find((player) => normalizeName(player?.name) === normalizedPlayerName) || null;
   }
 
   function normalizeTeamName(value) {
@@ -253,13 +254,6 @@ module.exports = async function stbRl26UpdateRosters({
     } catch {
       // Ignore local storage write failures; the import can still complete.
     }
-  }
-
-  function detectHeader(headers, candidates) {
-    const normalizedCandidates = new Set(
-      (candidates || []).map((candidate) => normalizeHeaderName(candidate)),
-    );
-    return headers.find((header) => normalizedCandidates.has(normalizeHeaderName(header))) || "";
   }
 
   function createUniqueHeaders(rawHeaders) {
@@ -487,7 +481,8 @@ module.exports = async function stbRl26UpdateRosters({
       `Email: ${signup.email || "-"}`,
       `Student number: ${signup.studentNumber || "-"}`,
       `Phone number: ${signup.phoneNumber || "-"}`,
-      `Primary team: ${signup.primaryTeam || "-"}`,
+      `Men team choice: ${signup.primaryTeam || "-"}`,
+      `Women team choice: ${signup.secondaryTeam || "-"}`,
       `Team choices: ${formatChoiceList(signup.teamChoices)}`,
     ].join("\n");
   }
@@ -497,33 +492,36 @@ module.exports = async function stbRl26UpdateRosters({
     return list.length ? list.join(", ") : "-";
   }
 
-  function buildNormalizedOptionSet(values) {
-    return new Set((values || []).map((value) => normalizeTeamName(value)).filter(Boolean));
+  function makeRosterKey(eventId, teamId, playerId) {
+    if (!eventId || !teamId || !playerId) {
+      return "";
+    }
+    return `${eventId}:${teamId}:${playerId}`;
   }
 
-  function buildOptionConfigMap(options) {
-    const map = new Map();
-    (options || []).forEach((option) => {
-      const normalizedName = normalizeTeamName(option?.name);
-      if (!normalizedName) return;
-      map.set(normalizedName, {
-        name: option.name,
-        teamIds: Array.isArray(option.teamIds) ? option.teamIds.filter(Boolean) : [],
-      });
-    });
-    return map;
+  function updateLatestTimestamp(currentValue, nextValue) {
+    if (!nextValue) return currentValue;
+    if (!currentValue) return nextValue;
+    return Date.parse(nextValue) > Date.parse(currentValue) ? nextValue : currentValue;
+  }
+
+  function cachePlayer(playersByKey, player) {
+    const playerKey = makePlayerKey(player?.name, player?.birthday);
+    if (!playerKey || !player?.id) return;
+
+    const bucket = playersByKey.get(playerKey) || [];
+    const nextBucket = bucket.some((entry) => entry.id === player.id)
+      ? bucket.map((entry) => (entry.id === player.id ? player : entry))
+      : [...bucket, player];
+
+    playersByKey.set(playerKey, nextBucket);
   }
 
   function getResolvedHeaders(headers) {
     return Object.fromEntries(
       Object.keys(FIXED_HEADER_INDEXES).map((key) => {
         const fixedHeader = headers[FIXED_HEADER_INDEXES[key]] || "";
-        if (fixedHeader) {
-          return [key, fixedHeader];
-        }
-
-        const detectedHeader = detectHeader(headers, HEADER_CANDIDATES[key] || []);
-        return [key, detectedHeader];
+        return [key, fixedHeader];
       }),
     );
   }
@@ -534,9 +532,11 @@ module.exports = async function stbRl26UpdateRosters({
   }
 
   function buildSignupFromRow(row, resolvedHeaders) {
+    const primaryTeam = getRowValue(row, resolvedHeaders, "primaryTeam");
+    const secondaryTeam = getRowValue(row, resolvedHeaders, "secondaryTeam");
     const teamChoices = uniqueValues([
-      getRowValue(row, resolvedHeaders, "primaryTeam"),
-      getRowValue(row, resolvedHeaders, "secondaryTeam"),
+      primaryTeam,
+      secondaryTeam,
     ]);
 
     return {
@@ -544,8 +544,8 @@ module.exports = async function stbRl26UpdateRosters({
       email: getRowValue(row, resolvedHeaders, "email"),
       studentNumber: getRowValue(row, resolvedHeaders, "studentNumber"),
       phoneNumber: getRowValue(row, resolvedHeaders, "phoneNumber"),
-      primaryTeam: teamChoices[0] || "",
-      secondaryTeam: teamChoices[1] || "",
+      primaryTeam,
+      secondaryTeam,
       teamChoices,
     };
   }
@@ -556,54 +556,6 @@ module.exports = async function stbRl26UpdateRosters({
       return "never";
     }
     return date.toISOString();
-  }
-
-  const activeEventId = context.eventId || EXPECTED_EVENT_ID;
-  if (activeEventId !== EXPECTED_EVENT_ID) {
-    throw new Error(
-      `STB_RL_26_update_rosters only supports ${EXPECTED_EVENT_ID}. Received ${activeEventId}.`,
-    );
-  }
-
-  const storedCsvUrl = normalizeGoogleSheetsCsvUrl(readStorageValue(SIGNUP_CSV_URL_STORAGE_KEY));
-  const storedDobMode = normalizeText(readStorageValue(SIGNUP_DOB_MODE_STORAGE_KEY)).toLowerCase();
-  const contextDobMode = normalizeText(context.dobMode).toLowerCase();
-  const bundledCsvUrl = normalizeGoogleSheetsCsvUrl(CSV_URL);
-  const csvUrl = normalizeGoogleSheetsCsvUrl(context.csvUrl || storedCsvUrl || bundledCsvUrl);
-  const dobMode =
-    ["auto", "dmy", "mdy"].includes(contextDobMode)
-      ? contextDobMode
-      : ["auto", "dmy", "mdy"].includes(storedDobMode)
-        ? storedDobMode
-        : DEFAULT_DOB_MODE;
-  const contextScriptState =
-    context.scriptState && typeof context.scriptState === "object"
-      ? {
-          ...emptyState,
-          ...context.scriptState,
-        }
-      : null;
-  const scriptState = contextScriptState || readStorageJson(SCRIPT_STATE_STORAGE_KEY, emptyState);
-  const lastSuccessfulRunAt = normalizeText(scriptState.lastSuccessfulRunAt);
-  const forceFullSync = Boolean(
-    context.forceFullSync || context.ignoreRecentRunFilter || context.processAllRows,
-  );
-  const baselineTimestamp = forceFullSync ? "" : lastSuccessfulRunAt || "";
-  const baselineMs = baselineTimestamp ? Date.parse(baselineTimestamp) : Number.NaN;
-  const runStartedAt = new Date().toISOString();
-
-  if (!csvUrl) {
-    throw new Error(
-      "No signup CSV URL configured. Set it in Signup management or assign CSV_URL inside STB_RL_26_update_rosters.js.",
-    );
-  }
-
-  log(
-    `Running roster sync ${SCRIPT_VERSION} for ${activeEventId}. Trigger: ${context.trigger || "manual"}. CSV: ${csvUrl}`,
-  );
-  log(`Last successful update: ${formatTimestampForLog(lastSuccessfulRunAt)}.`);
-  if (forceFullSync) {
-    log("Full sync mode enabled. Ignoring the recent-run filter and processing all CSV rows.");
   }
 
   async function fetchCsvText(targetUrl) {
@@ -623,225 +575,269 @@ module.exports = async function stbRl26UpdateRosters({
     };
   }
 
-  let fetchedCsv = await fetchCsvText(csvUrl);
+  try {
+    setBreadcrumb("init:event");
+    const activeEventId = context.eventId || EXPECTED_EVENT_ID;
+    if (activeEventId !== EXPECTED_EVENT_ID) {
+      throw new Error(
+        `STB_RL_26_update_rosters only supports ${EXPECTED_EVENT_ID}. Received ${activeEventId}.`,
+      );
+    }
 
-  if (looksLikeHtmlDocument(fetchedCsv.text) && bundledCsvUrl && bundledCsvUrl !== csvUrl) {
+    setBreadcrumb("init:config");
+    const storedCsvUrl = normalizeGoogleSheetsCsvUrl(readStorageValue(SIGNUP_CSV_URL_STORAGE_KEY));
+    const storedDobMode = normalizeText(readStorageValue(SIGNUP_DOB_MODE_STORAGE_KEY)).toLowerCase();
+    const contextDobMode = normalizeText(context.dobMode).toLowerCase();
+    const bundledCsvUrl = normalizeGoogleSheetsCsvUrl(CSV_URL);
+    const csvUrl = normalizeGoogleSheetsCsvUrl(context.csvUrl || storedCsvUrl || bundledCsvUrl);
+    const dobMode =
+      ["auto", "dmy", "mdy"].includes(contextDobMode)
+        ? contextDobMode
+        : ["auto", "dmy", "mdy"].includes(storedDobMode)
+          ? storedDobMode
+          : DEFAULT_DOB_MODE;
+    const contextScriptState =
+      context.scriptState && typeof context.scriptState === "object"
+        ? {
+            ...emptyState,
+            ...context.scriptState,
+          }
+        : null;
+    const scriptState = contextScriptState || readStorageJson(SCRIPT_STATE_STORAGE_KEY, emptyState);
+    const lastSuccessfulRunAt = normalizeText(scriptState.lastSuccessfulRunAt);
+    const forceFullSync = Boolean(
+      context.forceFullSync || context.ignoreRecentRunFilter || context.processAllRows,
+    );
+    const baselineTimestamp = forceFullSync ? "" : lastSuccessfulRunAt || "";
+    const baselineMs = baselineTimestamp ? Date.parse(baselineTimestamp) : Number.NaN;
+    const runStartedAt = new Date().toISOString();
+
+    if (!csvUrl) {
+      throw new Error(
+        "No signup CSV URL configured. Set it in Signup management or assign CSV_URL inside STB_RL_26_update_rosters.js.",
+      );
+    }
+
     log(
-      `Configured CSV URL returned HTML instead of CSV. Retrying with bundled CSV URL: ${bundledCsvUrl}.`,
+      `Running roster sync ${SCRIPT_VERSION} for ${activeEventId}. Trigger: ${context.trigger || "manual"}. CSV: ${csvUrl}`,
     );
-    fetchedCsv = await fetchCsvText(bundledCsvUrl);
-  }
+    log(`Last successful update: ${formatTimestampForLog(lastSuccessfulRunAt)}.`);
+    if (forceFullSync) {
+      log("Full sync mode enabled. Ignoring the recent-run filter and processing all CSV rows.");
+    }
 
-  if (looksLikeHtmlDocument(fetchedCsv.text)) {
-    throw new Error(
-      `Signup CSV URL returned HTML instead of CSV. Requested: ${csvUrl}. Final: ${fetchedCsv.finalUrl}. ` +
-        `Content-Type: ${fetchedCsv.contentType || "unknown"}.`,
-    );
-  }
+    setBreadcrumb("csv:fetch", csvUrl);
+    let fetchedCsv = await fetchCsvText(csvUrl);
 
-  const csvText = fetchedCsv.text;
-  const parsed = parseCsvText(csvText);
+    if (looksLikeHtmlDocument(fetchedCsv.text) && bundledCsvUrl && bundledCsvUrl !== csvUrl) {
+      log(
+        `Configured CSV URL returned HTML instead of CSV. Retrying with bundled CSV URL: ${bundledCsvUrl}.`,
+      );
+      setBreadcrumb("csv:retry-bundled", bundledCsvUrl);
+      fetchedCsv = await fetchCsvText(bundledCsvUrl);
+    }
 
-  if (!parsed.headers.length) {
-    throw new Error("Signup CSV appears to be empty.");
-  }
+    if (looksLikeHtmlDocument(fetchedCsv.text)) {
+      throw new Error(
+        `Signup CSV URL returned HTML instead of CSV. Requested: ${csvUrl}. Final: ${fetchedCsv.finalUrl}. ` +
+          `Content-Type: ${fetchedCsv.contentType || "unknown"}.`,
+      );
+    }
+
+    setBreadcrumb("csv:parse");
+    const csvText = fetchedCsv.text;
+    const parsed = parseCsvText(csvText);
+
+    if (!parsed.headers.length) {
+      throw new Error("Signup CSV appears to be empty.");
+    }
 
   if (!parsed.rows.length) {
     throw new Error("Signup CSV has no data rows.");
   }
 
+  if (parsed.headers.length < 9) {
+    throw new Error(
+      `[${SCRIPT_VERSION}] Signup CSV mapping failed. Expected at least 9 columns, received ${parsed.headers.length}. Headers: ${parsed.headers.join(" | ")}.`,
+    );
+  }
+
+  setBreadcrumb("csv:headers");
   const resolvedHeaders = getResolvedHeaders(parsed.headers);
 
-  const requiredHeaders = ["fullName", "birthday", "primaryTeam"];
-  const missingHeaders = requiredHeaders.filter((key) => !resolvedHeaders[key]);
-  if (missingHeaders.length) {
-    throw new Error(
-      `[${SCRIPT_VERSION}] Signup CSV mapping failed. Missing: ${missingHeaders.join(", ")}. ` +
-        `Headers: ${parsed.headers.join(" | ")}. ` +
-        `Resolved: ${JSON.stringify(resolvedHeaders)}.`,
-    );
-  }
-
-  const rowsWithMetadata = parsed.rows.map((row) => {
-    const signupTimestamp = resolvedHeaders.timestamp
-      ? toIsoTimestamp(row[resolvedHeaders.timestamp], "dmy")
-      : "";
-    return {
-      row,
-      signupTimestamp,
-      signupTimestampMs: signupTimestamp ? Date.parse(signupTimestamp) : Number.NaN,
-    };
-  });
-
-  const eligibleRows = rowsWithMetadata.filter((entry) => {
-    if (!baselineTimestamp || Number.isNaN(baselineMs)) {
-      return true;
+    const missingHeaders = ["fullName", "birthday"].filter((key) => !resolvedHeaders[key]);
+    if (!resolvedHeaders.primaryTeam && !resolvedHeaders.secondaryTeam) {
+      missingHeaders.push("teamChoice");
     }
-    if (!entry.signupTimestamp || Number.isNaN(entry.signupTimestampMs)) {
-      return false;
+    if (missingHeaders.length) {
+      throw new Error(
+        `[${SCRIPT_VERSION}] Signup CSV mapping failed. Missing: ${missingHeaders.join(", ")}. ` +
+          `Headers: ${parsed.headers.join(" | ")}. ` +
+          `Resolved: ${JSON.stringify(resolvedHeaders)}.`,
+      );
     }
-    return entry.signupTimestampMs > baselineMs;
-  });
 
-  if (baselineTimestamp) {
-    log(
-      `Only processing entries newer than ${formatTimestampForLog(baselineTimestamp)}. ${eligibleRows.length} row(s) qualify.`,
-    );
-  } else {
-    log(`No previous successful run found. Processing all ${eligibleRows.length} signup row(s).`);
-  }
+    setBreadcrumb("csv:filter-rows");
+    const rowsWithMetadata = parsed.rows.map((row) => {
+      const signupTimestamp = resolvedHeaders.timestamp
+        ? toIsoTimestamp(row[resolvedHeaders.timestamp], "dmy")
+        : "";
+      return {
+        row,
+        signupTimestamp,
+        signupTimestampMs: signupTimestamp ? Date.parse(signupTimestamp) : Number.NaN,
+      };
+    });
 
-  const hierarchy = await helpers.getEventHierarchy(activeEventId);
-  if (!hierarchy) {
-    throw new Error(`No event hierarchy found for ${activeEventId}.`);
-  }
+    const eligibleRows = rowsWithMetadata.filter((entry) => {
+      if (!baselineTimestamp || Number.isNaN(baselineMs)) {
+        return true;
+      }
+      if (!entry.signupTimestamp || Number.isNaN(entry.signupTimestampMs)) {
+        return false;
+      }
+      return entry.signupTimestampMs > baselineMs;
+    });
 
-  const flattenedTeams = [];
-  for (const division of hierarchy.divisions || []) {
-    for (const pool of division.pools || []) {
-      for (const entry of pool.teams || []) {
-        if (!entry?.team?.id) continue;
-        flattenedTeams.push(entry.team);
+    if (baselineTimestamp) {
+      log(
+        `Only processing entries newer than ${formatTimestampForLog(baselineTimestamp)}. ${eligibleRows.length} row(s) qualify.`,
+      );
+    } else {
+      log(`No previous successful run found. Processing all ${eligibleRows.length} signup row(s).`);
+    }
+
+    setBreadcrumb("event:hierarchy");
+    const hierarchy = await helpers.getEventHierarchy(activeEventId);
+    if (!hierarchy) {
+      throw new Error(`No event hierarchy found for ${activeEventId}.`);
+    }
+
+    setBreadcrumb("event:teams");
+    const uniqueTeamsById = new Map();
+    for (const division of hierarchy.divisions || []) {
+      for (const pool of division.pools || []) {
+        for (const entry of pool.teams || []) {
+          const team = entry?.team;
+          if (!team?.id || uniqueTeamsById.has(team.id)) continue;
+          uniqueTeamsById.set(team.id, team);
+        }
       }
     }
-  }
 
-  const uniqueTeamsById = new Map();
-  flattenedTeams.forEach((team) => {
-    if (!team?.id || uniqueTeamsById.has(team.id)) return;
-    uniqueTeamsById.set(team.id, team);
-  });
+    const teamIndex = new Map();
+    const registerTeamKey = (label, team) => {
+      const key = normalizeTeamName(label);
+      if (!key || !team?.id) return;
+      const bucket = teamIndex.get(key) || [];
+      if (!bucket.some((entry) => entry.id === team.id)) {
+        bucket.push(team);
+      }
+      teamIndex.set(key, bucket);
+    };
 
-  const teamIndex = new Map();
-  const registerTeamKey = (label, team) => {
-    const key = normalizeTeamName(label);
-    if (!key || !team?.id) return;
-    const bucket = teamIndex.get(key) || [];
-    if (!bucket.some((entry) => entry.id === team.id)) {
-      bucket.push(team);
-    }
-    teamIndex.set(key, bucket);
+    uniqueTeamsById.forEach((team) => {
+      registerTeamKey(team.name, team);
+      registerTeamKey(team.short_name, team);
+    });
+
+  const resolveExactEventTeam = (teamName) => {
+    const matches = teamIndex.get(normalizeTeamName(teamName)) || [];
+    return matches.length === 1 ? matches[0] : null;
   };
 
-  uniqueTeamsById.forEach((team) => {
-    registerTeamKey(team.name, team);
-    registerTeamKey(team.short_name, team);
-  });
-
-  function resolveEventTeamByName(teamName) {
-    const normalizedTarget = normalizeTeamName(teamName);
-    const matches = teamIndex.get(normalizedTarget) || [];
-    return matches.length === 1 ? matches[0] : null;
-  }
-
-  const normalizedPrimaryOptions = buildNormalizedOptionSet(
-    PRIMARY_TEAM_OPTIONS.map((option) => option.name),
-  );
-  const normalizedSecondaryOptions = buildNormalizedOptionSet(
-    SECONDARY_TEAM_OPTIONS.map((option) => option.name),
-  );
-  const primaryOptionConfigMap = buildOptionConfigMap(PRIMARY_TEAM_OPTIONS);
-  const secondaryOptionConfigMap = buildOptionConfigMap(SECONDARY_TEAM_OPTIONS);
-  const fallbackPrimaryTeam = resolveEventTeamByName("Barbarians");
-  const fallbackSecondaryTeam =
-    resolveEventTeamByName("Valkyries (CSCs + unaffiliated)") ||
-    resolveEventTeamByName("Valkyries");
-
-  const resolveTeamChoice = (rawChoice) => {
+  const resolveEventTeam = (rawChoice) => {
     const normalizedChoice = normalizeTeamName(rawChoice);
     if (!normalizedChoice) return null;
 
-    const direct = teamIndex.get(normalizedChoice) || [];
-    if (direct.length === 1) {
-      return direct[0];
+    const directMatches = teamIndex.get(normalizedChoice) || [];
+    if (directMatches.length === 1) {
+      return directMatches[0];
     }
 
     const fuzzyMatches = [];
     teamIndex.forEach((teams, key) => {
-      if (key.includes(normalizedChoice) || normalizedChoice.includes(key)) {
-        teams.forEach((team) => {
-          if (!fuzzyMatches.some((entry) => entry.id === team.id)) {
-            fuzzyMatches.push(team);
-          }
-        });
+      if (!key.includes(normalizedChoice) && !normalizedChoice.includes(key)) {
+        return;
       }
+      teams.forEach((team) => {
+        if (!fuzzyMatches.some((entry) => entry.id === team.id)) {
+          fuzzyMatches.push(team);
+        }
+      });
     });
 
     return fuzzyMatches.length === 1 ? fuzzyMatches[0] : null;
   };
 
-  const resolveConfiguredTeamChoice = (rawChoice, preference) => {
-    const normalizedChoice = normalizeTeamName(rawChoice);
-    if (!normalizedChoice) return null;
+  const teamResolverConfigs = Object.fromEntries(
+    Object.entries(TEAM_RESOLUTION_CONFIG).map(([key, config]) => {
+      const optionMap = new Map();
+      (config.options || []).forEach((option) => {
+        const normalizedName = normalizeTeamName(option?.name);
+        if (!normalizedName) return;
+        optionMap.set(normalizedName, {
+          name: option.name,
+          teamIds: Array.isArray(option.teamIds) ? option.teamIds.filter(Boolean) : [],
+        });
+      });
 
-    const configMap =
-      preference === "secondary" ? secondaryOptionConfigMap : primaryOptionConfigMap;
-    const optionConfig = configMap.get(normalizedChoice) || null;
+      const fallbackTeam =
+        (config.fallbackNames || []).map((name) => resolveExactEventTeam(name)).find(Boolean) || null;
 
-    if (!optionConfig) {
-      const directTeam = resolveTeamChoice(rawChoice);
-      if (!directTeam?.id) return null;
-      return {
-        teams: [directTeam],
-        usedFallback: false,
-      };
-    }
-
-    const candidateTeams = optionConfig.teamIds
-      .map((teamId) => uniqueTeamsById.get(teamId) || null)
-      .filter(Boolean);
-
-    if (candidateTeams.length > 0) {
-      return {
-        teams: candidateTeams,
-        usedFallback: false,
-      };
-    }
-
-    return null;
-  };
+      return [key, { optionMap, fallbackTeam }];
+    }),
+  );
 
   const resolveTeamChoiceWithFallback = (rawChoice, preference) => {
     const normalizedChoice = normalizeTeamName(rawChoice);
     if (!normalizedChoice) return null;
 
-    const configuredTeam = resolveConfiguredTeamChoice(rawChoice, preference);
-    if (configuredTeam?.teams?.length) {
-      return configuredTeam;
+    const config = teamResolverConfigs[preference] || teamResolverConfigs.primary;
+    const option = config?.optionMap.get(normalizedChoice) || null;
+    const directTeam = resolveEventTeam(rawChoice);
+
+    if (option) {
+      const configuredTeams = option.teamIds
+        .map((teamId) => uniqueTeamsById.get(teamId) || null)
+        .filter(Boolean);
+
+      if (configuredTeams.length > 0) {
+        return { teams: configuredTeams, usedFallback: false };
+      }
+
+      if (directTeam?.id) {
+        return { teams: [directTeam], usedFallback: false };
+      }
+
+      if (config?.fallbackTeam?.id) {
+        return { teams: [config.fallbackTeam], usedFallback: true };
+      }
+
+      return null;
     }
 
-    const optionSet =
-      preference === "secondary" ? normalizedSecondaryOptions : normalizedPrimaryOptions;
-    const fallbackTeam =
-      preference === "secondary" ? fallbackSecondaryTeam : fallbackPrimaryTeam;
-
-    if (optionSet.has(normalizedChoice) && fallbackTeam?.id) {
-      return {
-        teams: [fallbackTeam],
-        usedFallback: true,
-      };
+    if (directTeam?.id) {
+      return { teams: [directTeam], usedFallback: false };
     }
 
     return null;
   };
 
-  const { data: playerRows, error: playerError } = await supabase
-    .from("player")
-    .select("id, name, gender_code, birthday, description")
-    .order("name", { ascending: true });
+    setBreadcrumb("players:load");
+    const { data: playerRows, error: playerError } = await supabase
+      .from("player")
+      .select("id, name, gender_code, birthday, description")
+      .order("name", { ascending: true });
 
-  if (playerError) {
-    throw new Error(playerError.message || "Unable to load existing players.");
-  }
+    if (playerError) {
+      throw new Error(playerError.message || "Unable to load existing players.");
+    }
 
-  const playersByKey = new Map();
-  for (const player of playerRows || []) {
-    const playerKey = makePlayerKey(player?.name, player?.birthday);
-    if (!playerKey) continue;
-    const bucket = playersByKey.get(playerKey) || [];
-    bucket.push(player);
-    playersByKey.set(playerKey, bucket);
-  }
+    const playersByKey = new Map();
+    for (const player of playerRows || []) {
+      cachePlayer(playersByKey, player);
+    }
 
   const getOrCreatePlayerFromSignup = async ({ fullName, birthday, genderCode, signup, summary }) => {
     const playerKey = makePlayerKey(fullName, birthday);
@@ -857,19 +853,17 @@ module.exports = async function stbRl26UpdateRosters({
     if (!player) {
       const existingPlayer = await findExistingPlayerByIdentity(fullName, birthday);
       if (existingPlayer) {
-        player = existingPlayer;
-        playersByKey.set(playerKey, [player]);
-        return player;
+        cachePlayer(playersByKey, existingPlayer);
+        return existingPlayer;
       }
 
-      const description = buildSignupDescription(signup);
       const { data: createdPlayer, error: createPlayerError } = await supabase
         .from("player")
         .insert({
           name: fullName,
           gender_code: genderCode,
           birthday,
-          description,
+          description: buildSignupDescription(signup),
         })
         .select("id, name, gender_code, birthday, description")
         .single();
@@ -878,19 +872,17 @@ module.exports = async function stbRl26UpdateRosters({
         if (createPlayerError.code === "23505") {
           const concurrentPlayer = await findExistingPlayerByIdentity(fullName, birthday);
           if (concurrentPlayer) {
-            player = concurrentPlayer;
-            playersByKey.set(playerKey, [player]);
-            return player;
+            cachePlayer(playersByKey, concurrentPlayer);
+            return concurrentPlayer;
           }
         }
 
         throw new Error(createPlayerError.message || `Unable to create player row for ${fullName}.`);
       }
 
-      player = createdPlayer;
-      playersByKey.set(playerKey, [player]);
+      cachePlayer(playersByKey, createdPlayer);
       summary.playersCreated += 1;
-      return player;
+      return createdPlayer;
     }
 
     const playerUpdates = {};
@@ -921,213 +913,210 @@ module.exports = async function stbRl26UpdateRosters({
     }
 
     player = updatedPlayer;
-    playersByKey.set(playerKey, [player]);
+    cachePlayer(playersByKey, player);
     summary.playersUpdated += 1;
     return player;
   };
 
-  const { data: rosterRows, error: rosterError } = await supabase
-    .from("team_roster")
-    .select("id, team_id, player_id")
-    .eq("event_id", activeEventId);
+    setBreadcrumb("roster:load");
+    const { data: rosterRows, error: rosterError } = await supabase
+      .from("team_roster")
+      .select("id, team_id, player_id")
+      .eq("event_id", activeEventId);
 
-  if (rosterError) {
-    throw new Error(rosterError.message || "Unable to load existing roster rows.");
-  }
-
-  const rosterKeySet = new Set(
-    (rosterRows || [])
-      .map((row) => {
-        if (!row?.team_id || !row?.player_id) return "";
-        return `${activeEventId}:${row.team_id}:${row.player_id}`;
-      })
-      .filter(Boolean),
-  );
-  const rosterCountByTeamId = new Map();
-  const rosterTeamIdsByPlayerId = new Map();
-  (rosterRows || []).forEach((row) => {
-    if (row?.team_id) {
-      rosterCountByTeamId.set(row.team_id, (rosterCountByTeamId.get(row.team_id) || 0) + 1);
-    }
-    if (row?.player_id && row?.team_id) {
-      const bucket = rosterTeamIdsByPlayerId.get(row.player_id) || new Set();
-      bucket.add(row.team_id);
-      rosterTeamIdsByPlayerId.set(row.player_id, bucket);
-    }
-  });
-
-  const summary = {
-    eventId: activeEventId,
-    scriptVersion: SCRIPT_VERSION,
-    trigger: context.trigger || "manual",
-    forceFullSync,
-    csvUrl,
-    csvRowCount: parsed.rows.length,
-    rowsConsidered: eligibleRows.length,
-    rowsSkippedAlreadyImported: Math.max(0, parsed.rows.length - eligibleRows.length),
-    rowsSkippedMissingTimestamp: 0,
-    playersCreated: 0,
-    playersUpdated: 0,
-    rosterLinksCreated: 0,
-    duplicateRosterLinksSkipped: 0,
-    fallbackAssignmentsUsed: 0,
-    rowsSkippedMissingName: 0,
-    rowsSkippedMissingBirthday: 0,
-    rowsWithoutResolvedTeam: 0,
-    duplicatePlayerKeysDetected: 0,
-    unknownTeamChoices: [],
-    previousSuccessfulRunAt: lastSuccessfulRunAt || null,
-    previousProcessedSignupTimestamp:
-      normalizeText(scriptState.lastProcessedSignupTimestamp) || null,
-    lastSuccessfulRunAt: null,
-    lastProcessedSignupTimestamp: null,
-  };
-
-  const duplicatePlayerKeysLogged = new Set();
-  const unknownTeamChoices = new Set();
-  let latestProcessedSignupTimestamp = summary.previousProcessedSignupTimestamp || null;
-
-  for (const entry of eligibleRows) {
-    const { row, signupTimestamp } = entry;
-    const fullName = normalizeText(row[resolvedHeaders.fullName]);
-    const birthday = toIsoDate(row[resolvedHeaders.birthday], dobMode);
-
-    if (!signupTimestamp && baselineTimestamp) {
-      summary.rowsSkippedMissingTimestamp += 1;
-      continue;
+    if (rosterError) {
+      throw new Error(rosterError.message || "Unable to load existing roster rows.");
     }
 
-    if (!fullName) {
-      summary.rowsSkippedMissingName += 1;
-      continue;
-    }
+    const rosterKeySet = new Set(
+      (rosterRows || [])
+        .map((row) => makeRosterKey(activeEventId, row?.team_id, row?.player_id))
+        .filter(Boolean),
+    );
 
-    if (!birthday) {
-      summary.rowsSkippedMissingBirthday += 1;
-      log(`Skipping ${fullName}: invalid or missing birthday.`);
-      continue;
-    }
+    const summary = {
+      eventId: activeEventId,
+      scriptVersion: SCRIPT_VERSION,
+      trigger: context.trigger || "manual",
+      forceFullSync,
+      csvUrl,
+      csvRowCount: parsed.rows.length,
+      rowsConsidered: eligibleRows.length,
+      rowsSkippedAlreadyImported: Math.max(0, parsed.rows.length - eligibleRows.length),
+      rowsSkippedMissingTimestamp: 0,
+      playersCreated: 0,
+      playersUpdated: 0,
+      rosterLinksCreated: 0,
+      duplicateRosterLinksSkipped: 0,
+      fallbackAssignmentsUsed: 0,
+      rowsSkippedMissingName: 0,
+      rowsSkippedMissingBirthday: 0,
+      rowsWithoutResolvedTeam: 0,
+      duplicatePlayerKeysDetected: 0,
+      unknownTeamChoices: [],
+      previousSuccessfulRunAt: lastSuccessfulRunAt || null,
+      previousProcessedSignupTimestamp:
+        normalizeText(scriptState.lastProcessedSignupTimestamp) || null,
+      lastSuccessfulRunAt: null,
+      lastProcessedSignupTimestamp: null,
+    };
 
-    const signup = buildSignupFromRow(row, resolvedHeaders);
+    const duplicatePlayerKeysLogged = new Set();
+    const unknownTeamChoices = new Set();
+    let latestProcessedSignupTimestamp = summary.previousProcessedSignupTimestamp || null;
 
-    const genderCode = resolvedHeaders.gender ? normalizeGender(row[resolvedHeaders.gender]) : null;
-    const player = await getOrCreatePlayerFromSignup({
-      fullName,
-      birthday,
-      genderCode,
-      signup,
-      summary,
-    });
+    setBreadcrumb("rows:begin", `count=${eligibleRows.length}`);
+    for (const entry of eligibleRows) {
+      const { row, signupTimestamp } = entry;
+      const fullName = normalizeText(row[resolvedHeaders.fullName]);
+      const birthday = toIsoDate(row[resolvedHeaders.birthday], dobMode);
+      setBreadcrumb(
+        "row:start",
+        `name=${fullName || "-"} | birthday=${birthday || normalizeText(row[resolvedHeaders.birthday]) || "-"} | timestamp=${signupTimestamp || "-"}`
+      );
 
-    const resolvedTeams = [];
-    const teamChoices = signup.teamChoices;
-    const choiceEntries = [
-      { choice: signup.primaryTeam, preference: "primary" },
-      { choice: signup.secondaryTeam, preference: "secondary" },
-    ].filter((item) => normalizeText(item.choice));
-
-    for (const item of choiceEntries) {
-      const resolved = resolveTeamChoiceWithFallback(item.choice, item.preference);
-      if (!resolved?.teams?.length) {
-        unknownTeamChoices.add(item.choice);
+      if (!signupTimestamp && baselineTimestamp) {
+        summary.rowsSkippedMissingTimestamp += 1;
         continue;
       }
-      resolved.teams.forEach((team) => {
-        if (!team?.id) return;
-        if (!resolvedTeams.some((teamEntry) => teamEntry.id === team.id)) {
-          resolvedTeams.push(team);
+
+      if (!fullName) {
+        summary.rowsSkippedMissingName += 1;
+        continue;
+      }
+
+      if (!birthday) {
+        summary.rowsSkippedMissingBirthday += 1;
+        log(`Skipping ${fullName}: invalid or missing birthday.`);
+        continue;
+      }
+
+      setBreadcrumb("row:build-signup", `name=${fullName}`);
+      const signup = buildSignupFromRow(row, resolvedHeaders);
+
+      setBreadcrumb("row:resolve-player", `name=${fullName} | birthday=${birthday}`);
+      const genderCode = resolvedHeaders.gender ? normalizeGender(row[resolvedHeaders.gender]) : null;
+      const player = await getOrCreatePlayerFromSignup({
+        fullName,
+        birthday,
+        genderCode,
+        signup,
+        summary,
+      });
+
+      setBreadcrumb("row:resolve-teams", `name=${fullName} | choices=${formatChoiceList(signup.teamChoices)}`);
+      const resolvedTeams = [];
+      const teamChoices = signup.teamChoices;
+      const choiceEntries = [
+        { choice: signup.primaryTeam, preference: "primary" },
+        { choice: signup.secondaryTeam, preference: "secondary" },
+      ].filter((item) => normalizeText(item.choice));
+
+      for (const item of choiceEntries) {
+        setBreadcrumb("row:resolve-team-choice", `name=${fullName} | preference=${item.preference} | choice=${item.choice}`);
+        const resolved = resolveTeamChoiceWithFallback(item.choice, item.preference);
+        if (!resolved?.teams?.length) {
+          unknownTeamChoices.add(item.choice);
+          continue;
         }
-      });
-      if (resolved.usedFallback) {
-        summary.fallbackAssignmentsUsed += 1;
-        log(
-          `Using ${resolved.teams.map((team) => team.name).join(", ")} as backup team for ${fullName} (${item.preference}: ${item.choice}).`,
-        );
+        resolved.teams.forEach((team) => {
+          if (!team?.id) return;
+          if (!resolvedTeams.some((teamEntry) => teamEntry.id === team.id)) {
+            resolvedTeams.push(team);
+          }
+        });
+        if (resolved.usedFallback) {
+          summary.fallbackAssignmentsUsed += 1;
+          log(
+            `Using ${resolved.teams.map((team) => team.name).join(", ")} as backup team for ${fullName} (${item.preference}: ${item.choice}).`,
+          );
+        }
       }
-    }
 
-    if (!resolvedTeams.length) {
-      summary.rowsWithoutResolvedTeam += 1;
-      log(`No event team match found for ${fullName}. Choices: ${formatChoiceList(teamChoices)}.`);
-      continue;
-    }
-
-    for (const team of resolvedTeams) {
-      const rosterKey = `${activeEventId}:${team.id}:${player.id}`;
-      if (rosterKeySet.has(rosterKey)) {
-        summary.duplicateRosterLinksSkipped += 1;
+      if (!resolvedTeams.length) {
+        summary.rowsWithoutResolvedTeam += 1;
+        log(`No event team match found for ${fullName}. Choices: ${formatChoiceList(teamChoices)}.`);
         continue;
       }
 
-      const { error: insertRosterError } = await supabase.from("team_roster").insert({
-        event_id: activeEventId,
-        team_id: team.id,
-        player_id: player.id,
-        is_captain: false,
-        is_spirit_captain: false,
-      });
+      for (const team of resolvedTeams) {
+        setBreadcrumb("row:insert-roster", `name=${fullName} | team=${team.name} | playerId=${player.id}`);
+        const rosterKey = makeRosterKey(activeEventId, team.id, player.id);
+        if (rosterKeySet.has(rosterKey)) {
+          summary.duplicateRosterLinksSkipped += 1;
+          continue;
+        }
 
-      if (insertRosterError) {
-        throw new Error(
-          insertRosterError.message ||
-            `Unable to add ${fullName} to ${team.name} for ${activeEventId}.`,
-        );
+        const { error: insertRosterError } = await supabase.from("team_roster").insert({
+          event_id: activeEventId,
+          team_id: team.id,
+          player_id: player.id,
+          is_captain: false,
+          is_spirit_captain: false,
+        });
+
+        if (insertRosterError) {
+          throw new Error(
+            insertRosterError.message ||
+              `Unable to add ${fullName} to ${team.name} for ${activeEventId}.`,
+          );
+        }
+
+        rosterKeySet.add(rosterKey);
+        summary.rosterLinksCreated += 1;
       }
 
-      rosterKeySet.add(rosterKey);
-      rosterCountByTeamId.set(team.id, (rosterCountByTeamId.get(team.id) || 0) + 1);
-      const assignedTeamIds = rosterTeamIdsByPlayerId.get(player.id) || new Set();
-      assignedTeamIds.add(team.id);
-      rosterTeamIdsByPlayerId.set(player.id, assignedTeamIds);
-      summary.rosterLinksCreated += 1;
+      setBreadcrumb("row:complete", `name=${fullName}`);
+      latestProcessedSignupTimestamp = updateLatestTimestamp(
+        latestProcessedSignupTimestamp,
+        signupTimestamp,
+      );
     }
 
-    if (signupTimestamp) {
-      latestProcessedSignupTimestamp =
-        !latestProcessedSignupTimestamp || Date.parse(signupTimestamp) > Date.parse(latestProcessedSignupTimestamp)
-          ? signupTimestamp
-          : latestProcessedSignupTimestamp;
+    setBreadcrumb("summary:finalize");
+    summary.unknownTeamChoices = Array.from(unknownTeamChoices).sort((left, right) =>
+      left.localeCompare(right),
+    );
+
+    const skippedRows =
+      summary.rowsSkippedMissingTimestamp +
+      summary.rowsSkippedMissingName +
+      summary.rowsSkippedMissingBirthday +
+      summary.rowsWithoutResolvedTeam;
+
+    setBreadcrumb("state:write");
+    const nextScriptState = {
+      lastSuccessfulRunAt: runStartedAt,
+      lastProcessedSignupTimestamp:
+        latestProcessedSignupTimestamp || summary.previousProcessedSignupTimestamp || "",
+    };
+    if (typeof context.onStateChange === "function") {
+      await context.onStateChange(nextScriptState);
+    } else {
+      writeStorageJson(SCRIPT_STATE_STORAGE_KEY, nextScriptState);
     }
+
+    summary.lastSuccessfulRunAt = nextScriptState.lastSuccessfulRunAt;
+    summary.lastProcessedSignupTimestamp = nextScriptState.lastProcessedSignupTimestamp || null;
+
+    const message =
+      `Roster sync completed: ${summary.rowsConsidered} new row(s) checked, ` +
+      `${summary.playersCreated} players created, ${summary.playersUpdated} players updated, ` +
+      `${summary.rosterLinksCreated} roster links added, ${summary.duplicateRosterLinksSkipped} existing roster links skipped, ` +
+      `${skippedRows} rows skipped. Last updated: ${summary.lastSuccessfulRunAt}.`;
+
+    setBreadcrumb("complete");
+    log(message);
+    if (summary.unknownTeamChoices.length) {
+      log(`Unknown team choices: ${summary.unknownTeamChoices.join(", ")}`);
+    }
+
+    return {
+      status: "completed",
+      message,
+      ...summary,
+    };
+  } catch (error) {
+    throw withBreadcrumb(error, "Roster sync failed");
   }
-
-  summary.unknownTeamChoices = Array.from(unknownTeamChoices).sort((left, right) =>
-    left.localeCompare(right),
-  );
-
-  const skippedRows =
-    summary.rowsSkippedMissingTimestamp +
-    summary.rowsSkippedMissingName +
-    summary.rowsSkippedMissingBirthday +
-    summary.rowsWithoutResolvedTeam;
-
-  const nextScriptState = {
-    lastSuccessfulRunAt: runStartedAt,
-    lastProcessedSignupTimestamp:
-      latestProcessedSignupTimestamp || summary.previousProcessedSignupTimestamp || "",
-  };
-  if (typeof context.onStateChange === "function") {
-    await context.onStateChange(nextScriptState);
-  } else {
-    writeStorageJson(SCRIPT_STATE_STORAGE_KEY, nextScriptState);
-  }
-
-  summary.lastSuccessfulRunAt = nextScriptState.lastSuccessfulRunAt;
-  summary.lastProcessedSignupTimestamp = nextScriptState.lastProcessedSignupTimestamp || null;
-
-  const message =
-    `Roster sync completed: ${summary.rowsConsidered} new row(s) checked, ` +
-    `${summary.playersCreated} players created, ${summary.playersUpdated} players updated, ` +
-    `${summary.rosterLinksCreated} roster links added, ${summary.duplicateRosterLinksSkipped} existing roster links skipped, ` +
-    `${skippedRows} rows skipped. Last updated: ${summary.lastSuccessfulRunAt}.`;
-
-  log(message);
-  if (summary.unknownTeamChoices.length) {
-    log(`Unknown team choices: ${summary.unknownTeamChoices.join(", ")}`);
-  }
-
-  return {
-    status: "completed",
-    message,
-    ...summary,
-  };
 };

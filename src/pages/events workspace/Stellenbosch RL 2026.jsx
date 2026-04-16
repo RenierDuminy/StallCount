@@ -454,6 +454,21 @@ const formatDurationUntil = (milliseconds) => {
   return `${minutes}m`;
 };
 
+const buildRosterSyncErrorDetails = (output) => {
+  const sections = [];
+
+  if (Array.isArray(output?.logs) && output.logs.length > 0) {
+    sections.push(`Recent logs:\n${output.logs.slice(-12).join("\n")}`);
+  }
+
+  const stack = String(output?.error?.stack || "").trim();
+  if (stack) {
+    sections.push(`Stack trace:\n${stack}`);
+  }
+
+  return sections.join("\n\n").trim();
+};
+
 const getRosterScriptScheduleSnapshot = (value = new Date()) => {
   const parts = getSastDateParts(value);
   const isTodaysSlotActive = parts.hour >= AUTO_ROSTER_SYNC_HOUR_SAST;
@@ -543,6 +558,7 @@ export default function StellenboschRl2026WorkspacePage() {
     running: false,
     message: "",
     tone: "success",
+    details: "",
   });
 
   const refreshTimerState = useCallback(async () => {
@@ -673,6 +689,7 @@ export default function StellenboschRl2026WorkspacePage() {
       running: true,
       message: "",
       tone: "success",
+      details: "",
     });
 
     try {
@@ -712,20 +729,39 @@ export default function StellenboschRl2026WorkspacePage() {
               : output.result?.message ||
                 "Roster update script completed. Event data has been refreshed.",
           tone: "success",
+          details: "",
         });
         return output;
       }
 
+      const failureMessage =
+        output.error?.message ||
+        output.result?.message ||
+        (forceFullSync ? "Full roster sync failed." : "Roster update script failed.");
+      await refreshTimerState().catch(() => {});
+      setScriptRunState({
+        running: false,
+        message: failureMessage,
+        tone: "error",
+        details: buildRosterSyncErrorDetails(output),
+      });
+      return output;
+    } catch (runError) {
       await refreshTimerState().catch(() => {});
       setScriptRunState({
         running: false,
         message:
-          forceFullSync
-            ? output.error?.message || "Full roster sync failed."
-            : output.error?.message || "Roster update script failed.",
+          runError instanceof Error
+            ? runError.message || "Roster update script failed."
+            : String(runError || "Roster update script failed."),
         tone: "error",
+        details: buildRosterSyncErrorDetails({
+          error: {
+            stack: runError instanceof Error ? runError.stack || "" : "",
+          },
+        }),
       });
-      return output;
+      return null;
     } finally {
       scriptRunLockRef.current = false;
     }
@@ -842,6 +878,16 @@ export default function StellenboschRl2026WorkspacePage() {
             >
               {scriptRunState.message}
             </div>
+          ) : null}
+          {canRunAdminScripts && scriptRunState.tone === "error" && scriptRunState.details ? (
+            <Panel variant="muted" className="space-y-2 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                Error details
+              </p>
+              <pre className="max-h-72 overflow-auto rounded-2xl border border-border bg-surface p-3 text-xs text-ink-muted whitespace-pre-wrap break-words">
+                {scriptRunState.details}
+              </pre>
+            </Panel>
           ) : null}
           {canRunAdminScripts ? (
             <Panel variant="muted" className="space-y-2 p-4">

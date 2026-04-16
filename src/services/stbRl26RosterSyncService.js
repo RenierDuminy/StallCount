@@ -33,6 +33,26 @@ async function parseJsonResponse(response) {
   }
 }
 
+function buildFailedRosterSyncResponse(payload, response) {
+  const fallbackMessage =
+    payload?.error?.message ||
+    payload?.message ||
+    `Roster sync failed (${response.status}${response.statusText ? ` ${response.statusText}` : ""}).`;
+
+  return {
+    ok: false,
+    slug: payload?.slug || "STB_RL_26_update_rosters",
+    startedAt: payload?.startedAt || new Date().toISOString(),
+    finishedAt: payload?.finishedAt || new Date().toISOString(),
+    logs: Array.isArray(payload?.logs) ? payload.logs : [],
+    result: payload?.result || null,
+    error: {
+      message: fallbackMessage,
+      stack: typeof payload?.error?.stack === "string" ? payload.error.stack : "",
+    },
+  };
+}
+
 export async function getStbRl26RosterSyncStatus() {
   const headers = await buildAuthHeaders();
   const response = await fetch(API_PATH, {
@@ -61,18 +81,8 @@ export async function invokeStbRl26RosterSync({ forceFullSync = false } = {}) {
   });
   const payload = await parseJsonResponse(response);
 
-  if (!response.ok && payload?.ok !== true) {
-    return {
-      ok: false,
-      slug: "STB_RL_26_update_rosters",
-      startedAt: new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
-      logs: [],
-      error: {
-        message: payload?.error?.message || "Roster sync failed.",
-        stack: "",
-      },
-    };
+  if (!response.ok || payload?.ok === false) {
+    return buildFailedRosterSyncResponse(payload, response);
   }
 
   return payload;

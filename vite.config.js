@@ -31,6 +31,9 @@ export default defineConfig({
         enabled: true,
         suppressWarnings: true,
       },
+      workbox: {
+        navigateFallbackDenylist: [/^\/rules\//, /^\/.*\.[^/]+$/],
+      },
     }),
   ],
 });

@@ -119,15 +119,38 @@ export default function CustomScriptsPage() {
     if (!selectedScript) return;
 
     setRunState({ running: true, output: null, error: "" });
-    const output = isServerRunOnlyScript
-      ? await invokeStbRl26RosterSync()
-      : await executeCustomScript({
+    let output;
+
+    if (isServerRunOnlyScript) {
+      output = await invokeStbRl26RosterSync();
+
+      const shouldFallbackToBrowserRun =
+        import.meta.env.DEV &&
+        !output.ok &&
+        String(output.error?.message || "").includes("(404 Not Found)");
+
+      if (shouldFallbackToBrowserRun) {
+        output = await executeCustomScript({
           slug: selectedScript.slug,
           source: draftSource,
           context: {
             eventId: eventId || null,
+            trigger: "manual-dev-fallback",
+            forceFullSync: true,
+            useBundledSource: true,
+            allowBrowserExecution: true,
           },
         });
+      }
+    } else {
+      output = await executeCustomScript({
+        slug: selectedScript.slug,
+        source: draftSource,
+        context: {
+          eventId: eventId || null,
+        },
+      });
+    }
 
     setRunState({
       running: false,

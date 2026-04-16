@@ -12,20 +12,22 @@ const serviceRoleKey = globalThis.process?.env?.SUPABASE_SERVICE_ROLE_KEY;
 const CRON_SECRET = globalThis.process?.env?.CRON_SECRET || "";
 const ALLOWED_ROLE_SLUGS = new Set(["admin", "tournament_director"]);
 
-if (!supabaseUrl) {
-  throw new Error("Missing SUPABASE_URL.");
-}
+function createAdminSupabaseClient() {
+  if (!supabaseUrl) {
+    throw new Error("Missing SUPABASE_URL.");
+  }
 
-if (!serviceRoleKey) {
-  throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY.");
-}
+  if (!serviceRoleKey) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY.");
+  }
 
-const supabase = createClient(supabaseUrl, serviceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
 
 function normalizeRoleSlug(value) {
   return String(value || "")
@@ -64,7 +66,7 @@ async function readJsonBody(request) {
   return JSON.parse(rawBody);
 }
 
-async function fetchUserRoles(userId) {
+async function fetchUserRoles(supabase, userId) {
   const [globalResult, eventResult] = await Promise.all([
     supabase
       .from("user_roles")
@@ -96,7 +98,7 @@ async function fetchUserRoles(userId) {
   return roleSlugs;
 }
 
-async function requireAuthorizedUser(request) {
+async function requireAuthorizedUser(supabase, request) {
   const accessToken = getBearerToken(request);
   if (!accessToken) {
     throw Object.assign(new Error("Missing bearer token."), { statusCode: 401 });
@@ -111,7 +113,7 @@ async function requireAuthorizedUser(request) {
     throw Object.assign(new Error(error?.message || "Invalid bearer token."), { statusCode: 401 });
   }
 
-  const roleSlugs = await fetchUserRoles(user.id);
+  const roleSlugs = await fetchUserRoles(supabase, user.id);
   const isAllowed = Array.from(roleSlugs).some((slug) => ALLOWED_ROLE_SLUGS.has(slug));
   if (!isAllowed) {
     throw Object.assign(new Error("You do not have permission to run this automation."), {
@@ -129,10 +131,39 @@ function sendJson(response, statusCode, payload) {
   response.send(JSON.stringify(payload));
 }
 
+function buildManualSlotKey() {
+  return `manual-${new Date().toISOString()}`;
+}
+
+function formatErrorForResponse(error) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack || "",
+    };
+  }
+
+  return {
+    message: String(error),
+    stack: "",
+  };
+}
+
 export default async function handler(request, response) {
+  const startedAt = new Date().toISOString();
+  const logs = [];
+  const log = (message) => {
+    logs.push(`[${new Date().toISOString()}] ${message}`);
+  };
+
   try {
+    log(`Incoming ${request.method || "UNKNOWN"} request.`);
+    log("Creating admin Supabase client.");
+    const supabase = createAdminSupabaseClient();
+
     if (request.method === "GET") {
       if (isCronRequest(request)) {
+        log("Recognized cron request. Starting roster sync.");
         const output = await runStbRl26RosterSync({
           supabase,
           context: {
@@ -141,21 +172,33 @@ export default async function handler(request, response) {
             scheduleSlot: getRosterScriptScheduleSnapshot(),
           },
         });
-        return sendJson(response, output.ok ? 200 : 500, output);
+        return sendJson(response, output.ok ? 200 : 500, {
+          ...output,
+          logs: [...logs, ...(Array.isArray(output.logs) ? output.logs : [])],
+        });
       }
 
-      await requireAuthorizedUser(request);
+      log("Authorizing GET status request.");
+      await requireAuthorizedUser(supabase, request);
+      log("Loading roster sync status.");
       const status = await getStbRl26RosterSyncStatus({ supabase });
       return sendJson(response, 200, {
         ok: true,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        logs,
         status,
       });
     }
 
     if (request.method === "POST") {
-      await requireAuthorizedUser(request);
+      log("Authorizing POST roster sync request.");
+      await requireAuthorizedUser(supabase, request);
+      log("Reading POST body.");
       const body = await readJsonBody(request);
       const forceFullSync = Boolean(body?.forceFullSync);
+      log(`Starting ${forceFullSync ? "full" : "incremental"} roster sync.`);
+      const manualSlotKey = buildManualSlotKey();
       const output = await runStbRl26RosterSync({
         supabase,
         context: {
@@ -163,23 +206,37 @@ export default async function handler(request, response) {
           trigger: forceFullSync ? "manual-full-sync" : "manual",
           forceFullSync,
           scheduleSlot: getRosterScriptScheduleSnapshot(),
+          slotKey: manualSlotKey,
         },
       });
-      return sendJson(response, output.ok ? 200 : 500, output);
+      return sendJson(response, output.ok ? 200 : 500, {
+        ...output,
+        logs: [...logs, ...(Array.isArray(output.logs) ? output.logs : [])],
+      });
     }
 
+    log(`Rejected unsupported method: ${request.method}.`);
     return sendJson(response, 405, {
       ok: false,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      logs,
       error: {
         message: "Method not allowed.",
+        stack: "",
       },
     });
   } catch (error) {
     const statusCode = Number(error?.statusCode) || 500;
+    const formattedError = formatErrorForResponse(error);
+    log(`Request failed with status ${statusCode}: ${formattedError.message}`);
     return sendJson(response, statusCode, {
       ok: false,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      logs,
       error: {
-        message: error instanceof Error ? error.message : String(error),
+        ...formattedError,
       },
     });
   }
