@@ -26,14 +26,35 @@ function coerceNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+function getSpiritCategoryValues(row) {
+  if (!row) return null;
+
+  return {
+    rulesKnowledge: row.rules_knowledge ?? "",
+    foulsContact: row.fouls_contact ?? "",
+    positiveAttitude: row.positive_attitude ?? "",
+    communication: row.communication ?? "",
+    selfControl: row.self_control ?? "",
+  };
+}
+
 function buildSpiritLookup(rows) {
   const grouped = new Map();
+  const latestRows = new Map();
 
   (rows || []).forEach((row) => {
     const matchId = typeof row?.match_id === "string" ? row.match_id : "";
     const ratedTeamId = typeof row?.rated_team_id === "string" ? row.rated_team_id : "";
     if (!matchId) return;
     if (!ratedTeamId) return;
+
+    const latestKey = `${matchId}:${ratedTeamId}`;
+    const previous = latestRows.get(latestKey);
+    const previousTime = previous?.submitted_at ? new Date(previous.submitted_at).getTime() : 0;
+    const rowTime = row?.submitted_at ? new Date(row.submitted_at).getTime() : 0;
+    if (!previous || rowTime >= previousTime) {
+      latestRows.set(latestKey, row);
+    }
 
     const total =
       coerceNumber(row?.rules_knowledge) +
@@ -50,7 +71,7 @@ function buildSpiritLookup(rows) {
     grouped.set(matchId, matchBucket);
   });
 
-  return grouped;
+  return { grouped, latestRows };
 }
 
 export async function getTournamentOverview(eventId, options = {}) {
@@ -92,7 +113,7 @@ export async function getTournamentOverview(eventId, options = {}) {
         const { data, error } = await supabase
           .from("spirit_scores")
           .select(
-            "match_id, rated_team_id, rules_knowledge, fouls_contact, positive_attitude, communication, self_control",
+            "match_id, rated_team_id, rules_knowledge, fouls_contact, positive_attitude, communication, self_control, submitted_at",
           )
           .in("match_id", matchIds);
 
@@ -103,7 +124,7 @@ export async function getTournamentOverview(eventId, options = {}) {
         spiritRows = Array.isArray(data) ? data : [];
       }
 
-      const spiritLookup = buildSpiritLookup(spiritRows);
+      const { grouped: spiritLookup, latestRows: latestSpiritRows } = buildSpiritLookup(spiritRows);
       const liveStatuses = new Set(["live", "halftime", "in_progress", "in progress", "initialized"]);
       const completedStatuses = new Set(["finished", "completed", "final"]);
       const uniqueTeams = new Set();
@@ -123,6 +144,10 @@ export async function getTournamentOverview(eventId, options = {}) {
           teamBBucket && teamBBucket.count > 0
             ? Number((teamBBucket.total / teamBBucket.count).toFixed(1))
             : null;
+        const latestSpiritA =
+          match?.team_a?.id ? latestSpiritRows.get(`${match.id}:${match.team_a.id}`) || null : null;
+        const latestSpiritB =
+          match?.team_b?.id ? latestSpiritRows.get(`${match.id}:${match.team_b.id}`) || null : null;
 
         return {
           ...match,
@@ -131,6 +156,8 @@ export async function getTournamentOverview(eventId, options = {}) {
           displayVenue: match?.venue?.name || "Unassigned",
           spiritScoreA,
           spiritScoreB,
+          spiritCategoriesA: getSpiritCategoryValues(latestSpiritA),
+          spiritCategoriesB: getSpiritCategoryValues(latestSpiritB),
           spiritSubmissionCountA: teamABucket?.count || 0,
           spiritSubmissionCountB: teamBBucket?.count || 0,
         };

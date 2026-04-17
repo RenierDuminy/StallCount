@@ -1,14 +1,76 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import usePersistentState from "../../hooks/usePersistentState";
 import { Card, Panel, SectionHeader, Chip } from "../../components/ui/primitives";
 import { getEventHierarchy } from "../../services/leagueService";
 import { getTournamentOverview, invalidateTournamentOverview } from "../../services/tournamentDirectorService";
+import { updateMatch } from "../../services/matchService";
+import { saveTournamentDirectorSpiritScores } from "../../services/spiritScoreService";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-2 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
 const TOURNAMENT_DIRECTOR_EVENT_KEY = "stallcount:tournament-director:selected-event:v1";
+const MATCH_STATUS_OPTIONS = [
+  "scheduled",
+  "ready",
+  "pending",
+  "initialized",
+  "live",
+  "halftime",
+  "finished",
+  "completed",
+  "canceled",
+];
+const SPIRIT_CATEGORIES = [
+  { key: "rulesKnowledge", label: "Rules knowledge" },
+  { key: "foulsContact", label: "Fouls and contact" },
+  { key: "positiveAttitude", label: "Positive attitude" },
+  { key: "communication", label: "Communication" },
+  { key: "selfControl", label: "Self-control" },
+];
+
+const EMPTY_SPIRIT_SCORES = {
+  teamA: {
+    rulesKnowledge: "",
+    foulsContact: "",
+    positiveAttitude: "",
+    communication: "",
+    selfControl: "",
+  },
+  teamB: {
+    rulesKnowledge: "",
+    foulsContact: "",
+    positiveAttitude: "",
+    communication: "",
+    selfControl: "",
+  },
+};
+
+const EMPTY_MATCH_EDIT_FORM = {
+  date: "",
+  time: "",
+  venueId: "",
+  status: "scheduled",
+  teamAId: "",
+  teamBId: "",
+  spiritScores: EMPTY_SPIRIT_SCORES,
+  captainsConfirmed: false,
+};
+
+function createEmptySpiritScores() {
+  return {
+    teamA: { ...EMPTY_SPIRIT_SCORES.teamA },
+    teamB: { ...EMPTY_SPIRIT_SCORES.teamB },
+  };
+}
+
+function createEmptyMatchEditForm() {
+  return {
+    ...EMPTY_MATCH_EDIT_FORM,
+    spiritScores: createEmptySpiritScores(),
+  };
+}
 
 function formatDateParts(timestamp) {
   if (!timestamp) {
@@ -51,6 +113,133 @@ function formatRatio(value, total) {
   return `${value} / ${total}`;
 }
 
+function getLocalDateTimeParts(timestamp) {
+  if (!timestamp) {
+    return { date: "", time: "" };
+  }
+
+  const value = new Date(timestamp);
+  if (Number.isNaN(value.getTime())) {
+    return { date: "", time: "" };
+  }
+
+  const pad = (part) => String(part).padStart(2, "0");
+  return {
+    date: `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`,
+    time: `${pad(value.getHours())}:${pad(value.getMinutes())}`,
+  };
+}
+
+function buildStartTime(date, time) {
+  if (!date && !time) {
+    return null;
+  }
+
+  if (!date) {
+    throw new Error("Select a date before saving a match time.");
+  }
+
+  const value = new Date(`${date}T${time || "00:00"}`);
+  if (Number.isNaN(value.getTime())) {
+    throw new Error("Enter a valid date and time.");
+  }
+
+  return value.toISOString();
+}
+
+function buildSpiritScores(teamAScores, teamBScores) {
+  const resolveScores = (scores) =>
+    SPIRIT_CATEGORIES.reduce(
+      (acc, category) => ({
+        ...acc,
+        [category.key]: scores?.[category.key] === null || scores?.[category.key] === undefined
+          ? ""
+          : String(scores[category.key]),
+      }),
+      {},
+    );
+
+  return {
+    teamA: resolveScores(teamAScores),
+    teamB: resolveScores(teamBScores),
+  };
+}
+
+function normalizeEditForm(form) {
+  if (!form || typeof form !== "object") {
+    return createEmptyMatchEditForm();
+  }
+
+  return {
+    ...createEmptyMatchEditForm(),
+    ...form,
+    spiritScores: buildSpiritScores(form.spiritScores?.teamA, form.spiritScores?.teamB),
+  };
+}
+
+function buildEditForm(match) {
+  const { date, time } = getLocalDateTimeParts(match?.start_time);
+  return {
+    date,
+    time,
+    venueId: match?.venue?.id || "",
+    status: match?.status || "scheduled",
+    teamAId: match?.team_a?.id || "",
+    teamBId: match?.team_b?.id || "",
+    spiritScores: buildSpiritScores(match?.spiritCategoriesA, match?.spiritCategoriesB),
+    captainsConfirmed: Boolean(match?.captains_confirmed),
+  };
+}
+
+function normalizeSpiritCategoryScores(scores, teamLabel) {
+  const hasAnyScore = SPIRIT_CATEGORIES.some((category) => {
+    const value = scores?.[category.key];
+    return value !== "" && value !== null && value !== undefined;
+  });
+
+  if (!hasAnyScore) {
+    return null;
+  }
+
+  return SPIRIT_CATEGORIES.reduce((acc, category) => {
+    const value = scores?.[category.key];
+    if (value === "" || value === null || value === undefined) {
+      return { ...acc, [category.key]: null };
+    }
+
+    const score = Number(value);
+    if (!Number.isFinite(score) || score < 0 || score > 5) {
+      throw new Error(`${teamLabel} ${category.label.toLowerCase()} must be a number from 0 to 5.`);
+    }
+
+    return { ...acc, [category.key]: Math.round(score) };
+  }, {});
+}
+
+function getSpiritScoreTotal(scores) {
+  if (!scores) {
+    return "";
+  }
+
+  return SPIRIT_CATEGORIES.reduce((total, category) => {
+    const value = scores[category.key];
+    const numericValue = value === "" || value === null || value === undefined ? 0 : Number(value);
+    return total + (Number.isFinite(numericValue) ? numericValue : 0);
+  }, 0);
+}
+
+function hasSpiritScoreValues(scores) {
+  return SPIRIT_CATEGORIES.some((category) => {
+    const value = scores?.[category.key];
+    return value !== "" && value !== null && value !== undefined;
+  });
+}
+
+function getTeamOptionName(teamOptions, teamId, fallback) {
+  const team = teamOptions.find((option) => option.id === teamId);
+  return team?.short_name || team?.name || fallback;
+}
+
 function getStatusBadgeClass(status) {
   const normalized = typeof status === "string" ? status.trim().toLowerCase() : "";
 
@@ -72,7 +261,7 @@ function getStatusBadgeClass(status) {
 
 function SummaryMetric({ label, value, detail }) {
   return (
-    <Panel variant="light" className="p-4 shadow-sm shadow-[rgba(8,25,21,0.04)]">
+    <Panel variant="light" className="min-w-0 px-2 py-4 shadow-sm shadow-[rgba(8,25,21,0.04)]">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">{label}</p>
       <p className="mt-2 text-2xl font-bold text-[var(--sc-surface-light-ink)]">{value}</p>
       {detail ? <p className="mt-1 text-xs text-[var(--sc-surface-light-ink)]/70">{detail}</p> : null}
@@ -88,6 +277,10 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
   const [overview, setOverview] = useState({ matches: [], summary: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [editingMatch, setEditingMatch] = useState(null);
+  const [editForm, setEditForm] = useState(() => createEmptyMatchEditForm());
+  const [editError, setEditError] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   const accessibleEvents = useMemo(() => {
     if (!Array.isArray(eventsList) || eventsList.length === 0) {
@@ -129,13 +322,13 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
     }
   }, [accessibleEvents, selectedEventId, setSelectedEventId]);
 
-  useEffect(() => {
-    let active = true;
-
-    const load = async () => {
+  const loadOverview = useCallback(
+    async ({ forceRefresh = false, isActive = () => true } = {}) => {
       if (!selectedEventId) {
-        setOverview({ matches: [], summary: null });
-        setEventSummary(null);
+        if (isActive()) {
+          setOverview({ matches: [], summary: null });
+          setEventSummary(null);
+        }
         return;
       }
 
@@ -145,28 +338,32 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
       try {
         const [hierarchy, overviewData] = await Promise.all([
           getEventHierarchy(selectedEventId),
-          getTournamentOverview(selectedEventId),
+          getTournamentOverview(selectedEventId, forceRefresh ? { forceRefresh: true } : undefined),
         ]);
 
-        if (!active) return;
+        if (!isActive()) return;
         setEventSummary(hierarchy);
         setOverview(overviewData);
       } catch (err) {
-        if (!active) return;
+        if (!isActive()) return;
         setError(err instanceof Error ? err.message : "Unable to load tournament overview.");
         setEventSummary(null);
         setOverview({ matches: [], summary: null });
       } finally {
-        if (active) setLoading(false);
+        if (isActive()) setLoading(false);
       }
-    };
+    },
+    [selectedEventId],
+  );
 
-    load();
+  useEffect(() => {
+    let active = true;
+    loadOverview({ isActive: () => active });
 
     return () => {
       active = false;
     };
-  }, [selectedEventId]);
+  }, [loadOverview]);
 
   const selectedEvent = useMemo(
     () => accessibleEvents.find((event) => event.id === selectedEventId) || null,
@@ -178,6 +375,132 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
   const divisionCount = eventSummary?.divisions?.length || 0;
   const venueCount = eventSummary?.venues?.length || 0;
   const dateRangeLabel = formatDateRange(selectedEvent?.start_date, selectedEvent?.end_date);
+  const teamOptions = useMemo(() => {
+    const lookup = new Map();
+    const addTeam = (team) => {
+      if (!team?.id) return;
+      lookup.set(team.id, {
+        id: team.id,
+        name: team.name || team.short_name || "Unnamed team",
+        short_name: team.short_name || null,
+      });
+    };
+
+    (eventSummary?.divisions || []).forEach((division) => {
+      (division.pools || []).forEach((pool) => {
+        (pool.teams || []).forEach((entry) => addTeam(entry.team));
+      });
+    });
+    (overview.matches || []).forEach((match) => {
+      addTeam(match.team_a);
+      addTeam(match.team_b);
+    });
+
+    return Array.from(lookup.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [eventSummary, overview.matches]);
+  const venueOptions = useMemo(() => {
+    const lookup = new Map();
+    (eventSummary?.venues || []).forEach((venue) => {
+      if (venue?.id) lookup.set(venue.id, venue);
+    });
+    (overview.matches || []).forEach((match) => {
+      if (match?.venue?.id && !lookup.has(match.venue.id)) {
+        lookup.set(match.venue.id, { id: match.venue.id, name: match.venue.name || "Venue" });
+      }
+    });
+    return Array.from(lookup.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }, [eventSummary, overview.matches]);
+  const normalizedEditForm = useMemo(() => normalizeEditForm(editForm), [editForm]);
+  const statusOptions = useMemo(() => {
+    if (!normalizedEditForm.status || MATCH_STATUS_OPTIONS.includes(normalizedEditForm.status)) {
+      return MATCH_STATUS_OPTIONS;
+    }
+
+    return [normalizedEditForm.status, ...MATCH_STATUS_OPTIONS];
+  }, [normalizedEditForm.status]);
+
+  const openMatchEditor = (match) => {
+    setEditingMatch(match);
+    setEditForm(buildEditForm(match));
+    setEditError("");
+  };
+
+  const closeMatchEditor = () => {
+    if (editSaving) return;
+    setEditingMatch(null);
+    setEditForm(createEmptyMatchEditForm());
+    setEditError("");
+  };
+
+  const handleEditField = (field, value) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSpiritField = (teamKey, categoryKey, value) => {
+    setEditForm((prev) => ({
+      ...normalizeEditForm(prev),
+      spiritScores: {
+        ...normalizeEditForm(prev).spiritScores,
+        [teamKey]: {
+          ...normalizeEditForm(prev).spiritScores[teamKey],
+          [categoryKey]: value,
+        },
+      },
+    }));
+  };
+
+  const handleSaveMatchEdit = async (event) => {
+    event.preventDefault();
+    if (!editingMatch?.id) return;
+
+    setEditSaving(true);
+    setEditError("");
+
+    try {
+      const form = normalizeEditForm(editForm);
+
+      if (form.teamAId && form.teamBId && form.teamAId === form.teamBId) {
+        throw new Error("Team A and Team B must be different teams.");
+      }
+
+      const startTime = buildStartTime(form.date, form.time);
+      const spiritScoresA = normalizeSpiritCategoryScores(form.spiritScores.teamA, "Team A");
+      const spiritScoresB = normalizeSpiritCategoryScores(form.spiritScores.teamB, "Team B");
+      const confirmedAt = form.captainsConfirmed
+        ? editingMatch.confirmed_at || new Date().toISOString()
+        : null;
+
+      await updateMatch(editingMatch.id, {
+        startTime,
+        venueId: form.venueId,
+        status: form.status,
+        teamAId: form.teamAId,
+        teamBId: form.teamBId,
+        captainsConfirmed: form.captainsConfirmed,
+        confirmedAt,
+      });
+
+      const spiritEntries = [];
+      if (spiritScoresA && form.teamAId) {
+        spiritEntries.push({ ratedTeamId: form.teamAId, scores: spiritScoresA });
+      }
+      if (spiritScoresB && form.teamBId) {
+        spiritEntries.push({ ratedTeamId: form.teamBId, scores: spiritScoresB });
+      }
+      if (spiritEntries.length) {
+        await saveTournamentDirectorSpiritScores(editingMatch.id, spiritEntries);
+      }
+
+      invalidateTournamentOverview(selectedEventId);
+      await loadOverview({ forceRefresh: true });
+      setEditingMatch(null);
+      setEditForm(createEmptyMatchEditForm());
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Unable to update match.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -192,21 +515,8 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
               type="button"
               onClick={async () => {
                 if (!selectedEventId) return;
-                setLoading(true);
-                setError("");
                 invalidateTournamentOverview(selectedEventId);
-                try {
-                  const [hierarchy, overviewData] = await Promise.all([
-                    getEventHierarchy(selectedEventId),
-                    getTournamentOverview(selectedEventId, { forceRefresh: true }),
-                  ]);
-                  setEventSummary(hierarchy);
-                  setOverview(overviewData);
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : "Unable to refresh tournament overview.");
-                } finally {
-                  setLoading(false);
-                }
+                await loadOverview({ forceRefresh: true });
               }}
               className="sc-button"
             >
@@ -266,7 +576,7 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
         ) : null}
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-2">
         <SummaryMetric label="Matches" value={totalMatches} detail="All rows in schedule order" />
         <SummaryMetric
           label="Completed"
@@ -327,9 +637,10 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
                     "Team B",
                     "Spirit",
                     "Captain",
+                    "",
                   ].map((column) => (
                     <th
-                      key={column}
+                      key={column || "actions"}
                       className="whitespace-nowrap px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/55"
                     >
                       {column}
@@ -406,6 +717,33 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
                           {match.captains_confirmed ? "Yes" : "No"}
                         </span>
                       </td>
+                      <td className="whitespace-nowrap px-2 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openMatchEditor(match);
+                          }}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] shadow-sm transition hover:bg-[#edf7f0] focus:outline-none focus:ring-2 focus:ring-[#0a3d29]/40"
+                          aria-label={`Edit match ${match.displayTeamA} vs ${match.displayTeamB}`}
+                          title="Edit match"
+                        >
+                          <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4" fill="none">
+                            <path
+                              d="M4 14.5V16h1.5l8.85-8.85-1.5-1.5L4 14.5Z"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinejoin="round"
+                            />
+                            <path
+                              d="m12.4 4.6 1-1a1.4 1.4 0 0 1 2 2l-1 1"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -415,6 +753,201 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
           )}
         </div>
       </Card>
+
+      {editingMatch ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="td-edit-match-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeMatchEditor();
+            }
+          }}
+        >
+          <Card
+            as="form"
+            variant="light"
+            className="max-h-[92vh] w-full max-w-3xl overflow-auto p-6 shadow-2xl shadow-black/20"
+            onSubmit={handleSaveMatchEdit}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--sc-surface-light-border)] pb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Edit match</p>
+                <h3 id="td-edit-match-title" className="text-xl font-bold text-[var(--sc-surface-light-ink)]">
+                  {editingMatch.displayTeamA} vs {editingMatch.displayTeamB}
+                </h3>
+                <p className="mt-1 break-all text-xs text-[var(--sc-surface-light-ink)]/65">
+                  Match ID: {editingMatch.id}
+                </p>
+              </div>
+              <button type="button" onClick={closeMatchEditor} className="sc-button" disabled={editSaving}>
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Date</span>
+                <input
+                  type="date"
+                  value={normalizedEditForm.date}
+                  onChange={(event) => handleEditField("date", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full`}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Time</span>
+                <input
+                  type="time"
+                  value={normalizedEditForm.time}
+                  onChange={(event) => handleEditField("time", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full`}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Venue</span>
+                <select
+                  value={normalizedEditForm.venueId}
+                  onChange={(event) => handleEditField("venueId", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                >
+                  <option value="">Unassigned</option>
+                  {venueOptions.map((venue) => (
+                    <option key={venue.id} value={venue.id}>
+                      {venue.name || "Unnamed venue"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Status</span>
+                <select
+                  value={normalizedEditForm.status}
+                  onChange={(event) => handleEditField("status", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                >
+                  {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Team A</span>
+                <select
+                  value={normalizedEditForm.teamAId}
+                  onChange={(event) => handleEditField("teamAId", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                >
+                  <option value="">Unassigned</option>
+                  {teamOptions.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.short_name ? `${team.short_name} - ${team.name}` : team.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Team B</span>
+                <select
+                  value={normalizedEditForm.teamBId}
+                  onChange={(event) => handleEditField("teamBId", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                >
+                  <option value="">Unassigned</option>
+                  {teamOptions.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.short_name ? `${team.short_name} - ${team.name}` : team.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-5 overflow-hidden rounded-lg border border-[var(--sc-surface-light-border)] bg-white">
+              <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm">
+                <thead className="bg-[#eef7f1]">
+                  <tr>
+                    <th className="px-1 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/60">
+                      Category
+                    </th>
+                    <th className="px-1 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/60">
+                      {getTeamOptionName(teamOptions, normalizedEditForm.teamAId, "Team A")}
+                    </th>
+                    <th className="px-1 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/60">
+                      {getTeamOptionName(teamOptions, normalizedEditForm.teamBId, "Team B")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
+                  {SPIRIT_CATEGORIES.map((category) => (
+                    <tr key={category.key}>
+                      <td className="px-1 py-2 font-semibold text-[var(--sc-surface-light-ink)]">
+                        {category.label}
+                      </td>
+                      {["teamA", "teamB"].map((teamKey) => (
+                        <td key={`${category.key}-${teamKey}`} className="px-1 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="5"
+                            step="1"
+                            value={normalizedEditForm.spiritScores[teamKey][category.key]}
+                            onChange={(event) => handleSpiritField(teamKey, category.key, event.target.value)}
+                            className={`${LIGHT_INPUT_CLASS} w-16 px-2`}
+                            placeholder="0-5"
+                            aria-label={`${category.label} ${teamKey === "teamA" ? "Team A" : "Team B"}`}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr className="bg-[#f8fcf9]">
+                    <td className="px-1 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
+                      Total
+                    </td>
+                    <td className="px-1 py-2 font-bold tabular-nums text-[var(--sc-surface-light-ink)]">
+                      {hasSpiritScoreValues(normalizedEditForm.spiritScores.teamA) ? getSpiritScoreTotal(normalizedEditForm.spiritScores.teamA) : "-"}
+                    </td>
+                    <td className="px-1 py-2 font-bold tabular-nums text-[var(--sc-surface-light-ink)]">
+                      {hasSpiritScoreValues(normalizedEditForm.spiritScores.teamB) ? getSpiritScoreTotal(normalizedEditForm.spiritScores.teamB) : "-"}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <label className="mt-4 flex items-center gap-3 rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-2 text-sm font-semibold text-[var(--sc-surface-light-ink)]">
+              <input
+                type="checkbox"
+                checked={normalizedEditForm.captainsConfirmed}
+                onChange={(event) => handleEditField("captainsConfirmed", event.target.checked)}
+                className="h-4 w-4"
+                style={{ accentColor: "#0a3d29" }}
+              />
+              Captain confirmed
+            </label>
+
+            {editError ? (
+              <Panel variant="light" className="mt-4 border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                {editError}
+              </Panel>
+            ) : null}
+
+            <div className="mt-5 flex flex-wrap justify-end gap-3 border-t border-[var(--sc-surface-light-border)] pt-4">
+              <button type="button" onClick={closeMatchEditor} className="sc-button" disabled={editSaving}>
+                Cancel
+              </button>
+              <button type="submit" className="sc-button bg-[#0a3d29] text-white" disabled={editSaving}>
+                {editSaving ? "Saving..." : "Save match"}
+              </button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
     </div>
   );
 }

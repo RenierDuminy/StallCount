@@ -12,6 +12,7 @@ const MATCH_FIELDS = `
   pool_id,
   start_time,
   confirmed_at,
+  captains_confirmed,
   status,
   score_a,
   score_b,
@@ -206,6 +207,10 @@ export async function updateMatch(matchId, payload = {}) {
   if ("poolId" in payload) updatePayload.pool_id = payload.poolId || null;
   if ("venueId" in payload) updatePayload.venue_id = payload.venueId || null;
   if ("startTime" in payload) updatePayload.start_time = payload.startTime || null;
+  if ("teamAId" in payload) updatePayload.team_a = payload.teamAId || null;
+  if ("teamBId" in payload) updatePayload.team_b = payload.teamBId || null;
+  if ("captainsConfirmed" in payload) updatePayload.captains_confirmed = Boolean(payload.captainsConfirmed);
+  if ("confirmedAt" in payload) updatePayload.confirmed_at = payload.confirmedAt || null;
   if ("status" in payload) {
     updatePayload.status =
       typeof payload.status === "string" && payload.status.trim()

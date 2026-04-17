@@ -12,10 +12,29 @@ import { getEventsList } from "../services/leagueService";
 import { listSchemaTables, listTableColumns, pickRecencyColumn } from "../services/schemaService";
 import { invalidateTournamentOverview } from "../services/tournamentDirectorService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
+import usePersistentState from "../hooks/usePersistentState";
 import TournamentOverviewPanel from "./tournamentDirector/TournamentOverviewPanel";
 import LinkedUsersPanel from "./tournamentDirector/LinkedUsersPanel";
 
 const LIMIT_OPTIONS = [20, 50, 100, 200];
+const WORKSPACE_OPTIONS = new Set(["overview", "data", "users"]);
+const DEFAULT_MATCH_FORM = {
+  eventId: "",
+  teamAId: "",
+  teamBId: "",
+  venueId: "",
+  startTime: "",
+  status: "scheduled",
+};
+const TD_WORKSPACE_KEY = "stallcount:tournament-director:workspace:v1";
+const TD_TABLE_SEARCH_KEY = "stallcount:tournament-director:table-search:v1";
+const TD_SELECTED_TABLE_KEY = "stallcount:tournament-director:selected-table:v1";
+const TD_ORDER_BY_KEY = "stallcount:tournament-director:order-by:v1";
+const TD_LIMIT_KEY = "stallcount:tournament-director:limit:v1";
+const TD_FILTER_COLUMN_KEY = "stallcount:tournament-director:filter-column:v1";
+const TD_FILTER_VALUE_KEY = "stallcount:tournament-director:filter-value:v1";
+const TD_PRIMARY_KEY_KEY = "stallcount:tournament-director:primary-key:v1";
+const TD_MATCH_FORM_KEY = "stallcount:tournament-director:match-form:v1";
 const VIEW_ONLY_TABLES = [
   "public.audit_log",
   "public.match_events",
@@ -67,22 +86,36 @@ function parseJsonPayload(raw, onError) {
   }
 }
 
+function normalizeMatchForm(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return DEFAULT_MATCH_FORM;
+  }
+
+  return Object.keys(DEFAULT_MATCH_FORM).reduce(
+    (acc, key) => ({
+      ...acc,
+      [key]: typeof value[key] === "string" ? value[key] : DEFAULT_MATCH_FORM[key],
+    }),
+    {},
+  );
+}
+
 export default function TournamentDirectorPage() {
   const { roles, rolesLoading } = useAuth();
   const tables = useMemo(
     () => listSchemaTables().filter((table) => ALLOWED_TABLE_SET.has(table)),
     []
   );
-  const [tableSearch, setTableSearch] = useState("");
-  const [selectedTable, setSelectedTable] = useState(() => tables[0] || "");
-  const [orderBy, setOrderBy] = useState(() => pickRecencyColumn(tables[0] || "") || null);
-  const [limit, setLimit] = useState(50);
-  const [filterColumn, setFilterColumn] = useState(() => {
+  const [tableSearch, setTableSearch] = usePersistentState(TD_TABLE_SEARCH_KEY, "");
+  const [selectedTable, setSelectedTable] = usePersistentState(TD_SELECTED_TABLE_KEY, () => tables[0] || "");
+  const [orderBy, setOrderBy] = usePersistentState(TD_ORDER_BY_KEY, () => pickRecencyColumn(tables[0] || "") || null);
+  const [limit, setLimit] = usePersistentState(TD_LIMIT_KEY, 50);
+  const [filterColumn, setFilterColumn] = usePersistentState(TD_FILTER_COLUMN_KEY, () => {
     const firstTable = tables[0] || "";
     const cols = firstTable ? listTableColumns(firstTable) : [];
     return cols[0] || "";
   });
-  const [filterValue, setFilterValue] = useState("");
+  const [filterValue, setFilterValue] = usePersistentState(TD_FILTER_VALUE_KEY, "");
   const [rows, setRows] = useState([]);
   const [rowsLoading, setRowsLoading] = useState(false);
   const [rowsError, setRowsError] = useState("");
@@ -91,19 +124,12 @@ export default function TournamentDirectorPage() {
   const [actionMessage, setActionMessage] = useState("");
   const [selectedRow, setSelectedRow] = useState(null);
   const [editPayload, setEditPayload] = useState("");
-  const [primaryKey, setPrimaryKey] = useState("id");
-  const [workspace, setWorkspace] = useState("overview");
+  const [primaryKey, setPrimaryKey] = usePersistentState(TD_PRIMARY_KEY_KEY, "id");
+  const [workspace, setWorkspace] = usePersistentState(TD_WORKSPACE_KEY, "overview");
   const [teams, setTeams] = useState([]);
   const [eventsList, setEventsList] = useState([]);
   const [venues, setVenues] = useState([]);
-  const [matchForm, setMatchForm] = useState({
-    eventId: "",
-    teamAId: "",
-    teamBId: "",
-    venueId: "",
-    startTime: "",
-    status: "scheduled",
-  });
+  const [matchForm, setMatchForm] = usePersistentState(TD_MATCH_FORM_KEY, DEFAULT_MATCH_FORM);
   const [matchMessage, setMatchMessage] = useState("");
   const [matchError, setMatchError] = useState("");
   const [matchSaving, setMatchSaving] = useState(false);
@@ -113,8 +139,9 @@ export default function TournamentDirectorPage() {
   const columns = useMemo(() => listTableColumns(selectedTable), [selectedTable]);
 
   const filteredTables = useMemo(() => {
-    if (!tableSearch.trim()) return tables;
-    const q = tableSearch.toLowerCase();
+    const search = typeof tableSearch === "string" ? tableSearch : "";
+    if (!search.trim()) return tables;
+    const q = search.toLowerCase();
     return tables.filter((t) => t.toLowerCase().includes(q));
   }, [tableSearch, tables]);
 
@@ -146,17 +173,42 @@ export default function TournamentDirectorPage() {
   }, [eventsList, roles, rolesLoading]);
 
   useEffect(() => {
+    if (!WORKSPACE_OPTIONS.has(workspace)) {
+      setWorkspace("overview");
+    }
+  }, [setWorkspace, workspace]);
+
+  useEffect(() => {
+    if (!LIMIT_OPTIONS.includes(Number(limit))) {
+      setLimit(50);
+    }
+  }, [limit, setLimit]);
+
+  useEffect(() => {
+    if (!selectedTable || !tables.includes(selectedTable)) {
+      setSelectedTable(tables[0] || "");
+    }
+  }, [selectedTable, setSelectedTable, tables]);
+
+  useEffect(() => {
+    const normalized = normalizeMatchForm(matchForm);
+    if (JSON.stringify(normalized) !== JSON.stringify(matchForm)) {
+      setMatchForm(normalized);
+    }
+  }, [matchForm, setMatchForm]);
+
+  useEffect(() => {
     const nextOrder = pickRecencyColumn(selectedTable);
-    setOrderBy(nextOrder || null);
     const cols = listTableColumns(selectedTable);
-    setFilterColumn(cols[0] || "");
-    setPrimaryKey(cols.includes("id") ? "id" : cols[0] || "id");
+    setOrderBy((prev) => (!prev || cols.includes(prev) ? prev || nextOrder || null : nextOrder || null));
+    setFilterColumn((prev) => (!prev || cols.includes(prev) ? prev || cols[0] || "" : cols[0] || ""));
+    setPrimaryKey((prev) => (prev && cols.includes(prev) ? prev : cols.includes("id") ? "id" : cols[0] || "id"));
     setDraftPayload(buildTemplate(selectedTable));
     setSelectedRow(null);
     setEditPayload("");
     setActionMessage("");
     setDraftError("");
-  }, [selectedTable]);
+  }, [selectedTable, setFilterColumn, setOrderBy, setPrimaryKey]);
 
   useEffect(() => {
     const loadReferenceData = async () => {
@@ -182,7 +234,7 @@ export default function TournamentDirectorPage() {
     setRowsError("");
     try {
       const data = await queryTableRows(selectedTable, {
-        limit,
+        limit: Number(limit) || 50,
         orderBy,
         filter:
           filterColumn && filterValue

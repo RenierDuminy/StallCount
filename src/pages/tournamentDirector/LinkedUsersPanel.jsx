@@ -232,12 +232,12 @@ export default function LinkedUsersPanel({ eventsList = [] }) {
         ) : null}
       </Card>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-2">
         {groupedUsers.map((group) => (
           <Panel
             key={group.key}
             variant="light"
-            className="flex items-center justify-between gap-3 border border-[var(--sc-surface-light-border)] bg-white px-4 py-3 shadow-sm shadow-[rgba(8,25,21,0.03)]"
+            className="flex min-w-0 items-center justify-between gap-2 border border-[var(--sc-surface-light-border)] bg-white px-2 py-3 shadow-sm shadow-[rgba(8,25,21,0.03)]"
           >
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-[var(--sc-surface-light-ink)]">{group.title}</p>
