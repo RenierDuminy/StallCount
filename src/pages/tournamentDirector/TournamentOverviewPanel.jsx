@@ -7,6 +7,7 @@ import { getEventHierarchy } from "../../services/leagueService";
 import { getTournamentOverview, invalidateTournamentOverview } from "../../services/tournamentDirectorService";
 import { updateMatch } from "../../services/matchService";
 import { saveTournamentDirectorSpiritScores } from "../../services/spiritScoreService";
+import { roleAssignmentsIncludeAdmin } from "../../utils/accessControl";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-2 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
@@ -269,6 +270,9 @@ function getStatusBadgeClass(status) {
   if (normalized === "finished") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
+  if (normalized === "canceled") {
+    return "border-rose-200 bg-rose-50 text-rose-700";
+  }
   if (normalized === "scheduled") {
     return "border-slate-300 bg-slate-100 text-slate-600";
   }
@@ -305,11 +309,10 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
     }
 
     if (!Array.isArray(roles)) {
-      return rolesLoading ? [] : eventsList;
+      return [];
     }
 
-    const hasGlobalAccess = roles.some((assignment) => assignment?.scope === "global");
-    if (hasGlobalAccess) {
+    if (roleAssignmentsIncludeAdmin(roles)) {
       return eventsList;
     }
 
@@ -324,7 +327,7 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
     }
 
     return eventsList.filter((event) => allowedEventIds.has(event.id));
-  }, [eventsList, roles, rolesLoading]);
+  }, [eventsList, roles]);
 
   useEffect(() => {
     if (!accessibleEvents.length) {

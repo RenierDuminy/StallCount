@@ -13,6 +13,7 @@ import { listSchemaTables, listTableColumns, pickRecencyColumn } from "../servic
 import { invalidateTournamentOverview } from "../services/tournamentDirectorService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
 import usePersistentState from "../hooks/usePersistentState";
+import { roleAssignmentsIncludeAdmin } from "../utils/accessControl";
 import TournamentOverviewPanel from "./tournamentDirector/TournamentOverviewPanel";
 import LinkedUsersPanel from "./tournamentDirector/LinkedUsersPanel";
 
@@ -151,11 +152,10 @@ export default function TournamentDirectorPage() {
     }
 
     if (!Array.isArray(roles)) {
-      return rolesLoading ? [] : eventsList;
+      return [];
     }
 
-    const hasGlobalAccess = roles.some((assignment) => assignment?.scope === "global");
-    if (hasGlobalAccess) {
+    if (roleAssignmentsIncludeAdmin(roles)) {
       return eventsList;
     }
 
@@ -170,7 +170,7 @@ export default function TournamentDirectorPage() {
     }
 
     return eventsList.filter((event) => allowedEventIds.has(event.id));
-  }, [eventsList, roles, rolesLoading]);
+  }, [eventsList, roles]);
 
   useEffect(() => {
     if (!WORKSPACE_OPTIONS.has(workspace)) {

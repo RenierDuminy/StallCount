@@ -242,6 +242,23 @@ export function userHasAnyRole(user, allowedRoles, roleAssignments) {
   return userRoles.some((role) => normalizedAllowed.has(role));
 }
 
+export function roleAssignmentsIncludeAdmin(roleAssignments) {
+  if (!Array.isArray(roleAssignments)) {
+    return false;
+  }
+
+  return roleAssignments.some((assignment) => {
+    const roleId = assignment?.roleId ?? assignment?.role?.id ?? null;
+    const roleNames = [
+      assignment?.roleName,
+      assignment?.role?.name,
+      roleId !== null && roleId !== undefined ? ROLE_NAME_BY_ID[roleId] : null,
+    ];
+    const slugs = new Set(roleNames.flatMap((value) => normaliseRoleList(value)));
+    return slugs.has("admin") || slugs.has("administrator") || slugs.has("sys_admin");
+  });
+}
+
 export function getUserPermissionKeys(user, roleAssignments, roleCatalog, directPermissions) {
   const collected = new Set();
 

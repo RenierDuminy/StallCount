@@ -4,7 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import usePersistentState from "../../hooks/usePersistentState";
 import { Card, Panel, SectionHeader, Chip } from "../../components/ui/primitives";
 import { getEventLinkedUsers } from "../../services/userService";
-import { normaliseRoleList } from "../../utils/accessControl";
+import { normaliseRoleList, roleAssignmentsIncludeAdmin } from "../../utils/accessControl";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-2 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
@@ -57,11 +57,10 @@ export default function LinkedUsersPanel({ eventsList = [] }) {
     }
 
     if (!Array.isArray(roles)) {
-      return rolesLoading ? [] : eventsList;
+      return [];
     }
 
-    const hasGlobalAccess = roles.some((assignment) => assignment?.scope === "global");
-    if (hasGlobalAccess) {
+    if (roleAssignmentsIncludeAdmin(roles)) {
       return eventsList;
     }
 
@@ -76,7 +75,7 @@ export default function LinkedUsersPanel({ eventsList = [] }) {
     }
 
     return eventsList.filter((event) => allowedEventIds.has(event.id));
-  }, [eventsList, roles, rolesLoading]);
+  }, [eventsList, roles]);
 
   useEffect(() => {
     if (!accessibleEvents.length) {
