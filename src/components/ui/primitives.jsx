@@ -31,16 +31,19 @@ const MATCH_CARD_PHASES = {
   scheduled: "scheduled",
   live: "live",
   finished: "finished",
+  canceled: "canceled",
 };
 
 const MATCH_CARD_PHASE_DEFAULT_LABELS = {
   [MATCH_CARD_PHASES.scheduled]: "Scheduled",
   [MATCH_CARD_PHASES.live]: "Live",
   [MATCH_CARD_PHASES.finished]: "Finished",
+  [MATCH_CARD_PHASES.canceled]: "Canceled",
 };
 
 const MATCH_CARD_LIVE_STATUSES = new Set(["live", "halftime", "in_progress", "in progress"]);
 const MATCH_CARD_FINISHED_STATUSES = new Set(["finished", "completed", "final"]);
+const MATCH_CARD_CANCELED_STATUSES = new Set(["canceled", "cancelled"]);
 
 const MATCH_CARD_PHASE_STYLES = {
   [MATCH_CARD_PHASES.scheduled]: {
@@ -55,10 +58,30 @@ const MATCH_CARD_PHASE_STYLES = {
     panelClass: "border-emerald-400/35",
     statusClass: "text-emerald-300",
   },
+  [MATCH_CARD_PHASES.canceled]: {
+    panelClass: "sc-match-card-canceled bg-red-500/5",
+    statusClass: "text-red-300",
+  },
 };
 
 function toSafeLabel(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getVenueLabel(venue, { nameOnly = false } = {}) {
+  if (!venue) return "";
+  if (typeof venue === "string") return venue.trim();
+  if (typeof venue !== "object") return "";
+
+  const city = toSafeLabel(venue.city);
+  const location = toSafeLabel(venue.location);
+  const name = toSafeLabel(venue.name);
+
+  if (nameOnly) return name;
+
+  const lead = [city, location].filter(Boolean).join(", ");
+  if (lead && name) return `${lead} - ${name}`;
+  return lead || name || "";
 }
 
 function resolveMatchCardPhase(phase, status) {
@@ -68,10 +91,14 @@ function resolveMatchCardPhase(phase, status) {
   if (normalizedPhase === MATCH_CARD_PHASES.finished || normalizedPhase === "completed") {
     return MATCH_CARD_PHASES.finished;
   }
+  if (normalizedPhase === MATCH_CARD_PHASES.canceled || normalizedPhase === "cancelled") {
+    return MATCH_CARD_PHASES.canceled;
+  }
 
   const normalizedStatus = toSafeLabel(status).toLowerCase();
   if (MATCH_CARD_LIVE_STATUSES.has(normalizedStatus)) return MATCH_CARD_PHASES.live;
   if (MATCH_CARD_FINISHED_STATUSES.has(normalizedStatus)) return MATCH_CARD_PHASES.finished;
+  if (MATCH_CARD_CANCELED_STATUSES.has(normalizedStatus)) return MATCH_CARD_PHASES.canceled;
   return MATCH_CARD_PHASES.scheduled;
 }
 
@@ -106,15 +133,6 @@ function getFinishedPhaseScoreParts(scoreLabel, title) {
     scoreA: compactScoreMatch[1].trim(),
     scoreB: compactScoreMatch[2].trim(),
   };
-}
-
-function shouldStackFinishedScore(parts) {
-  if (!parts) return false;
-  const totalLength = parts.teamA.length + parts.teamB.length;
-  const hasLongToken =
-    /[^\s]{18,}/.test(parts.teamA) ||
-    /[^\s]{18,}/.test(parts.teamB);
-  return totalLength > 44 || parts.teamA.length > 24 || parts.teamB.length > 24 || hasLongToken;
 }
 
 function getLongestTokenLength(value) {
@@ -176,45 +194,49 @@ export function MatchCard({
   scoreAlign = "left",
   trailing,
   trailingPosition = "footer",
+  hideScheduledStatus = false,
+  scheduledVenueNameOnly = false,
+  hideFinishedVenue = true,
   ...props
 }) {
-  const venueLabel = (() => {
-    if (!venue) return "";
-    if (typeof venue === "string") return venue.trim();
-    if (typeof venue !== "object") return "";
-    const city = toSafeLabel(venue.city);
-    const location = toSafeLabel(venue.location);
-    const name = toSafeLabel(venue.name);
-    const lead = [city, location].filter(Boolean).join(", ");
-    if (lead && name) return `${lead} - ${name}`;
-    return lead || name || "";
-  })();
   const scoreLabel =
     typeof score === "string" ? score.trim() : score === null || score === undefined ? "" : String(score);
   const statusLabel =
     typeof status === "string" ? status.trim() : status === null || status === undefined ? "" : String(status);
   const matchPhase = resolveMatchCardPhase(phase, statusLabel);
+  const isScheduledStatus =
+    matchPhase === MATCH_CARD_PHASES.scheduled &&
+    (!statusLabel || statusLabel.toLowerCase() === MATCH_CARD_PHASES.scheduled);
+  const usesResolvedLayout =
+    matchPhase === MATCH_CARD_PHASES.finished || matchPhase === MATCH_CARD_PHASES.canceled;
+  const venueLabel =
+    hideFinishedVenue && usesResolvedLayout
+      ? ""
+      : getVenueLabel(venue, {
+          nameOnly: scheduledVenueNameOnly && isScheduledStatus,
+        });
   const phaseStyle = MATCH_CARD_PHASE_STYLES[matchPhase] || MATCH_CARD_PHASE_STYLES[MATCH_CARD_PHASES.scheduled];
-  const displayStatus = statusLabel || MATCH_CARD_PHASE_DEFAULT_LABELS[matchPhase];
-  const displayScore =
-    matchPhase === MATCH_CARD_PHASES.finished ? formatFinishedPhaseScore(scoreLabel, title) : scoreLabel;
+  const displayStatus =
+    hideScheduledStatus && isScheduledStatus
+      ? ""
+      : statusLabel || MATCH_CARD_PHASE_DEFAULT_LABELS[matchPhase];
+  const displayScore = usesResolvedLayout ? formatFinishedPhaseScore(scoreLabel, title) : scoreLabel;
   const finishedScoreParts =
-    matchPhase === MATCH_CARD_PHASES.finished ? getFinishedPhaseScoreParts(scoreLabel, title) : null;
-  const stackFinishedScore = shouldStackFinishedScore(finishedScoreParts);
+    usesResolvedLayout ? getFinishedPhaseScoreParts(scoreLabel, title) : null;
   const finishedTeamANameClass = finishedScoreParts ? getFinishedTeamNameSizeClass(finishedScoreParts.teamA) : "";
   const finishedTeamBNameClass = finishedScoreParts ? getFinishedTeamNameSizeClass(finishedScoreParts.teamB) : "";
-  const showTitle = !(matchPhase === MATCH_CARD_PHASES.finished && isMatchupTitle(title));
+  const showTitle = !(usesResolvedLayout && displayScore && isMatchupTitle(title));
   const trailingInHeader = trailing && trailingPosition === "header";
   const trailingInFooter = trailing && !trailingInHeader;
   const footerJustify = trailingInFooter
     ? "justify-between"
-    : matchPhase === MATCH_CARD_PHASES.finished
+    : usesResolvedLayout
       ? "justify-center"
       : scoreAlign === "right"
         ? "justify-end"
         : "justify-start";
   const scoreAlignClass =
-    matchPhase === MATCH_CARD_PHASES.finished ? "text-center" : scoreAlign === "right" ? "text-right" : "text-left";
+    usesResolvedLayout ? "text-center" : scoreAlign === "right" ? "text-right" : "text-left";
 
   return (
     <Panel
@@ -244,56 +266,31 @@ export function MatchCard({
       {displayScore || displayStatus || trailingInFooter ? (
         <div className={cx("flex min-w-0 items-center gap-3", footerJustify)}>
           {displayScore || displayStatus ? (
-            <div className={cx("min-w-0", scoreAlignClass)}>
+            <div className={cx("min-w-0", usesResolvedLayout ? "w-full" : "", scoreAlignClass)}>
               {finishedScoreParts ? (
-                stackFinishedScore ? (
-                  <div className="mx-auto flex w-full max-w-full flex-col items-center gap-1 font-semibold leading-tight">
-                    <p className="grid w-full max-w-full grid-cols-[3rem_minmax(0,1fr)] items-start gap-x-2">
-                      <span className="text-center text-2xl tabular-nums text-accent">{finishedScoreParts.scoreA}</span>
-                      <span
-                        className={cx(
-                          "min-w-0 max-w-full overflow-hidden whitespace-normal break-normal text-center text-white leading-tight",
-                          finishedTeamANameClass,
-                        )}
-                      >
-                        {finishedScoreParts.teamA}
-                      </span>
-                    </p>
-                    <p className="grid w-full max-w-full grid-cols-[3rem_minmax(0,1fr)] items-start gap-x-2">
-                      <span className="text-center text-2xl tabular-nums text-accent">{finishedScoreParts.scoreB}</span>
-                      <span
-                        className={cx(
-                          "min-w-0 max-w-full overflow-hidden whitespace-normal break-normal text-center text-white leading-tight",
-                          finishedTeamBNameClass,
-                        )}
-                      >
-                        {finishedScoreParts.teamB}
-                      </span>
-                    </p>
-                  </div>
-                ) : (
-                  <p className="mx-auto grid w-full max-w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 font-semibold leading-tight">
+                <div className="sc-match-card-score-wrap">
+                  <p className="sc-match-card-score-line mx-auto">
                     <span
                       className={cx(
-                        "min-w-0 max-w-full overflow-hidden whitespace-normal break-normal text-center text-white leading-tight",
+                        "sc-match-card-team-name sc-match-card-team-a",
                         finishedTeamANameClass,
                       )}
                     >
                       {finishedScoreParts.teamA}
                     </span>
-                    <span className="whitespace-nowrap text-center text-2xl tabular-nums text-accent">
+                    <span className="sc-match-card-score-value whitespace-nowrap text-center text-2xl tabular-nums text-accent">
                       {finishedScoreParts.scoreA} - {finishedScoreParts.scoreB}
                     </span>
                     <span
                       className={cx(
-                        "min-w-0 max-w-full overflow-hidden whitespace-normal break-normal text-center text-white leading-tight",
+                        "sc-match-card-team-name sc-match-card-team-b",
                         finishedTeamBNameClass,
                       )}
                     >
                       {finishedScoreParts.teamB}
                     </span>
                   </p>
-                )
+                </div>
               ) : displayScore ? (
                 <p className="max-w-full break-words text-2xl font-semibold text-accent">{displayScore}</p>
               ) : null}

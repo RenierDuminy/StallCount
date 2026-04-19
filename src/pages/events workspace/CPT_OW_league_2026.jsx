@@ -14,7 +14,7 @@ export const EVENT_ID = "0d3369f9-8461-4f02-b343-5679bb17d644";
 export const EVENT_SLUG = "ctfda-ow-league";
 const MATCH_LIMIT = 400;
 const CURRENT_MATCH_STATUSES = new Set(["live", "halftime"]);
-const FINISHED_MATCH_STATUSES = new Set(["finished", "completed"]);
+const FINISHED_MATCH_STATUSES = new Set(["finished", "completed", "canceled", "cancelled"]);
 const formatDate = (value) => {
   if (!value) return "TBD";
   const date = new Date(value);
@@ -55,6 +55,12 @@ const formatMatchStatus = (status, fallback = "Scheduled") => {
   const normalized = (status || "").toString().trim().toLowerCase();
   if (!normalized) return fallback;
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
+const getMatchCardGridClass = (matchCount) => {
+  if (matchCount <= 1) return "mt-2 grid gap-2";
+  if (matchCount === 2) return "mt-2 grid gap-2 md:grid-cols-2";
+  return "mt-2 grid gap-2 md:grid-cols-2 2xl:grid-cols-3";
 };
 
 const normalizeSortText = (value) =>
@@ -296,6 +302,13 @@ const renderMatchRow = (match, options = {}) => {
     />
   );
 };
+
+const renderMatchGrid = (matches, options = {}) => (
+  <div className={getMatchCardGridClass(matches.length)}>
+    {matches.map((match) => renderMatchRow(match, options))}
+  </div>
+);
+
 export default function CPTOWLeague2026Page() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -402,17 +415,7 @@ export default function CPTOWLeague2026Page() {
         </div>
       )}
       <SectionShell as="main" className="space-y-6 py-8">
-        <Card className="space-y-4 border border-white/80 p-6 sm:p-8">
-          <SectionHeader
-            eyebrow="Operations Workspace"
-            title="OW League overview"
-            description="Monitor the league structure along with live and completed matches grouped by pools."
-          />
-          <Panel variant="muted" className="p-4 text-sm text-ink">
-            This workspace is still under construction. Data below refreshes
-            whenever you open the page and will expand as more tooling ships.
-          </Panel>
-        </Card>
+
         {error && <div className="sc-alert is-error">{error}</div>}
         {loading ? (
           <Card
@@ -647,11 +650,7 @@ export default function CPTOWLeague2026Page() {
                                           None live right now
                                         </p>
                                       ) : (
-                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
-                                          {poolMatches.current.map((match) =>
-                                            renderMatchRow(match, { showScore: true }),
-                                          )}
-                                        </div>
+                                        renderMatchGrid(poolMatches.current, { showScore: true })
                                       )}
                                     </div>
                                     <div>
@@ -663,11 +662,7 @@ export default function CPTOWLeague2026Page() {
                                           No results recorded yet
                                         </p>
                                       ) : (
-                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
-                                          {poolMatches.finished.map((match) =>
-                                            renderMatchRow(match, { showScore: true }),
-                                          )}
-                                        </div>
+                                        renderMatchGrid(poolMatches.finished, { showScore: true })
                                       )}
                                     </div>
                                     {poolMatches.other.length > 0 && (
@@ -675,11 +670,7 @@ export default function CPTOWLeague2026Page() {
                                         <p className="text-xs uppercase tracking-wide text-ink-muted">
                                           Scheduled
                                         </p>
-                                        <div className="mt-2 grid gap-2 md:grid-cols-2">
-                                          {poolMatches.other.map((match) =>
-                                            renderMatchRow(match, { showScore: false }),
-                                          )}
-                                        </div>
+                                        {renderMatchGrid(poolMatches.other, { showScore: false })}
                                       </div>
                                     )}
                                   </div>

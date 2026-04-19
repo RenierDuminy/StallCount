@@ -795,6 +795,7 @@ export default function StellenboschRl2026WorkspacePage() {
         meta={formatMatchTime(match.start_time)}
         score={liveOrFinal ? formatScoreLine(match) : null}
         status={formatMatchStatus(match.status)}
+        hideFinishedVenue={true}
       />
     );
   };

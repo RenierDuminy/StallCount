@@ -17,6 +17,7 @@ export function StandardEventMatchCard({
   scoreAlign,
   className = "",
   trailing = undefined,
+  hideFinishedVenue = true,
 }) {
   const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
   const component = matchHref ? Link : "article";
@@ -42,6 +43,9 @@ export function StandardEventMatchCard({
       scoreAlign={scoreAlign || (score ? "right" : "left")}
       trailing={resolvedTrailing}
       trailingPosition="header"
+      hideScheduledStatus
+      scheduledVenueNameOnly
+      hideFinishedVenue={hideFinishedVenue}
       {...linkProps}
     />
   );
