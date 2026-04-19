@@ -129,6 +129,7 @@ export default function TournamentDirectorPage() {
   const [workspace, setWorkspace] = usePersistentState(TD_WORKSPACE_KEY, "overview");
   const [teams, setTeams] = useState([]);
   const [eventsList, setEventsList] = useState([]);
+  const [referenceDataLoaded, setReferenceDataLoaded] = useState(false);
   const [venues, setVenues] = useState([]);
   const [matchForm, setMatchForm] = usePersistentState(TD_MATCH_FORM_KEY, DEFAULT_MATCH_FORM);
   const [matchMessage, setMatchMessage] = useState("");
@@ -223,6 +224,8 @@ export default function TournamentDirectorPage() {
         setVenues(Array.isArray(venueRows) ? venueRows : []);
       } catch (err) {
         console.error("[TD] Failed to load reference data", err);
+      } finally {
+        setReferenceDataLoaded(true);
       }
     };
     loadReferenceData();
@@ -404,9 +407,9 @@ export default function TournamentDirectorPage() {
 
       <SectionShell as="main" className="pb-16">
         {workspace === "overview" ? (
-          <TournamentOverviewPanel eventsList={accessibleEvents} />
+          <TournamentOverviewPanel eventsList={accessibleEvents} eventOptionsReady={referenceDataLoaded && !rolesLoading} />
         ) : workspace === "users" ? (
-          <LinkedUsersPanel eventsList={accessibleEvents} />
+          <LinkedUsersPanel eventsList={accessibleEvents} eventOptionsReady={referenceDataLoaded && !rolesLoading} />
         ) : (
         <div className="grid gap-6 xl:grid-cols-[320px,minmax(0,1fr)]">
           <Card variant="light" className="space-y-5 p-5 xl:sticky xl:top-6">

@@ -5,12 +5,10 @@ import usePersistentState from "../../hooks/usePersistentState";
 import { Card, Panel, SectionHeader, Chip } from "../../components/ui/primitives";
 import { getEventLinkedUsers } from "../../services/userService";
 import { normaliseRoleList, roleAssignmentsIncludeAdmin } from "../../utils/accessControl";
+import { TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY } from "./persistenceKeys";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-2 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
-const TOURNAMENT_DIRECTOR_LINKED_USERS_EVENT_KEY =
-  "stallcount:tournament-director:linked-users:selected-event:v1";
-
 const LINKED_ROLE_GROUPS = [
   {
     key: "tournament_director",
@@ -41,10 +39,10 @@ function formatGrantedAt(value) {
   }).format(parsed);
 }
 
-export default function LinkedUsersPanel({ eventsList = [] }) {
+export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = true }) {
   const { roles, rolesLoading } = useAuth();
   const [selectedEventId, setSelectedEventId] = usePersistentState(
-    TOURNAMENT_DIRECTOR_LINKED_USERS_EVENT_KEY,
+    TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY,
     "",
   );
   const [users, setUsers] = useState([]);
@@ -78,6 +76,10 @@ export default function LinkedUsersPanel({ eventsList = [] }) {
   }, [eventsList, roles]);
 
   useEffect(() => {
+    if (!eventOptionsReady) {
+      return;
+    }
+
     if (!accessibleEvents.length) {
       if (selectedEventId) {
         setSelectedEventId("");
@@ -88,13 +90,22 @@ export default function LinkedUsersPanel({ eventsList = [] }) {
     if (!selectedEventId || !accessibleEvents.some((event) => event.id === selectedEventId)) {
       setSelectedEventId(accessibleEvents[0].id);
     }
-  }, [accessibleEvents, selectedEventId, setSelectedEventId]);
+  }, [accessibleEvents, eventOptionsReady, selectedEventId, setSelectedEventId]);
+
+  const selectedEvent = useMemo(
+    () => accessibleEvents.find((event) => event.id === selectedEventId) || null,
+    [accessibleEvents, selectedEventId],
+  );
 
   useEffect(() => {
     let active = true;
 
     const load = async () => {
-      if (!selectedEventId) {
+      if (!eventOptionsReady) {
+        return;
+      }
+
+      if (!selectedEventId || !selectedEvent) {
         setUsers([]);
         return;
       }
@@ -121,12 +132,7 @@ export default function LinkedUsersPanel({ eventsList = [] }) {
     return () => {
       active = false;
     };
-  }, [selectedEventId]);
-
-  const selectedEvent = useMemo(
-    () => accessibleEvents.find((event) => event.id === selectedEventId) || null,
-    [accessibleEvents, selectedEventId],
-  );
+  }, [eventOptionsReady, selectedEvent, selectedEventId]);
 
   const groupedUsers = useMemo(
     () =>

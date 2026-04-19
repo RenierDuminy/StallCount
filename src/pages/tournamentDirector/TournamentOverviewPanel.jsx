@@ -8,10 +8,10 @@ import { getTournamentOverview, invalidateTournamentOverview } from "../../servi
 import { updateMatch } from "../../services/matchService";
 import { saveTournamentDirectorSpiritScores } from "../../services/spiritScoreService";
 import { roleAssignmentsIncludeAdmin } from "../../utils/accessControl";
+import { TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY } from "./persistenceKeys";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-2 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
-const TOURNAMENT_DIRECTOR_EVENT_KEY = "stallcount:tournament-director:selected-event:v1";
 const MATCH_STATUS_OPTIONS = [
   "scheduled",
   "ready",
@@ -290,10 +290,10 @@ function SummaryMetric({ label, value, detail }) {
   );
 }
 
-export default function TournamentOverviewPanel({ eventsList = [] }) {
+export default function TournamentOverviewPanel({ eventsList = [], eventOptionsReady = true }) {
   const navigate = useNavigate();
   const { roles, rolesLoading } = useAuth();
-  const [selectedEventId, setSelectedEventId] = usePersistentState(TOURNAMENT_DIRECTOR_EVENT_KEY, "");
+  const [selectedEventId, setSelectedEventId] = usePersistentState(TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY, "");
   const [eventSummary, setEventSummary] = useState(null);
   const [overview, setOverview] = useState({ matches: [], summary: null });
   const [loading, setLoading] = useState(false);
@@ -330,6 +330,10 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
   }, [eventsList, roles]);
 
   useEffect(() => {
+    if (!eventOptionsReady) {
+      return;
+    }
+
     if (!accessibleEvents.length) {
       if (selectedEventId) {
         setSelectedEventId("");
@@ -340,11 +344,20 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
     if (!selectedEventId || !accessibleEvents.some((event) => event.id === selectedEventId)) {
       setSelectedEventId(accessibleEvents[0].id);
     }
-  }, [accessibleEvents, selectedEventId, setSelectedEventId]);
+  }, [accessibleEvents, eventOptionsReady, selectedEventId, setSelectedEventId]);
+
+  const selectedEvent = useMemo(
+    () => accessibleEvents.find((event) => event.id === selectedEventId) || null,
+    [accessibleEvents, selectedEventId],
+  );
 
   const loadOverview = useCallback(
     async ({ forceRefresh = false, isActive = () => true } = {}) => {
-      if (!selectedEventId) {
+      if (!eventOptionsReady) {
+        return;
+      }
+
+      if (!selectedEventId || !selectedEvent) {
         if (isActive()) {
           setOverview({ matches: [], summary: null });
           setEventSummary(null);
@@ -373,7 +386,7 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
         if (isActive()) setLoading(false);
       }
     },
-    [selectedEventId],
+    [eventOptionsReady, selectedEvent, selectedEventId],
   );
 
   useEffect(() => {
@@ -384,11 +397,6 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
       active = false;
     };
   }, [loadOverview]);
-
-  const selectedEvent = useMemo(
-    () => accessibleEvents.find((event) => event.id === selectedEventId) || null,
-    [accessibleEvents, selectedEventId],
-  );
 
   const summary = overview.summary;
   const totalMatches = summary?.totalMatches || 0;
