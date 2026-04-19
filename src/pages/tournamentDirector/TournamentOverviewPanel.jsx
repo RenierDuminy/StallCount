@@ -54,6 +54,8 @@ const EMPTY_MATCH_EDIT_FORM = {
   status: "scheduled",
   teamAId: "",
   teamBId: "",
+  scoreA: "0",
+  scoreB: "0",
   spiritScores: EMPTY_SPIRIT_SCORES,
   captainsConfirmed: false,
 };
@@ -186,9 +188,24 @@ function buildEditForm(match) {
     status: match?.status || "scheduled",
     teamAId: match?.team_a?.id || "",
     teamBId: match?.team_b?.id || "",
+    scoreA: String(match?.score_a ?? 0),
+    scoreB: String(match?.score_b ?? 0),
     spiritScores: buildSpiritScores(match?.spiritCategoriesA, match?.spiritCategoriesB),
     captainsConfirmed: Boolean(match?.captains_confirmed),
   };
+}
+
+function normalizeMatchScore(value, label) {
+  if (value === "" || value === null || value === undefined) {
+    return 0;
+  }
+
+  const score = Number(value);
+  if (!Number.isInteger(score) || score < 0) {
+    throw new Error(`${label} must be a non-negative whole number.`);
+  }
+
+  return score;
 }
 
 function normalizeSpiritCategoryScores(scores, teamLabel) {
@@ -464,6 +481,8 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
       }
 
       const startTime = buildStartTime(form.date, form.time);
+      const scoreA = normalizeMatchScore(form.scoreA, "Team A score");
+      const scoreB = normalizeMatchScore(form.scoreB, "Team B score");
       const spiritScoresA = normalizeSpiritCategoryScores(form.spiritScores.teamA, "Team A");
       const spiritScoresB = normalizeSpiritCategoryScores(form.spiritScores.teamB, "Team B");
       const confirmedAt = form.captainsConfirmed
@@ -476,6 +495,8 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
         status: form.status,
         teamAId: form.teamAId,
         teamBId: form.teamBId,
+        scoreA,
+        scoreB,
         captainsConfirmed: form.captainsConfirmed,
         confirmedAt,
       });
@@ -835,36 +856,66 @@ export default function TournamentOverviewPanel({ eventsList = [] }) {
                   ))}
                 </select>
               </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Team A</span>
-                <select
-                  value={normalizedEditForm.teamAId}
-                  onChange={(event) => handleEditField("teamAId", event.target.value)}
-                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
-                >
-                  <option value="">Unassigned</option>
-                  {teamOptions.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.short_name ? `${team.short_name} - ${team.name}` : team.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Team B</span>
-                <select
-                  value={normalizedEditForm.teamBId}
-                  onChange={(event) => handleEditField("teamBId", event.target.value)}
-                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
-                >
-                  <option value="">Unassigned</option>
-                  {teamOptions.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.short_name ? `${team.short_name} - ${team.name}` : team.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_5.5rem]">
+                <label className="block min-w-0">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Team A</span>
+                  <select
+                    value={normalizedEditForm.teamAId}
+                    onChange={(event) => handleEditField("teamAId", event.target.value)}
+                    className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                  >
+                    <option value="">Unassigned</option>
+                    {teamOptions.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.short_name ? `${team.short_name} - ${team.name}` : team.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Score</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    value={normalizedEditForm.scoreA}
+                    onChange={(event) => handleEditField("scoreA", event.target.value)}
+                    className={`${LIGHT_INPUT_CLASS} mt-1 w-full tabular-nums`}
+                    aria-label={`${getTeamOptionName(teamOptions, normalizedEditForm.teamAId, "Team A")} score`}
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_5.5rem]">
+                <label className="block min-w-0">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Team B</span>
+                  <select
+                    value={normalizedEditForm.teamBId}
+                    onChange={(event) => handleEditField("teamBId", event.target.value)}
+                    className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                  >
+                    <option value="">Unassigned</option>
+                    {teamOptions.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.short_name ? `${team.short_name} - ${team.name}` : team.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Score</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    value={normalizedEditForm.scoreB}
+                    onChange={(event) => handleEditField("scoreB", event.target.value)}
+                    className={`${LIGHT_INPUT_CLASS} mt-1 w-full tabular-nums`}
+                    aria-label={`${getTeamOptionName(teamOptions, normalizedEditForm.teamBId, "Team B")} score`}
+                  />
+                </label>
+              </div>
             </div>
 
             <div className="mt-5 overflow-hidden rounded-lg border border-[var(--sc-surface-light-border)] bg-white">

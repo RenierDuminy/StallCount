@@ -209,6 +209,8 @@ export async function updateMatch(matchId, payload = {}) {
   if ("startTime" in payload) updatePayload.start_time = payload.startTime || null;
   if ("teamAId" in payload) updatePayload.team_a = payload.teamAId || null;
   if ("teamBId" in payload) updatePayload.team_b = payload.teamBId || null;
+  if ("scoreA" in payload) updatePayload.score_a = payload.scoreA;
+  if ("scoreB" in payload) updatePayload.score_b = payload.scoreB;
   if ("captainsConfirmed" in payload) updatePayload.captains_confirmed = Boolean(payload.captainsConfirmed);
   if ("confirmedAt" in payload) updatePayload.confirmed_at = payload.confirmedAt || null;
   if ("status" in payload) {
