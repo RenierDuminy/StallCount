@@ -18,6 +18,8 @@ export function StandardEventMatchCard({
   className = "",
   trailing = undefined,
   hideFinishedVenue = true,
+  hideEyebrow = false,
+  compact = false,
 }) {
   const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
   const component = matchHref ? Link : "article";
@@ -34,7 +36,7 @@ export function StandardEventMatchCard({
         matchHref ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50" : "",
         className,
       )}
-      eyebrow={eyebrow || match?.event?.name || "Match"}
+      eyebrow={hideEyebrow ? "" : eyebrow || match?.event?.name || "Match"}
       title={title}
       venue={match?.venue}
       meta={meta}
@@ -46,6 +48,7 @@ export function StandardEventMatchCard({
       hideScheduledStatus
       scheduledVenueNameOnly
       hideFinishedVenue={hideFinishedVenue}
+      compact={compact}
       {...linkProps}
     />
   );

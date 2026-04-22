@@ -197,6 +197,7 @@ export function MatchCard({
   hideScheduledStatus = false,
   scheduledVenueNameOnly = false,
   hideFinishedVenue = true,
+  compact = false,
   ...props
 }) {
   const scoreLabel =
@@ -242,14 +243,23 @@ export function MatchCard({
     <Panel
       as={Component}
       variant={variant}
-      className={cx("flex flex-col gap-3 p-4", phaseStyle.panelClass, className)}
+      className={cx(
+        "flex flex-col",
+        compact ? "gap-2 p-2.5" : "gap-3 p-4",
+        phaseStyle.panelClass,
+        className,
+      )}
       {...props}
     >
-      <div className="flex flex-col gap-2">
-        <div className={cx("flex gap-3", trailingInHeader ? "items-start justify-between" : "")}>
+      <div className={cx("flex flex-col", compact ? "gap-1.5" : "gap-2")}>
+        <div className={cx("flex", compact ? "gap-2" : "gap-3", trailingInHeader ? "items-start justify-between" : "")}>
           <div className="min-w-0">
             {eyebrow ? <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{eyebrow}</p> : null}
-            {showTitle && title ? <h3 className="text-lg font-semibold text-ink">{title}</h3> : null}
+            {showTitle && title ? (
+              <h3 className={cx("font-semibold text-ink", compact ? "text-base leading-snug" : "text-lg")}>
+                {title}
+              </h3>
+            ) : null}
             {venueLabel ? (
               <p className="text-xs font-semibold text-ink-muted">{venueLabel}</p>
             ) : null}
@@ -264,7 +274,7 @@ export function MatchCard({
         ) : null}
       </div>
       {displayScore || displayStatus || trailingInFooter ? (
-        <div className={cx("flex min-w-0 items-center gap-3", footerJustify)}>
+        <div className={cx("flex min-w-0 items-center", compact ? "gap-2" : "gap-3", footerJustify)}>
           {displayScore || displayStatus ? (
             <div className={cx("min-w-0", usesResolvedLayout ? "w-full" : "", scoreAlignClass)}>
               {finishedScoreParts ? (

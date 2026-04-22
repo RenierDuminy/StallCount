@@ -15,10 +15,47 @@ export const EVENT_ID = "db83a03e-b2bc-455a-a916-abe849fc65ec";
 export const EVENT_SLUG = "cpt-ow-nationals-2026";
 export const EVENT_NAME = "CPT OW Nationals 2026";
 
+const INFO_PACK_HREF = "/events/cpt-ow-nationals-2026/own-2026-infopack.pdf";
+const INFO_DOCUMENTS = [
+  {
+    name: "OWN 2026 infopack.pdf",
+    href: INFO_PACK_HREF,
+  },
+];
 const MATCH_LIMIT = 200;
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
-const DIVISION_PLACEHOLDERS = ["Open", "Women"];
+const DOCUMENT_GRID_CLASS =
+  "grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))]";
+const SECTION_GRID_CLASS =
+  "grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr))]";
+const VENUE_GRID_CLASS =
+  "flex flex-wrap gap-2";
+const MATCH_GRID_CLASS =
+  "grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr))]";
+const SCHEDULE_TIMEZONE = "Africa/Johannesburg";
+const SCHEDULE_DAY_KEYS = {
+  day1: "2026-04-25",
+  day2: "2026-04-26",
+  day3: "2026-04-27",
+};
+const SCHEDULE_DAYS = [
+  {
+    key: SCHEDULE_DAY_KEYS.day1,
+    title: "Saturday 25 Apr",
+    mode: "pools",
+  },
+  {
+    key: SCHEDULE_DAY_KEYS.day2,
+    title: "Sunday 26 Apr",
+    mode: "pools-with-semis",
+  },
+  {
+    key: SCHEDULE_DAY_KEYS.day3,
+    title: "Monday 27 Apr",
+    mode: "ordered",
+  },
+];
 
 const formatMatchup = (match) => {
   const teamA = match.team_a?.name || "Team A";
@@ -85,14 +122,38 @@ const formatMatchTime = (value) => {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: SCHEDULE_TIMEZONE,
   });
 };
 
-const getCompletionTime = (match) => {
-  const source = match.confirmed_at || match.start_time;
-  if (!source) return null;
-  const timestamp = new Date(source).getTime();
-  return Number.isNaN(timestamp) ? null : timestamp;
+const formatDateKey = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: SCHEDULE_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+};
+
+const getScheduleMinutes = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat("en-ZA", {
+    timeZone: SCHEDULE_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value);
+
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return hour * 60 + minute;
 };
 
 const isLiveMatch = (status) => LIVE_STATUSES.has((status || "").toLowerCase());
@@ -105,23 +166,112 @@ const sortByStartTimeAsc = (a, b) => {
   return left - right;
 };
 
-const buildDivisionTeams = (division) => {
+const buildPoolLookup = (divisions = []) => {
+  const lookup = new Map();
+  (divisions || []).forEach((division, divisionIndex) => {
+    (division?.pools || []).forEach((pool, poolIndex) => {
+      lookup.set(pool.id, {
+        id: pool.id,
+        name: pool.name || "Pool",
+        order: divisionIndex * 100 + poolIndex,
+      });
+    });
+  });
+  return lookup;
+};
+
+const normalizeScheduleText = (value) =>
+  (typeof value === "string" ? value.trim().toLowerCase() : "");
+
+const matchIncludesSemiFinalLabel = (match, poolLookup) => {
+  const poolName = normalizeScheduleText(poolLookup.get(match?.pool_id)?.name);
+  const teamAName = normalizeScheduleText(match?.team_a?.name);
+  const teamBName = normalizeScheduleText(match?.team_b?.name);
+  const venueName = normalizeScheduleText(match?.venue?.name);
+  const searchable = [poolName, teamAName, teamBName, venueName].join(" ");
+  return /(?:\bsf\s*\d*\b|\bsemi[-\s]?finals?\b|\bsemifinals?\b)/.test(searchable);
+};
+
+const isDayTwoSemiFinal = (match, poolLookup) => {
+  if (formatDateKey(match?.start_time) !== SCHEDULE_DAY_KEYS.day2) {
+    return false;
+  }
+  if (matchIncludesSemiFinalLabel(match, poolLookup)) {
+    return true;
+  }
+
+  const startMinutes = getScheduleMinutes(match?.start_time);
+  if (startMinutes === null || startMinutes < 18 * 60) {
+    return false;
+  }
+
+  return true;
+};
+
+const buildPoolGroups = (matchesForDay = [], poolLookup) => {
+  const groups = new Map();
+
+  matchesForDay.forEach((match) => {
+    const pool = poolLookup.get(match?.pool_id);
+    const groupKey = pool?.id || "unassigned";
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        key: groupKey,
+        title: pool?.name || "Unassigned matches",
+        order: pool?.order ?? Number.MAX_SAFE_INTEGER,
+        matches: [],
+      });
+    }
+    groups.get(groupKey).matches.push(match);
+  });
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      matches: [...group.matches].sort(sortByStartTimeAsc),
+    }))
+    .sort((left, right) => {
+      if (left.order !== right.order) return left.order - right.order;
+      return left.title.localeCompare(right.title);
+    });
+};
+
+const buildDailySchedule = (matches = [], poolLookup) =>
+  SCHEDULE_DAYS.map((day) => {
+    const dayMatches = (matches || [])
+      .filter((match) => formatDateKey(match?.start_time) === day.key)
+      .sort(sortByStartTimeAsc);
+    const semifinalMatches =
+      day.key === SCHEDULE_DAY_KEYS.day2
+        ? dayMatches.filter((match) => isDayTwoSemiFinal(match, poolLookup))
+        : [];
+    const poolMatches =
+      day.key === SCHEDULE_DAY_KEYS.day2
+        ? dayMatches.filter((match) => !isDayTwoSemiFinal(match, poolLookup))
+        : dayMatches;
+
+    return {
+      ...day,
+      matches: dayMatches,
+      poolGroups: day.mode === "ordered" ? [] : buildPoolGroups(poolMatches, poolLookup),
+      semifinalMatches,
+    };
+  });
+
+const buildPoolTeams = (pool) => {
   const rows = [];
   const seen = new Set();
-  (division?.pools || []).forEach((pool) => {
-    (pool?.teams || []).forEach((entry) => {
-      if (!entry?.team?.id || seen.has(entry.team.id)) return;
-      seen.add(entry.team.id);
-      rows.push({
-        id: entry.team.id,
-        name: entry.team.name || "Team",
-        shortName: entry.team.short_name || null,
-        seed:
-          typeof entry.seed === "number" && !Number.isNaN(entry.seed)
-            ? entry.seed
-            : null,
-        pool: pool.name || "Pool",
-      });
+  (pool?.teams || []).forEach((entry) => {
+    if (!entry?.team?.id || seen.has(entry.team.id)) return;
+    seen.add(entry.team.id);
+    rows.push({
+      id: entry.team.id,
+      name: entry.team.name || "Team",
+      shortName: entry.team.short_name || null,
+      seed:
+        typeof entry.seed === "number" && !Number.isNaN(entry.seed)
+          ? entry.seed
+          : null,
     });
   });
   rows.sort((a, b) => {
@@ -145,14 +295,14 @@ const StandingsTable = ({ rows }) => {
     return <p className="text-sm text-ink-muted">No standings available yet.</p>;
   }
   return (
-    <div className="overflow-x-auto rounded border border-border bg-surface">
-      <table className="min-w-full text-sm">
+    <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded border border-border bg-surface">
+      <table className="w-full min-w-max whitespace-nowrap text-sm">
         <thead className="bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
           <tr>
-            <th className="px-3 py-2 text-left font-semibold">Team</th>
-            <th className="px-3 py-2 text-left font-semibold">Win/Loss</th>
-            <th className="px-3 py-2 text-left font-semibold">Played</th>
-            <th className="px-3 py-2 text-left font-semibold">Score +/-</th>
+            <th className="px-3 py-1.5 text-left font-semibold">Team</th>
+            <th className="px-3 py-1.5 text-center font-semibold">Win/Loss</th>
+            <th className="px-3 py-1.5 text-center font-semibold">Played</th>
+            <th className="px-3 py-1.5 text-center font-semibold">Score +/-</th>
           </tr>
         </thead>
         <tbody>
@@ -166,12 +316,12 @@ const StandingsTable = ({ rows }) => {
                     : "var(--sc-surface-muted)",
               }}
             >
-              <td className="px-3 py-2">
+              <td className="px-3 py-1.5">
                 {row.shortName ? `${row.name} (${row.shortName})` : row.name}
               </td>
-              <td className="px-3 py-2">{`${row.wins}-${row.losses}`}</td>
-              <td className="px-3 py-2">{row.played}</td>
-              <td className="px-3 py-2">{formatScoreDiff(row.scoreDiff)}</td>
+              <td className="px-3 py-1.5 text-center">{`${row.wins}-${row.losses}`}</td>
+              <td className="px-3 py-1.5 text-center">{row.played}</td>
+              <td className="px-3 py-1.5 text-center">{formatScoreDiff(row.scoreDiff)}</td>
             </tr>
           ))}
         </tbody>
@@ -180,8 +330,8 @@ const StandingsTable = ({ rows }) => {
   );
 };
 
-const buildDivisionStandings = (division, matches) => {
-  const teams = buildDivisionTeams(division);
+const buildPoolStandings = (pool, matches) => {
+  const teams = buildPoolTeams(pool);
   const standingsByTeam = new Map(
     teams.map((team) => [
       team.id,
@@ -195,14 +345,9 @@ const buildDivisionStandings = (division, matches) => {
     ]),
   );
 
-  const poolIds = new Set((division?.pools || []).map((pool) => pool.id));
-  const divisionMatches = (matches || []).filter((match) => {
-    if (match?.division_id === division?.id) return true;
-    if (match?.pool_id && poolIds.has(match.pool_id)) return true;
-    return false;
-  });
+  const poolMatches = (matches || []).filter((match) => match?.pool_id === pool?.id);
 
-  divisionMatches.forEach((match) => {
+  poolMatches.forEach((match) => {
     if (!isFinishedMatch(match?.status)) return;
     if (typeof match?.score_a !== "number" || typeof match?.score_b !== "number") {
       return;
@@ -243,6 +388,37 @@ const buildDivisionStandings = (division, matches) => {
   );
 };
 
+function PdfIcon(props) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      {...props}
+    >
+      <path
+        d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 2v5h5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 16h8M8 12h3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export default function CptOwNationals2026WorkspacePage() {
   const [matches, setMatches] = useState([]);
   const [eventData, setEventData] = useState(null);
@@ -250,6 +426,7 @@ export default function CptOwNationals2026WorkspacePage() {
   const [error, setError] = useState(null);
   const [copyToast, setCopyToast] = useState(null);
   const [copyToastVisible, setCopyToastVisible] = useState(false);
+  const [venueFieldsOpen, setVenueFieldsOpen] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -305,66 +482,15 @@ export default function CptOwNationals2026WorkspacePage() {
     };
   }, [copyToast]);
 
-  const liveMatches = useMemo(
-    () =>
-      matches
-        .filter((match) => isLiveMatch(match.status))
-        .sort(sortByStartTimeAsc),
-    [matches],
-  );
-
-  const recentMatches = useMemo(
-    () =>
-      matches
-        .filter((match) => isFinishedMatch(match.status))
-        .sort(
-          (a, b) => (getCompletionTime(b) ?? 0) - (getCompletionTime(a) ?? 0),
-        ),
-    [matches],
-  );
-
-  const scheduledMatches = useMemo(
-    () =>
-      matches
-        .filter(
-          (match) =>
-            !isLiveMatch(match.status) && !isFinishedMatch(match.status),
-        )
-        .sort(sortByStartTimeAsc),
-    [matches],
-  );
-
-  const sections = [
-    {
-      key: "live",
-      title: "Live matches",
-      description: "Tracking every live point as it happens.",
-      dataset: liveMatches,
-      empty: "No live matches right now.",
-    },
-    {
-      key: "recent",
-      title: "Recent finals",
-      description: "Latest confirmed results from the desk.",
-      dataset: recentMatches,
-      empty: "No completed matches recorded yet.",
-    },
-    {
-      key: "scheduled",
-      title: "Scheduled",
-      description: "Upcoming fixtures waiting for pull.",
-      dataset: scheduledMatches,
-      empty: "No scheduled matches on the calendar.",
-    },
-  ];
-
-  const standingsByDivision = useMemo(() => {
+  const standingsByPool = useMemo(() => {
     if (!eventData?.divisions?.length) return [];
-    return eventData.divisions.map((division) => ({
-      id: division.id,
-      name: division.name || "Division",
-      rows: buildDivisionStandings(division, matches),
-    }));
+    return eventData.divisions.flatMap((division, divisionIndex) =>
+      (division?.pools || []).map((pool, poolIndex) => ({
+        id: pool.id || `${division.id || divisionIndex}-${poolIndex}`,
+        name: pool.name || "Pool",
+        rows: buildPoolStandings(pool, matches),
+      })),
+    );
   }, [eventData, matches]);
 
   const sortedVenues = useMemo(
@@ -405,19 +531,28 @@ export default function CptOwNationals2026WorkspacePage() {
   }, [sortedVenues]);
 
   const eventTitle = eventData?.name || EVENT_NAME;
+  const poolLookup = useMemo(
+    () => buildPoolLookup(eventData?.divisions || []),
+    [eventData?.divisions],
+  );
+  const dailySchedule = useMemo(
+    () => buildDailySchedule(matches, poolLookup),
+    [matches, poolLookup],
+  );
 
-  const renderMatchCard = (match) => {
+  const renderMatchCard = (match, options = {}) => {
     const liveOrFinal =
       isLiveMatch(match.status) || isFinishedMatch(match.status);
     return (
       <StandardEventMatchCard
         key={match.id}
         match={match}
-        eyebrow={match.event?.name || eventTitle}
-        title={formatMatchup(match)}
+        title={options.title || formatMatchup(match)}
         meta={formatMatchTime(match.start_time)}
         score={liveOrFinal ? formatScoreLine(match) : null}
         status={formatMatchStatus(match.status)}
+        hideEyebrow
+        compact
       />
     );
   };
@@ -435,241 +570,279 @@ export default function CptOwNationals2026WorkspacePage() {
           </div>
         </div>
       )}
-      <SectionShell as="main" className="space-y-6 py-8">
-        <Card className="space-y-3 p-6 sm:p-8">
+      <SectionShell as="main" className="mx-auto max-w-[1760px] space-y-4 py-4 sm:py-5">
+        <Card className="min-w-0 space-y-3 p-3 sm:p-4">
           <SectionHeader
-            eyebrow="Operations workspace"
             title={eventTitle}
-            description="Live, final, and scheduled matches for this event."
           />
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-row sm:flex-wrap sm:justify-end">
             <Link
               to={`/event-rules?eventId=${encodeURIComponent(EVENT_ID)}`}
-              className="sc-button"
+              className="sc-button w-full whitespace-nowrap sm:w-auto"
             >
               Event rules
             </Link>
             <Link
               to={`/event-rosters?eventId=${encodeURIComponent(EVENT_ID)}`}
-              className="sc-button"
+              className="sc-button w-full whitespace-nowrap sm:w-auto"
             >
               Team rosters
+            </Link>
+            <Link
+              to={`/players?eventId=${encodeURIComponent(EVENT_ID)}`}
+              className="sc-button w-full whitespace-nowrap sm:w-auto"
+            >
+              Player standings
             </Link>
             <a
               href="https://wfdf.sport/2025/01/wfdf-publishes-2025-2028-ultimate-rules/"
               target="_blank"
               rel="noreferrer"
-              className="sc-button"
+              className="sc-button w-full whitespace-nowrap sm:w-auto"
             >
               WFDF rules
             </a>
           </div>
+          <div className={DOCUMENT_GRID_CLASS}>
+            {INFO_DOCUMENTS.map((document) => (
+              <a
+                key={document.href}
+                href={document.href}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2 transition hover:bg-surface-muted"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-600 text-white">
+                  <PdfIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink group-hover:underline break-words whitespace-normal">
+                    {document.name}
+                  </p>
+                </div>
+              </a>
+            ))}
+          </div>
           {error && <div className="sc-alert is-error">{error}</div>}
         </Card>
 
-        <Card className="space-y-4 p-5 sm:p-6">
+        <Card className="min-w-0 space-y-3 p-3 sm:p-4">
           <SectionHeader
-            eyebrow="Standings"
             title="Team standings"
-            description="Completed match results summarized by division."
           />
-          {loading && standingsByDivision.length === 0 ? (
-            <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+          {loading && standingsByPool.length === 0 ? (
+            <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
               Loading standings...
             </Card>
-          ) : standingsByDivision.length === 0 ? (
-            <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-              No divisions configured for this event.
+          ) : standingsByPool.length === 0 ? (
+            <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
+              No pools configured for this event.
             </Card>
           ) : (
-            <div className="space-y-4">
-              {standingsByDivision.map((division) => (
-                <Panel key={division.id} variant="muted" className="space-y-3 p-4">
+            <div className={SECTION_GRID_CLASS}>
+              {standingsByPool.map((pool) => (
+                <Panel key={pool.id} variant="muted" className="min-w-0 space-y-2 p-3">
                   <p className="text-sm font-semibold uppercase tracking-wide text-ink">
-                    {division.name}
+                    {pool.name}
                   </p>
-                  <StandingsTable rows={division.rows} />
+                  <StandingsTable rows={pool.rows} />
                 </Panel>
               ))}
             </div>
           )}
         </Card>
 
-        <Card className="space-y-4 p-5 sm:p-6">
-          <SectionHeader
-            eyebrow="Divisions"
-            title="Teams by division"
-            description="Placeholder blocks for the event divisions."
-          />
-          <div className="space-y-4">
-            {DIVISION_PLACEHOLDERS.map((divisionName) => (
-              <Panel key={divisionName} variant="muted" className="space-y-2 p-4">
-                <p className="text-sm font-semibold uppercase tracking-wide text-ink">
-                  {divisionName}
-                </p>
-                <p className="text-sm text-ink-muted">
-                  Placeholder for the {divisionName} division.
-                </p>
-              </Panel>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="space-y-4 p-5 sm:p-6">
-          <SectionHeader
-            eyebrow="Fields"
-            title="Venue fields"
-            description="Linked via the event setup wizard."
-          />
-          <Panel variant="muted" className="space-y-3 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-ink-muted">
-                  Venues
-                </p>
-                <p className="text-sm text-ink-muted">
-                  Linked via the event setup wizard
-                </p>
-              </div>
+        <Card className="min-w-0 space-y-2 p-3 sm:p-4">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left"
+            aria-expanded={venueFieldsOpen}
+            onClick={() => setVenueFieldsOpen((open) => !open)}
+          >
+            <span className="text-xl font-semibold text-ink">Fields</span>
+            <span className="flex shrink-0 items-center gap-2">
               <Chip>{sortedVenues.length}</Chip>
-            </div>
-            {venuesByCity.length ? (
-              <ul className="space-y-3">
-                {venuesByCity.map((city) => (
-                  <li key={city.cityLabel} className="rounded-lg border border-border bg-surface p-3">
-                    <p className="text-sm font-semibold uppercase tracking-wide text-ink">
-                      {city.cityLabel}
-                    </p>
-                    <ul className="mt-2 ml-4 space-y-2 border-l border-border pl-3">
-                      {city.locations.map((location) => (
-                        <li key={`${city.cityLabel}-${location.locationLabel}`}>
-                          <p className="text-sm font-semibold text-ink-muted">
-                            {location.locationLabel}
-                          </p>
-                          <ul className="mt-1 ml-4 grid gap-2 border-l border-border pl-3 sm:grid-cols-2">
-                            {location.venues.map((venue) => {
-                              const coordText =
-                                typeof venue.latitude === "number" &&
-                                !Number.isNaN(venue.latitude) &&
-                                typeof venue.longitude === "number" &&
-                                !Number.isNaN(venue.longitude)
-                                  ? `${venue.latitude.toFixed(4)}, ${venue.longitude.toFixed(4)}`
-                                  : "";
-                              return (
-                                <li
-                                  key={venue.id}
-                                  className="rounded-md border border-border bg-surface-muted px-3 py-2"
-                                >
-                                  <div className="grid gap-2 text-xs sm:grid-cols-2">
-                                    <div>
-                                      <p className="uppercase tracking-wide text-ink-muted">
-                                        Venue
-                                      </p>
-                                      <p className="text-sm font-medium text-ink">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`h-5 w-5 text-ink-muted transition-transform ${
+                  venueFieldsOpen ? "rotate-180" : ""
+                }`}
+                aria-hidden="true"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </span>
+          </button>
+          {venueFieldsOpen ? (
+            <Panel variant="muted" className="min-w-0 space-y-2 p-3">
+              {venuesByCity.length ? (
+                <ul className="space-y-1.5">
+                  {venuesByCity.map((city) => (
+                    <li key={city.cityLabel} className="rounded-lg border border-border bg-surface p-2">
+                      <p className="text-sm font-semibold uppercase tracking-wide text-ink">
+                        {city.cityLabel}
+                      </p>
+                      <ul className="mt-1.5 space-y-1.5 border-l border-border pl-2 sm:ml-1.5">
+                        {city.locations.map((location) => (
+                          <li key={`${city.cityLabel}-${location.locationLabel}`}>
+                            <p className="text-sm font-semibold text-ink-muted">
+                              {location.locationLabel}
+                            </p>
+                            <ul className={`mt-1 border-l border-border pl-2 sm:ml-1.5 ${VENUE_GRID_CLASS}`}>
+                              {location.venues.map((venue) => {
+                                const coordText =
+                                  typeof venue.latitude === "number" &&
+                                  !Number.isNaN(venue.latitude) &&
+                                  typeof venue.longitude === "number" &&
+                                  !Number.isNaN(venue.longitude)
+                                    ? `${venue.latitude.toFixed(4)}, ${venue.longitude.toFixed(4)}`
+                                    : "";
+                                return (
+                                  <li
+                                    key={venue.id}
+                                    className="flex w-fit min-w-[8.5rem] max-w-full items-center justify-between gap-2 rounded-md border border-border bg-surface-muted px-2 py-1.5"
+                                  >
+                                    <div className="min-w-0 max-w-[12rem]">
+                                      <p className="truncate text-sm font-medium text-ink">
                                         {venue.nameLabel}
                                       </p>
                                     </div>
                                     {coordText ? (
-                                      <div>
-                                        <p className="uppercase tracking-wide text-ink-muted">
-                                          Coordinates
-                                        </p>
-                                        <div className="flex items-center gap-2 text-ink-muted">
-                                          <span>{coordText}</span>
-                                          <button
-                                            type="button"
-                                            className="rounded border border-border p-1 text-ink-muted transition hover:text-ink"
-                                            aria-label={`Copy ${venue.cityLabel}, ${venue.locationLabel} - ${venue.nameLabel} coordinates`}
-                                            title="Copy coordinates"
-                                            onClick={() =>
-                                              copyToClipboard(coordText, () =>
-                                                setCopyToast(
-                                                  `Copied ${venue.cityLabel}, ${venue.locationLabel} - ${venue.nameLabel} coordinates`,
-                                                ),
-                                              )
-                                            }
-                                          >
-                                            <svg
-                                              xmlns="http://www.w3.org/2000/svg"
-                                              viewBox="0 0 24 24"
-                                              fill="none"
-                                              stroke="currentColor"
-                                              strokeWidth="2"
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                              className="h-3.5 w-3.5"
-                                              aria-hidden="true"
-                                            >
-                                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      </div>
+                                      <button
+                                        type="button"
+                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-border text-ink-muted transition hover:text-ink"
+                                        aria-label={`Copy ${venue.cityLabel}, ${venue.locationLabel} - ${venue.nameLabel} coordinates`}
+                                        title="Copy coordinates"
+                                        onClick={() =>
+                                          copyToClipboard(coordText, () =>
+                                            setCopyToast(
+                                              `Copied ${venue.cityLabel}, ${venue.locationLabel} - ${venue.nameLabel} coordinates`,
+                                            ),
+                                          )
+                                        }
+                                      >
+                                        <svg
+                                          xmlns="http://www.w3.org/2000/svg"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          className="h-5 w-5"
+                                          aria-hidden="true"
+                                        >
+                                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                        </svg>
+                                      </button>
                                     ) : (
-                                      <div>
-                                        <p className="uppercase tracking-wide text-ink-muted">
-                                          Coordinates
-                                        </p>
-                                        <p className="text-ink-muted">Not set</p>
-                                      </div>
+                                      <span className="shrink-0 text-xs text-ink-muted">
+                                        No coords
+                                      </span>
                                     )}
-                                  </div>
-                                  {venue.notes && (
-                                    <p className="mt-1 text-xs text-ink-muted">
-                                      {venue.notes}
-                                    </p>
-                                  )}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-ink-muted">
-                No venues linked to this event yet.
-              </p>
-            )}
-          </Panel>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-ink-muted">
+                  No venues linked to this event yet.
+                </p>
+              )}
+            </Panel>
+          ) : null}
         </Card>
 
-        <Card className="space-y-6 p-5 sm:p-6">
+        <Card className="min-w-0 space-y-4 p-3 sm:p-4">
           <SectionHeader
-            eyebrow="Matches"
-            title="Match overview"
-            description="Live, recent, and scheduled matches for this event."
+            title="Daily schedule"
           />
-          <div className="space-y-6">
-            {sections.map((section) => (
-              <Panel key={section.key} variant="muted" className="space-y-4 p-4">
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-wide text-ink">
-                    {section.title}
-                  </p>
-                  <p className="text-sm text-ink-muted">{section.description}</p>
+          <div className="space-y-4">
+            {dailySchedule.map((day) => (
+              <Panel key={day.key} variant="muted" className="min-w-0 space-y-3 p-3">
+                <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-lg font-semibold text-ink">{day.title}</p>
+                  </div>
+                  <Chip>{day.matches.length} matches</Chip>
                 </div>
-                {loading && section.dataset.length === 0 ? (
+                {loading && day.matches.length === 0 ? (
                   <Card
                     variant="muted"
-                    className="p-5 text-center text-sm text-ink-muted"
+                    className="p-3 text-center text-sm text-ink-muted"
                   >
                     Loading matches...
                   </Card>
-                ) : section.dataset.length === 0 ? (
+                ) : day.matches.length === 0 ? (
                   <Card
                     variant="muted"
-                    className="p-5 text-center text-sm text-ink-muted"
+                    className="p-3 text-center text-sm text-ink-muted"
                   >
-                    {section.empty}
+                    No matches scheduled for this day.
                   </Card>
+                ) : day.mode === "ordered" ? (
+                  <div className={MATCH_GRID_CLASS}>
+                    {day.matches.map((match) =>
+                      renderMatchCard(match),
+                    )}
+                  </div>
                 ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {section.dataset.map((match) => renderMatchCard(match))}
+                  <div className="space-y-3">
+                    {day.poolGroups.map((poolGroup) => (
+                      <Panel
+                        key={`${day.key}-${poolGroup.key}`}
+                        variant="tinted"
+                        className="min-w-0 space-y-2 p-3"
+                      >
+                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold uppercase tracking-wide text-ink">
+                              {poolGroup.title}
+                            </p>
+                          </div>
+                          <Chip>{poolGroup.matches.length} matches</Chip>
+                        </div>
+                        <div className={MATCH_GRID_CLASS}>
+                          {poolGroup.matches.map((match) =>
+                            renderMatchCard(match),
+                          )}
+                        </div>
+                      </Panel>
+                    ))}
+
+                    {day.semifinalMatches.length > 0 ? (
+                      <Panel variant="tinted" className="min-w-0 space-y-2 p-3">
+                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold uppercase tracking-wide text-ink">
+                              Semi-finals
+                            </p>
+                          </div>
+                          <Chip>{day.semifinalMatches.length} matches</Chip>
+                        </div>
+                        <div className={MATCH_GRID_CLASS}>
+                          {day.semifinalMatches.map((match, index) => {
+                            const semiLabel = `SF${index + 1}`;
+                            return renderMatchCard(match, {
+                              title: `${semiLabel}: ${formatMatchup(match)}`,
+                            });
+                          })}
+                        </div>
+                      </Panel>
+                    ) : null}
                   </div>
                 )}
               </Panel>

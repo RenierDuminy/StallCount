@@ -127,6 +127,33 @@ const mergeRuleDefaults = (base, overrides) => {
   });
   return next;
 };
+
+const parseRulesConfig = (value) => {
+  if (!value) {
+    return null;
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+const buildRulesFromConfig = (value) => {
+  const parsed = parseRulesConfig(value);
+  return parsed
+    ? mergeRuleDefaults(cloneDefaultRules(), parsed)
+    : cloneDefaultRules();
+};
 const INITIAL_VENUE_FORM = {
   id: null,
   venueId: "",
@@ -373,6 +400,7 @@ export default function EventSetupWizardPage() {
   const originalHierarchyRef = useRef(
     cloneHierarchySnapshot(persistedDraft.originalHierarchy),
   );
+  const preserveLoadedRulesRef = useRef(false);
 
   const [step, setStep] = useState(() => resolveInitialWizardStep(persistedDraft));
   const [event, setEvent] = useState(() =>
@@ -482,9 +510,7 @@ export default function EventSetupWizardPage() {
       : createEmptyMatchForm(),
   );
   const [rules, setRules] = useState(() =>
-    persistedDraft.rules && typeof persistedDraft.rules === "object"
-      ? mergeRuleDefaults(cloneDefaultRules(), persistedDraft.rules)
-      : cloneDefaultRules(),
+    buildRulesFromConfig(persistedDraft.rules),
   );
   const [teamOptions, setTeamOptions] = useState([]);
   const [teamOptionsError, setTeamOptionsError] = useState(null);
@@ -678,10 +704,7 @@ export default function EventSetupWizardPage() {
       return;
     }
     originalHierarchyRef.current = cloneHierarchySnapshot(payload);
-    const sourceRules =
-      payload.event.rules && typeof payload.event.rules === "object"
-        ? mergeRuleDefaults(cloneDefaultRules(), payload.event.rules)
-        : cloneDefaultRules();
+    const sourceRules = buildRulesFromConfig(payload.event.rules);
     setEvent({
       name: payload.event.name || "",
       type: payload.event.type || "tournament",
@@ -690,6 +713,7 @@ export default function EventSetupWizardPage() {
       location: payload.event.location || "",
       notes: payload.event.notes || "",
     });
+    preserveLoadedRulesRef.current = true;
     setRules(JSON.parse(JSON.stringify(sourceRules)));
     const nextVenues = (payload.eventVenues || []).map((venue) => ({
       id: venue.id || venue.venueId || createId(),
@@ -835,6 +859,52 @@ export default function EventSetupWizardPage() {
     },
     [applyEventHierarchy, resetWizardState],
   );
+
+  const handleRefreshEventFromDatabase = useCallback(async () => {
+    if (!selectedEventId || prefillState.status === "loading") {
+      return;
+    }
+
+    const shouldRefresh =
+      typeof window === "undefined" ||
+      window.confirm(
+        "Refresh this event from the database? All local wizard data for this event will be wiped in this browser and replaced with the latest database data.",
+      );
+
+    if (!shouldRefresh) {
+      return;
+    }
+
+    setPrefillState({ status: "loading", error: null });
+    setFormNotice(null);
+    setSubmissionState({
+      status: "idle",
+      error: null,
+      eventId: null,
+      summary: null,
+    });
+
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(WIZARD_DRAFT_STORAGE_KEY);
+      }
+      persistedDraftRef.current = {};
+      const hierarchy = await getEventHierarchy(selectedEventId);
+      applyEventHierarchy(hierarchy);
+      setPrefillState({ status: "success", error: null });
+      setFormNotice({
+        type: "success",
+        message: `Local wizard data was wiped and "${hierarchy.event.name}" was reloaded from the database.`,
+      });
+    } catch (err) {
+      const message = err?.message || "Unable to refresh event hierarchy.";
+      setPrefillState({
+        status: "error",
+        error: message,
+      });
+      setFormNotice({ type: "error", message });
+    }
+  }, [applyEventHierarchy, prefillState.status, selectedEventId]);
 
   const handleVenueFieldChange = (event) => {
     const { name, value } = event.target;
@@ -1500,6 +1570,11 @@ export default function EventSetupWizardPage() {
 
   useEffect(() => {
     if (rules.format !== "wfdfChampionship") {
+      preserveLoadedRulesRef.current = false;
+      return;
+    }
+    if (preserveLoadedRulesRef.current) {
+      preserveLoadedRulesRef.current = false;
       return;
     }
     setRules((prev) => {
@@ -3795,7 +3870,7 @@ export default function EventSetupWizardPage() {
       const result = await action(payload);
       if (isEditingExistingEvent && selectedEventId) {
         const refreshedHierarchy = await getEventHierarchy(selectedEventId);
-        originalHierarchyRef.current = cloneHierarchySnapshot(refreshedHierarchy);
+        applyEventHierarchy(refreshedHierarchy);
       }
       setSubmissionState({
         status: "success",
@@ -3832,7 +3907,27 @@ export default function EventSetupWizardPage() {
             eyebrow="Admin"
             title="Event setup wizard"
             description="Walk through event creation from high level to granular pools."
+            action={
+              selectedEventId ? (
+                <button
+                  type="button"
+                  className="sc-button sc-button-danger"
+                  onClick={handleRefreshEventFromDatabase}
+                  disabled={prefillState.status === "loading"}
+                >
+                  {prefillState.status === "loading"
+                    ? "Refreshing data..."
+                    : "Refresh data from database"}
+                </button>
+              ) : null
+            }
           />
+          {selectedEventId && (
+            <div className="sc-alert is-error wizard-text-xs">
+              Refreshing will wipe all local wizard data saved in this browser
+              for the selected event and load the current database data instead.
+            </div>
+          )}
           <Stepper current={step} onStepSelect={setStep} />
         </Card>
       </SectionShell>

@@ -273,14 +273,14 @@ const TeamTable = ({ rows, columns }) => {
   }
   return (
     <div
-      className="overflow-x-auto rounded border"
+      className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded border"
       style={{
         background: "var(--sc-surface)",
         borderColor: "var(--sc-border)",
         color: "var(--sc-ink)",
       }}
     >
-      <table className="min-w-full text-sm">
+      <table className="w-full min-w-max whitespace-nowrap text-sm">
         <thead
           className="text-xs uppercase tracking-wide"
           style={{

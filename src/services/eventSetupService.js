@@ -497,22 +497,59 @@ const buildFlatRecordChanges = (nextRecord, previousRecord, keys) => {
   }, {});
 };
 
+const normalizeSignaturePart = (value) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "";
+  }
+  return String(value).trim().toLowerCase();
+};
+
+const buildVenueSignature = (venue) =>
+  [
+    venue?.name,
+    venue?.city,
+    venue?.location,
+    venue?.notes,
+    venue?.latitude,
+    venue?.longitude,
+  ]
+    .map(normalizeSignaturePart)
+    .join("|");
+
+const buildDivisionSignature = (division) =>
+  [division?.name, division?.level].map(normalizeSignaturePart).join("|");
+
+const buildPoolSignature = (pool) =>
+  [pool?.division_id, pool?.name].map(normalizeSignaturePart).join("|");
+
+const buildMatchSignature = (match) =>
+  [match?.pool_id, match?.team_a, match?.team_b, match?.start_time]
+    .map(normalizeSignaturePart)
+    .join("|");
+
 const buildHierarchyIndex = (hierarchy) => {
   const hierarchyEventId = normalizeText(hierarchy?.event?.id);
   const index = {
     event: null,
     venueById: new Map(),
     venueIds: new Set(),
+    venueIdBySignature: new Map(),
     divisionById: new Map(),
     divisionIds: new Set(),
+    divisionIdBySignature: new Map(),
     poolById: new Map(),
     poolIds: new Set(),
+    poolIdBySignature: new Map(),
     divisionTeamByKey: new Map(),
     divisionTeamKeys: new Set(),
     poolTeamByKey: new Map(),
     poolTeamKeys: new Set(),
     matchById: new Map(),
     matchIds: new Set(),
+    matchIdBySignature: new Map(),
   };
 
   if (!hierarchy || typeof hierarchy !== "object") {
@@ -536,24 +573,31 @@ const buildHierarchyIndex = (hierarchy) => {
       return;
     }
     index.venueIds.add(venueId);
-    index.venueById.set(venueId, {
+    const indexedVenue = {
       name: normalizeText(venue?.name),
       city: normalizeText(venue?.city) || null,
       location: normalizeText(venue?.location) || null,
       notes: normalizeText(venue?.notes) || null,
       latitude: toNullableNumber(venue?.latitude),
       longitude: toNullableNumber(venue?.longitude),
-    });
+    };
+    index.venueById.set(venueId, indexedVenue);
+    index.venueIdBySignature.set(buildVenueSignature(indexedVenue), venueId);
   });
 
   (hierarchy.divisions ?? []).forEach((division) => {
     const divisionId = normalizeText(division?.id);
     if (isUuid(divisionId)) {
-      index.divisionIds.add(divisionId);
-      index.divisionById.set(divisionId, {
+      const indexedDivision = {
         name: normalizeText(division?.name),
         level: normalizeText(division?.level) || null,
-      });
+      };
+      index.divisionIds.add(divisionId);
+      index.divisionById.set(divisionId, indexedDivision);
+      index.divisionIdBySignature.set(
+        buildDivisionSignature(indexedDivision),
+        divisionId,
+      );
     }
 
     (division?.divisionTeams ?? []).forEach((team) => {
@@ -571,11 +615,13 @@ const buildHierarchyIndex = (hierarchy) => {
     (division?.pools ?? []).forEach((pool) => {
       const poolId = normalizeText(pool?.id);
       if (isUuid(poolId)) {
-        index.poolIds.add(poolId);
-        index.poolById.set(poolId, {
+        const indexedPool = {
           division_id: isUuid(divisionId) ? divisionId : null,
           name: normalizeText(pool?.name),
-        });
+        };
+        index.poolIds.add(poolId);
+        index.poolById.set(poolId, indexedPool);
+        index.poolIdBySignature.set(buildPoolSignature(indexedPool), poolId);
       }
 
       (pool?.teams ?? []).forEach((team) => {
@@ -597,8 +643,7 @@ const buildHierarchyIndex = (hierarchy) => {
           return;
         }
         const venueId = normalizeText(match?.venueRefId || match?.venueId) || null;
-        index.matchIds.add(matchId);
-        index.matchById.set(matchId, {
+        const indexedMatch = {
           event_id: hierarchyEventId || null,
           division_id: isUuid(divisionId) ? divisionId : null,
           pool_id: isUuid(poolId) ? poolId : null,
@@ -607,7 +652,10 @@ const buildHierarchyIndex = (hierarchy) => {
           status: normalizeMatchStatus(match?.status),
           start_time: normalizeTimestamp(match?.start),
           venue_id: venueId,
-        });
+        };
+        index.matchIds.add(matchId);
+        index.matchById.set(matchId, indexedMatch);
+        index.matchIdBySignature.set(buildMatchSignature(indexedMatch), matchId);
       });
     });
   });
@@ -841,6 +889,7 @@ export async function replaceEventHierarchy(payload) {
   const venueIdLookup = new Map();
   const venueInsertPayload = [];
   const venueInsertClientRefs = [];
+  const venueInsertSignatures = new Set();
   const venueUpdateOperations = [];
 
   cleanedEventVenues.forEach((venue) => {
@@ -853,7 +902,10 @@ export async function replaceEventHierarchy(payload) {
       longitude: venue.longitude,
     };
     const clientId = venue.id || venue.venueId || null;
-    const existingVenueId = normalizeText(venue.venueId || venue.id);
+    const explicitVenueId = normalizeText(venue.venueId || venue.id);
+    const existingVenueId = isUuid(explicitVenueId)
+      ? explicitVenueId
+      : originalIndex.venueIdBySignature.get(buildVenueSignature(baseRecord));
     if (isUuid(existingVenueId)) {
       venueIdLookup.set(existingVenueId, existingVenueId);
       if (clientId) {
@@ -869,6 +921,11 @@ export async function replaceEventHierarchy(payload) {
         venueUpdateOperations.push({ id: existingVenueId, changes });
       }
     } else {
+      const insertSignature = buildVenueSignature(baseRecord);
+      if (venueInsertSignatures.has(insertSignature)) {
+        return;
+      }
+      venueInsertSignatures.add(insertSignature);
       venueInsertPayload.push(baseRecord);
       venueInsertClientRefs.push(clientId || `client_${Math.random()}`);
     }
@@ -917,14 +974,29 @@ export async function replaceEventHierarchy(payload) {
   }
 
   const desiredVenueIds = new Set();
+  const desiredVenueSignatures = new Set();
   const linkPayload = [];
   const linkKeys = new Set();
   cleanedEventVenues.forEach((venue) => {
     const clientId = venue.id || venue.venueId || null;
+    const venueSignature = buildVenueSignature({
+      name: venue.name,
+      city: venue.city,
+      location: venue.location,
+      notes: venue.notes,
+      latitude: venue.latitude,
+      longitude: venue.longitude,
+    });
+    if (desiredVenueSignatures.has(venueSignature)) {
+      return;
+    }
+    desiredVenueSignatures.add(venueSignature);
     const resolvedId =
       normalizeText(venue.venueId) ||
+      venueIdLookup.get(clientId) ||
+      originalIndex.venueIdBySignature.get(venueSignature) ||
       insertedVenueLookup.get(clientId) ||
-      venueIdLookup.get(clientId);
+      null;
     if (resolvedId) {
       desiredVenueIds.add(resolvedId);
       const dedupeKey = `${normalizedEventId}:${resolvedId}`;
@@ -938,29 +1010,23 @@ export async function replaceEventHierarchy(payload) {
     }
   });
 
-  if (linkPayload.length) {
-    const { error: eventVenueError } = await supabase
-      .from("event_venues")
-      .upsert(linkPayload, { onConflict: "event_id,venue_id" });
-    if (eventVenueError) {
-      throw new Error(
-        eventVenueError.message || "Failed to link venues to event.",
-      );
-    }
+  const { error: eventVenueDeleteError } = await supabase
+    .from("event_venues")
+    .delete()
+    .eq("event_id", normalizedEventId);
+  if (eventVenueDeleteError) {
+    throw new Error(
+      eventVenueDeleteError.message || "Failed to refresh event venues.",
+    );
   }
 
-  const eventVenueLinksToDelete = Array.from(originalIndex.venueIds).filter(
-    (venueId) => !desiredVenueIds.has(venueId),
-  );
-  if (eventVenueLinksToDelete.length) {
-    const { error: deleteVenuesError } = await supabase
+  if (linkPayload.length) {
+    const { error: eventVenueInsertError } = await supabase
       .from("event_venues")
-      .delete()
-      .eq("event_id", normalizedEventId)
-      .in("venue_id", eventVenueLinksToDelete);
-    if (deleteVenuesError) {
+      .insert(linkPayload);
+    if (eventVenueInsertError) {
       throw new Error(
-        deleteVenuesError.message || "Failed to remove event venues.",
+        eventVenueInsertError.message || "Failed to link venues to event.",
       );
     }
   }
@@ -978,16 +1044,22 @@ export async function replaceEventHierarchy(payload) {
     }
     const level = normalizeText(division.level) || null;
     const rawId = normalizeText(division.id);
-    if (isUuid(rawId)) {
-      divisionIdLookup.set(rawId, rawId);
-      const originalDivision = originalIndex.divisionById.get(rawId);
+    const existingDivisionId = isUuid(rawId)
+      ? rawId
+      : originalIndex.divisionIdBySignature.get(
+          buildDivisionSignature({ name, level }),
+        );
+    if (isUuid(existingDivisionId)) {
+      divisionIdLookup.set(rawId || existingDivisionId, existingDivisionId);
+      divisionIdLookup.set(existingDivisionId, existingDivisionId);
+      const originalDivision = originalIndex.divisionById.get(existingDivisionId);
       const changes = buildFlatRecordChanges(
         { name, level },
         originalDivision,
         ["name", "level"],
       );
       if (!originalDivision || hasOwnKeys(changes)) {
-        divisionUpdateOperations.push({ id: rawId, changes });
+        divisionUpdateOperations.push({ id: existingDivisionId, changes });
       }
     } else {
       divisionInsertPayload.push({
@@ -1052,16 +1124,22 @@ export async function replaceEventHierarchy(payload) {
       .forEach((pool) => {
         const poolName = normalizeText(pool.name);
         const poolId = normalizeText(pool.id);
-        if (isUuid(poolId)) {
-          poolIdLookup.set(poolId, poolId);
-          const originalPool = originalIndex.poolById.get(poolId);
+        const existingPoolId = isUuid(poolId)
+          ? poolId
+          : originalIndex.poolIdBySignature.get(
+              buildPoolSignature({ division_id: divisionId, name: poolName }),
+            );
+        if (isUuid(existingPoolId)) {
+          poolIdLookup.set(poolId || existingPoolId, existingPoolId);
+          poolIdLookup.set(existingPoolId, existingPoolId);
+          const originalPool = originalIndex.poolById.get(existingPoolId);
           const changes = buildFlatRecordChanges(
             { division_id: divisionId, name: poolName },
             originalPool,
             ["division_id", "name"],
           );
           if (!originalPool || hasOwnKeys(changes)) {
-            poolUpdateOperations.push({ id: poolId, changes });
+            poolUpdateOperations.push({ id: existingPoolId, changes });
           }
         } else {
           poolInsertPayload.push({
@@ -1206,6 +1284,7 @@ export async function replaceEventHierarchy(payload) {
   }
 
   const desiredMatchIds = new Set();
+  const desiredMatchSignatures = new Set();
   const matchUpdateOperations = [];
   const matchInsertPayload = [];
 
@@ -1240,10 +1319,18 @@ export async function replaceEventHierarchy(payload) {
           start_time: startTime,
           venue_id: mappedVenueId,
         };
+        const matchSignature = buildMatchSignature(payload);
+        if (desiredMatchSignatures.has(matchSignature)) {
+          return;
+        }
+        desiredMatchSignatures.add(matchSignature);
         const matchId = normalizeText(match.id);
-        if (isUuid(matchId)) {
-          desiredMatchIds.add(matchId);
-          const originalMatch = originalIndex.matchById.get(matchId);
+        const existingMatchId = isUuid(matchId)
+          ? matchId
+          : originalIndex.matchIdBySignature.get(matchSignature);
+        if (isUuid(existingMatchId)) {
+          desiredMatchIds.add(existingMatchId);
+          const originalMatch = originalIndex.matchById.get(existingMatchId);
           const changes = buildFlatRecordChanges(
             payload,
             originalMatch,
@@ -1259,7 +1346,7 @@ export async function replaceEventHierarchy(payload) {
             ],
           );
           if (!originalMatch || hasOwnKeys(changes)) {
-            matchUpdateOperations.push({ id: matchId, changes });
+            matchUpdateOperations.push({ id: existingMatchId, changes });
           }
         } else {
           matchInsertPayload.push(payload);
