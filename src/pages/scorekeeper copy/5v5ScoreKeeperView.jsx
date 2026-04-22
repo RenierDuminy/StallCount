@@ -32,6 +32,39 @@ const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([
   MATCH_LOG_EVENT_CODES.STOPPAGE_START,
   MATCH_LOG_EVENT_CODES.STOPPAGE_END,
 ]);
+const SECONDARY_TIMER_GUIDES = {
+  interPoint: {
+    title: "Inter-point timer",
+    steps: [
+      { from: 45, text: '45s elapsed: "Set offence on the line"' },
+      { from: 60, text: '60s elapsed: "Signal offence ready"' },
+    ],
+  },
+  betweenPointsTimeout: {
+    title: "Time-out between points",
+    steps: [
+      { from: 0, until: 75, text: '0\u201375s elapsed: "Timeout"' },
+      { from: 75, text: "+75s effect: extend inter-point window" },
+      { from: 76, text: 'Post-timeout: "Inter-point"' },
+    ],
+  },
+  liveTimeout: {
+    title: "Timeout (during a point)",
+    steps: [
+      { from: 0, until: 75, text: '0\u201375s elapsed: "Timeout"' },
+      { from: 75, until: 90, text: '75s elapsed: "Confirm offence ready"' },
+      { from: 90, text: '90s elapsed (max): "Check disc in"' },
+    ],
+  },
+  discussion: {
+    title: "Discussion (after a call)",
+    steps: [
+      { from: 15, text: '15s elapsed: "Involve captains"' },
+      { from: 45, text: '45s elapsed: "Declare contested"' },
+      { from: 60, text: '60s elapsed: "Restart play"' },
+    ],
+  },
+};
 
 export default function ScoreKeeperView() {
   const data = useScoreKeeperData();
@@ -61,8 +94,10 @@ export default function ScoreKeeperView() {
     matchEventsError,
     pendingEntries,
     timerRunning,
+    secondarySeconds,
     secondaryRunning,
     secondaryLabel,
+    secondaryTotalSeconds,
     timerLabel,
     consoleError,
     rosters,
@@ -231,6 +266,7 @@ export default function ScoreKeeperView() {
     handleDeleteLog,
     handleTimeoutTrigger,
     handleHalfTimeTrigger,
+    handleForceEndHalftime,
     handleGameStoppage,
     handleEndMatchNavigation,
     logMatchStartEvent
@@ -632,7 +668,7 @@ export default function ScoreKeeperView() {
                     onClick={() => setSetupModalOpen(true)}
                     className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-emerald-400 hover:text-emerald-800"
                   >
-                    Adjust setup
+                    Setup
                   </button>
                 </div>
               </div>
@@ -655,8 +691,13 @@ export default function ScoreKeeperView() {
                   <p className="text-[clamp(2.6rem,11vw,4.5rem)] font-semibold leading-none text-slate-900">
                     {formattedSecondaryClock}
                   </p>
-                  <div className="flex items-center justify-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    <span>{secondaryLabel || "Inter point"}</span>
+                  <div className="mt-1 flex items-center justify-center text-slate-700">
+                    <SecondaryTimerDescription
+                      label={secondaryLabel}
+                      running={secondaryRunning}
+                      remainingSeconds={secondarySeconds}
+                      totalSeconds={secondaryTotalSeconds}
+                    />
                   </div>
                 </div>
               </div>
@@ -701,18 +742,28 @@ export default function ScoreKeeperView() {
             <div className="space-y-2 rounded-3xl border border-[#0f5132]/40 bg-white p-1.5">
               <div className="space-y-2">
                 {!matchStarted ? (
-                  <button
-                    type="button"
-                    onClick={handleStartMatch}
-                    disabled={!isStartMatchReady}
-                    className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
-                      isStartMatchReady
-                        ? "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
-                        : "bg-slate-300 text-slate-600"
-                    } disabled:cursor-not-allowed`}
-                  >
-                    Start match
-                  </button>
+                  <>
+                    {!isStartMatchReady && (
+                      <p
+                        role="alert"
+                        className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900"
+                      >
+                        Match needs to be initialised in Setup pannel
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleStartMatch}
+                      disabled={!isStartMatchReady}
+                      className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
+                        isStartMatchReady
+                          ? "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
+                          : "bg-slate-300 text-slate-600"
+                      } disabled:cursor-not-allowed`}
+                    >
+                      Start match
+                    </button>
+                  </>
                 ) : (
                   <div className="space-y-1.5">
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
@@ -933,19 +984,19 @@ export default function ScoreKeeperView() {
       )}
 
       {setupModalOpen && (
-        <ActionModal title="Match setup" onClose={() => setSetupModalOpen(false)} alignTop scrollable>
-          <form className="space-y-4" onSubmit={handleInitialiseMatch}>
-            <div className="space-y-2">
+        <ActionModal title="Match setup" onClose={() => setSetupModalOpen(false)} alignTop scrollable wide>
+          <form className="space-y-2" onSubmit={handleInitialiseMatch}>
+            <div className="space-y-1.5">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Event
                 </p>
                 {eventsLoading ? (
-                  <div className="mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                  <div className="mt-1 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-500">
                     Loading events...
                   </div>
                 ) : eventsError ? (
-                  <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  <div className="mt-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
                     {eventsError}
                   </div>
                 ) : (
@@ -956,7 +1007,7 @@ export default function ScoreKeeperView() {
                       setSelectedEventId(value);
                       setSelectedMatchId(null);
                     }}
-                    className="mt-2 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mt-1 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">Select an event...</option>
                     {events.map((event) => (
@@ -971,7 +1022,7 @@ export default function ScoreKeeperView() {
               <div>
                 <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <span>Match</span>
-                    <button
+                  <button
                     type="button"
                     onClick={() => void loadMatches()}
                     className="text-[11px] font-semibold text-[#0f5132] transition hover:text-[#083b24]"
@@ -981,11 +1032,11 @@ export default function ScoreKeeperView() {
                   </button>
                 </div>
                 {matchesLoading ? (
-                  <div className="mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                  <div className="mt-1 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-500">
                     Loading matches...
                   </div>
                 ) : matchesError ? (
-                  <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  <div className="mt-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
                     {matchesError}
                   </div>
                 ) : (
@@ -993,7 +1044,7 @@ export default function ScoreKeeperView() {
                     value={selectedMatchId || ""}
                     onChange={(event) => setSelectedMatchId(event.target.value || null)}
                     disabled={!selectedEventId || matches.length === 0}
-                    className="mt-2 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mt-1 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">
                       {selectedEventId
@@ -1012,12 +1063,12 @@ export default function ScoreKeeperView() {
               </div>
             </div>
 
-            <div className="space-y-3">
-              <div className="rounded-2xl border border-[#0f5132]/20 bg-white/70 p-3">
+            <div className="space-y-2">
+              <div className="rounded-2xl border border-[#0f5132]/20 bg-white/70 p-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Editable values
                 </p>
-                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <div className="mt-1.5 grid gap-x-2 gap-y-1.5 md:grid-cols-2">
                   <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                     <span className="shrink-0">Time cap (min)</span>
                     <input
@@ -1132,12 +1183,12 @@ export default function ScoreKeeperView() {
                 </div>
               </div>
 
-                            <div className="rounded-2xl border border-[#0f5132]/20 bg-white/70 p-3">
+              <div className="rounded-2xl border border-[#0f5132]/20 bg-white/70 p-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Set values
                 </p>
-                <div className="mt-2 space-y-3 text-sm text-[#0f5132]">
-                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                <div className="mt-1.5 grid gap-2 text-sm text-[#0f5132] md:grid-cols-2">
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-2 py-1.5">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
                       Game
                     </p>
@@ -1165,7 +1216,7 @@ export default function ScoreKeeperView() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-2 py-1.5">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
                       Half
                     </p>
@@ -1185,7 +1236,7 @@ export default function ScoreKeeperView() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-2 py-1.5">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
                       Timeouts
                     </p>
@@ -1201,7 +1252,7 @@ export default function ScoreKeeperView() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-2 py-1.5">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
                       Inter-point
                     </p>
@@ -1221,7 +1272,7 @@ export default function ScoreKeeperView() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-2 py-1.5">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
                       Discussions
                     </p>
@@ -1233,7 +1284,7 @@ export default function ScoreKeeperView() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-3 py-2">
+                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-2 py-1.5">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
                       Clock
                     </p>
@@ -1251,7 +1302,7 @@ export default function ScoreKeeperView() {
             <button
               type="submit"
               disabled={initialising || !selectedMatch || !isStartMatchReady}
-              className="w-full rounded-full bg-[#0f5132] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-full bg-[#0f5132] px-5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {initialising ? "Initialising..." : "Initialise"}
             </button>
@@ -1302,8 +1353,6 @@ export default function ScoreKeeperView() {
                   checked={possessionResult === "block"}
                   onChange={() => {
                     setPossessionResult("block");
-                    const blockTeam =
-                      pendingPossessionTeam === "A" ? "B" : pendingPossessionTeam === "B" ? "A" : null;
                   }}
                 />
                 <span>Block</span>
@@ -1442,16 +1491,22 @@ export default function ScoreKeeperView() {
         <button
           type="button"
           onClick={() => {
-            handleHalfTimeTrigger();
+            if (halftimeBreakActive) {
+              handleForceEndHalftime();
+            } else {
+              handleHalfTimeTrigger();
+            }
           }}
           disabled={stoppageActive}
           className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
             stoppageActive
               ? "bg-slate-300 text-slate-600"
+              : halftimeBreakActive
+                ? "bg-[#b91c1c] text-white hover:bg-[#991b1b]"
               : "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
           }`}
         >
-          Half Time
+          {halftimeBreakActive ? "Force end Halftime" : "Half Time"}
         </button>
 
         <div className="grid gap-2 sm:grid-cols-2">
@@ -1717,7 +1772,15 @@ export default function ScoreKeeperView() {
   );
 }
 
-function ActionModal({ title, onClose, children, disableClose = false, alignTop = false, scrollable = false }) {
+function ActionModal({
+  title,
+  onClose,
+  children,
+  disableClose = false,
+  alignTop = false,
+  scrollable = false,
+  wide = false,
+}) {
   const handleClose = () => {
     if (!disableClose) {
       onClose();
@@ -1731,7 +1794,7 @@ function ActionModal({ title, onClose, children, disableClose = false, alignTop 
       }`}
     >
       <div
-        className={`w-full max-w-sm rounded-[32px] bg-white p-3 ${
+        className={`w-full ${wide ? "max-w-xl" : "max-w-sm"} rounded-[32px] bg-white p-3 ${
           scrollable ? "max-h-[85vh] overflow-y-auto" : ""
         }`}
       >
@@ -1749,6 +1812,54 @@ function ActionModal({ title, onClose, children, disableClose = false, alignTop 
         </div>
         {children}
       </div>
+    </div>
+  );
+}
+
+function getSecondaryTimerGuide(label) {
+  const normalized = `${label || ""}`.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes("discussion")) return SECONDARY_TIMER_GUIDES.discussion;
+  if (normalized === "inter point") return SECONDARY_TIMER_GUIDES.interPoint;
+  if (
+    normalized.includes("inter point timeout") ||
+    normalized.includes("pre-pull timeout")
+  ) {
+    return SECONDARY_TIMER_GUIDES.betweenPointsTimeout;
+  }
+  if (normalized.includes("timeout")) return SECONDARY_TIMER_GUIDES.liveTimeout;
+  return null;
+}
+
+function getCurrentSecondaryTimerStep(guide, elapsedSeconds) {
+  if (!guide || !Number.isFinite(elapsedSeconds)) return null;
+  const elapsed = Math.max(0, Math.floor(elapsedSeconds));
+  return guide.steps.reduce((activeStep, step) => {
+    if (elapsed < step.from) return activeStep;
+    if (step.until !== undefined && elapsed >= step.until) return activeStep;
+    return step;
+  }, null);
+}
+
+function SecondaryTimerDescription({ label, running, remainingSeconds, totalSeconds }) {
+  const guide = running ? getSecondaryTimerGuide(label) : null;
+  const elapsedSeconds =
+    Number.isFinite(totalSeconds) && Number.isFinite(remainingSeconds)
+      ? totalSeconds - remainingSeconds
+      : null;
+  const activeStep = guide ? getCurrentSecondaryTimerStep(guide, elapsedSeconds) : null;
+  if (!guide) {
+    return (
+      <span className="text-xs font-semibold uppercase tracking-wide">
+        {label || "Inter point"}
+      </span>
+    );
+  }
+
+  return (
+    <div className="w-full text-center text-[10px] font-semibold leading-tight">
+      <p className="text-center text-slate-900">{guide.title}</p>
+      {activeStep && <p>{activeStep.text}</p>}
     </div>
   );
 }

@@ -837,6 +837,7 @@ const activeSecondaryEventRef = useRef(null);
 const secondaryTimerCompletedRef = useRef(false);
 const restoreTrackedSecondaryCompletionRef = useRef(false);
 const halftimeReconciliationKeyRef = useRef(null);
+const halftimeEndInFlightRef = useRef(new Set());
 const previousSecondaryRunningRef = useRef(false);
 const previousPrimaryRunningRef = useRef(false);
 const stoppageActiveRef = useRef(false);
@@ -2019,6 +2020,9 @@ const replaceSecondaryTimer = useCallback(
         }
         const timestamp = providedTimestamp || new Date().toISOString();
         const optimisticId = providedOptimisticId || createMatchLogOptimisticId();
+        if (eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
+          halftimeEndInFlightRef.current.add(activeMatch.id);
+        }
         const appended = appendLocalLog({
           team: teamKey,
           timestamp,
@@ -2063,6 +2067,32 @@ const replaceSecondaryTimer = useCallback(
     setHalftimeBreakActive(false);
   }, [setTrackedSecondaryEvent]);
 
+  const hasLoggedOrPendingMatchEvent = useCallback(
+    (targetMatchId, eventCode) => {
+      if (!eventCode) return false;
+      if (
+        eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END &&
+        targetMatchId &&
+        halftimeEndInFlightRef.current.has(targetMatchId)
+      ) {
+        return true;
+      }
+      const alreadyLogged = logs.some((entry) => entry.eventCode === eventCode);
+      if (alreadyLogged) return true;
+      if (!targetMatchId) return false;
+      return pendingEntries.some((item) => {
+        if (item?.kind !== "match_log") return false;
+        if (item?.payload?.matchId !== targetMatchId) return false;
+        if (item.payload?.eventTypeCode === eventCode) return true;
+        if (!Number.isFinite(item.payload?.eventTypeId)) return false;
+        return matchEventOptions.some(
+          (option) => option.id === item.payload.eventTypeId && option.code === eventCode
+        );
+      });
+    },
+    [logs, matchEventOptions, pendingEntries]
+  );
+
   const finalizeSecondaryTimerEvent = useCallback(async () => {
     const meta = activeSecondaryEventRef.current;
     secondaryTimerCompletedRef.current = false;
@@ -2071,11 +2101,18 @@ const replaceSecondaryTimer = useCallback(
     }
     setTrackedSecondaryEvent(null);
     setHalftimeBreakActive(false);
-    if (meta.endCode) {
+    const targetMatchId = activeMatch?.id || selectedMatch?.id || null;
+    if (meta.endCode && !hasLoggedOrPendingMatchEvent(targetMatchId, meta.endCode)) {
       await logSimpleEvent(meta.endCode, { teamKey: meta.teamKey ?? null });
     }
     return meta;
-  }, [logSimpleEvent, setTrackedSecondaryEvent]);
+  }, [
+    activeMatch?.id,
+    selectedMatch?.id,
+    hasLoggedOrPendingMatchEvent,
+    logSimpleEvent,
+    setTrackedSecondaryEvent,
+  ]);
 
   const halftimeTriggerLockRef = useRef(false);
 
@@ -2233,9 +2270,48 @@ const replaceSecondaryTimer = useCallback(
     updatePossession,
   ]);
 
+  const forceEndHalftime = useCallback(async () => {
+    if (!halftimeBreakActive) return false;
+    const meta = await finalizeSecondaryTimerEvent();
+    const targetMatchId = activeMatch?.id || selectedMatch?.id || null;
+    if (
+      meta?.endCode !== MATCH_LOG_EVENT_CODES.HALFTIME_END &&
+      !hasLoggedOrPendingMatchEvent(targetMatchId, MATCH_LOG_EVENT_CODES.HALFTIME_END)
+    ) {
+      await logSimpleEvent(MATCH_LOG_EVENT_CODES.HALFTIME_END);
+    }
+    setHalftimeBreakActive(false);
+    setHalftimeTimeCapArmed(false);
+    setHalftimeCapTargetScore(null);
+    commitSecondaryTimerState(0, false);
+    setSecondaryTotalSeconds(0);
+    setSecondaryLabel(DEFAULT_SECONDARY_LABEL);
+    const nextTeam = matchStartingTeamKey;
+    if (nextTeam) {
+      void updatePossession(nextTeam, { logTurnover: false });
+    }
+    return true;
+  }, [
+    halftimeBreakActive,
+    activeMatch?.id,
+    selectedMatch?.id,
+    finalizeSecondaryTimerEvent,
+    hasLoggedOrPendingMatchEvent,
+    logSimpleEvent,
+    commitSecondaryTimerState,
+    matchStartingTeamKey,
+    updatePossession,
+  ]);
+
   const hasPendingMatchLogEventCode = useCallback(
     (targetMatchId, eventCode) => {
       if (!targetMatchId || !eventCode) return false;
+      if (
+        eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END &&
+        halftimeEndInFlightRef.current.has(targetMatchId)
+      ) {
+        return true;
+      }
       return pendingEntries.some((item) => {
         if (item?.kind !== "match_log") return false;
         if (item?.payload?.matchId !== targetMatchId) return false;
@@ -2267,6 +2343,9 @@ const replaceSecondaryTimer = useCallback(
 
     if (!openHalftimeStart) {
       halftimeReconciliationKeyRef.current = null;
+      if (matchLogMatchId) {
+        halftimeEndInFlightRef.current.delete(matchLogMatchId);
+      }
       if (trackedHalftimeActive) {
         setTrackedSecondaryEvent(null);
       }
@@ -2993,6 +3072,7 @@ const replaceSecondaryTimer = useCallback(
     appendLocalLog,
     logSimpleEvent,
     triggerHalftime,
+    forceEndHalftime,
     updatePossession,
     matchLogMatchId,
     currentMatchScore,

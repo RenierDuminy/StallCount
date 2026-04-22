@@ -8,7 +8,7 @@ import { normaliseRoleList, roleAssignmentsIncludeAdmin } from "../../utils/acce
 import { TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY } from "./persistenceKeys";
 
 const LIGHT_INPUT_CLASS =
-  "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-2 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
+  "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
 const LINKED_ROLE_GROUPS = [
   {
     key: "tournament_director",
@@ -165,13 +165,10 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
   const totalLinkedUsers = users.length;
 
   return (
-    <div className="space-y-6">
-      <Card variant="light" className="space-y-4 p-5 shadow-md shadow-[rgba(8,25,21,0.06)]">
+    <div className="space-y-4">
+      <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
         <SectionHeader
-          eyebrow="Linked users"
-          eyebrowVariant="tag"
           title="Event-linked crew"
-          description="Review linked users by operational role for the selected event."
           action={
             <>
               <Link to="/admin/event-access" className="sc-button">
@@ -237,19 +234,19 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
         ) : null}
       </Card>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-2">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2">
         {groupedUsers.map((group) => (
           <Panel
             key={group.key}
             variant="light"
-            className="flex min-w-0 items-center justify-between gap-2 border border-[var(--sc-surface-light-border)] bg-white px-2 py-3 shadow-sm shadow-[rgba(8,25,21,0.03)]"
+            className="flex min-w-0 items-center justify-between gap-2 border border-[var(--sc-surface-light-border)] bg-white px-2 py-2 shadow-sm shadow-[rgba(8,25,21,0.03)]"
           >
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-[var(--sc-surface-light-ink)]">{group.title}</p>
             </div>
             <div className="flex items-center gap-3">
               <div>
-                <p className="text-right text-xl font-bold leading-none text-[var(--sc-surface-light-ink)]">{group.users.length}</p>
+                <p className="text-right text-lg font-bold leading-none text-[var(--sc-surface-light-ink)]">{group.users.length}</p>
                 <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/55">linked</p>
               </div>
             </div>
@@ -257,10 +254,10 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
         ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] gap-4">
         {groupedUsers.map((group) => (
-          <Card key={group.key} variant="light" className="space-y-3 p-5 shadow-md shadow-[rgba(8,25,21,0.06)]">
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--sc-surface-light-border)] pb-3">
+          <Card key={group.key} variant="light" className="space-y-2.5 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--sc-surface-light-border)] pb-2">
               <div className="min-w-0">
                 <p className="truncate text-lg font-semibold text-[var(--sc-surface-light-ink)]">{group.title}</p>
               </div>
@@ -272,7 +269,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
             {loading && totalLinkedUsers === 0 ? (
               <p className="text-sm text-[var(--sc-surface-light-ink)]/70">Loading users...</p>
             ) : group.users.length === 0 ? (
-              <Panel variant="light" className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/80 p-3 text-sm text-[var(--sc-surface-light-ink)]/70">
+              <Panel variant="light" className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/80 p-2.5 text-sm text-[var(--sc-surface-light-ink)]/70">
                 No linked users in this role for the selected event.
               </Panel>
             ) : (
@@ -280,7 +277,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
                 {group.users.map((user) => (
                   <div
                     key={`${group.key}-${user.id}`}
-                    className="grid grid-cols-[minmax(0,1fr),auto] items-center gap-4 border-b border-[var(--sc-surface-light-border)] px-4 py-3 last:border-b-0"
+                    className="grid grid-cols-[minmax(0,1fr),auto] items-center gap-3 border-b border-[var(--sc-surface-light-border)] px-3 py-2 last:border-b-0"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-[var(--sc-surface-light-ink)]">

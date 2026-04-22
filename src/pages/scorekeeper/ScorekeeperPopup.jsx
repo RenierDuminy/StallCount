@@ -83,6 +83,7 @@ export function ScorekeeperPopups({
     halftimeDisabled,
     halftimeTypeLabel,
     onHalfTime,
+    onForceEndHalftime,
     onTimeout,
     remainingTimeouts = { A: 0, B: 0 },
     displayTeamA: timeDisplayTeamA,
@@ -172,19 +173,19 @@ export function ScorekeeperPopups({
       )}
 
       {setupOpen && (
-        <ActionModal title="Match setup" onClose={onSetupClose} alignTop scrollable>
-          <form className="space-y-4" onSubmit={onSetupSubmit}>
-            <div className="space-y-2">
+        <ActionModal title="Match setup" onClose={onSetupClose} alignTop scrollable wide>
+          <form className="space-y-2" onSubmit={onSetupSubmit}>
+            <div className="space-y-1.5">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Event
                 </p>
                 {eventsLoading ? (
-                  <div className="mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                  <div className="mt-1 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-500">
                     Loading events...
                   </div>
                 ) : eventsError ? (
-                  <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  <div className="mt-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
                     {eventsError}
                   </div>
                 ) : (
@@ -199,7 +200,7 @@ export function ScorekeeperPopups({
                         onSelectMatch(null);
                       }
                     }}
-                    className="mt-2 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mt-1 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">Select an event...</option>
                     {events.map((event) => (
@@ -228,11 +229,11 @@ export function ScorekeeperPopups({
                   </button>
                 </div>
                 {matchesLoading ? (
-                  <div className="mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                  <div className="mt-1 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-500">
                     Loading matches...
                   </div>
                 ) : matchesError ? (
-                  <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  <div className="mt-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
                     {matchesError}
                   </div>
                 ) : (
@@ -244,7 +245,7 @@ export function ScorekeeperPopups({
                       }
                     }}
                     disabled={!selectedEventId || matches.length === 0}
-                    className="mt-2 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="mt-1 w-full rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">
                       {selectedEventId
@@ -263,7 +264,7 @@ export function ScorekeeperPopups({
               </div>
             </div>
 
-            <div className="grid gap-2 md:grid-cols-2">
+            <div className="grid gap-x-2 gap-y-1.5 md:grid-cols-2">
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                 <span className="shrink-0">Time cap (min)</span>
                 <input
@@ -486,7 +487,7 @@ export function ScorekeeperPopups({
             <button
               type="submit"
               disabled={initialising || !selectedMatch || !isStartMatchReady}
-              className="w-full rounded-full bg-[#0f5132] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-full bg-[#0f5132] px-5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {initialising ? "Initialising..." : "Initialise"}
             </button>
@@ -541,12 +542,6 @@ export function ScorekeeperPopups({
                     if (onPossessionResultChange) {
                       onPossessionResultChange("block");
                     }
-                    const blockTeam =
-                      pendingPossessionTeam === "A"
-                        ? "B"
-                        : pendingPossessionTeam === "B"
-                          ? "A"
-                          : null;
                   }}
                 />
                 <span>Block</span>
@@ -693,18 +688,22 @@ export function ScorekeeperPopups({
             <button
               type="button"
               onClick={() => {
-                if (onHalfTime) {
+                if (halftimeBreakActive && onForceEndHalftime) {
+                  onForceEndHalftime();
+                } else if (onHalfTime) {
                   onHalfTime();
                 }
               }}
-              disabled={stoppageActive || halftimeDisabled}
+              disabled={stoppageActive || (!halftimeBreakActive && halftimeDisabled)}
               className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
-                stoppageActive || halftimeDisabled
+                stoppageActive || (!halftimeBreakActive && halftimeDisabled)
                   ? "bg-slate-300 text-slate-600"
+                  : halftimeBreakActive
+                    ? "bg-[#b91c1c] text-white hover:bg-[#991b1b]"
                   : "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
               }`}
             >
-              Half Time
+              {halftimeBreakActive ? "Force end Halftime" : "Half Time"}
             </button>
             <p className="text-xs text-[#0f5132]/80">
               Trigger: {halftimeTypeLabel || "Unknown"}
@@ -1021,6 +1020,7 @@ function ActionModal({
   disableClose = false,
   alignTop = false,
   scrollable = false,
+  wide = false,
 }) {
   const handleClose = () => {
     if (!disableClose && onClose) {
@@ -1035,7 +1035,7 @@ function ActionModal({
       }`}
     >
       <div
-        className={`w-full max-w-sm rounded-[32px] bg-white p-3 ${
+        className={`w-full ${wide ? "max-w-xl" : "max-w-sm"} rounded-[32px] bg-white p-3 ${
           scrollable ? "max-h-[85vh] overflow-y-auto" : ""
         }`}
       >

@@ -59,7 +59,7 @@ const EDITABLE_TABLES = [
 const ALLOWED_TABLE_SET = new Set([...VIEW_ONLY_TABLES, ...EDITABLE_TABLES]);
 const EDITABLE_TABLE_SET = new Set(EDITABLE_TABLES);
 const LIGHT_INPUT_CLASS =
-  "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-2 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
+  "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
 
 function buildTemplate(tableName) {
   const columns = listTableColumns(tableName);
@@ -355,13 +355,10 @@ export default function TournamentDirectorPage() {
 
   return (
     <div className="td-page min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
-      <SectionShell as="header" className="py-8">
-        <Card variant="light" className="space-y-5 p-6 sm:p-8 shadow-xl shadow-[rgba(8,25,21,0.08)]">
+      <SectionShell as="header" className="py-4">
+        <Card variant="light" className="space-y-3 p-4 shadow-xl shadow-[rgba(8,25,21,0.08)]">
           <SectionHeader
-            eyebrow="Tournament director"
-            eyebrowVariant="tag"
             title="Tournament director"
-            description="Switch between overview, linked-user coordination, and the full Supabase data editor."
             action={
               <div className="flex flex-wrap gap-2">
                 <button
@@ -405,14 +402,14 @@ export default function TournamentDirectorPage() {
         </Card>
       </SectionShell>
 
-      <SectionShell as="main" className="pb-16">
+      <SectionShell as="main" className="pb-8">
         {workspace === "overview" ? (
           <TournamentOverviewPanel eventsList={accessibleEvents} eventOptionsReady={referenceDataLoaded && !rolesLoading} />
         ) : workspace === "users" ? (
           <LinkedUsersPanel eventsList={accessibleEvents} eventOptionsReady={referenceDataLoaded && !rolesLoading} />
         ) : (
-        <div className="grid gap-6 xl:grid-cols-[320px,minmax(0,1fr)]">
-          <Card variant="light" className="space-y-5 p-5 xl:sticky xl:top-6">
+        <div className="grid gap-4 xl:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]">
+          <Card variant="light" className="space-y-3 p-4 xl:sticky xl:top-4">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]">Tables</h2>
               <Chip variant="ghost" className="text-xs text-[var(--sc-surface-light-ink)]/80">
@@ -429,17 +426,17 @@ export default function TournamentDirectorPage() {
                 className={LIGHT_INPUT_CLASS}
               />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Panel variant="light" className="p-3 shadow-sm shadow-[rgba(8,25,21,0.04)]">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2">
+              <Panel variant="light" className="p-2.5 shadow-sm shadow-[rgba(8,25,21,0.04)]">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Active</p>
                 <p className="truncate text-base font-semibold">{selectedTable || "None"}</p>
               </Panel>
-              <Panel variant="light" className="p-3 text-center shadow-sm shadow-[rgba(8,25,21,0.04)]">
+              <Panel variant="light" className="p-2.5 text-center shadow-sm shadow-[rgba(8,25,21,0.04)]">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Columns</p>
                 <p className="text-xl font-bold">{columns.length}</p>
               </Panel>
             </div>
-            <Panel variant="light" className="max-h-[60vh] space-y-1 overflow-y-auto p-2 shadow-inner shadow-[rgba(8,25,21,0.04)]">
+            <Panel variant="light" className="max-h-[52vh] space-y-1 overflow-y-auto p-2 shadow-inner shadow-[rgba(8,25,21,0.04)]">
               {filteredTables.map((table) => {
                 const isActive = table === selectedTable;
                 const editable = EDITABLE_TABLE_SET.has(table);
@@ -449,7 +446,7 @@ export default function TournamentDirectorPage() {
                     key={table}
                     type="button"
                     onClick={() => setSelectedTable(table)}
-                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
+                    className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-xs font-semibold transition ${
                       isActive ? "bg-[#0a3d29] text-white shadow" : "text-[var(--sc-surface-light-ink)] hover:bg-white"
                     }`}
                   >
@@ -473,14 +470,11 @@ export default function TournamentDirectorPage() {
             </Panel>
           </Card>
 
-          <div className="space-y-6">
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card variant="light" className="space-y-5 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+          <div className="space-y-4">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-4">
+              <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
               <SectionHeader
-                eyebrow="Quick create"
-                eyebrowVariant="tag"
                 title="Create a match"
-                description="Choose event, teams, venue, and start time."
                 action={
                   <button
                     type="button"
@@ -500,7 +494,7 @@ export default function TournamentDirectorPage() {
                   </button>
                 }
               />
-              <div className="grid gap-4 lg:grid-cols-12">
+              <div className="grid gap-3 lg:grid-cols-12">
                 <div className="lg:col-span-6">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Event</p>
                   <select
@@ -598,7 +592,7 @@ export default function TournamentDirectorPage() {
                 </div>
               </div>
               {(matchError || matchMessage) && (
-                <div className="grid gap-3 lg:grid-cols-2">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3">
                   {matchError && (
                     <Panel variant="light" className="border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
                       {matchError}
@@ -626,23 +620,20 @@ export default function TournamentDirectorPage() {
               </div>
             </Card>
 
-            <Card variant="light" className="space-y-5 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+            <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
               <SectionHeader
-                eyebrow="Table settings"
-                eyebrowVariant="tag"
                 title={selectedTable || "Select a table"}
-                description={`Base name: ${getBaseTableName(selectedTable) || "none"}`}
                 action={
                   <Chip variant="ghost" className="text-xs uppercase tracking-wide text-[var(--sc-surface-light-ink)]/80">
                     {isEditableTable ? "Edit access" : "View only"}
                   </Chip>
                 }
               />
-              <div className="grid gap-4 lg:grid-cols-12">
+              <div className="grid gap-3 lg:grid-cols-12">
                 <div className="lg:col-span-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Rows</p>
-                  <Panel variant="light" className="p-3 shadow-sm shadow-[rgba(8,25,21,0.04)]">
-                    <p className="text-2xl font-semibold">{rows.length}</p>
+                  <Panel variant="light" className="p-2.5 shadow-sm shadow-[rgba(8,25,21,0.04)]">
+                    <p className="text-xl font-semibold">{rows.length}</p>
                     <p className="text-xs text-[var(--sc-surface-light-ink)]/70">Loaded records</p>
                   </Panel>
                 </div>
@@ -670,7 +661,7 @@ export default function TournamentDirectorPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid gap-4 lg:grid-cols-12">
+              <div className="grid gap-3 lg:grid-cols-12">
                 <div className="lg:col-span-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Sort</p>
                   <select
@@ -712,7 +703,7 @@ export default function TournamentDirectorPage() {
                   />
                 </div>
               </div>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={loadRows} className="sc-button">
                   Reload data
                 </button>
@@ -720,12 +711,12 @@ export default function TournamentDirectorPage() {
                   Default order: {orderBy || "none"}
                 </Chip>
               </div>
-              <Panel variant="light" className="p-3">
+              <Panel variant="light" className="p-2.5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Schema columns</p>
                 {columns.length === 0 ? (
                   <p className="mt-2 text-xs text-[var(--sc-surface-light-ink)]/70">No columns detected.</p>
                 ) : (
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs lg:grid-cols-3">
+                  <div className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2 text-xs">
                     {columns.map((col) => (
                       <div key={col} className="rounded border border-[var(--sc-surface-light-border)] bg-white px-2 py-1 font-semibold">
                         {col}
@@ -738,23 +729,20 @@ export default function TournamentDirectorPage() {
             </div>
 
             <Card variant="light" className="space-y-4 p-0 shadow-md shadow-[rgba(8,25,21,0.06)]">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--sc-surface-light-border)] px-6 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--sc-surface-light-border)] px-4 py-3">
                 <div>
                   <p className="text-base font-semibold">Data grid</p>
-                  <p className="text-xs text-[var(--sc-surface-light-ink)]/70">
-                    Click a row to load it into the editor. Horizontal scroll keeps dense tables manageable.
-                  </p>
                 </div>
                 <Chip variant="ghost" className="text-xs uppercase tracking-wide text-[var(--sc-surface-light-ink)]/80">
                   {rowsLoading ? "Loading" : "Live data"}
                 </Chip>
               </div>
               {rowsError && (
-                <Panel variant="light" className="mx-6 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                <Panel variant="light" className="mx-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
                   {rowsError}
                 </Panel>
               )}
-              <div className="max-h-[55vh] overflow-auto px-6 pb-6">
+              <div className="max-h-[50vh] overflow-auto px-4 pb-4">
                 {rowsLoading && rows.length === 0 ? (
                   <p className="text-sm text-[var(--sc-surface-light-ink)]/70">Loading rows...</p>
                 ) : rows.length === 0 ? (
@@ -764,7 +752,7 @@ export default function TournamentDirectorPage() {
                     <thead className="sticky top-0 z-10 bg-white/90">
                       <tr>
                         {columns.map((col) => (
-                          <th key={col} className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
+                          <th key={col} className="px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
                             {col}
                           </th>
                         ))}
@@ -785,7 +773,7 @@ export default function TournamentDirectorPage() {
                             }}
                           >
                             {columns.map((col) => (
-                              <td key={col} className="px-3 py-2 align-top text-[var(--sc-surface-light-ink)]">
+                              <td key={col} className="px-2 py-1.5 align-top text-[var(--sc-surface-light-ink)]">
                                 <div className="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap">
                                   {formatCell(row[col])}
                                 </div>
@@ -800,17 +788,10 @@ export default function TournamentDirectorPage() {
               </div>
             </Card>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card variant="light" className="space-y-4 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-4">
+              <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
                 <SectionHeader
-                  eyebrow="Create record"
-                  eyebrowVariant="tag"
                   title="Insert JSON payload"
-                  description={
-                    isEditableTable
-                      ? `Target: ${getBaseTableName(selectedTable) || "none"}`
-                      : "This table is view-only; inserts are disabled."
-                  }
                   action={
                     <button type="button" onClick={() => setDraftPayload(buildTemplate(selectedTable))} className="sc-button">
                       Reset template
@@ -835,16 +816,9 @@ export default function TournamentDirectorPage() {
                 </button>
               </Card>
 
-              <Card variant="light" className="space-y-4 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+              <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
                 <SectionHeader
-                  eyebrow="Edit selection"
-                  eyebrowVariant="tag"
                   title="Update selected row"
-                  description={
-                    isEditableTable
-                      ? "Row loads when you click it in the grid."
-                      : "This table is view-only; editing is disabled."
-                  }
                   action={
                     <button
                       type="button"
@@ -880,7 +854,7 @@ export default function TournamentDirectorPage() {
             </div>
 
             {(draftError || actionMessage) && (
-              <Card variant="light" className="space-y-2 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+              <Card variant="light" className="space-y-2 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
                 {draftError && (
                   <Panel variant="light" className="border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
                     {draftError}

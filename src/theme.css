@@ -182,6 +182,43 @@ a:focus-visible {
   padding: 0.75rem 0.5rem;
 }
 
+.home-lazy-section {
+  content-visibility: auto;
+  contain-intrinsic-size: 1px;
+}
+
+.home-lazy-section__content {
+  contain: layout paint style;
+}
+
+@media (max-width: 639px) {
+  .home-page .sc-shell {
+    padding: 0.5rem;
+  }
+
+  .home-page .sc-card-base,
+  .home-page .sc-card-muted,
+  .home-page .sc-surface-light,
+  .home-page .sc-panel,
+  .home-page .sc-panel-alt,
+  .home-page .sc-feature-panel {
+    border-radius: 0.85rem;
+  }
+
+  .home-page .sc-metric-row {
+    gap: 0.4rem;
+  }
+
+  .home-page .sc-metric--stacked {
+    padding: 0.5rem 0.65rem;
+    gap: 0.2rem;
+  }
+
+  .home-page .sc-metric--stacked strong {
+    font-size: 1.15rem;
+  }
+}
+
 @media (min-width: 640px) {
   .matches-compact-shell {
     padding: 1.5rem 1.25rem;

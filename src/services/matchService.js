@@ -169,12 +169,26 @@ export async function createMatch(payload = {}) {
     venue_id: payload.venueId || null,
     team_a: payload.teamAId || null,
     team_b: payload.teamBId || null,
+    starting_team_id: payload.startingTeamId || null,
+    abba_pattern:
+      typeof payload.abbaPattern === "string" && payload.abbaPattern.trim()
+        ? payload.abbaPattern.trim()
+        : null,
     status:
       typeof payload.status === "string" && payload.status.trim()
         ? payload.status.trim()
         : "scheduled",
     start_time: payload.startTime || null,
+    score_a: Number.isInteger(payload.scoreA) ? payload.scoreA : 0,
+    score_b: Number.isInteger(payload.scoreB) ? payload.scoreB : 0,
+    captains_confirmed: Boolean(payload.captainsConfirmed),
+    confirmed_at: payload.confirmedAt || null,
+    scorekeeper: payload.scorekeeperId || null,
   };
+
+  if (payload.mediaLink) {
+    insertPayload.media_link = payload.mediaLink;
+  }
 
   const { data, error } = await supabase
     .from("matches")
@@ -238,6 +252,37 @@ export async function updateMatch(matchId, payload = {}) {
   invalidateCachedQueries("matches:recent");
 
   return data || null;
+}
+
+export async function deleteMatch(matchId) {
+  if (!matchId) {
+    throw new Error("Match ID is required to delete a match.");
+  }
+
+  const { data: existing, error: loadError } = await supabase
+    .from("matches")
+    .select("id, event_id")
+    .eq("id", matchId)
+    .maybeSingle();
+
+  if (loadError) {
+    throw new Error(loadError.message || "Failed to load match before deletion");
+  }
+
+  const { error } = await supabase.from("matches").delete().eq("id", matchId);
+
+  if (error) {
+    throw new Error(error.message || "Failed to delete match");
+  }
+
+  if (existing?.event_id) {
+    invalidateCachedQueries(`matches:event:${existing.event_id}`);
+  }
+  invalidateCachedQueries("matches:open");
+  invalidateCachedQueries("matches:recent");
+  invalidateCachedQueries("matches:recent-finals");
+
+  return existing || null;
 }
 
 const MATCH_STATUS_CODES = new Set([

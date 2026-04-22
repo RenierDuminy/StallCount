@@ -570,8 +570,8 @@ export default function CptOwNationals2026WorkspacePage() {
           </div>
         </div>
       )}
-      <SectionShell as="main" className="mx-auto max-w-[1760px] space-y-4 py-4 sm:py-5">
-        <Card className="min-w-0 space-y-3 p-3 sm:p-4">
+      <SectionShell as="main" className="w-full max-w-none space-y-4 py-4 sm:py-5">
+        <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
           <SectionHeader
             title={eventTitle}
           />
@@ -626,7 +626,7 @@ export default function CptOwNationals2026WorkspacePage() {
           {error && <div className="sc-alert is-error">{error}</div>}
         </Card>
 
-        <Card className="min-w-0 space-y-3 p-3 sm:p-4">
+        <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
           <SectionHeader
             title="Team standings"
           />
@@ -641,7 +641,7 @@ export default function CptOwNationals2026WorkspacePage() {
           ) : (
             <div className={SECTION_GRID_CLASS}>
               {standingsByPool.map((pool) => (
-                <Panel key={pool.id} variant="muted" className="min-w-0 space-y-2 p-3">
+                <Panel key={pool.id} variant="muted" className="min-w-0 space-y-2 border border-white/50 p-3">
                   <p className="text-sm font-semibold uppercase tracking-wide text-ink">
                     {pool.name}
                   </p>
@@ -652,7 +652,7 @@ export default function CptOwNationals2026WorkspacePage() {
           )}
         </Card>
 
-        <Card className="min-w-0 space-y-2 p-3 sm:p-4">
+        <Card className="min-w-0 space-y-2 border border-white/70 p-3 sm:p-4">
           <button
             type="button"
             className="flex w-full items-center justify-between gap-3 text-left"
@@ -680,7 +680,7 @@ export default function CptOwNationals2026WorkspacePage() {
             </span>
           </button>
           {venueFieldsOpen ? (
-            <Panel variant="muted" className="min-w-0 space-y-2 p-3">
+            <Panel variant="muted" className="min-w-0 space-y-2 border border-white/50 p-3">
               {venuesByCity.length ? (
                 <ul className="space-y-1.5">
                   {venuesByCity.map((city) => (
@@ -766,33 +766,27 @@ export default function CptOwNationals2026WorkspacePage() {
           ) : null}
         </Card>
 
-        <Card className="min-w-0 space-y-4 p-3 sm:p-4">
+        <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
           <SectionHeader
             title="Daily schedule"
           />
-          <div className="space-y-4">
+          <div className="divide-y divide-white/30">
             {dailySchedule.map((day) => (
-              <Panel key={day.key} variant="muted" className="min-w-0 space-y-3 p-3">
-                <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+              <div key={day.key} className="min-w-0 space-y-3 py-3 first:pt-0 last:pb-0">
+                <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <p className="text-lg font-semibold text-ink">{day.title}</p>
                   </div>
                   <Chip>{day.matches.length} matches</Chip>
                 </div>
                 {loading && day.matches.length === 0 ? (
-                  <Card
-                    variant="muted"
-                    className="p-3 text-center text-sm text-ink-muted"
-                  >
+                  <p className="rounded border border-border bg-surface/70 p-2 text-center text-sm text-ink-muted">
                     Loading matches...
-                  </Card>
+                  </p>
                 ) : day.matches.length === 0 ? (
-                  <Card
-                    variant="muted"
-                    className="p-3 text-center text-sm text-ink-muted"
-                  >
+                  <p className="rounded border border-border bg-surface/70 p-2 text-center text-sm text-ink-muted">
                     No matches scheduled for this day.
-                  </Card>
+                  </p>
                 ) : day.mode === "ordered" ? (
                   <div className={MATCH_GRID_CLASS}>
                     {day.matches.map((match) =>
@@ -802,12 +796,11 @@ export default function CptOwNationals2026WorkspacePage() {
                 ) : (
                   <div className="space-y-3">
                     {day.poolGroups.map((poolGroup) => (
-                      <Panel
+                      <div
                         key={`${day.key}-${poolGroup.key}`}
-                        variant="tinted"
-                        className="min-w-0 space-y-2 p-3"
+                        className="min-w-0 space-y-2 border-t border-white/20 pt-2 first:border-t-0 first:pt-0"
                       >
-                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
                             <p className="text-sm font-semibold uppercase tracking-wide text-ink">
                               {poolGroup.title}
@@ -820,12 +813,12 @@ export default function CptOwNationals2026WorkspacePage() {
                             renderMatchCard(match),
                           )}
                         </div>
-                      </Panel>
+                      </div>
                     ))}
 
                     {day.semifinalMatches.length > 0 ? (
-                      <Panel variant="tinted" className="min-w-0 space-y-2 p-3">
-                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-2 border-t border-white/25 pt-3">
+                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
                             <p className="text-sm font-semibold uppercase tracking-wide text-ink">
                               Semi-finals
@@ -841,11 +834,11 @@ export default function CptOwNationals2026WorkspacePage() {
                             });
                           })}
                         </div>
-                      </Panel>
+                      </div>
                     ) : null}
                   </div>
                 )}
-              </Panel>
+              </div>
             ))}
           </div>
         </Card>

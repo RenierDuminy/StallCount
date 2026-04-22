@@ -28,6 +28,39 @@ import {
 } from "./scorekeeperConstants";
 
 const BLOCK_EVENT_TYPE_ID = 19;
+const SECONDARY_TIMER_GUIDES = {
+  interPoint: {
+    title: "Inter-point timer",
+    steps: [
+      { from: 45, text: 'Set offence on the line' },
+      { from: 60, text: 'Signal offence ready' },
+    ],
+  },
+  betweenPointsTimeout: {
+    title: "Time-out (between points)",
+    steps: [
+      { from: 0, until: 75, text: 'Timeout' },
+      { from: 75, text: "Extend inter-point window" },
+      { from: 76, text: 'Inter-point' },
+    ],
+  },
+  liveTimeout: {
+    title: "Timeout (during a point)",
+    steps: [
+      { from: 0, until: 75, text: 'Timeout' },
+      { from: 75, until: 90, text: 'Confirm offence ready' },
+      { from: 90, text: 'Check disc in' },
+    ],
+  },
+  discussion: {
+    title: "Discussion",
+    steps: [
+      { from: 15, text: 'Involve captains' },
+      { from: 45, text: 'Declare contested' },
+    ],
+  },
+};
+
 export default function ScoreKeeperView() {
   const data = useScoreKeeperData();
   const actions = useScoreKeeperActions(data);
@@ -57,8 +90,10 @@ export default function ScoreKeeperView() {
     pendingEntries,
     timerSeconds,
     timerRunning,
+    secondarySeconds,
     secondaryRunning,
     secondaryLabel,
+    secondaryTotalSeconds,
     timerLabel,
     consoleError,
     rosters,
@@ -275,6 +310,7 @@ export default function ScoreKeeperView() {
     handleDeleteLog,
     handleTimeoutTrigger,
     handleHalfTimeTrigger,
+    handleForceEndHalftime,
     handleGameStoppage,
     handleEndMatchNavigation,
     logMatchStartEvent
@@ -674,7 +710,7 @@ export default function ScoreKeeperView() {
                     onClick={() => setSetupModalOpen(true)}
                     className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-emerald-400 hover:text-emerald-800"
                   >
-                    Adjust setup
+                    Setup
                   </button>
                 </div>
               </div>
@@ -701,8 +737,13 @@ export default function ScoreKeeperView() {
                   <p className="text-[clamp(2.6rem,11vw,4.5rem)] font-semibold leading-none text-slate-900">
                     {formattedSecondaryClock}
                   </p>
-                  <div className="flex items-center justify-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    <span>{secondaryLabel || "Inter point"}</span>
+                  <div className="mt-1 flex items-center justify-center text-slate-700">
+                    <SecondaryTimerDescription
+                      label={secondaryLabel}
+                      running={secondaryRunning}
+                      remainingSeconds={secondarySeconds}
+                      totalSeconds={secondaryTotalSeconds}
+                    />
                   </div>
                 </div>
               </div>
@@ -797,18 +838,28 @@ export default function ScoreKeeperView() {
             <div className="space-y-2 rounded-3xl border border-[#0f5132]/40 bg-white p-1.5">
               <div className="space-y-2">
                 {!matchStarted ? (
-                  <button
-                    type="button"
-                    onClick={handleStartMatch}
-                    disabled={!isStartMatchReady}
-                    className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
-                      isStartMatchReady
-                        ? "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
-                        : "bg-slate-300 text-slate-600"
-                    } disabled:cursor-not-allowed`}
-                  >
-                    Start match
-                  </button>
+                  <>
+                    {!isStartMatchReady && (
+                      <p
+                        role="alert"
+                        className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900"
+                      >
+                        Match needs to be initialised in Setup pannel
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleStartMatch}
+                      disabled={!isStartMatchReady}
+                      className={`w-full rounded-full px-3 py-2 text-sm font-semibold transition ${
+                        isStartMatchReady
+                          ? "bg-[#0f5132] text-white hover:bg-[#0a3b24]"
+                          : "bg-slate-300 text-slate-600"
+                      } disabled:cursor-not-allowed`}
+                    >
+                      Start match
+                    </button>
+                  </>
                 ) : (
                   <div className="space-y-1.5">
                     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
@@ -1054,6 +1105,7 @@ export default function ScoreKeeperView() {
           halftimeDisabled: halftimeButtonDisabled,
           halftimeTypeLabel,
           onHalfTime: handleHalfTimeTrigger,
+          onForceEndHalftime: handleForceEndHalftime,
           onTimeout: handleTimeoutTrigger,
           remainingTimeouts,
           displayTeamA,
@@ -1090,6 +1142,54 @@ export default function ScoreKeeperView() {
         }}
       />
     </ScorekeeperShell>
+  );
+}
+
+function getSecondaryTimerGuide(label) {
+  const normalized = `${label || ""}`.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes("discussion")) return SECONDARY_TIMER_GUIDES.discussion;
+  if (normalized === "inter point") return SECONDARY_TIMER_GUIDES.interPoint;
+  if (
+    normalized.includes("inter point timeout") ||
+    normalized.includes("pre-pull timeout")
+  ) {
+    return SECONDARY_TIMER_GUIDES.betweenPointsTimeout;
+  }
+  if (normalized.includes("timeout")) return SECONDARY_TIMER_GUIDES.liveTimeout;
+  return null;
+}
+
+function getCurrentSecondaryTimerStep(guide, elapsedSeconds) {
+  if (!guide || !Number.isFinite(elapsedSeconds)) return null;
+  const elapsed = Math.max(0, Math.floor(elapsedSeconds));
+  return guide.steps.reduce((activeStep, step) => {
+    if (elapsed < step.from) return activeStep;
+    if (step.until !== undefined && elapsed >= step.until) return activeStep;
+    return step;
+  }, null);
+}
+
+function SecondaryTimerDescription({ label, running, remainingSeconds, totalSeconds }) {
+  const guide = running ? getSecondaryTimerGuide(label) : null;
+  const elapsedSeconds =
+    Number.isFinite(totalSeconds) && Number.isFinite(remainingSeconds)
+      ? totalSeconds - remainingSeconds
+      : null;
+  const activeStep = guide ? getCurrentSecondaryTimerStep(guide, elapsedSeconds) : null;
+  if (!guide) {
+    return (
+      <span className="text-xs font-semibold uppercase tracking-wide">
+        {label || "Inter point"}
+      </span>
+    );
+  }
+
+  return (
+    <div className="w-full text-center text-[10px] font-semibold leading-tight">
+      <p className="text-center text-slate-900">{guide.title}</p>
+      {activeStep && <p>{activeStep.text}</p>}
+    </div>
   );
 }
 

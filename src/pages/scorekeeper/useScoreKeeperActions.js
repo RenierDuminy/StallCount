@@ -789,6 +789,13 @@ export function useScoreKeeperActions(controller) {
     }
   }
 
+  async function handleForceEndHalftime() {
+    const ended = await controller.forceEndHalftime?.();
+    if (ended && !controller.stoppageActive) {
+      controller.setTimeModalOpen(false);
+    }
+  }
+
   async function handleGameStoppage() {
     if (controller.halftimeBreakActive) {
       controller.setConsoleError("Game stoppage cannot start during halftime.");
@@ -850,6 +857,7 @@ export function useScoreKeeperActions(controller) {
     handleDeleteLog,
     handleTimeoutTrigger,
     handleHalfTimeTrigger,
+    handleForceEndHalftime,
     handleGameStoppage,
     handleEndMatchNavigation,
     logMatchStartEvent,

@@ -12,18 +12,24 @@ export function StandardEventMatchCard({
   eyebrow,
   title,
   meta,
+  actions,
   score = null,
   status = "Scheduled",
   scoreAlign,
+  variant = "tinted",
   className = "",
   trailing = undefined,
   hideFinishedVenue = true,
   hideEyebrow = false,
+  hideScheduledStatus = false,
+  scheduledVenueNameOnly = false,
   compact = false,
+  linkCard = true,
 }) {
   const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
-  const component = matchHref ? Link : "article";
-  const linkProps = matchHref ? { to: matchHref } : {};
+  const shouldLinkCard = linkCard && matchHref;
+  const component = shouldLinkCard ? Link : "article";
+  const linkProps = shouldLinkCard ? { to: matchHref } : {};
   const mediaDetails = getMatchMediaDetails(match);
   const resolvedTrailing =
     trailing === undefined ? (mediaDetails ? <MatchMediaButton media={mediaDetails} /> : null) : trailing;
@@ -31,15 +37,16 @@ export function StandardEventMatchCard({
   return (
     <MatchCard
       as={component}
-      variant="tinted"
+      variant={variant}
       className={cx(
-        matchHref ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50" : "",
+        shouldLinkCard ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50" : "",
         className,
       )}
       eyebrow={hideEyebrow ? "" : eyebrow || match?.event?.name || "Match"}
       title={title}
       venue={match?.venue}
       meta={meta}
+      actions={actions}
       score={score}
       status={status}
       scoreAlign={scoreAlign || (score ? "right" : "left")}

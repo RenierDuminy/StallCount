@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getAllTeams, getTeamsByIds, getTeamMatches } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
@@ -16,11 +16,11 @@ import { getCurrentUser } from "../services/userService";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabaseClient";
 import { getPlayersByIds } from "../services/playerService";
-import { Card, Chip, MatchCard, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
+import { Card, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
+import { StandardEventMatchCard } from "../components/StandardEventMatchCard";
 import {
   getMatchMediaDetails,
   getMatchMediaProviderLabel,
-  getMatchMediaUrl,
   hasMatchMedia,
 } from "../utils/matchMedia";
 
@@ -29,8 +29,91 @@ const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const MAX_MY_TEAMS = 2;
 const MAX_MY_MATCHES = 3;
 const MAX_SUBSCRIPTIONS_PREVIEW = 4;
-const MAX_FINALS_RESULTS = 16;
-const MAX_UPCOMING_MATCHES = 10;
+const DESKTOP_HOME_LIMITS = {
+  teams: 8,
+  events: 40,
+  recentMatches: 50,
+  openMatches: 20,
+  broadcastMatches: 5,
+  finalMatches: 16,
+  liveEvents: 50,
+  activeEvents: 6,
+  timelineEvents: 8,
+  streamMatches: 5,
+  upcomingMatches: 10,
+};
+const MOBILE_HOME_LIMITS = {
+  teams: 6,
+  events: 12,
+  recentMatches: 12,
+  openMatches: 8,
+  broadcastMatches: 3,
+  finalMatches: 8,
+  liveEvents: 10,
+  activeEvents: 3,
+  timelineEvents: 4,
+  streamMatches: 3,
+  upcomingMatches: 6,
+};
+const HOME_LAZY_SECTION_ROOT_MARGIN = "700px 0px";
+const DATE_FORMATTER = new Intl.DateTimeFormat(undefined);
+const MATCH_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const HEADING_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+function LazyHomeSection({
+  children,
+  className = "",
+  onVisible,
+  placeholderHeight = 360,
+  rootMargin = HOME_LAZY_SECTION_ROOT_MARGIN,
+}) {
+  const ref = useRef(null);
+  const onVisibleRef = useRef(onVisible);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    onVisibleRef.current = onVisible;
+  }, [onVisible]);
+
+  useEffect(() => {
+    if (isVisible) return undefined;
+    const node = ref.current;
+    if (!node) return undefined;
+
+    if (typeof IntersectionObserver === "undefined") {
+      setIsVisible(true);
+      onVisibleRef.current?.();
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setIsVisible(true);
+        onVisibleRef.current?.();
+        observer.disconnect();
+      },
+      { rootMargin },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isVisible, rootMargin]);
+
+  return (
+    <div ref={ref} className={`home-lazy-section ${className}`}>
+      {isVisible ? children : <div aria-hidden="true" style={{ minHeight: placeholderHeight }} />}
+    </div>
+  );
+}
 
 export default function HomePage() {
   const [featuredTeams, setFeaturedTeams] = useState([]);
@@ -61,8 +144,18 @@ export default function HomePage() {
   const [renderStreaming, setRenderStreaming] = useState(false);
   const [renderMatches, setRenderMatches] = useState(false);
   const [renderFinals, setRenderFinals] = useState(false);
+  const [renderPersonalized, setRenderPersonalized] = useState(false);
+  const [streamsLoading, setStreamsLoading] = useState(false);
+  const [finalsLoading, setFinalsLoading] = useState(false);
+  const [isCompactHome, setIsCompactHome] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 640px)").matches : false,
+  );
 
   const { session } = useAuth();
+  const homeLimits = useMemo(
+    () => (isCompactHome ? MOBILE_HOME_LIMITS : DESKTOP_HOME_LIMITS),
+    [isCompactHome],
+  );
 
   useEffect(() => {
     if (!heroActionStatus) return;
@@ -77,39 +170,18 @@ export default function HomePage() {
   }, [personalizedMessage]);
 
   useEffect(() => {
-    let canceled = false;
-    let matchesTimer = null;
-    let finalsTimer = null;
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const query = window.matchMedia("(max-width: 640px)");
+    const handleChange = (event) => setIsCompactHome(event.matches);
+    setIsCompactHome(query.matches);
 
-    const revealSections = () => {
-      if (canceled) return;
-      setRenderStreaming(true);
-      matchesTimer = setTimeout(() => {
-        if (canceled) return;
-        setRenderMatches(true);
-        finalsTimer = setTimeout(() => {
-          if (!canceled) setRenderFinals(true);
-        }, 150);
-      }, 150);
-    };
-
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      const idleId = window.requestIdleCallback(revealSections, { timeout: 800 });
-      return () => {
-        canceled = true;
-        window.cancelIdleCallback?.(idleId);
-        if (matchesTimer) clearTimeout(matchesTimer);
-        if (finalsTimer) clearTimeout(finalsTimer);
-      };
+    if (query.addEventListener) {
+      query.addEventListener("change", handleChange);
+      return () => query.removeEventListener("change", handleChange);
     }
 
-    const fallbackTimer = setTimeout(revealSections, 120);
-    return () => {
-      canceled = true;
-      clearTimeout(fallbackTimer);
-      if (matchesTimer) clearTimeout(matchesTimer);
-      if (finalsTimer) clearTimeout(finalsTimer);
-    };
+    query.addListener(handleChange);
+    return () => query.removeListener(handleChange);
   }, []);
   useEffect(() => {
     let ignore = false;
@@ -119,13 +191,10 @@ export default function HomePage() {
       setError(null);
       try {
         const results = await Promise.all([
-          toSettled(getAllTeams(8)),
-          toSettled(getEventsList(40)),
-          toSettled(getRecentMatches(50)),
-          toSettled(getOpenMatches(20)),
-          toSettled(getRecentMatchesWithMedia(5)),
-          toSettled(getRecentFinalMatches(MAX_FINALS_RESULTS)),
-          toSettled(getRecentLiveEvents(50)),
+          toSettled(getAllTeams(homeLimits.teams)),
+          toSettled(getEventsList(homeLimits.events)),
+          toSettled(getOpenMatches(homeLimits.openMatches)),
+          toSettled(getRecentLiveEvents(homeLimits.liveEvents)),
           toSettled(getTableCount("player")),
           toSettled(getTableCount("teams")),
           toSettled(getTableCount("events")),
@@ -136,10 +205,7 @@ export default function HomePage() {
         const [
           teamsResult,
           eventsResult,
-          latestMatchesResult,
           openMatchesResult,
-          recentBroadcastMatchesResult,
-          recentFinalMatchesResult,
           liveEventsResult,
           playersCountResult,
           teamsCountResult,
@@ -162,33 +228,11 @@ export default function HomePage() {
           console.error("[HomePage] Failed to load events:", eventsResult.reason);
         }
 
-        if (latestMatchesResult.status === "fulfilled") {
-          setLatestMatches(latestMatchesResult.value);
-        } else {
-          failures.push("recent matches");
-          console.error("[HomePage] Failed to load recent matches:", latestMatchesResult.reason);
-        }
-
         if (openMatchesResult.status === "fulfilled") {
           setOpenMatches(openMatchesResult.value);
         } else {
           failures.push("upcoming matches");
           console.error("[HomePage] Failed to load open matches:", openMatchesResult.reason);
-        }
-
-        if (recentBroadcastMatchesResult.status === "fulfilled") {
-          setRecentBroadcastMatches(recentBroadcastMatchesResult.value);
-        } else {
-          console.error(
-            "[HomePage] Failed to load recent matches with media:",
-            recentBroadcastMatchesResult.reason,
-          );
-        }
-
-        if (recentFinalMatchesResult.status === "fulfilled") {
-          setRecentFinalMatches(recentFinalMatchesResult.value);
-        } else {
-          console.error("[HomePage] Failed to load recent final matches:", recentFinalMatchesResult.reason);
         }
 
         if (liveEventsResult.status === "fulfilled") {
@@ -223,7 +267,85 @@ export default function HomePage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [homeLimits]);
+
+  useEffect(() => {
+    if (!renderStreaming) return undefined;
+
+    let ignore = false;
+
+    async function loadStreamData() {
+      setStreamsLoading(true);
+      try {
+        const results = await Promise.all([
+          toSettled(getRecentMatches(homeLimits.recentMatches)),
+          toSettled(getRecentMatchesWithMedia(homeLimits.broadcastMatches)),
+        ]);
+
+        if (ignore) return;
+
+        const [latestMatchesResult, recentBroadcastMatchesResult] = results;
+
+        if (latestMatchesResult.status === "fulfilled") {
+          setLatestMatches(latestMatchesResult.value);
+        } else {
+          console.error("[HomePage] Failed to load recent matches:", latestMatchesResult.reason);
+        }
+
+        if (recentBroadcastMatchesResult.status === "fulfilled") {
+          setRecentBroadcastMatches(recentBroadcastMatchesResult.value);
+        } else {
+          console.error(
+            "[HomePage] Failed to load recent matches with media:",
+            recentBroadcastMatchesResult.reason,
+          );
+        }
+      } catch (err) {
+        if (!ignore) {
+          console.error("[HomePage] Unable to load streaming data:", err);
+        }
+      } finally {
+        if (!ignore) {
+          setStreamsLoading(false);
+        }
+      }
+    }
+
+    loadStreamData();
+
+    return () => {
+      ignore = true;
+    };
+  }, [homeLimits.broadcastMatches, homeLimits.recentMatches, renderStreaming]);
+
+  useEffect(() => {
+    if (!renderFinals) return undefined;
+
+    let ignore = false;
+    setFinalsLoading(true);
+
+    getRecentFinalMatches(homeLimits.finalMatches)
+      .then((rows) => {
+        if (!ignore) {
+          setRecentFinalMatches(rows || []);
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          console.error("[HomePage] Failed to load recent final matches:", err);
+          setRecentFinalMatches([]);
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setFinalsLoading(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [homeLimits.finalMatches, renderFinals]);
 
   useEffect(() => {
     const profileId = session?.user?.id ?? null;
@@ -233,6 +355,12 @@ export default function HomePage() {
       setSubscriptions([]);
       setMyTeamInsights([]);
       setMyMatchInsights([]);
+      setPersonalizedLoading(false);
+      setPersonalizedError(null);
+      return;
+    }
+
+    if (!renderPersonalized) {
       setPersonalizedLoading(false);
       setPersonalizedError(null);
       return;
@@ -274,7 +402,7 @@ export default function HomePage() {
     return () => {
       ignore = true;
     };
-  }, [session?.user?.id]);
+  }, [renderPersonalized, session?.user?.id]);
   const followedTeamIds = useMemo(() => {
     return Array.from(
       new Set(
@@ -615,14 +743,14 @@ export default function HomePage() {
         const bTime = b?.start_time ? new Date(b.start_time).getTime() : Number.MAX_SAFE_INTEGER;
         return aTime - bTime;
       })
-      .slice(0, 5);
-  }, [streamMatches]);
+      .slice(0, homeLimits.streamMatches);
+  }, [homeLimits.streamMatches, streamMatches]);
 
   const recentStreamMatches = useMemo(() => {
     return recentBroadcastMatches
       .filter((match) => matchHasStream(match) || Boolean(match?.has_media))
-      .slice(0, 5);
-  }, [recentBroadcastMatches]);
+      .slice(0, homeLimits.streamMatches);
+  }, [homeLimits.streamMatches, recentBroadcastMatches]);
 
   const forYouLoading = personalizedLoading || myTeamsLoading || myMatchesLoading;
   const liveAndUpcomingMatches = useMemo(() => {
@@ -635,8 +763,8 @@ export default function HomePage() {
       });
     const liveMatches = sortByStartTime(filtered.filter((match) => isMatchLive(match.status)));
     const upcomingMatches = sortByStartTime(filtered.filter((match) => !isMatchLive(match.status)));
-    return [...liveMatches, ...upcomingMatches].slice(0, MAX_UPCOMING_MATCHES);
-  }, [safeOpenMatches, heroFeaturedMatchIds]);
+    return [...liveMatches, ...upcomingMatches].slice(0, homeLimits.upcomingMatches);
+  }, [homeLimits.upcomingMatches, safeOpenMatches, heroFeaturedMatchIds]);
   const latestResults = useMemo(() => {
     return recentFinalMatches
       .map((match) => ({ match, completedTime: getMatchCompletionTime(match) }))
@@ -645,9 +773,9 @@ export default function HomePage() {
           Boolean(match?.id) && isMatchFinal(match?.status) && completedTime !== null,
       )
       .sort((a, b) => (b.completedTime ?? 0) - (a.completedTime ?? 0))
-      .slice(0, MAX_FINALS_RESULTS)
+      .slice(0, homeLimits.finalMatches)
       .map(({ match }) => match);
-  }, [recentFinalMatches]);
+  }, [homeLimits.finalMatches, recentFinalMatches]);
 
   const heroStats = [
     { label: "teams", value: stats.teams },
@@ -708,102 +836,48 @@ export default function HomePage() {
     const lastEvent = live ? formatLiveEventSummary(liveEvent, match) : null;
     const trackerHref = buildMatchLink(match.id);
     const notificationHref = `/notifications?targetType=match&targetId=${match.id}`;
-    const streamUrl = resolveStreamUrl(match);
+    const metaParts = live
+      ? [liveClockLabel || "Waiting for next score update", lastEvent ? `Last event: ${lastEvent}` : "No logs yet"]
+      : [`Scheduled: ${formatHeadingDateTime(match.start_time)}`, formatVenueDetails(match)].filter(Boolean);
 
     return (
-      <Card
+      <StandardEventMatchCard
         key={match.id}
+        match={match}
         variant="muted"
-        className={`sc-frosted sc-live-card ${compact ? "p-4" : "p-5"} ${
+        className={`sc-frosted sc-live-card ${compact ? "p-3 sm:p-4" : "p-3 sm:p-5"} ${
           live ? "is-live border-2 border-rose-500/70 bg-rose-500/10" : ""
         }`}
-      >
-        <div className={`flex flex-col gap-5 ${streamUrl ? "sm:flex-row sm:items-center sm:justify-between" : ""}`}>
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              <span>{live ? "Live now" : "Next up"}</span>
-              {live && (
-                <span className="sc-live-badge inline-flex items-center gap-2 rounded-full border border-rose-400/60 bg-rose-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-100">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-200 opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-200" />
-                  </span>
-                  Live
-                </span>
-              )}
-              {pointStatus && live && <Chip as="span">{pointStatus} point</Chip>}
-            </div>
-            {live && (
-              <div className="flex flex-wrap items-baseline gap-3">
-                <p className="sc-live-score text-3xl font-semibold text-rose-50">{formatLiveScore(match)}</p>
-                <span className="text-xs font-semibold uppercase tracking-[0.3em] text-rose-100/90">
-                  Live match
-                </span>
-              </div>
-            )}
-            <p className={`font-semibold ${compact ? "text-xl" : "text-2xl"} ${live ? "text-rose-50" : "text-ink"}`}>
-              {formatMatchup(match)}
-            </p>
-            {live ? (
-              <p className="text-sm text-ink-muted">{liveClockLabel || "Waiting for next score update"}</p>
-            ) : (
-              <div className="space-y-1">
-                <p className="text-sm text-ink-muted">Scheduled: {formatHeadingDateTime(match.start_time)}</p>
-                {formatVenueDetails(match) && <p className="text-xs text-ink-muted">{formatVenueDetails(match)}</p>}
-              </div>
-            )}
-            {live && (
-              <p className="text-xs uppercase tracking-wide text-ink-muted">
-                Last event: <span className="text-ink">{lastEvent || "No logs yet"}</span>
-              </p>
-            )}
-          </div>
-          {streamUrl && (
-            <a
-              href={streamUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="sc-live-watch group inline-flex items-center gap-3 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-4 py-3 text-rose-50"
-            >
-              <span className="flex h-14 w-14 items-center justify-center rounded-full border border-rose-300/50 bg-rose-500/20">
-                <img src="/youtube.png" alt="" className="h-9 w-9" aria-hidden="true" />
-              </span>
-              <span className="text-xs font-semibold uppercase tracking-[0.3em]">Watch</span>
-            </a>
-          )}
-        </div>
-        <div className="mt-5 grid gap-2 sm:grid-cols-2">
-          <Link to={live ? trackerHref : notificationHref} className="sc-button text-center">
-            {live ? "Open live tracker" : "Notifications"}
-          </Link>
-          <button
-            type="button"
-            onClick={() => void handleShareMatch(match)}
-            className="sc-button is-ghost"
-          >
-            Share
-          </button>
-          {!streamUrl && (
-            <Panel
-              variant="dashed"
-              className="flex items-center justify-center px-3 py-2 text-center text-xs uppercase tracking-wide text-ink-muted"
-            >
-              No stream linked
-            </Panel>
-          )}
-        </div>
-      </Card>
+        eyebrow={pointStatus && live ? `${pointStatus} point` : live ? "Live now" : "Next up"}
+        title={formatMatchup(match)}
+        meta={metaParts.join(" | ")}
+        score={live ? formatLiveScore(match) : null}
+        status={live ? "Live" : formatMatchStatus(match.status) || "Scheduled"}
+        actions={
+          <>
+            <Link to={live ? trackerHref : notificationHref} className="sc-button text-center">
+              {live ? "Open live tracker" : "Notifications"}
+            </Link>
+            <button type="button" onClick={() => void handleShareMatch(match)} className="sc-button is-ghost">
+              Share
+            </button>
+          </>
+        }
+        linkCard={false}
+        compact={compact}
+        hideFinishedVenue={false}
+      />
     );
   };
 
   return (
-    <div className="pb-20 text-ink">
-      <SectionShell as="header" className="space-y-6 pt-8 pb-2">
-        <Card className="sc-hero p-6 sm:p-8 lg:p-10">
-          <div className="space-y-8">
-            <div className={showMultiLiveHero ? "space-y-6" : "grid gap-8 lg:grid-cols-[1.05fr,0.95fr] lg:items-start"}>
-              <div className="space-y-6">
-                <div className="space-y-4">
+    <div className="home-page pb-10 text-ink sm:pb-20">
+      <SectionShell as="header" className="space-y-3 pb-1 pt-2 sm:space-y-6 sm:pt-8 sm:pb-2">
+        <Card className="sc-hero p-3 sm:p-8 lg:p-10">
+          <div className="space-y-4 sm:space-y-8">
+            <div className={showMultiLiveHero ? "space-y-3 sm:space-y-6" : "grid gap-4 sm:gap-8 lg:grid-cols-[1.05fr,0.95fr] lg:items-start"}>
+              <div className="space-y-3 sm:space-y-6">
+                <div className="space-y-2 sm:space-y-4">
                   <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
                     Live now, next up, and standings - at a glance
                   </h1>
@@ -818,16 +892,16 @@ export default function HomePage() {
                 )}
               </div>
               {!showMultiLiveHero && (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {heroCardMatch ? (
                     renderHeroMatchCard(heroCardMatch)
                   ) : (
-                    <Card variant="muted" className="sc-frosted sc-live-card p-5">
+                    <Card variant="muted" className="sc-frosted sc-live-card p-3 sm:p-5">
                       <p className="text-2xl font-semibold text-ink">No matches scheduled</p>
                       <p className="mt-2 text-sm text-ink-muted">Add matches to see them here.</p>
                     </Card>
                   )}
-                  <Panel variant="tinted" className="p-4">
+                  <Panel variant="tinted" className="p-3 sm:p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
                       <span>Next scheduled</span>
                       {nextScheduledMatch?.start_time && (
@@ -837,7 +911,7 @@ export default function HomePage() {
                     <p className="text-sm text-ink">{myNextMatchAnswer}</p>
                   </Panel>
                   {error && (
-                    <p className="rounded-2xl border border-rose-400/30 bg-rose-950/50 p-4 text-sm font-semibold text-rose-100">
+                    <p className="rounded-2xl border border-rose-400/30 bg-rose-950/50 p-3 text-sm font-semibold text-rose-100 sm:p-4">
                       {error}
                     </p>
                   )}
@@ -845,11 +919,11 @@ export default function HomePage() {
               )}
             </div>
             {showMultiLiveHero && (
-              <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {liveHeroMatches.map((match) => renderHeroMatchCard(match, { compact: true }))}
                 </div>
-                <Panel variant="tinted" className="p-4">
+                <Panel variant="tinted" className="p-3 sm:p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
                     <span>Next scheduled</span>
                     {nextScheduledMatch?.start_time && (
@@ -859,7 +933,7 @@ export default function HomePage() {
                   <p className="text-sm text-ink">{myNextMatchAnswer}</p>
                 </Panel>
                 {error && (
-                  <p className="rounded-2xl border border-rose-400/30 bg-rose-950/50 p-4 text-sm font-semibold text-rose-100">
+                  <p className="rounded-2xl border border-rose-400/30 bg-rose-950/50 p-3 text-sm font-semibold text-rose-100 sm:p-4">
                     {error}
                   </p>
                 )}
@@ -869,8 +943,14 @@ export default function HomePage() {
         </Card>
       </SectionShell>
       {isLoggedIn && (
-        <SectionShell as="section">
-          <Card className="space-y-5 p-5 sm:p-6">
+        <LazyHomeSection
+          onVisible={() => setRenderPersonalized(true)}
+          placeholderHeight={420}
+          rootMargin="220px 0px"
+        >
+          {renderPersonalized && (
+        <SectionShell as="section" className="home-lazy-section__content">
+          <Card className="space-y-3 p-3 sm:space-y-5 sm:p-6">
             <SectionHeader
               title="My teams, matches, alerts"
               description="All your followed teams, matches, and subscriptions in one place."
@@ -892,20 +972,20 @@ export default function HomePage() {
               <Card
                 as="p"
                 variant="muted"
-                className="border border-rose-400/40 bg-rose-950/40 p-4 text-sm text-rose-100"
+                className="border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-100 sm:p-4"
               >
                 {personalizedError}
               </Card>
             )}
             {personalizedMessage && (
-              <Card as="p" variant="muted" className="border border-border bg-[rgba(6,22,18,0.7)] p-4 text-sm text-ink">
+              <Card as="p" variant="muted" className="border border-border bg-[rgba(6,22,18,0.7)] p-3 text-sm text-ink sm:p-4">
                 {personalizedMessage}
               </Card>
             )}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <Panel className="p-5">
+            <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <Panel className="p-3 sm:p-5">
                 <h3 className="text-lg font-semibold text-ink">My teams</h3>
-                <div className="mt-3">
+                <div className="mt-2 sm:mt-3">
                   {myTeamsLoading ? (
                     <p className="text-sm text-ink-muted">Loading teams...</p>
                   ) : myTeamInsights.length === 0 ? (
@@ -913,7 +993,7 @@ export default function HomePage() {
                   ) : (
                     <div className="space-y-2">
                       {myTeamInsights.map((team) => (
-                        <Card key={team.teamId} variant="muted" className="p-3">
+                        <Card key={team.teamId} variant="muted" className="p-2.5 sm:p-3">
                           <p className="text-sm font-semibold text-ink">{team.name}</p>
                           <div className="mt-1 space-y-1 text-xs text-ink-muted">
                             {team.record && <p>Record {formatRecord(team.record)}</p>}
@@ -926,9 +1006,9 @@ export default function HomePage() {
                   )}
                 </div>
               </Panel>
-              <Panel className="p-5">
+              <Panel className="p-3 sm:p-5">
                 <h3 className="text-lg font-semibold text-ink">My matches</h3>
-                <div className="mt-3">
+                <div className="mt-2 sm:mt-3">
                   {myMatchesLoading ? (
                     <p className="text-sm text-ink-muted">Loading matches...</p>
                   ) : myMatchInsights.length === 0 ? (
@@ -936,32 +1016,31 @@ export default function HomePage() {
                   ) : (
                     <div className="space-y-2">
                       {myMatchInsights.map((match) => (
-                        <Card key={match.id} as="article" variant="muted" className="p-3">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                            {match.event?.name || match.venue?.name || "Match"}
-                          </p>
-                          <p className="text-sm font-semibold text-ink">{formatMatchup(match)}</p>
-                          <p className="text-xs text-ink-muted">{formatMatchMeta(match)}</p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <Link to={`/matches?matchId=${match.id}`} className="sc-button is-ghost text-xs">
-                              Open
-                            </Link>
-                          </div>
-                        </Card>
+                        <StandardEventMatchCard
+                          key={match.id}
+                          match={match}
+                          eyebrow={match.event?.name || match.venue?.name || "Match"}
+                          title={formatMatchup(match)}
+                          meta={formatMatchMeta(match)}
+                          score={isMatchLive(match.status) || isMatchFinal(match.status) ? formatLiveScore(match) : null}
+                          status={formatMatchStatus(match.status) || "Scheduled"}
+                          compact
+                          hideFinishedVenue={false}
+                        />
                       ))}
                     </div>
                   )}
                 </div>
               </Panel>
-              <Panel className="p-5">
+              <Panel className="p-3 sm:p-5">
                 <h3 className="text-lg font-semibold text-ink">My subscriptions</h3>
-                <div className="mt-3">
+                <div className="mt-2 sm:mt-3">
                   {mySubscriptionsDetailed.length === 0 ? (
                     <p className="text-sm text-ink-muted">Follow teams, matches, or players to receive alerts.</p>
                   ) : (
                     <div className="space-y-2">
                       {mySubscriptionsDetailed.map((sub) => (
-                        <Card key={sub.id} variant="muted" className="flex items-center justify-between gap-3 p-3">
+                        <Card key={sub.id} variant="muted" className="flex items-center justify-between gap-2 p-2.5 sm:gap-3 sm:p-3">
                           <div>
                             <p className="text-sm font-semibold text-ink">{sub.label}</p>
                             <p className="text-xs uppercase tracking-wide text-ink-muted">{sub.normalizedType}</p>
@@ -975,80 +1054,46 @@ export default function HomePage() {
             </div>
           </Card>
         </SectionShell>
+          )}
+        </LazyHomeSection>
       )}
 
-      <main className="space-y-12">
+      <main className="space-y-0">
         <SectionShell as="section">
-          <Card className="space-y-5 p-5 sm:p-6 lg:p-7">
+          <Card className="space-y-3 p-3 sm:space-y-5 sm:p-6 lg:p-7">
             <SectionHeader title="Active events" />
             {loading && safeEvents.length === 0 ? (
-              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+              <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
                 Loading events...
               </Card>
             ) : activeTimelineEvents.length === 0 ? (
-              <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+              <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
                 No active events right now.
               </Card>
             ) : (
-              <div className="space-y-3">
-                {activeTimelineEvents.slice(0, 6).map((event) => (
-                  <Card key={event.id} as="article" variant="muted" className="p-4">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                          {event.location ? `${event.location} - ` : ""}
-                          {formatEventType(event.type)}
-                        </p>
-                        <h3 className="text-lg font-semibold text-ink">{event.name}</h3>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <p className="text-sm text-ink-muted text-left">
-                          {formatDateRange(event.start_date, event.end_date)}
-                        </p>
-                        <Link to={`/events?eventId=${event.id}`} className="sc-button is-ghost inline-flex text-xs">
-                          View matches
-                        </Link>
-                      </div>
-                    </div>
-                  </Card>
+              <div className="space-y-2 sm:space-y-3">
+                {activeTimelineEvents.slice(0, homeLimits.activeEvents).map((event) => (
+                  <HomeEventCard key={event.id} event={event} />
                 ))}
               </div>
             )}
 
-            <div className="mt-6 border-t border-border/60 pt-4">
+            <div className="mt-3 border-t border-border/60 pt-3 sm:mt-6 sm:pt-4">
               <SectionHeader
                 title="Upcoming events"
               />
               {loading && safeEvents.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
                   Loading events...
                 </Card>
               ) : filteredTimelineEvents.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
                   {timelineEmptyMessage}
                 </Card>
               ) : (
-                <div className="space-y-3">
-                  {filteredTimelineEvents.slice(0, 8).map((event) => (
-                    <Card key={event.id} as="article" variant="muted" className="p-4">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                            {event.location ? `${event.location} - ` : ""}
-                            {formatEventType(event.type)}
-                          </p>
-                          <h3 className="text-lg font-semibold text-ink">{event.name}</h3>
-                        </div>
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                          <p className="text-sm text-ink-muted text-left">
-                            {formatDateRange(event.start_date, event.end_date)}
-                          </p>
-                          <Link to={`/events?eventId=${event.id}`} className="sc-button is-ghost inline-flex text-xs">
-                            View matches
-                          </Link>
-                        </div>
-                      </div>
-                    </Card>
+                <div className="space-y-2 sm:space-y-3">
+                  {filteredTimelineEvents.slice(0, homeLimits.timelineEvents).map((event) => (
+                    <HomeEventCard key={event.id} event={event} />
                   ))}
                 </div>
               )}
@@ -1056,47 +1101,26 @@ export default function HomePage() {
           </Card>
         </SectionShell>
 
-        {renderStreaming && (
-          <SectionShell as="section" className="space-y-6">
+        <LazyHomeSection onVisible={() => setRenderStreaming(true)} placeholderHeight={520}>
+          {renderStreaming && (
+          <SectionShell as="section" className="home-lazy-section__content">
             <SectionHeader
               eyebrow="Streaming"
               title="Featured broadcasts"
               description="Upcoming streams and recently completed matches with media."
             />
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card className="space-y-4 p-5 sm:p-6">
+            <div className="grid gap-3 sm:gap-6 lg:grid-cols-2">
+              <Card className="space-y-3 p-3 sm:space-y-4 sm:p-6">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Upcoming with media</p>
                   <h3 className="text-lg font-semibold text-ink">Next to stream</h3>
                 </div>
-                {upcomingStreamMatches.length > 0 ? (
-                  <div className="space-y-3">
+                {streamsLoading && upcomingStreamMatches.length === 0 ? (
+                  <p className="text-sm text-ink-muted">Loading streams...</p>
+                ) : upcomingStreamMatches.length > 0 ? (
+                  <div className="space-y-2 sm:space-y-3">
                     {upcomingStreamMatches.map((match) => (
-                      <Card key={match.id} variant="muted" className="p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <Link
-                              to={`/matches?matchId=${match.id}`}
-                              className="text-sm font-semibold text-ink hover:text-accent"
-                            >
-                              {formatMatchup(match)}
-                            </Link>
-                            <p className="text-xs text-ink-muted">{formatMatchTime(match.start_time)}</p>
-                            <p className="text-xs text-ink-muted">Provider: {formatMediaProvider(match)}</p>
-                          </div>
-                          {resolveStreamUrl(match) && (
-                            <a
-                              href={resolveStreamUrl(match)}
-                              target="_blank"
-                              rel="noreferrer"
-                              aria-label="Open stream"
-                              className="inline-flex items-center justify-center pr-2"
-                            >
-                              <img src="/youtube.png" alt="" className="h-8 w-8" aria-hidden="true" />
-                            </a>
-                          )}
-                        </div>
-                      </Card>
+                      <HomeStreamMatchCard key={match.id} match={match} />
                     ))}
                   </div>
                 ) : (
@@ -1104,39 +1128,17 @@ export default function HomePage() {
                 )}
               </Card>
 
-              <Card className="space-y-4 p-5 sm:p-6">
+              <Card className="space-y-3 p-3 sm:space-y-4 sm:p-6">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Recent with media</p>
                   <h3 className="text-lg font-semibold text-ink">Latest replays</h3>
                 </div>
-                {recentStreamMatches.length > 0 ? (
-                  <div className="space-y-3">
+                {streamsLoading && recentStreamMatches.length === 0 ? (
+                  <p className="text-sm text-ink-muted">Loading replays...</p>
+                ) : recentStreamMatches.length > 0 ? (
+                  <div className="space-y-2 sm:space-y-3">
                     {recentStreamMatches.map((match) => (
-                      <Card key={match.id} variant="muted" className="p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <Link
-                              to={`/matches?matchId=${match.id}`}
-                              className="text-sm font-semibold text-ink hover:text-accent"
-                            >
-                              {formatMatchup(match)}
-                            </Link>
-                            <p className="text-xs text-ink-muted">{formatMatchTime(match.start_time)}</p>
-                            <p className="text-xs text-ink-muted">Provider: {formatMediaProvider(match)}</p>
-                          </div>
-                          {resolveStreamUrl(match) && (
-                            <a
-                              href={resolveStreamUrl(match)}
-                              target="_blank"
-                              rel="noreferrer"
-                              aria-label="Open stream"
-                              className="inline-flex items-center justify-center pr-2"
-                            >
-                              <img src="/youtube.png" alt="" className="h-8 w-8" aria-hidden="true" />
-                            </a>
-                          )}
-                        </div>
-                      </Card>
+                      <HomeStreamMatchCard key={match.id} match={match} />
                     ))}
                   </div>
                 ) : (
@@ -1145,38 +1147,32 @@ export default function HomePage() {
               </Card>
             </div>
           </SectionShell>
-        )}
+          )}
+        </LazyHomeSection>
 
-        {renderFinals && (
-          <SectionShell as="section">
-            <Card className="space-y-4 p-5 sm:p-6">
+        <LazyHomeSection onVisible={() => setRenderFinals(true)} placeholderHeight={420}>
+          {renderFinals && (
+          <SectionShell as="section" className="home-lazy-section__content">
+            <Card className="space-y-3 p-3 sm:space-y-4 sm:p-6">
               <SectionHeader
                 title="Latest results"
-                action={
-                  <Link to="/events" className="sc-button is-ghost">
-                    Match archive
-                  </Link>
-                }
               />
-              {loading && latestResults.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+              {finalsLoading && latestResults.length === 0 ? (
+                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
                   Loading results...
                 </Card>
               ) : latestResults.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
                   No finals saved yet.
                 </Card>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
                   {latestResults.map((match) => (
-                    <MatchCard
+                    <StandardEventMatchCard
                       key={match.id}
-                      as={Link}
-                      to={`/matches?matchId=${match.id}`}
-                      variant="tinted"
+                      match={match}
                       eyebrow={match.event?.name || "Match"}
                       title={formatMatchup(match)}
-                      venue={match.venue}
                       meta={formatMatchMeta(match)}
                       score={formatLiveScore(match)}
                       status={formatMatchStatus(match.status) || "Final"}
@@ -1187,24 +1183,26 @@ export default function HomePage() {
               )}
             </Card>
           </SectionShell>
-        )}
+          )}
+        </LazyHomeSection>
 
-        {renderMatches && (
-          <SectionShell as="section">
-            <Card className="space-y-4 p-5 sm:p-6">
+        <LazyHomeSection onVisible={() => setRenderMatches(true)} placeholderHeight={440}>
+          {renderMatches && (
+          <SectionShell as="section" className="home-lazy-section__content">
+            <Card className="space-y-3 p-3 sm:space-y-4 sm:p-6">
               <SectionHeader
                 title="Live & upcoming"
               />
               {loading && liveAndUpcomingMatches.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
                   Loading matches...
                 </Card>
               ) : liveAndUpcomingMatches.length === 0 ? (
-                <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
+                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
                   No open matches right now.
                 </Card>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
                   {liveAndUpcomingMatches.map((match) => {
                     const live = isMatchLive(match.status);
                     const final = isMatchFinal(match.status);
@@ -1213,33 +1211,16 @@ export default function HomePage() {
                       ? formatMatchStatus(match.status) || (live ? "Live" : "Final")
                       : formatMatchStatus(match.status) || "Scheduled";
                     return (
-                      <MatchCard
+                      <StandardEventMatchCard
                         key={match.id}
-                        as="article"
+                        match={match}
                         variant="tintedAlt"
                         eyebrow={match.event?.name || match.venue?.name || "Match"}
                         title={formatMatchup(match)}
-                        venue={match.venue}
                         meta={formatMatchMeta(match)}
-                        actions={
-                          <>
-                            <Link to={`/matches?matchId=${match.id}`} className="sc-button is-ghost text-xs">
-                              {live ? "Live tracker" : "Details"}
-                            </Link>
-                            {matchHasStream(match) && (
-                              <a
-                                href={resolveStreamUrl(match)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="sc-button is-ghost text-xs"
-                              >
-                                Watch
-                              </a>
-                            )}
-                          </>
-                        }
                         score={showScore ? formatLiveScore(match) : null}
                         status={statusLabel}
+                        hideFinishedVenue={false}
                       />
                     );
                   })}
@@ -1247,16 +1228,17 @@ export default function HomePage() {
               )}
             </Card>
           </SectionShell>
-        )}
+          )}
+        </LazyHomeSection>
 
       </main>
 
-      <footer className="sc-shell mt-10">
-        <div className="sc-card-muted flex flex-col gap-3 p-4 text-sm md:flex-row md:items-center md:justify-between">
+      <footer className="sc-shell mt-0">
+        <div className="sc-card-muted flex flex-col gap-2 p-3 text-sm sm:gap-3 sm:p-4 md:flex-row md:items-center md:justify-between">
           <p className="font-semibold text-ink">
             {new Date().getFullYear()} StallCount. Built for Ultimate event control rooms. StallCount is a product of RCFD (Pty) Ltd. For more information contact rcfdltf@gmail.com
           </p>
-          <div className="flex flex-wrap items-center gap-3 md:gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 md:gap-4">
             <Link to="/matches" className="font-semibold text-accent">
               Matches
             </Link>
@@ -1278,11 +1260,59 @@ export default function HomePage() {
     </div>
   );
 }
+
+const HomeEventCard = memo(function HomeEventCard({ event }) {
+  return (
+    <Card
+      as={Link}
+      to={`/events?eventId=${event.id}`}
+      variant="muted"
+      className="block p-3 transition hover:border-accent/70 hover:text-ink sm:p-4"
+    >
+      <div className="flex flex-col gap-2 sm:gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            {event.location ? `${event.location} - ` : ""}
+            {formatEventType(event.type)}
+          </p>
+          <h3 className="text-lg font-semibold text-ink">{event.name}</h3>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <p className="text-left text-sm text-ink-muted">
+            {formatDateRange(event.start_date, event.end_date)}
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+});
+
+const HomeStreamMatchCard = memo(function HomeStreamMatchCard({ match }) {
+  return (
+    <StandardEventMatchCard
+      match={match}
+      eyebrow={match.event?.name || "Stream"}
+      title={formatMatchup(match)}
+      meta={`${formatMatchTime(match.start_time)} | Provider: ${formatMediaProvider(match)}`}
+      score={isMatchLive(match.status) || isMatchFinal(match.status) ? formatLiveScore(match) : null}
+      status={formatMatchStatus(match.status) || "Scheduled"}
+      compact
+      hideFinishedVenue={false}
+    />
+  );
+});
+
 function formatDateRange(start, end) {
   if (!start && !end) return "Dates pending";
-  const startDate = start ? new Date(start).toLocaleDateString() : "TBD";
-  const endDate = end ? new Date(end).toLocaleDateString() : null;
+  const startDate = start ? formatDateValue(start, DATE_FORMATTER, "TBD") : "TBD";
+  const endDate = end ? formatDateValue(end, DATE_FORMATTER, null) : null;
   return endDate && endDate !== startDate ? `${startDate} - ${endDate}` : startDate;
+}
+
+function formatDateValue(value, formatter, fallback = "") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return formatter.format(date);
 }
 
 function toSettled(promise) {
@@ -1294,18 +1324,16 @@ function toSettled(promise) {
 function formatMatchTime(timestamp) {
   if (!timestamp) return "Start time pending";
   const date = new Date(timestamp);
-  return `${date.toLocaleDateString()} at ${date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })}`;
+  if (Number.isNaN(date.getTime())) return "Start time pending";
+  return `${DATE_FORMATTER.format(date)} at ${MATCH_TIME_FORMATTER.format(date)}`;
 }
 
 function formatHeadingDateTime(timestamp) {
   if (!timestamp) return "Start time pending";
   const date = new Date(timestamp);
-  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-  const day = date.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
+  if (Number.isNaN(date.getTime())) return "Start time pending";
+  const time = MATCH_TIME_FORMATTER.format(date);
+  const day = HEADING_DATE_FORMATTER.format(date);
   return `${time}, ${day}`;
 }
 
@@ -1360,10 +1388,6 @@ function buildMatchLink(matchId, options = {}) {
     return `${window.location.origin}${path}`;
   }
   return path;
-}
-
-function resolveStreamUrl(match) {
-  return getMatchMediaUrl(match);
 }
 
 function normalizeTargetType(type) {
