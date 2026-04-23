@@ -864,6 +864,7 @@ export default function HomePage() {
           </>
         }
         linkCard={false}
+        hideEyebrow={false}
         compact={compact}
         hideFinishedVenue={false}
       />
@@ -1024,6 +1025,7 @@ export default function HomePage() {
                           meta={formatMatchMeta(match)}
                           score={isMatchLive(match.status) || isMatchFinal(match.status) ? formatLiveScore(match) : null}
                           status={formatMatchStatus(match.status) || "Scheduled"}
+                          hideEyebrow={false}
                           compact
                           hideFinishedVenue={false}
                         />
@@ -1176,6 +1178,8 @@ export default function HomePage() {
                       meta={formatMatchMeta(match)}
                       score={formatLiveScore(match)}
                       status={formatMatchStatus(match.status) || "Final"}
+                      hideEyebrow={false}
+                      compact={false}
                       scoreAlign="right"
                     />
                   ))}
@@ -1220,6 +1224,8 @@ export default function HomePage() {
                         meta={formatMatchMeta(match)}
                         score={showScore ? formatLiveScore(match) : null}
                         status={statusLabel}
+                        hideEyebrow={false}
+                        compact={false}
                         hideFinishedVenue={false}
                       />
                     );
@@ -1296,6 +1302,7 @@ const HomeStreamMatchCard = memo(function HomeStreamMatchCard({ match }) {
       meta={`${formatMatchTime(match.start_time)} | Provider: ${formatMediaProvider(match)}`}
       score={isMatchLive(match.status) || isMatchFinal(match.status) ? formatLiveScore(match) : null}
       status={formatMatchStatus(match.status) || "Scheduled"}
+      hideEyebrow={false}
       compact
       hideFinishedVenue={false}
     />

@@ -786,7 +786,7 @@ export function useScoreKeeperActions(controller) {
     if (!controller.canEndMatch || !controller.activeMatch?.id) return false;
     try {
       await logMatchEndEvent();
-      const updated = await updateMatchStatus(controller.activeMatch.id, "finished");
+      const updated = await updateMatchStatus(controller.activeMatch.id, "completed");
       if (updated) {
         controller.setActiveMatch(updated);
         controller.setMatches((prev) =>

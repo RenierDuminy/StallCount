@@ -20,10 +20,10 @@ export function StandardEventMatchCard({
   className = "",
   trailing = undefined,
   hideFinishedVenue = true,
-  hideEyebrow = false,
-  hideScheduledStatus = false,
-  scheduledVenueNameOnly = false,
-  compact = false,
+  hideEyebrow = true,
+  hideScheduledStatus = true,
+  scheduledVenueNameOnly = true,
+  compact = true,
   linkCard = true,
 }) {
   const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
@@ -52,8 +52,8 @@ export function StandardEventMatchCard({
       scoreAlign={scoreAlign || (score ? "right" : "left")}
       trailing={resolvedTrailing}
       trailingPosition="header"
-      hideScheduledStatus
-      scheduledVenueNameOnly
+      hideScheduledStatus={hideScheduledStatus}
+      scheduledVenueNameOnly={scheduledVenueNameOnly}
       hideFinishedVenue={hideFinishedVenue}
       compact={compact}
       {...linkProps}

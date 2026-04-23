@@ -496,10 +496,13 @@ const getRosterScriptScheduleSnapshot = (value = new Date()) => {
   };
 };
 
+const DAY_MATCH_GRID_CLASS = "flex flex-wrap gap-2";
+const DAY_MATCH_CARD_WIDTH_CLASS = "w-full sm:w-[17rem] xl:w-[18rem]";
+
 function DayScheduleColumn({ day, matches, renderMatchCard, loading }) {
   return (
-    <div className="rounded-2xl border border-border bg-surface-muted/70 p-3">
-      <div className="mb-3 rounded-xl border border-border bg-surface px-3 py-2 shadow-sm">
+    <section className="space-y-2.5 px-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
           {day.day}
         </p>
@@ -510,17 +513,21 @@ function DayScheduleColumn({ day, matches, renderMatchCard, loading }) {
       ) : matches.length === 0 ? (
         <p className="text-sm text-ink-muted">No matches linked yet.</p>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
-          {matches.map((match) => renderMatchCard(match))}
+        <div className={DAY_MATCH_GRID_CLASS}>
+          {matches.map((match) => (
+            <div key={match.id} className={DAY_MATCH_CARD_WIDTH_CLASS}>
+              {renderMatchCard(match)}
+            </div>
+          ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
 function WeekScheduleCard({ week, renderMatchCard, loading }) {
   return (
-    <Panel variant="muted" className="space-y-4 p-4">
+    <div className="space-y-4 rounded-xl border border-border/70 bg-surface-muted/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-base font-semibold text-ink">{week.label}</p>
@@ -528,18 +535,22 @@ function WeekScheduleCard({ week, renderMatchCard, loading }) {
         </div>
         <Chip>{week.matchCount} matches</Chip>
       </div>
-      <div className="grid gap-3 xl:grid-cols-4">
+      <div className="divide-y divide-border/60">
         {week.days.map((day) => (
-          <DayScheduleColumn
+          <div
             key={`${week.id}-${day.day}`}
-            day={day}
-            matches={day.matches}
-            renderMatchCard={renderMatchCard}
-            loading={loading}
-          />
+            className="py-3 first:pt-0 last:pb-0"
+          >
+            <DayScheduleColumn
+              day={day}
+              matches={day.matches}
+              renderMatchCard={renderMatchCard}
+              loading={loading}
+            />
+          </div>
         ))}
       </div>
-    </Panel>
+    </div>
   );
 }
 
@@ -782,7 +793,7 @@ export default function StellenboschRl2026WorkspacePage() {
     });
   }, [runRosterUpdate]);
 
-  const renderMatchCard = (match) => {
+  const renderMatchCard = (match, options = {}) => {
     const liveOrFinal =
       isLiveMatch(match.status) || isFinishedMatch(match.status);
 
@@ -790,12 +801,12 @@ export default function StellenboschRl2026WorkspacePage() {
       <StandardEventMatchCard
         key={match.id}
         match={match}
-        eyebrow={match.venue?.name || "Venue TBC"}
-        title={formatMatchup(match)}
+        title={options.title || formatMatchup(match)}
         meta={formatMatchTime(match.start_time)}
         score={liveOrFinal ? formatScoreLine(match) : null}
         status={formatMatchStatus(match.status)}
-        hideFinishedVenue={true}
+        hideEyebrow
+        compact
       />
     );
   };
@@ -927,7 +938,6 @@ export default function StellenboschRl2026WorkspacePage() {
 
         <Card className="space-y-4 p-5 sm:p-6">
           <SectionHeader
-            eyebrow="League format"
             title="2026 structure overview"
           />
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1029,29 +1039,32 @@ export default function StellenboschRl2026WorkspacePage() {
           </Panel>
         </Card>
 
-        {phaseSchedules.map((phase) => (
-          <Card key={phase.id} className="space-y-4 p-5 sm:p-6">
-            <SectionHeader
-              eyebrow={phase.title}
-              title={`${phase.title} weekly fixtures`}
-              action={<Chip>{phase.weeks.length} weeks</Chip>}
-            />
-            <div className="space-y-4">
-              {phase.weeks.map((week) => (
-                <WeekScheduleCard
-                  key={week.id}
-                  week={week}
-                  renderMatchCard={renderMatchCard}
-                  loading={loading}
-                />
-              ))}
-            </div>
-          </Card>
-        ))}
+        <div className="divide-y divide-border/70">
+          {phaseSchedules.map((phase) => (
+            <section
+              key={phase.id}
+              className="space-y-4 py-5 first:pt-0 last:pb-0 sm:py-6"
+            >
+              <SectionHeader
+                title={`${phase.title} weekly fixtures`}
+                action={<Chip>{phase.weeks.length} weeks</Chip>}
+              />
+              <div className="space-y-4">
+                {phase.weeks.map((week) => (
+                  <WeekScheduleCard
+                    key={week.id}
+                    week={week}
+                    renderMatchCard={renderMatchCard}
+                    loading={loading}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
 
         <Card className="space-y-4 p-5 sm:p-6">
           <SectionHeader
-            eyebrow="Phase 4"
             title="Knockout layout pending"
           />
           <Panel variant="muted" className="space-y-3 p-4 text-sm text-ink-muted">

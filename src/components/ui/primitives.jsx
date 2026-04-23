@@ -205,9 +205,10 @@ export function MatchCard({
   const statusLabel =
     typeof status === "string" ? status.trim() : status === null || status === undefined ? "" : String(status);
   const matchPhase = resolveMatchCardPhase(phase, statusLabel);
+  const normalizedStatusLabel = statusLabel.toLowerCase();
   const isScheduledStatus =
     matchPhase === MATCH_CARD_PHASES.scheduled &&
-    (!statusLabel || statusLabel.toLowerCase() === MATCH_CARD_PHASES.scheduled);
+    (!statusLabel || normalizedStatusLabel === MATCH_CARD_PHASES.scheduled);
   const usesResolvedLayout =
     matchPhase === MATCH_CARD_PHASES.finished || matchPhase === MATCH_CARD_PHASES.canceled;
   const venueLabel =
@@ -218,7 +219,9 @@ export function MatchCard({
         });
   const phaseStyle = MATCH_CARD_PHASE_STYLES[matchPhase] || MATCH_CARD_PHASE_STYLES[MATCH_CARD_PHASES.scheduled];
   const displayStatus =
-    hideScheduledStatus && isScheduledStatus
+    normalizedStatusLabel === "completed"
+      ? ""
+      : hideScheduledStatus && isScheduledStatus
       ? ""
       : statusLabel || MATCH_CARD_PHASE_DEFAULT_LABELS[matchPhase];
   const displayScore = usesResolvedLayout ? formatFinishedPhaseScore(scoreLabel, title) : scoreLabel;
@@ -229,15 +232,17 @@ export function MatchCard({
   const showTitle = !(usesResolvedLayout && displayScore && isMatchupTitle(title));
   const trailingInHeader = trailing && trailingPosition === "header";
   const trailingInFooter = trailing && !trailingInHeader;
+  const centerScoreSection =
+    usesResolvedLayout || matchPhase === MATCH_CARD_PHASES.live;
   const footerJustify = trailingInFooter
     ? "justify-between"
-    : usesResolvedLayout
+    : centerScoreSection
       ? "justify-center"
       : scoreAlign === "right"
         ? "justify-end"
         : "justify-start";
   const scoreAlignClass =
-    usesResolvedLayout ? "text-center" : scoreAlign === "right" ? "text-right" : "text-left";
+    centerScoreSection ? "text-center" : scoreAlign === "right" ? "text-right" : "text-left";
 
   return (
     <Panel
@@ -276,7 +281,7 @@ export function MatchCard({
       {displayScore || displayStatus || trailingInFooter ? (
         <div className={cx("flex min-w-0 items-center", compact ? "gap-2" : "gap-3", footerJustify)}>
           {displayScore || displayStatus ? (
-            <div className={cx("min-w-0", usesResolvedLayout ? "w-full" : "", scoreAlignClass)}>
+            <div className={cx("min-w-0", centerScoreSection && !trailingInFooter ? "w-full" : "", scoreAlignClass)}>
               {finishedScoreParts ? (
                 <div className="sc-match-card-score-wrap">
                   <p className="sc-match-card-score-line mx-auto">

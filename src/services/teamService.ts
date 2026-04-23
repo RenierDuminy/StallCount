@@ -8,6 +8,7 @@ export type TeamRow = {
   name: string;
   short_name: string | null;
   created_at: string;
+  attributes: Record<string, unknown> | null;
 };
 
 export async function getAllTeams(limit?: number): Promise<TeamRow[]> {
@@ -17,7 +18,7 @@ export async function getAllTeams(limit?: number): Promise<TeamRow[]> {
     async () => {
       let query = supabase
         .from("teams")
-        .select("id, name, short_name, created_at")
+        .select("id, name, short_name, created_at, attributes")
         .order("name", { ascending: true });
 
       if (typeof limit === "number") {
@@ -71,7 +72,7 @@ export async function getTeamsLinkedToEvent(eventId: string): Promise<TeamRow[]>
     .from("division_teams")
     .select(
       `
-        team:teams(id, name, short_name, created_at)
+        team:teams(id, name, short_name, created_at, attributes)
       `,
     )
     .in("division_id", divisionIds);
@@ -92,6 +93,10 @@ export async function getTeamsLinkedToEvent(eventId: string): Promise<TeamRow[]>
         name: row.team.name,
         short_name: row.team.short_name ?? null,
         created_at: row.team.created_at,
+        attributes:
+          row.team.attributes && typeof row.team.attributes === "object"
+            ? (row.team.attributes as Record<string, unknown>)
+            : null,
       });
     }
   });
@@ -117,7 +122,7 @@ export async function createTeam(payload: {
       name,
       short_name: shortName || null,
     })
-    .select("id, name, short_name, created_at")
+    .select("id, name, short_name, created_at, attributes")
     .maybeSingle();
 
   if (error) {
@@ -126,6 +131,39 @@ export async function createTeam(payload: {
 
   if (!data) {
     throw new Error("Team creation failed.");
+  }
+
+  invalidateCachedQueries("teams:list");
+  return data as TeamRow;
+}
+
+export async function updateTeamAttributes(
+  teamId: string,
+  attributes: Record<string, unknown> | null,
+): Promise<TeamRow> {
+  const normalizedTeamId = typeof teamId === "string" ? teamId.trim() : "";
+  if (!normalizedTeamId) {
+    throw new Error("Team ID is required.");
+  }
+
+  const nextAttributes =
+    attributes && typeof attributes === "object" ? attributes : null;
+
+  const { data, error } = await supabase
+    .from("teams")
+    .update({
+      attributes: nextAttributes,
+    })
+    .eq("id", normalizedTeamId)
+    .select("id, name, short_name, created_at, attributes")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to update team attributes.");
+  }
+
+  if (!data) {
+    throw new Error("Team update failed.");
   }
 
   invalidateCachedQueries("teams:list");
@@ -147,7 +185,7 @@ export async function getTeamsByIds(ids: string[]): Promise<TeamRow[]> {
 
   const { data, error } = await supabase
     .from("teams")
-    .select("id, name, short_name, created_at")
+    .select("id, name, short_name, created_at, attributes")
     .in("id", uniqueIds);
 
   if (error) {
@@ -186,6 +224,7 @@ export async function getTeamDetails(teamId: string): Promise<TeamDetailsRow | n
         name,
         short_name,
         created_at,
+        attributes,
         division_links:division_teams(
           division:divisions(
             id,
@@ -232,6 +271,10 @@ export async function getTeamDetails(teamId: string): Promise<TeamDetailsRow | n
     name: data.name,
     short_name: data.short_name ?? null,
     created_at: data.created_at,
+    attributes:
+      data.attributes && typeof data.attributes === "object"
+        ? (data.attributes as Record<string, unknown>)
+        : null,
     division,
   };
 }

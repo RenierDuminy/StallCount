@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getRecentMatches, getMatchById, updateMatchStatus } from "../services/matchService";
 import { submitSpiritScores } from "../services/spiritScoreService";
-import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
+import { Card, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
 import usePersistentState from "../hooks/usePersistentState";
 
 const SPIRIT_CATEGORIES = [
@@ -127,12 +127,10 @@ export default function SpiritScoresPage() {
 
   return (
     <div className="pb-16 text-[var(--sc-surface-dark-ink)]" style={{ background: "var(--sc-surface-light-bg)" }}>
-      <SectionShell as="header" className="py-4 sm:py-6">
+      <SectionShell as="header" className="px-8 py-4 sm:px-18 sm:py-6 lg:px-30">
         <Card variant="light" className="space-y-4 border border-[#041311] p-6 sm:p-7">
           <SectionHeader
-            eyebrow="Spirit entry"
             title="Spirit scores"
-            description="Capture spirit scores for both teams after the final whistle and submit them directly to the event database."
             action={
               <Link to="/score-keeper" className="sc-button is-dark">
                 Back to score keeper
@@ -142,68 +140,66 @@ export default function SpiritScoresPage() {
         </Card>
       </SectionShell>
 
-      <SectionShell as="main" className="space-y-6">
-        <Card as="section" variant="light" className="space-y-6 border border-[#041311] p-6 shadow-lg">
-          <form
-            className="space-y-8"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              if (!selectedMatchId) {
-                setSubmitState({ message: "Select a match before submitting.", variant: "error" });
-                return;
-              }
-              if (!selectedMatch?.team_a?.id || !selectedMatch?.team_b?.id) {
-                setSubmitState({
-                  message: "The selected match is missing team assignments.",
-                  variant: "error",
-                });
-                return;
-              }
+      <SectionShell as="main" className="space-y-2 px-8 sm:px-14 lg:px-20">
+        <form
+          className="space-y-2"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (!selectedMatchId) {
+              setSubmitState({ message: "Select a match before submitting.", variant: "error" });
+              return;
+            }
+            if (!selectedMatch?.team_a?.id || !selectedMatch?.team_b?.id) {
+              setSubmitState({
+                message: "The selected match is missing team assignments.",
+                variant: "error",
+              });
+              return;
+            }
 
-              setSubmitting(true);
-              setSubmitState({ message: null, variant: null });
+            setSubmitting(true);
+            setSubmitState({ message: null, variant: null });
 
-              try {
-                const buildEntry = (teamKey, ratedTeamId) => ({
-                  ratedTeamId,
-                  rulesKnowledge: teamScores[teamKey].rulesKnowledge,
-                  fouls: teamScores[teamKey].fouls,
-                  fairness: teamScores[teamKey].fairness,
-                  positiveAttitude: teamScores[teamKey].positiveAttitude,
-                  communication: teamScores[teamKey].communication,
-                  notes: teamScores[teamKey].notes,
-                });
+            try {
+              const buildEntry = (teamKey, ratedTeamId) => ({
+                ratedTeamId,
+                rulesKnowledge: teamScores[teamKey].rulesKnowledge,
+                fouls: teamScores[teamKey].fouls,
+                fairness: teamScores[teamKey].fairness,
+                positiveAttitude: teamScores[teamKey].positiveAttitude,
+                communication: teamScores[teamKey].communication,
+                notes: teamScores[teamKey].notes,
+              });
 
-                await submitSpiritScores(
-                  selectedMatchId,
-                  [
-                    buildEntry("teamA", selectedMatch.team_a.id),
-                    buildEntry("teamB", selectedMatch.team_b.id),
-                  ],
-                  { submittedBy: userId ?? undefined },
-                );
+              await submitSpiritScores(
+                selectedMatchId,
+                [
+                  buildEntry("teamA", selectedMatch.team_a.id),
+                  buildEntry("teamB", selectedMatch.team_b.id),
+                ],
+                { submittedBy: userId ?? undefined },
+              );
 
-                await updateMatchStatus(selectedMatchId, "completed");
+              await updateMatchStatus(selectedMatchId, "completed");
 
-                setSubmitState({
-                  message: "Spirit scores submitted",
-                  variant: "success",
-                });
-              } catch (err) {
-                setSubmitState({
-                  message: err instanceof Error ? err.message : "Failed to submit spirit scores.",
-                  variant: "error",
-                });
-              } finally {
-                setSubmitting(false);
-              }
-            }}
-          >
-            <Card variant="light" className="space-y-4 border border-[#041311] p-5 text-[var(--sc-surface-light-ink)]">
+              setSubmitState({
+                message: "Spirit scores submitted",
+                variant: "success",
+              });
+            } catch (err) {
+              setSubmitState({
+                message: err instanceof Error ? err.message : "Failed to submit spirit scores.",
+                variant: "error",
+              });
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+        >
+            <section className="space-y-4 rounded-2xl border border-[#041311] px-5 py-4 text-[var(--sc-surface-light-ink)] sm:px-6">
               <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Match</p>
                 <h2 className="text-2xl font-semibold">Select the match to score</h2>
-                <p className="text-sm text-[var(--sc-surface-light-ink)]/80">Built for direct sunlight: higher contrast and neutral background.</p>
+                <p className="text-sm text-[var(--sc-surface-light-ink)]/80"></p>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Match" className="is-light">
@@ -234,15 +230,17 @@ export default function SpiritScoresPage() {
                   />
                 </Field>
               </div>
-            </Card>
+            </section>
 
-            <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-2 px-8 sm:px-14 lg:px-20 md:grid-cols-2">
               {["teamA", "teamB"].map((teamKey) => (
-                <Panel key={teamKey} variant="light" className="space-y-4 border border-[#041311] p-4 shadow-md">
+                <section
+                  key={teamKey}
+                  className="space-y-4 rounded-2xl border border-[#041311] px-6 py-4 text-[var(--sc-surface-light-ink)] sm:px-7"
+                >
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Spirit scores for</p>
                     <h3 className="text-lg font-semibold text-[var(--sc-surface-light-ink)]">
-                      {teamKey === "teamA" ? teamLabels.teamA : teamLabels.teamB}
+                      Score for {teamKey === "teamA" ? teamLabels.teamA : teamLabels.teamB}
                     </h3>
                   </div>
                   {SPIRIT_CATEGORIES.map((category) => (
@@ -284,7 +282,7 @@ export default function SpiritScoresPage() {
                       onChange={(event) => updateNotes(teamKey, event.target.value)}
                     />
                   </Field>
-                </Panel>
+                </section>
               ))}
             </div>
 
@@ -298,8 +296,7 @@ export default function SpiritScoresPage() {
                 Cancel
               </Link>
             </div>
-          </form>
-        </Card>
+        </form>
       </SectionShell>
     </div>
   );
