@@ -227,6 +227,10 @@ export async function updateMatch(matchId, payload = {}) {
   if ("scoreB" in payload) updatePayload.score_b = payload.scoreB;
   if ("captainsConfirmed" in payload) updatePayload.captains_confirmed = Boolean(payload.captainsConfirmed);
   if ("confirmedAt" in payload) updatePayload.confirmed_at = payload.confirmedAt || null;
+  if ("scorekeeperId" in payload) updatePayload.scorekeeper = payload.scorekeeperId || null;
+  if ("startingTeamId" in payload) updatePayload.starting_team_id = payload.startingTeamId || null;
+  if ("abbaPattern" in payload) updatePayload.abba_pattern = payload.abbaPattern || null;
+  if ("mediaLink" in payload) updatePayload.media_link = payload.mediaLink ?? null;
   if ("status" in payload) {
     updatePayload.status =
       typeof payload.status === "string" && payload.status.trim()

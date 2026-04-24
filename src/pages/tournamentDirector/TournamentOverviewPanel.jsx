@@ -52,14 +52,26 @@ const EMPTY_SPIRIT_SCORES = {
 const EMPTY_MATCH_EDIT_FORM = {
   date: "",
   time: "",
+  divisionId: "",
+  poolId: "",
   venueId: "",
   status: "scheduled",
   teamAId: "",
   teamBId: "",
   scoreA: "0",
   scoreB: "0",
-  spiritScores: EMPTY_SPIRIT_SCORES,
   captainsConfirmed: false,
+  confirmedDate: "",
+  confirmedTime: "",
+  scorekeeperId: "",
+  startingTeamId: "",
+  abbaPattern: "",
+  mediaProvider: "",
+  mediaUrl: "",
+  mediaStatus: "",
+  hasMedia: false,
+  mediaLinkJson: "",
+  spiritScores: EMPTY_SPIRIT_SCORES,
 };
 
 const EMPTY_MATCH_CREATE_FORM = {
@@ -85,6 +97,30 @@ const EMPTY_MATCH_CREATE_FORM = {
   hasMedia: false,
   mediaLinkJson: "",
 };
+const EMPTY_SCHEDULE_FILTERS = {
+  date: "",
+  time: "",
+  venue: "",
+  status: "",
+  teamA: "",
+  scoreA: "",
+  scoreB: "",
+  teamB: "",
+  spirit: "",
+  captain: "",
+};
+const SCHEDULE_FILTER_FIELDS = [
+  { key: "date", label: "Date", placeholder: "All dates" },
+  { key: "time", label: "Time", placeholder: "All times" },
+  { key: "venue", label: "Venue", placeholder: "All venues" },
+  { key: "status", label: "Status", placeholder: "All statuses" },
+  { key: "teamA", label: "Team A", placeholder: "All Team A" },
+  { key: "scoreA", label: "SA", placeholder: "All SA" },
+  { key: "scoreB", label: "SB", placeholder: "All SB" },
+  { key: "teamB", label: "Team B", placeholder: "All Team B" },
+  { key: "spirit", label: "Spirit", placeholder: "All spirit" },
+  { key: "captain", label: "Captain", placeholder: "All captain" },
+];
 
 function createEmptySpiritScores() {
   return {
@@ -211,17 +247,30 @@ function normalizeEditForm(form) {
 
 function buildEditForm(match) {
   const { date, time } = getLocalDateTimeParts(match?.start_time);
+  const { date: confirmedDate, time: confirmedTime } = getLocalDateTimeParts(match?.confirmed_at);
   return {
     date,
     time,
+    divisionId: match?.division_id || "",
+    poolId: match?.pool_id || "",
     venueId: match?.venue?.id || "",
     status: match?.status || "scheduled",
     teamAId: match?.team_a?.id || "",
     teamBId: match?.team_b?.id || "",
     scoreA: String(match?.score_a ?? 0),
     scoreB: String(match?.score_b ?? 0),
-    spiritScores: buildSpiritScores(match?.spiritCategoriesA, match?.spiritCategoriesB),
     captainsConfirmed: Boolean(match?.captains_confirmed),
+    confirmedDate,
+    confirmedTime,
+    scorekeeperId: match?.scorekeeper || "",
+    startingTeamId: match?.starting_team_id || "",
+    abbaPattern: match?.abba_pattern || "",
+    mediaProvider: match?.media_provider || "",
+    mediaUrl: match?.media_url || "",
+    mediaStatus: match?.media_status || "",
+    hasMedia: Boolean(match?.has_media || match?.media_link || match?.media_url),
+    mediaLinkJson: match?.media_link ? JSON.stringify(match.media_link, null, 2) : "",
+    spiritScores: buildSpiritScores(match?.spiritCategoriesA, match?.spiritCategoriesB),
   };
 }
 
@@ -340,6 +389,50 @@ function getStatusBadgeClass(status) {
   return "border-slate-300 bg-slate-100 text-slate-600";
 }
 
+function getScheduleRowValues(match) {
+  const timestamp = match?.start_time || match?.confirmed_at || null;
+  const localParts = getLocalDateTimeParts(timestamp);
+  const formattedParts = formatDateParts(timestamp);
+  const spiritValue =
+    match?.spiritScoreA !== null || match?.spiritScoreB !== null
+      ? `${match?.spiritScoreA ?? "-"} / ${match?.spiritScoreB ?? "-"}`
+      : "-";
+
+  return {
+    date: localParts.date || "TBD",
+    dateLabel: formattedParts.date,
+    time: localParts.time || "TBD",
+    timeLabel: formattedParts.time,
+    venue: match?.displayVenue || "Unassigned",
+    status: match?.status || "Unknown",
+    teamA: match?.displayTeamA || "TBD",
+    scoreA: String(match?.score_a ?? 0),
+    scoreB: String(match?.score_b ?? 0),
+    teamB: match?.displayTeamB || "TBD",
+    spirit: spiritValue,
+    captain: match?.captains_confirmed ? "Yes" : "No",
+  };
+}
+
+function compareScheduleValues(left, right) {
+  const compareText = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" });
+  const compareDateOrTime = (a, b) => {
+    if (a === "TBD" && b === "TBD") return 0;
+    if (a === "TBD") return 1;
+    if (b === "TBD") return -1;
+    return compareText(a, b);
+  };
+
+  return (
+    compareDateOrTime(left.date, right.date) ||
+    compareDateOrTime(left.time, right.time) ||
+    compareText(left.status, right.status) ||
+    compareText(left.venue, right.venue) ||
+    compareText(left.teamA, right.teamA) ||
+    compareText(left.teamB, right.teamB)
+  );
+}
+
 function SummaryMetric({ label, value, detail }) {
   return (
     <Panel variant="light" className="min-w-0 px-2 py-2.5 shadow-sm shadow-[rgba(8,25,21,0.04)]">
@@ -368,6 +461,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
   const [createError, setCreateError] = useState("");
   const [createSaving, setCreateSaving] = useState(false);
   const [linkedUsers, setLinkedUsers] = useState([]);
+  const [scheduleFilters, setScheduleFilters] = useState(() => ({ ...EMPTY_SCHEDULE_FILTERS }));
 
   const accessibleEvents = useMemo(() => {
     if (!Array.isArray(eventsList) || eventsList.length === 0) {
@@ -493,6 +587,10 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
     };
   }, [selectedEventId]);
 
+  useEffect(() => {
+    setScheduleFilters({ ...EMPTY_SCHEDULE_FILTERS });
+  }, [selectedEventId]);
+
   const summary = overview.summary;
   const totalMatches = summary?.totalMatches || 0;
   const divisionCount = eventSummary?.divisions?.length || 0;
@@ -548,12 +646,20 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
     });
     return rows.sort((a, b) => `${a.divisionName} ${a.name}`.localeCompare(`${b.divisionName} ${b.name}`));
   }, [eventSummary]);
+  const normalizedEditForm = useMemo(() => normalizeEditForm(editForm), [editForm]);
   const createPoolOptions = useMemo(
     () =>
       createForm.divisionId
         ? poolOptions.filter((pool) => pool.divisionId === createForm.divisionId)
         : poolOptions,
     [createForm.divisionId, poolOptions],
+  );
+  const editPoolOptions = useMemo(
+    () =>
+      normalizedEditForm.divisionId
+        ? poolOptions.filter((pool) => pool.divisionId === normalizedEditForm.divisionId)
+        : poolOptions,
+    [normalizedEditForm.divisionId, poolOptions],
   );
   const createTeamOptions = useMemo(() => {
     const selectedPool = createForm.poolId
@@ -569,12 +675,32 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
       }));
     return poolTeams?.length ? poolTeams : teamOptions;
   }, [createForm.poolId, poolOptions, teamOptions]);
+  const editTeamOptions = useMemo(() => {
+    const selectedPool = normalizedEditForm.poolId
+      ? poolOptions.find((pool) => pool.id === normalizedEditForm.poolId)
+      : null;
+    const poolTeams = selectedPool?.teams
+      ?.map((entry) => entry?.team)
+      .filter((team) => team?.id)
+      .map((team) => ({
+        id: team.id,
+        name: team.name || team.short_name || "Unnamed team",
+        short_name: team.short_name || null,
+      }));
+    return poolTeams?.length ? poolTeams : teamOptions;
+  }, [normalizedEditForm.poolId, poolOptions, teamOptions]);
   const startingTeamOptions = useMemo(() => {
     const selected = [createForm.teamAId, createForm.teamBId].filter(Boolean);
     return selected
       .map((teamId) => createTeamOptions.find((team) => team.id === teamId))
       .filter(Boolean);
   }, [createForm.teamAId, createForm.teamBId, createTeamOptions]);
+  const editStartingTeamOptions = useMemo(() => {
+    const selected = [normalizedEditForm.teamAId, normalizedEditForm.teamBId].filter(Boolean);
+    return selected
+      .map((teamId) => editTeamOptions.find((team) => team.id === teamId))
+      .filter(Boolean);
+  }, [normalizedEditForm.teamAId, normalizedEditForm.teamBId, editTeamOptions]);
   const scorekeeperOptions = useMemo(
     () =>
       (linkedUsers || [])
@@ -599,7 +725,6 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
     });
     return Array.from(lookup.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [eventSummary, overview.matches]);
-  const normalizedEditForm = useMemo(() => normalizeEditForm(editForm), [editForm]);
   const statusOptions = useMemo(() => {
     if (!normalizedEditForm.status || MATCH_STATUS_OPTIONS.includes(normalizedEditForm.status)) {
       return MATCH_STATUS_OPTIONS;
@@ -614,6 +739,98 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
 
     return [createForm.status, ...MATCH_STATUS_OPTIONS];
   }, [createForm.status]);
+  const scheduleRows = useMemo(
+    () =>
+      (overview.matches || [])
+        .map((match) => ({
+          ...match,
+          scheduleValues: getScheduleRowValues(match),
+        }))
+        .sort((left, right) => compareScheduleValues(left.scheduleValues, right.scheduleValues)),
+    [overview.matches],
+  );
+  const scheduleFilterOptions = useMemo(() => {
+    const optionMaps = SCHEDULE_FILTER_FIELDS.reduce(
+      (acc, field) => ({ ...acc, [field.key]: new Map() }),
+      {},
+    );
+
+    scheduleRows.forEach((match) => {
+      const values = match.scheduleValues;
+      optionMaps.date.set(values.date, values.dateLabel);
+      optionMaps.time.set(values.time, values.timeLabel);
+      optionMaps.venue.set(values.venue, values.venue);
+      optionMaps.status.set(values.status, values.status);
+      optionMaps.teamA.set(values.teamA, values.teamA);
+      optionMaps.scoreA.set(values.scoreA, values.scoreA);
+      optionMaps.scoreB.set(values.scoreB, values.scoreB);
+      optionMaps.teamB.set(values.teamB, values.teamB);
+      optionMaps.spirit.set(values.spirit, values.spirit);
+      optionMaps.captain.set(values.captain, values.captain);
+    });
+
+    return {
+      date: Array.from(optionMaps.date.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => {
+          if (a.value === "TBD") return 1;
+          if (b.value === "TBD") return -1;
+          return a.value.localeCompare(b.value);
+        }),
+      time: Array.from(optionMaps.time.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => {
+          if (a.value === "TBD") return 1;
+          if (b.value === "TBD") return -1;
+          return a.value.localeCompare(b.value);
+        }),
+      venue: Array.from(optionMaps.venue.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+      status: Array.from(optionMaps.status.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+      teamA: Array.from(optionMaps.teamA.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+      scoreA: Array.from(optionMaps.scoreA.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => Number(a.value) - Number(b.value)),
+      scoreB: Array.from(optionMaps.scoreB.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => Number(a.value) - Number(b.value)),
+      teamB: Array.from(optionMaps.teamB.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+      spirit: Array.from(optionMaps.spirit.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+      captain: Array.from(optionMaps.captain.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    };
+  }, [scheduleRows]);
+  const filteredMatches = useMemo(() => {
+    return scheduleRows.filter((match) =>
+      SCHEDULE_FILTER_FIELDS.every((field) => {
+        const filterValue = scheduleFilters[field.key];
+        return !filterValue || match.scheduleValues[field.key] === filterValue;
+      }),
+    );
+  }, [scheduleRows, scheduleFilters]);
+  const hasActiveScheduleFilters = useMemo(
+    () => Object.values(scheduleFilters).some(Boolean),
+    [scheduleFilters],
+  );
+  const scheduleRowsLabel = loading
+    ? "Loading"
+    : hasActiveScheduleFilters
+      ? `${filteredMatches.length} of ${totalMatches} rows`
+      : `${totalMatches} rows`;
+
+  const handleScheduleFilterChange = (field, value) => {
+    setScheduleFilters((prev) => ({ ...prev, [field]: value }));
+  };
 
   const openMatchCreator = () => {
     if (!selectedEventId) return;
@@ -683,7 +900,44 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
   };
 
   const handleEditField = (field, value) => {
-    setEditForm((prev) => ({ ...prev, [field]: value }));
+    setEditForm((prev) => {
+      const nextForm = normalizeEditForm(prev);
+
+      if (field === "divisionId") {
+        const poolStillAvailable = value && poolOptions.some((pool) => pool.id === nextForm.poolId && pool.divisionId === value);
+        return {
+          ...nextForm,
+          divisionId: value,
+          poolId: poolStillAvailable ? nextForm.poolId : "",
+        };
+      }
+
+      if (field === "poolId") {
+        const selectedPool = poolOptions.find((pool) => pool.id === value);
+        const allowedTeamIds = selectedPool
+          ? new Set(selectedPool.teams.map((entry) => entry?.team?.id).filter(Boolean))
+          : null;
+        const updatedForm = {
+          ...nextForm,
+          poolId: value,
+          divisionId: selectedPool?.divisionId || nextForm.divisionId,
+          teamAId: allowedTeamIds && !allowedTeamIds.has(nextForm.teamAId) ? "" : nextForm.teamAId,
+          teamBId: allowedTeamIds && !allowedTeamIds.has(nextForm.teamBId) ? "" : nextForm.teamBId,
+          startingTeamId: allowedTeamIds && !allowedTeamIds.has(nextForm.startingTeamId) ? "" : nextForm.startingTeamId,
+        };
+        return updatedForm;
+      }
+
+      if (field === "teamAId" || field === "teamBId") {
+        nextForm[field] = value;
+        if (nextForm.startingTeamId && ![nextForm.teamAId, nextForm.teamBId].includes(nextForm.startingTeamId)) {
+          nextForm.startingTeamId = "";
+        }
+        return nextForm;
+      }
+
+      return { ...nextForm, [field]: value };
+    });
   };
 
   const handleSpiritField = (teamKey, categoryKey, value) => {
@@ -778,10 +1032,15 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
       const spiritScoresA = normalizeSpiritCategoryScores(form.spiritScores.teamA, "Team A");
       const spiritScoresB = normalizeSpiritCategoryScores(form.spiritScores.teamB, "Team B");
       const confirmedAt = form.captainsConfirmed
-        ? editingMatch.confirmed_at || new Date().toISOString()
+        ? form.confirmedDate || form.confirmedTime
+          ? buildStartTime(form.confirmedDate, form.confirmedTime)
+          : editingMatch.confirmed_at || new Date().toISOString()
         : null;
+      const mediaLink = buildCreateMediaLink(form);
 
       await updateMatch(editingMatch.id, {
+        divisionId: form.divisionId,
+        poolId: form.poolId,
         startTime,
         venueId: form.venueId,
         status: form.status,
@@ -791,6 +1050,10 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
         scoreB,
         captainsConfirmed: form.captainsConfirmed,
         confirmedAt,
+        scorekeeperId: form.scorekeeperId,
+        startingTeamId: form.startingTeamId,
+        abbaPattern: form.abbaPattern,
+        mediaLink,
       });
 
       const spiritEntries = [];
@@ -938,9 +1201,36 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
         <SectionHeader
           title="Chronological schedule"
           action={
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex w-full flex-wrap items-center justify-end gap-2">
+              {SCHEDULE_FILTER_FIELDS.map((field) => (
+                <label key={field.key} className="block min-w-[7.5rem] flex-[1_1_8rem] sm:flex-initial">
+                  <span className="sr-only">{field.label}</span>
+                  <select
+                    value={scheduleFilters[field.key]}
+                    onChange={(event) => handleScheduleFilterChange(field.key, event.target.value)}
+                    className={`${LIGHT_INPUT_CLASS} w-full appearance-none`}
+                    aria-label={`Filter schedule by ${field.label.toLowerCase()}`}
+                  >
+                    <option value="">{field.placeholder}</option>
+                    {(scheduleFilterOptions[field.key] || []).map((option) => (
+                      <option key={`${field.key}:${option.value}`} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+              {hasActiveScheduleFilters ? (
+                <button
+                  type="button"
+                  onClick={() => setScheduleFilters({ ...EMPTY_SCHEDULE_FILTERS })}
+                  className="sc-button"
+                >
+                  Clear
+                </button>
+              ) : null}
               <Chip variant="ghost" className="text-xs uppercase tracking-wide text-[var(--sc-surface-light-ink)]/80">
-                {loading ? "Loading" : `${totalMatches} rows`}
+                {scheduleRowsLabel}
               </Chip>
               <button
                 type="button"
@@ -958,6 +1248,8 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
             <p className="p-4 text-sm text-[var(--sc-surface-light-ink)]/70">Loading overview...</p>
           ) : overview.matches.length === 0 ? (
             <p className="p-4 text-sm text-[var(--sc-surface-light-ink)]/70">No matches found for this event.</p>
+          ) : filteredMatches.length === 0 ? (
+            <p className="p-4 text-sm text-[var(--sc-surface-light-ink)]/70">No matches match the current filters.</p>
           ) : (
             <div className="overflow-auto">
             <table className="min-w-full table-fixed divide-y divide-[var(--sc-surface-light-border)] text-sm">
@@ -986,7 +1278,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
-                {overview.matches.map((match, index) => {
+                {filteredMatches.map((match, index) => {
                   const { date, time } = formatDateParts(match.start_time || match.confirmed_at);
                   return (
                     <tr
@@ -1481,15 +1773,69 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Edit match</p>
                 <h3 id="td-edit-match-title" className="text-lg font-bold text-[var(--sc-surface-light-ink)]">
-                  {editingMatch.displayTeamA} vs {editingMatch.displayTeamB}
+                  {selectedEvent?.name || "Selected event"}
                 </h3>
                 <p className="mt-1 break-all text-xs text-[var(--sc-surface-light-ink)]/65">
                   Match ID: {editingMatch.id}
+                </p>
+                <p className="mt-1 text-xs text-[var(--sc-surface-light-ink)]/65">
+                  {editingMatch.displayTeamA} vs {editingMatch.displayTeamB}
                 </p>
               </div>
             </div>
 
             <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3">
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Event</span>
+                <select value={selectedEventId} disabled className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}>
+                  <option value={selectedEventId}>{selectedEvent?.name || selectedEventId}</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Division</span>
+                <select
+                  value={normalizedEditForm.divisionId}
+                  onChange={(event) => handleEditField("divisionId", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                >
+                  <option value="">Unassigned</option>
+                  {divisionOptions.map((division) => (
+                    <option key={division.id} value={division.id}>
+                      {division.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Pool</span>
+                <select
+                  value={normalizedEditForm.poolId}
+                  onChange={(event) => handleEditField("poolId", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                >
+                  <option value="">Unassigned</option>
+                  {editPoolOptions.map((pool) => (
+                    <option key={pool.id} value={pool.id}>
+                      {pool.divisionName} - {pool.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Venue</span>
+                <select
+                  value={normalizedEditForm.venueId}
+                  onChange={(event) => handleEditField("venueId", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                >
+                  <option value="">Unassigned</option>
+                  {venueOptions.map((venue) => (
+                    <option key={venue.id} value={venue.id}>
+                      {venue.name || "Unnamed venue"}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Date</span>
                 <input
@@ -1509,21 +1855,6 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
                 />
               </label>
               <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Venue</span>
-                <select
-                  value={normalizedEditForm.venueId}
-                  onChange={(event) => handleEditField("venueId", event.target.value)}
-                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
-                >
-                  <option value="">Unassigned</option>
-                  {venueOptions.map((venue) => (
-                    <option key={venue.id} value={venue.id}>
-                      {venue.name || "Unnamed venue"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Status</span>
                 <select
                   value={normalizedEditForm.status}
@@ -1537,6 +1868,21 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
                   ))}
                 </select>
               </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Scorekeeper</span>
+                <select
+                  value={normalizedEditForm.scorekeeperId}
+                  onChange={(event) => handleEditField("scorekeeperId", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                >
+                  <option value="">Unassigned</option>
+                  {scorekeeperOptions.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.email ? `${user.label} - ${user.email}` : user.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_5.5rem]">
                 <label className="block min-w-0">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Team A</span>
@@ -1546,7 +1892,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
                     className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
                   >
                     <option value="">Unassigned</option>
-                    {teamOptions.map((team) => (
+                    {editTeamOptions.map((team) => (
                       <option key={team.id} value={team.id}>
                         {team.short_name ? `${team.short_name} - ${team.name}` : team.name}
                       </option>
@@ -1576,7 +1922,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
                     className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
                   >
                     <option value="">Unassigned</option>
-                    {teamOptions.map((team) => (
+                    {editTeamOptions.map((team) => (
                       <option key={team.id} value={team.id}>
                         {team.short_name ? `${team.short_name} - ${team.name}` : team.name}
                       </option>
@@ -1597,6 +1943,120 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
                   />
                 </label>
               </div>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Starting team</span>
+                <select
+                  value={normalizedEditForm.startingTeamId}
+                  onChange={(event) => handleEditField("startingTeamId", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                >
+                  <option value="">Unassigned</option>
+                  {editStartingTeamOptions.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.short_name || team.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">ABBA pattern</span>
+                <input
+                  type="text"
+                  value={normalizedEditForm.abbaPattern}
+                  onChange={(event) => handleEditField("abbaPattern", event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full`}
+                  placeholder="ABBA"
+                />
+              </label>
+            </div>
+
+            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-3 rounded-lg border border-[var(--sc-surface-light-border)] bg-white p-3">
+              <label className="flex items-center gap-3 text-sm font-semibold text-[var(--sc-surface-light-ink)]">
+                <input
+                  type="checkbox"
+                  checked={normalizedEditForm.captainsConfirmed}
+                  onChange={(event) => handleEditField("captainsConfirmed", event.target.checked)}
+                  className="h-4 w-4"
+                  style={{ accentColor: "#0a3d29" }}
+                />
+                Captain confirmed
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Confirmed date</span>
+                <input
+                  type="date"
+                  value={normalizedEditForm.confirmedDate}
+                  onChange={(event) => handleEditField("confirmedDate", event.target.value)}
+                  disabled={!normalizedEditForm.captainsConfirmed}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full disabled:bg-slate-100`}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Confirmed time</span>
+                <input
+                  type="time"
+                  value={normalizedEditForm.confirmedTime}
+                  onChange={(event) => handleEditField("confirmedTime", event.target.value)}
+                  disabled={!normalizedEditForm.captainsConfirmed}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full disabled:bg-slate-100`}
+                />
+              </label>
+            </div>
+
+            <div className="mt-3 space-y-3 rounded-lg border border-[var(--sc-surface-light-border)] bg-white p-3">
+              <label className="flex items-center gap-3 text-sm font-semibold text-[var(--sc-surface-light-ink)]">
+                <input
+                  type="checkbox"
+                  checked={normalizedEditForm.hasMedia}
+                  onChange={(event) => handleEditField("hasMedia", event.target.checked)}
+                  className="h-4 w-4"
+                  style={{ accentColor: "#0a3d29" }}
+                />
+                Has media
+              </label>
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-3">
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Media provider</span>
+                  <input
+                    type="text"
+                    value={normalizedEditForm.mediaProvider}
+                    onChange={(event) => handleEditField("mediaProvider", event.target.value)}
+                    className={`${LIGHT_INPUT_CLASS} mt-1 w-full`}
+                    placeholder="youtube"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Media URL</span>
+                  <input
+                    type="url"
+                    value={normalizedEditForm.mediaUrl}
+                    onChange={(event) => handleEditField("mediaUrl", event.target.value)}
+                    className={`${LIGHT_INPUT_CLASS} mt-1 w-full`}
+                    placeholder="https://"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Media status</span>
+                  <input
+                    type="text"
+                    value={normalizedEditForm.mediaStatus}
+                    onChange={(event) => handleEditField("mediaStatus", event.target.value)}
+                    className={`${LIGHT_INPUT_CLASS} mt-1 w-full`}
+                    placeholder="ready"
+                  />
+                </label>
+              </div>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Media link JSON</span>
+                <textarea
+                  value={normalizedEditForm.mediaLinkJson}
+                  onChange={(event) => handleEditField("mediaLinkJson", event.target.value)}
+                  rows={3}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full font-mono text-xs`}
+                  placeholder='{"primary":{"provider":"youtube","url":"https://...","status":"ready"}}'
+                  spellCheck={false}
+                />
+              </label>
             </div>
 
             <div className="mt-3 overflow-hidden rounded-lg border border-[var(--sc-surface-light-border)] bg-white">
@@ -1651,17 +2111,6 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
                 </tbody>
               </table>
             </div>
-
-            <label className="mt-3 flex items-center gap-3 rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--sc-surface-light-ink)]">
-              <input
-                type="checkbox"
-                checked={normalizedEditForm.captainsConfirmed}
-                onChange={(event) => handleEditField("captainsConfirmed", event.target.checked)}
-                className="h-4 w-4"
-                style={{ accentColor: "#0a3d29" }}
-              />
-              Captain confirmed
-            </label>
 
             {editError ? (
               <Panel variant="light" className="mt-3 border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">

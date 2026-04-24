@@ -33,13 +33,21 @@ const VENUE_GRID_CLASS =
   "flex flex-wrap gap-2";
 const MATCH_GRID_CLASS =
   "grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr))]";
+const FRIDAY_MATCH_GRID_CLASS =
+  "grid justify-start gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),18rem))]";
 const SCHEDULE_TIMEZONE = "Africa/Johannesburg";
 const SCHEDULE_DAY_KEYS = {
+  day0: "2026-04-24",
   day1: "2026-04-25",
   day2: "2026-04-26",
   day3: "2026-04-27",
 };
 const SCHEDULE_DAYS = [
+  {
+    key: SCHEDULE_DAY_KEYS.day0,
+    title: "Friday 24 Apr",
+    mode: "ordered",
+  },
   {
     key: SCHEDULE_DAY_KEYS.day1,
     title: "Saturday 25 Apr",
@@ -53,9 +61,12 @@ const SCHEDULE_DAYS = [
   {
     key: SCHEDULE_DAY_KEYS.day3,
     title: "Monday 27 Apr",
-    mode: "ordered",
+    mode: "divisions",
   },
 ];
+
+const getMatchGridClass = (dayKey) =>
+  dayKey === SCHEDULE_DAY_KEYS.day0 ? FRIDAY_MATCH_GRID_CLASS : MATCH_GRID_CLASS;
 
 const formatMatchup = (match) => {
   const teamA = match.team_a?.name || "Team A";
@@ -180,6 +191,19 @@ const buildPoolLookup = (divisions = []) => {
   return lookup;
 };
 
+const buildDivisionLookup = (divisions = []) => {
+  const lookup = new Map();
+  (divisions || []).forEach((division, divisionIndex) => {
+    if (!division?.id) return;
+    lookup.set(division.id, {
+      id: division.id,
+      name: division.name || "Division",
+      order: divisionIndex,
+    });
+  });
+  return lookup;
+};
+
 const normalizeScheduleText = (value) =>
   (typeof value === "string" ? value.trim().toLowerCase() : "");
 
@@ -236,7 +260,35 @@ const buildPoolGroups = (matchesForDay = [], poolLookup) => {
     });
 };
 
-const buildDailySchedule = (matches = [], poolLookup) =>
+const buildDivisionGroups = (matchesForDay = [], divisionLookup) => {
+  const groups = new Map();
+
+  matchesForDay.forEach((match) => {
+    const division = divisionLookup.get(match?.division_id);
+    const groupKey = division?.id || "unassigned";
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        key: groupKey,
+        title: division?.name || "Unassigned matches",
+        order: division?.order ?? Number.MAX_SAFE_INTEGER,
+        matches: [],
+      });
+    }
+    groups.get(groupKey).matches.push(match);
+  });
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      matches: [...group.matches].sort(sortByStartTimeAsc),
+    }))
+    .sort((left, right) => {
+      if (left.order !== right.order) return left.order - right.order;
+      return left.title.localeCompare(right.title);
+    });
+};
+
+const buildDailySchedule = (matches = [], poolLookup, divisionLookup) =>
   SCHEDULE_DAYS.map((day) => {
     const dayMatches = (matches || [])
       .filter((match) => formatDateKey(match?.start_time) === day.key)
@@ -253,7 +305,12 @@ const buildDailySchedule = (matches = [], poolLookup) =>
     return {
       ...day,
       matches: dayMatches,
-      poolGroups: day.mode === "ordered" ? [] : buildPoolGroups(poolMatches, poolLookup),
+      poolGroups:
+        day.mode === "ordered"
+          ? []
+          : day.mode === "divisions"
+            ? buildDivisionGroups(poolMatches, divisionLookup)
+            : buildPoolGroups(poolMatches, poolLookup),
       semifinalMatches,
     };
   });
@@ -535,9 +592,13 @@ export default function CptOwNationals2026WorkspacePage() {
     () => buildPoolLookup(eventData?.divisions || []),
     [eventData?.divisions],
   );
+  const divisionLookup = useMemo(
+    () => buildDivisionLookup(eventData?.divisions || []),
+    [eventData?.divisions],
+  );
   const dailySchedule = useMemo(
-    () => buildDailySchedule(matches, poolLookup),
-    [matches, poolLookup],
+    () => buildDailySchedule(matches, poolLookup, divisionLookup),
+    [matches, poolLookup, divisionLookup],
   );
 
   const renderMatchCard = (match, options = {}) => {
@@ -788,7 +849,7 @@ export default function CptOwNationals2026WorkspacePage() {
                     No matches scheduled for this day.
                   </p>
                 ) : day.mode === "ordered" ? (
-                  <div className={MATCH_GRID_CLASS}>
+                  <div className={getMatchGridClass(day.key)}>
                     {day.matches.map((match) =>
                       renderMatchCard(match),
                     )}
@@ -808,7 +869,7 @@ export default function CptOwNationals2026WorkspacePage() {
                           </div>
                           <Chip>{poolGroup.matches.length} matches</Chip>
                         </div>
-                        <div className={MATCH_GRID_CLASS}>
+                        <div className={getMatchGridClass(day.key)}>
                           {poolGroup.matches.map((match) =>
                             renderMatchCard(match),
                           )}
@@ -826,7 +887,7 @@ export default function CptOwNationals2026WorkspacePage() {
                           </div>
                           <Chip>{day.semifinalMatches.length} matches</Chip>
                         </div>
-                        <div className={MATCH_GRID_CLASS}>
+                        <div className={getMatchGridClass(day.key)}>
                           {day.semifinalMatches.map((match, index) => {
                             const semiLabel = `SF${index + 1}`;
                             return renderMatchCard(match, {

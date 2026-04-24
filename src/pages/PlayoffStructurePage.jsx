@@ -1,7 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  Card,
   Chip,
   Field,
   Input,
@@ -650,8 +649,11 @@ function SourceEditor({
   );
 
   return (
-    <Panel variant="muted" className="space-y-4 p-4">
-      <SectionHeader title={label} description="Choose how this slot should resolve." />
+    <div className="space-y-4 rounded-2xl border border-border bg-surface/60 p-4">
+      <div className="space-y-1">
+        <p className="text-sm font-semibold text-ink">{label}</p>
+        <p className="text-xs text-ink-muted">Choose how this slot should resolve.</p>
+      </div>
       <Field label="Source type">
         <Select
           value={value.type}
@@ -749,7 +751,46 @@ function SourceEditor({
           </Select>
         </Field>
       ) : null}
-    </Panel>
+    </div>
+  );
+}
+
+function EditorSection({
+  step,
+  title,
+  description,
+  tone = "default",
+  className = "",
+  titleClassName = "",
+  descriptionClassName = "",
+  stepClassName = "",
+  children,
+}) {
+  const toneClasses = {
+    default: "border border-border bg-surface/40",
+    basics: "border border-white/10 bg-white/[0.03]",
+    linked: "border border-sky-400/25 bg-sky-500/10",
+    participants: "border border-emerald-400/20 bg-emerald-500/8",
+    advancement: "border border-amber-300/25 bg-amber-500/10",
+  };
+
+  return (
+    <section className={`space-y-4 rounded-2xl p-4 ${toneClasses[tone] || toneClasses.default} ${className}`.trim()}>
+      <div className="flex flex-wrap items-start gap-3">
+        {step ? (
+          <span
+            className={`inline-flex min-w-[2rem] items-center justify-center rounded-full border border-emerald-400/35 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-200 ${stepClassName}`.trim()}
+          >
+            {step}
+          </span>
+        ) : null}
+        <div className="space-y-1">
+          <p className={`text-sm font-semibold text-ink ${titleClassName}`.trim()}>{title}</p>
+          {description ? <p className={`text-xs text-ink-muted ${descriptionClassName}`.trim()}>{description}</p> : null}
+        </div>
+      </div>
+      {children}
+    </section>
   );
 }
 export default function PlayoffStructurePage() {
@@ -1410,7 +1451,7 @@ export default function PlayoffStructurePage() {
   return (
     <div className="pb-16 text-ink">
       <SectionShell as="header" className="py-6">
-        <Card className="space-y-6 p-6 sm:p-8">
+        <Panel variant="tintedAlt" className="space-y-5 p-5 sm:p-6">
           <SectionHeader
             eyebrow="Admin tool"
             title="Playoff structure"
@@ -1448,7 +1489,7 @@ export default function PlayoffStructurePage() {
             }
           />
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))]">
             <Field label="Event" hint="Choose the event whose brackets you want to manage.">
               <Select
                 value={selectedEventId}
@@ -1469,7 +1510,7 @@ export default function PlayoffStructurePage() {
               </Select>
             </Field>
 
-            <Panel variant="muted" className="space-y-2 p-4">
+            <div className="space-y-2 rounded-2xl border border-border bg-surface/60 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Event details</p>
               <p className="text-lg font-semibold text-ink">{selectedEvent?.name || "No event selected"}</p>
               <p className="text-sm text-ink-muted">
@@ -1477,9 +1518,9 @@ export default function PlayoffStructurePage() {
                 {selectedEvent?.end_date ? ` to ${formatEventDate(selectedEvent.end_date)}` : ""}
               </p>
               <p className="text-sm text-ink-muted">{selectedEvent?.location || "Location TBC"}</p>
-            </Panel>
+            </div>
 
-            <Panel variant="muted" className="space-y-3 p-4">
+            <div className="space-y-3 rounded-2xl border border-border bg-surface/60 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Structure stats</p>
               <div className="flex flex-wrap gap-2">
                 <Chip>{stats.bracketCount} brackets</Chip>
@@ -1489,25 +1530,25 @@ export default function PlayoffStructurePage() {
               <p className="text-sm text-ink-muted">
                 {eventsLoading ? "Loading events..." : loading ? "Loading structure..." : "Ready"}
               </p>
-            </Panel>
+            </div>
           </div>
 
           {error ? (
-            <Panel variant="dashed" className="border-rose-400/40 bg-rose-500/5 p-4 text-sm text-rose-100">
+            <div className="rounded-2xl border border-dashed border-rose-400/40 bg-rose-500/5 p-4 text-sm text-rose-100">
               {error}
-            </Panel>
+            </div>
           ) : null}
 
           {message ? (
-            <Panel variant="dashed" className="border-emerald-400/40 bg-emerald-500/5 p-4 text-sm text-emerald-100">
+            <div className="rounded-2xl border border-dashed border-emerald-400/40 bg-emerald-500/5 p-4 text-sm text-emerald-100">
               {message}
-            </Panel>
+            </div>
           ) : null}
-        </Card>
+        </Panel>
       </SectionShell>
       <SectionShell as="main" className="space-y-6 py-6">
-        <div className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]">
-          <Card className="space-y-4 p-5">
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(17rem,19rem)_minmax(0,1fr)]">
+          <Panel variant="default" className="space-y-4 p-5">
             <SectionHeader
               title="Brackets"
               description="Pick a bracket to edit its details and nodes."
@@ -1530,7 +1571,7 @@ export default function PlayoffStructurePage() {
               </Panel>
             ) : null}
 
-            <div className="space-y-3">
+            <div className="grid gap-2">
               {brackets.map((bracket) => {
                 const selected = bracket.id === selectedBracketId;
                 return (
@@ -1543,10 +1584,10 @@ export default function PlayoffStructurePage() {
                       setMessage("");
                       setError("");
                     }}
-                    className={`w-full rounded-2xl border p-4 text-left transition ${
+                    className={`w-full rounded-xl border px-3 py-3 text-left transition ${
                       selected
-                        ? "border-emerald-400/45 bg-emerald-500/10"
-                        : "border-border bg-surface hover:border-emerald-400/30"
+                        ? "border-emerald-400/45 bg-emerald-500/10 shadow-[0_0_0_1px_rgba(52,211,153,0.08)]"
+                        : "border-border bg-surface/70 hover:border-emerald-400/30"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -1563,10 +1604,10 @@ export default function PlayoffStructurePage() {
                 );
               })}
             </div>
-          </Card>
+          </Panel>
 
           <div className="space-y-6">
-            <Card className="space-y-5 p-5">
+            <Panel variant="default" className="space-y-5 p-5">
               <SectionHeader
                 title={selectedBracketId ? "Edit bracket" : "New bracket"}
                 description="Brackets are event-level containers. Save the bracket before adding nodes."
@@ -1637,10 +1678,10 @@ export default function PlayoffStructurePage() {
                   </p>
                 ) : null}
               </div>
-            </Card>
+            </Panel>
 
-            <div className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]">
-              <Card className="space-y-4 p-5">
+            <div className="grid items-start gap-5 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))] xl:grid-cols-[minmax(17rem,19rem)_minmax(0,1fr)]">
+              <Panel variant="default" className="self-start space-y-4 p-5">
                 <SectionHeader
                   title="Nodes"
                   description="Each node maps to one scheduled playoff match."
@@ -1663,7 +1704,7 @@ export default function PlayoffStructurePage() {
                   </Panel>
                 ) : null}
 
-                <div className="space-y-3">
+                <div className="grid gap-2">
                   {selectedBracketNodes.map((node) => {
                     const selected = node.id === selectedNodeId;
                     const sourceSummary = `${formatSourceLabel(node.source_a, sourceLookups)} vs ${formatSourceLabel(
@@ -1671,13 +1712,18 @@ export default function PlayoffStructurePage() {
                       sourceLookups,
                     )}`;
                     return (
-                      <Panel
+                      <button
                         key={node.id}
-                        variant="muted"
-                        className={`w-full rounded-2xl border p-4 text-left transition ${
+                        type="button"
+                        onClick={() => {
+                          setSelectedNodeId(node.id);
+                          setMessage("");
+                          setError("");
+                        }}
+                        className={`w-full rounded-xl border px-3 py-3 text-left transition ${
                           selected
-                            ? "border-emerald-400/45 bg-emerald-500/10"
-                            : "border-border bg-surface hover:border-emerald-400/30"
+                            ? "border-emerald-400/45 bg-emerald-500/10 shadow-[0_0_0_1px_rgba(52,211,153,0.08)]"
+                            : "border-border bg-surface/70 hover:border-emerald-400/30"
                         }`}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -1688,24 +1734,14 @@ export default function PlayoffStructurePage() {
                               Round {node.round ?? "--"} · Position {node.position ?? "--"}
                             </p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedNodeId(node.id);
-                              setMessage("");
-                              setError("");
-                            }}
-                            className="sc-button is-ghost text-xs"
-                          >
-                            Edit node
-                          </button>
+                          <span className="text-xs font-medium text-emerald-200">Edit</span>
                         </div>
-                      </Panel>
+                      </button>
                     );
                   })}
                 </div>
-              </Card>
-              <Card className="space-y-5 p-5">
+              </Panel>
+              <Panel variant="default" className="self-start space-y-5 p-5">
                 <SectionHeader
                   title={isEditingNode ? "Edit node" : "Add new node"}
                   description="Use structured inputs so organisers do not need to manage JSON by hand."
@@ -1739,35 +1775,49 @@ export default function PlayoffStructurePage() {
                   </Panel>
                 ) : (
                   <>
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                      <Field label="Node name">
-                        <Input
-                          value={nodeForm.name}
-                          onChange={(event) => setNodeForm((current) => ({ ...current, name: event.target.value }))}
-                          placeholder="Open 1v2"
-                        />
-                      </Field>
+                    <EditorSection
+                      step="1"
+                      title="Basics"
+                      description="Name the node and place it in the bracket order."
+                      tone="basics"
+                    >
+                      <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr))]">
+                        <Field label="Node name">
+                          <Input
+                            value={nodeForm.name}
+                            onChange={(event) => setNodeForm((current) => ({ ...current, name: event.target.value }))}
+                            placeholder="Open 1v2"
+                          />
+                        </Field>
 
-                      <Field label="Round">
-                        <Input
-                          type="number"
-                          min="1"
-                          value={nodeForm.round}
-                          onChange={(event) => setNodeForm((current) => ({ ...current, round: event.target.value }))}
-                        />
-                      </Field>
+                        <Field label="Round">
+                          <Input
+                            type="number"
+                            min="1"
+                            value={nodeForm.round}
+                            onChange={(event) => setNodeForm((current) => ({ ...current, round: event.target.value }))}
+                          />
+                        </Field>
 
-                      <Field label="Position">
-                        <Input
-                          type="number"
-                          min="1"
-                          value={nodeForm.position}
-                          onChange={(event) =>
-                            setNodeForm((current) => ({ ...current, position: event.target.value }))
-                          }
-                        />
-                      </Field>
+                        <Field label="Position">
+                          <Input
+                            type="number"
+                            min="1"
+                            value={nodeForm.position}
+                            onChange={(event) =>
+                              setNodeForm((current) => ({ ...current, position: event.target.value }))
+                            }
+                          />
+                        </Field>
+                      </div>
+                    </EditorSection>
 
+                    <EditorSection
+                      step="2"
+                      title="Linked match"
+                      description="Connect this node to a scheduled match or create one here."
+                      tone="linked"
+                    >
                       <Field
                         label="Linked match"
                         hint="Choose the scheduled match this node should populate, or create one here."
@@ -1812,19 +1862,21 @@ export default function PlayoffStructurePage() {
                           ))}
                         </Select>
                       </Field>
-                    </div>
+                    </EditorSection>
 
                     {showCreateMatchForm ? (
-                      <Panel variant="muted" className="space-y-4 p-4">
-                        <SectionHeader
-                          title={linkedMatchFormMode === "edit" ? "Edit linked values" : "Create linked"}
-                          description={
-                            linkedMatchFormMode === "edit"
-                              ? "Edit the selected linked values here, then save the node if the link should remain."
-                              : "Create a scheduled shell for this node, then save the node to persist the link."
-                          }
-                        />
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                      <EditorSection
+                        step="2a"
+                        title={linkedMatchFormMode === "edit" ? "Edit linked values" : "Create linked"}
+                        description={
+                          linkedMatchFormMode === "edit"
+                            ? "Edit the selected linked values here, then save the node if the link should remain."
+                            : "Create a scheduled shell for this node, then save the node to persist the link."
+                        }
+                        tone="linked"
+                        className="bg-sky-500/12"
+                      >
+                        <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr))]">
                           <Field label="Division">
                             <Select
                               value={createMatchForm.divisionId}
@@ -1947,118 +1999,148 @@ export default function PlayoffStructurePage() {
                             Cancel
                           </button>
                         </div>
-                      </Panel>
+                      </EditorSection>
                     ) : null}
 
-                    <div className="grid gap-4 xl:grid-cols-2">
-                      <SourceEditor
-                        label="Source A"
-                        value={nodeForm.sourceA}
-                        onChange={(nextValue) => setNodeForm((current) => ({ ...current, sourceA: nextValue }))}
-                        divisions={divisionOptions}
-                        pools={poolOptions}
-                        nodeOptions={nodeOptions}
-                        teamOptions={teamOptions}
-                        currentNodeId={selectedNodeId}
-                      />
-                      <SourceEditor
-                        label="Source B"
-                        value={nodeForm.sourceB}
-                        onChange={(nextValue) => setNodeForm((current) => ({ ...current, sourceB: nextValue }))}
-                        divisions={divisionOptions}
-                        pools={poolOptions}
-                        nodeOptions={nodeOptions}
-                        teamOptions={teamOptions}
-                        currentNodeId={selectedNodeId}
-                      />
-                    </div>
+                    <EditorSection
+                      step="3"
+                      title="Participants"
+                      description="Define where each side of the node should resolve from."
+                      tone="participants"
+                      className="p-5"
+                    >
+                      <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))]">
+                        <SourceEditor
+                          label="Source A"
+                          value={nodeForm.sourceA}
+                          onChange={(nextValue) => setNodeForm((current) => ({ ...current, sourceA: nextValue }))}
+                          divisions={divisionOptions}
+                          pools={poolOptions}
+                          nodeOptions={nodeOptions}
+                          teamOptions={teamOptions}
+                          currentNodeId={selectedNodeId}
+                        />
+                        <SourceEditor
+                          label="Source B"
+                          value={nodeForm.sourceB}
+                          onChange={(nextValue) => setNodeForm((current) => ({ ...current, sourceB: nextValue }))}
+                          divisions={divisionOptions}
+                          pools={poolOptions}
+                          nodeOptions={nodeOptions}
+                          teamOptions={teamOptions}
+                          currentNodeId={selectedNodeId}
+                        />
+                      </div>
+                    </EditorSection>
 
-                    <div className="grid gap-4 xl:grid-cols-2">
-                      <Panel variant="muted" className="space-y-4 p-4">
-                        <SectionHeader title="Winner advancement" description="Optional target for the winner of this node." />
-                        <Field label="Target node">
-                          <Select
-                            value={nodeForm.advanceToWinner}
-                            onChange={(event) =>
-                              setNodeForm((current) => ({
-                                ...current,
-                                advanceToWinner: event.target.value,
-                              }))
-                            }
-                          >
-                            <option value="">No target</option>
-                            {nodeOptions
-                              .filter((node) => node.id !== selectedNodeId)
-                              .map((node) => (
-                                <option key={node.id} value={node.id}>
-                                  {node.label}
+                    <EditorSection
+                      step="4"
+                      title="Advancement"
+                      description="Send winners and losers to their next destinations."
+                      tone="advancement"
+                      className="p-5"
+                    >
+                      <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))]">
+                        <div className="space-y-4 rounded-2xl border border-border bg-surface/60 p-4">
+                          <div className="space-y-1">
+                            <p className="text-sm font-semibold text-ink">Winner advancement</p>
+                            <p className="text-xs text-ink-muted">Optional target for the winner of this node.</p>
+                          </div>
+                          <Field label="Target node">
+                            <Select
+                              value={nodeForm.advanceToWinner}
+                              onChange={(event) =>
+                                setNodeForm((current) => ({
+                                  ...current,
+                                  advanceToWinner: event.target.value,
+                                }))
+                              }
+                            >
+                              <option value="">No target</option>
+                              {nodeOptions
+                                .filter((node) => node.id !== selectedNodeId)
+                                .map((node) => (
+                                  <option key={node.id} value={node.id}>
+                                    {node.label}
+                                  </option>
+                                ))}
+                            </Select>
+                          </Field>
+                          <Field label="Winner side">
+                            <Select
+                              value={nodeForm.advanceToWinnerSide}
+                              onChange={(event) =>
+                                setNodeForm((current) => ({
+                                  ...current,
+                                  advanceToWinnerSide: event.target.value,
+                                }))
+                              }
+                            >
+                              {SIDE_OPTIONS.map((option) => (
+                                <option key={option.value || "none"} value={option.value}>
+                                  {option.label}
                                 </option>
                               ))}
-                          </Select>
-                        </Field>
-                        <Field label="Winner side">
-                          <Select
-                            value={nodeForm.advanceToWinnerSide}
-                            onChange={(event) =>
-                              setNodeForm((current) => ({
-                                ...current,
-                                advanceToWinnerSide: event.target.value,
-                              }))
-                            }
-                          >
-                            {SIDE_OPTIONS.map((option) => (
-                              <option key={option.value || "none"} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
-                      </Panel>
+                            </Select>
+                          </Field>
+                        </div>
 
-                      <Panel variant="muted" className="space-y-4 p-4">
-                        <SectionHeader title="Loser advancement" description="Optional target for the loser of this node." />
-                        <Field label="Target node">
-                          <Select
-                            value={nodeForm.advanceToLoser}
-                            onChange={(event) =>
-                              setNodeForm((current) => ({
-                                ...current,
-                                advanceToLoser: event.target.value,
-                              }))
-                            }
-                          >
-                            <option value="">No target</option>
-                            {nodeOptions
-                              .filter((node) => node.id !== selectedNodeId)
-                              .map((node) => (
-                                <option key={node.id} value={node.id}>
-                                  {node.label}
+                        <div className="space-y-4 rounded-2xl border border-border bg-surface/60 p-4">
+                          <div className="space-y-1">
+                            <p className="text-sm font-semibold text-ink">Loser advancement</p>
+                            <p className="text-xs text-ink-muted">Optional target for the loser of this node.</p>
+                          </div>
+                          <Field label="Target node">
+                            <Select
+                              value={nodeForm.advanceToLoser}
+                              onChange={(event) =>
+                                setNodeForm((current) => ({
+                                  ...current,
+                                  advanceToLoser: event.target.value,
+                                }))
+                              }
+                            >
+                              <option value="">No target</option>
+                              {nodeOptions
+                                .filter((node) => node.id !== selectedNodeId)
+                                .map((node) => (
+                                  <option key={node.id} value={node.id}>
+                                    {node.label}
+                                  </option>
+                                ))}
+                            </Select>
+                          </Field>
+                          <Field label="Loser side">
+                            <Select
+                              value={nodeForm.advanceToLoserSide}
+                              onChange={(event) =>
+                                setNodeForm((current) => ({
+                                  ...current,
+                                  advanceToLoserSide: event.target.value,
+                                }))
+                              }
+                            >
+                              {SIDE_OPTIONS.map((option) => (
+                                <option key={option.value || "none"} value={option.value}>
+                                  {option.label}
                                 </option>
                               ))}
-                          </Select>
-                        </Field>
-                        <Field label="Loser side">
-                          <Select
-                            value={nodeForm.advanceToLoserSide}
-                            onChange={(event) =>
-                              setNodeForm((current) => ({
-                                ...current,
-                                advanceToLoserSide: event.target.value,
-                              }))
-                            }
-                          >
-                            {SIDE_OPTIONS.map((option) => (
-                              <option key={option.value || "none"} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
-                      </Panel>
-                    </div>
+                            </Select>
+                          </Field>
+                        </div>
+                      </div>
+                    </EditorSection>
 
                     {selectedNode ? (
-                      <Panel variant="light" className="space-y-3 p-4">
+                      <EditorSection
+                        step="5"
+                        title="Preview"
+                        description="Quick summary of the currently selected node."
+                        className="border-[var(--sc-surface-light-border)] bg-[var(--sc-surface-light)] text-[var(--sc-surface-light-ink)]"
+                        titleClassName="text-[var(--sc-surface-light-ink)]"
+                        descriptionClassName="text-[var(--sc-surface-light-ink)]/70"
+                        stepClassName="border-[var(--sc-surface-light-ink)]/20 bg-white/70 text-[var(--sc-surface-light-ink)]"
+                      >
                         <div className="flex flex-wrap items-center gap-2">
                           <Chip>{getNodeDisplayName(selectedNode)}</Chip>
                           {selectedNode.match ? <Chip>{formatMatchStatus(selectedNode.match.status)}</Chip> : null}
@@ -2073,20 +2155,20 @@ export default function PlayoffStructurePage() {
                         ) : (
                           <p className="text-sm text-[var(--sc-surface-light-ink)]">No linked match yet.</p>
                         )}
-                      </Panel>
+                      </EditorSection>
                     ) : null}
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <section className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
                       <button type="button" onClick={handleSaveNode} className="sc-button" disabled={nodeBusy}>
                         {nodeBusy ? "Saving..." : "Save node"}
                       </button>
                       <p className="text-sm text-ink-muted">
                         Nodes drive bracket resolution. Keep the match assignment here, not in custom page code.
                       </p>
-                    </div>
+                    </section>
                   </>
                 )}
-              </Card>
+              </Panel>
             </div>
           </div>
         </div>

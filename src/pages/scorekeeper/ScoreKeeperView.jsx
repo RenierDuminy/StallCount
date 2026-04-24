@@ -215,11 +215,21 @@ export default function ScoreKeeperView() {
   };
   const isMixedDivision = (rules.division || "").toLowerCase() === "mixed";
   const isAbbaEnabled = isMixedDivision && rules.mixedRatioRule !== "B";
-  const spiritScoresUrl = activeMatch?.id
-    ? `/spirit-scores?matchId=${activeMatch.id}`
-    : selectedMatch?.id
-      ? `/spirit-scores?matchId=${selectedMatch.id}`
-      : "/spirit-scores";
+  const spiritMatch = activeMatch || selectedMatch || null;
+  const spiritEventId = spiritMatch?.event_id || spiritMatch?.event?.id || selectedEventId || "";
+  const spiritScoresUrl = (() => {
+    if (!spiritMatch?.id && !spiritEventId) {
+      return "/spirit-scores";
+    }
+    const params = new URLSearchParams();
+    if (spiritEventId) {
+      params.set("eventId", spiritEventId);
+    }
+    if (spiritMatch?.id) {
+      params.set("matchId", spiritMatch.id);
+    }
+    return `/spirit-scores?${params.toString()}`;
+  })();
   const isStartMatchReady =
     Boolean(setupForm.startingTeamId) &&
     (!isAbbaEnabled || ["male", "female"].includes(setupForm.abbaPattern));

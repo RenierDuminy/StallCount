@@ -821,7 +821,22 @@ export function useScoreKeeperActions(controller) {
           prev.map((match) => (match.id === updated.id ? updated : match))
         );
       }
-      const spiritUrl = `/spirit-scores${controller.activeMatch?.id ? `?matchId=${controller.activeMatch.id}` : ""}`;
+      const spiritParams = new URLSearchParams();
+      const spiritMatchId = controller.activeMatch?.id || "";
+      const spiritEventId =
+        controller.activeMatch?.event_id ||
+        controller.activeMatch?.event?.id ||
+        controller.selectedEventId ||
+        "";
+      if (spiritEventId) {
+        spiritParams.set("eventId", spiritEventId);
+      }
+      if (spiritMatchId) {
+        spiritParams.set("matchId", spiritMatchId);
+      }
+      const spiritUrl = spiritParams.toString()
+        ? `/spirit-scores?${spiritParams.toString()}`
+        : "/spirit-scores";
       navigate(spiritUrl);
       controller.clearLocalMatchState();
       if (controller.selectedEventId) {
