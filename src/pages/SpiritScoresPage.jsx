@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getEventsList } from "../services/leagueService";
 import { getMatchById, getMatchesByEvent, updateMatchStatus } from "../services/matchService";
 import { submitSpiritScores } from "../services/spiritScoreService";
 import { getRoleCatalog } from "../services/userService";
+import {
+  loadSpiritScoresSession,
+  saveSpiritScoresSession,
+} from "../services/spiritScoreSessionStore";
 import { Card, Field, Input, SectionHeader, SectionShell, Select, Textarea } from "../components/ui/primitives";
 import { SPIRIT_SCORES_ACCESS_PERMISSIONS, userHasAnyPermission } from "../utils/accessControl";
-import usePersistentState from "../hooks/usePersistentState";
 
 const SPIRIT_CATEGORIES = [
   { key: "rulesKnowledge", label: "Rules knowledge & use" },
@@ -16,10 +19,6 @@ const SPIRIT_CATEGORIES = [
   { key: "positiveAttitude", label: "Positive attitude" },
   { key: "communication", label: "Communication" },
 ];
-
-const SPIRIT_SELECTED_EVENT_KEY = "stallcount:spirit-scores:selected-event:v1";
-const SPIRIT_SELECTED_MATCH_KEY = "stallcount:spirit-scores:selected-match:v1";
-const SPIRIT_TEAM_SCORES_KEY = "stallcount:spirit-scores:team-scores:v1";
 
 const createDefaultScores = () => ({
   rulesKnowledge: 2,
@@ -42,9 +41,12 @@ export default function SpiritScoresPage() {
   const prefilledEventId = searchParams.get("eventId") || "";
   const prefilledMatchId = searchParams.get("matchId") || "";
 
-  const [selectedEventId, setSelectedEventId] = usePersistentState(SPIRIT_SELECTED_EVENT_KEY, "");
-  const [selectedMatchId, setSelectedMatchId] = usePersistentState(SPIRIT_SELECTED_MATCH_KEY, "");
-  const [teamScores, setTeamScores] = usePersistentState(SPIRIT_TEAM_SCORES_KEY, createDefaultTeamScores());
+  const [selectedEventId, setSelectedEventId] = useState("");
+  const [selectedMatchId, setSelectedMatchId] = useState("");
+  const [teamScores, setTeamScores] = useState(createDefaultTeamScores);
+  const [draftsByMatchId, setDraftsByMatchId] = useState({});
+  const draftsByMatchIdRef = useRef({});
+  const [draftReady, setDraftReady] = useState(false);
 
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -70,6 +72,38 @@ export default function SpiritScoresPage() {
       setSelectedMatchId(prefilledMatchId);
     }
   }, [prefilledMatchId, setSelectedMatchId]);
+
+  useEffect(() => {
+    if (!userId) {
+      setDraftReady(true);
+      return;
+    }
+
+    const record = loadSpiritScoresSession(userId);
+    const data = record?.data ?? null;
+    const restoredDrafts = normalizePersistedDrafts(data);
+
+    if (data) {
+      if (!prefilledEventId && typeof data.selectedEventId === "string") {
+        setSelectedEventId(data.selectedEventId);
+      }
+      if (!prefilledMatchId && typeof data.selectedMatchId === "string") {
+        setSelectedMatchId(data.selectedMatchId);
+      }
+      setDraftsByMatchId(restoredDrafts);
+
+      const restoredMatchId =
+        prefilledMatchId || (typeof data.selectedMatchId === "string" ? data.selectedMatchId : "");
+      const restoredDraft = restoredMatchId ? restoredDrafts[restoredMatchId] : null;
+      if (restoredDraft?.teamScores) {
+        setTeamScores(normalizePersistedTeamScores(restoredDraft.teamScores));
+      } else if (data.teamScores) {
+        setTeamScores(normalizePersistedTeamScores(data.teamScores));
+      }
+    }
+
+    setDraftReady(true);
+  }, [prefilledEventId, prefilledMatchId, userId]);
 
   useEffect(() => {
     let ignore = false;
@@ -220,9 +254,69 @@ export default function SpiritScoresPage() {
   }, [matches, selectedEventId, selectedMatchId, setSelectedEventId]);
 
   useEffect(() => {
-    if (!selectedMatchId) return;
+    draftsByMatchIdRef.current = draftsByMatchId;
+  }, [draftsByMatchId]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    if (!selectedMatchId) {
+      setTeamScores(createDefaultTeamScores());
+      return;
+    }
+
+    const draft = draftsByMatchIdRef.current[selectedMatchId];
+    if (draft?.teamScores) {
+      setTeamScores(normalizePersistedTeamScores(draft.teamScores));
+      return;
+    }
+
     setTeamScores(createDefaultTeamScores());
-  }, [selectedMatchId, setTeamScores]);
+  }, [draftReady, selectedMatchId, setTeamScores]);
+
+  useEffect(() => {
+    if (!draftReady || !selectedMatchId) {
+      return;
+    }
+
+    const normalizedScores = normalizePersistedTeamScores(teamScores);
+
+    setDraftsByMatchId((current) => {
+      const existing = current[selectedMatchId];
+      const nextEventId =
+        typeof selectedEventId === "string" && selectedEventId
+          ? selectedEventId
+          : existing?.eventId || "";
+
+      if (
+        existing &&
+        existing.eventId === nextEventId &&
+        areTeamScoresEqual(existing.teamScores, normalizedScores)
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [selectedMatchId]: {
+          eventId: nextEventId,
+          teamScores: normalizedScores,
+          updatedAt: Date.now(),
+        },
+      };
+    });
+  }, [draftReady, selectedEventId, selectedMatchId, teamScores]);
+
+  useEffect(() => {
+    if (!draftReady || !userId) {
+      return;
+    }
+
+    saveSpiritScoresSession(userId, {
+      selectedEventId,
+      selectedMatchId,
+      draftsByMatchId,
+    });
+  }, [draftReady, draftsByMatchId, selectedEventId, selectedMatchId, userId]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -425,8 +519,15 @@ export default function SpiritScoresPage() {
 
               await updateMatchStatus(selectedMatchId, "completed");
 
+              setDraftsByMatchId((current) => {
+                if (!current[selectedMatchId]) {
+                  return current;
+                }
+                const nextDrafts = { ...current };
+                delete nextDrafts[selectedMatchId];
+                return nextDrafts;
+              });
               setTeamScores(createDefaultTeamScores());
-
               setSubmitState({
                 message: "Spirit scores submitted",
                 variant: "success",
@@ -445,7 +546,7 @@ export default function SpiritScoresPage() {
             <div className="space-y-0.5">
               <h2 className="text-xl font-semibold">Select the match to score</h2>
               <p className="text-xs text-[var(--sc-surface-light-ink)]/80 sm:text-sm">
-                Choose an event, then the fixture. Redirects from the scorekeeper now prefill both the match context and the match details.
+                Choose an event, then the fixture. Redirects from the scorekeeper prefill the match context, and in-progress scoring stays saved on this device for your account.
               </p>
             </div>
 
@@ -655,6 +756,87 @@ function compareMatchesByStartTime(matchA, matchB) {
     return timeA - timeB;
   }
   return `${matchA?.id || ""}`.localeCompare(`${matchB?.id || ""}`);
+}
+
+function normalizePersistedTeamScores(value) {
+  const fallback = createDefaultTeamScores();
+  if (!value || typeof value !== "object") {
+    return fallback;
+  }
+
+  return {
+    teamA: normalizePersistedScoreCard(value.teamA),
+    teamB: normalizePersistedScoreCard(value.teamB),
+  };
+}
+
+function normalizePersistedDrafts(value) {
+  const drafts = {};
+  const entries = value?.draftsByMatchId;
+
+  if (entries && typeof entries === "object") {
+    Object.entries(entries).forEach(([matchId, draft]) => {
+      if (!matchId || !draft || typeof draft !== "object") {
+        return;
+      }
+
+      drafts[matchId] = {
+        eventId: typeof draft.eventId === "string" ? draft.eventId : "",
+        teamScores: normalizePersistedTeamScores(draft.teamScores),
+        updatedAt: Number.isFinite(draft.updatedAt) ? draft.updatedAt : null,
+      };
+    });
+  }
+
+  if (
+    !Object.keys(drafts).length &&
+    typeof value?.selectedMatchId === "string" &&
+    value.selectedMatchId &&
+    value?.teamScores
+  ) {
+    drafts[value.selectedMatchId] = {
+      eventId: typeof value.selectedEventId === "string" ? value.selectedEventId : "",
+      teamScores: normalizePersistedTeamScores(value.teamScores),
+      updatedAt: Number.isFinite(value.updatedAt) ? value.updatedAt : null,
+    };
+  }
+
+  return drafts;
+}
+
+function areTeamScoresEqual(left, right) {
+  const normalizedLeft = normalizePersistedTeamScores(left);
+  const normalizedRight = normalizePersistedTeamScores(right);
+
+  return ["teamA", "teamB"].every((teamKey) =>
+    ["rulesKnowledge", "fouls", "fairness", "positiveAttitude", "communication", "notes"].every(
+      (field) => normalizedLeft[teamKey][field] === normalizedRight[teamKey][field],
+    ),
+  );
+}
+
+function normalizePersistedScoreCard(value) {
+  const fallback = createDefaultScores();
+  if (!value || typeof value !== "object") {
+    return fallback;
+  }
+
+  return {
+    rulesKnowledge: normalizeSpiritCategoryValue(value.rulesKnowledge),
+    fouls: normalizeSpiritCategoryValue(value.fouls),
+    fairness: normalizeSpiritCategoryValue(value.fairness),
+    positiveAttitude: normalizeSpiritCategoryValue(value.positiveAttitude),
+    communication: normalizeSpiritCategoryValue(value.communication),
+    notes: typeof value.notes === "string" ? value.notes : "",
+  };
+}
+
+function normalizeSpiritCategoryValue(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 2;
+  }
+  return Math.min(4, Math.max(0, Math.round(numeric)));
 }
 
 function formatEventLabel(event) {

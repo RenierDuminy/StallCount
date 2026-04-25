@@ -918,7 +918,7 @@ function TeamOverviewCard({ title, stats }) {
               </tr>
             </thead>
             <tbody>
-              {rows.slice(0, 8).map((row) => (
+              {rows.map((row) => (
                 <tr key={`${label}-${row.player}`} className="border-t border-border text-sm">
                   <td className="py-1 pr-2">{row.player}</td>
                   <td className="py-1 text-right font-semibold">{row.count}</td>
@@ -971,7 +971,7 @@ function TeamOverviewCard({ title, stats }) {
               </tr>
             </thead>
             <tbody>
-              {connections.slice(0, 6).map((row) => (
+              {connections.map((row) => (
                 <tr key={`${row.assist}-${row.scorer}`} className="border-t border-border text-sm">
                   <td className="py-1 pr-2">{row.assist}</td>
                   <td className="py-1 text-center text-sm font-bold text-ink-muted">→</td>
