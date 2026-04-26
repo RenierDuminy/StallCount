@@ -1,31 +1,73 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { getAllPlayerMatchStats } from "../services/teamService";
+import { getEventPlayerMatchStats } from "../services/teamService";
+import { getEventsList } from "../services/leagueService";
 import { Card, SectionHeader, SectionShell, Field, Input, Select } from "../components/ui/primitives";
 
 export default function PlayersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialEventId = searchParams.get("eventId") || "all";
+  const initialEventId = searchParams.get("eventId") || "";
+  const initialDivisionId = searchParams.get("divisionId") || "";
+  const [events, setEvents] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [eventsError, setEventsError] = useState(null);
   const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("total");
   const [sortDirection, setSortDirection] = useState("desc");
   const [eventFilter, setEventFilter] = useState(initialEventId);
+  const [divisionFilter, setDivisionFilter] = useState(initialDivisionId);
 
   useEffect(() => {
-    const requestedEventId = searchParams.get("eventId") || "all";
+    const requestedEventId = searchParams.get("eventId") || "";
+    const requestedDivisionId = searchParams.get("divisionId") || "";
     setEventFilter((current) => (current === requestedEventId ? current : requestedEventId));
+    setDivisionFilter((current) => (current === requestedDivisionId ? current : requestedDivisionId));
   }, [searchParams]);
 
   useEffect(() => {
     let ignore = false;
+    async function loadEvents() {
+      setEventsLoading(true);
+      setEventsError(null);
+      try {
+        const data = await getEventsList(200);
+        if (!ignore) {
+          setEvents(data || []);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setEventsError(err.message || "Unable to load events.");
+          setEvents([]);
+        }
+      } finally {
+        if (!ignore) {
+          setEventsLoading(false);
+        }
+      }
+    }
+    loadEvents();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
     async function loadStats() {
+      if (!eventFilter) {
+        setRows([]);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       setError(null);
       try {
-        const data = await getAllPlayerMatchStats();
+        const data = await getEventPlayerMatchStats(eventFilter);
         if (!ignore) {
           setRows(data || []);
         }
@@ -43,7 +85,7 @@ export default function PlayersPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [eventFilter]);
 
   const filters = useMemo(
     () => ({
@@ -52,30 +94,47 @@ export default function PlayersPage() {
     [search],
   );
 
-  const eventOptions = useMemo(() => {
+  const divisionOptions = useMemo(() => {
     const map = new Map();
+
     rows.forEach((row) => {
-      const event = row.match?.event;
-      if (event?.id && !map.has(event.id)) {
-        map.set(event.id, event.name || "Event");
+      const division = row.match?.division;
+      if (division?.id && !map.has(division.id)) {
+        map.set(division.id, division.name || "Division");
       }
     });
+
     return Array.from(map.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [rows]);
 
-  const filteredRowsByEvent = useMemo(() => {
-    if (eventFilter === "all") {
+  useEffect(() => {
+    if (!divisionFilter) {
+      return;
+    }
+
+    const divisionStillAvailable = divisionOptions.some(
+      (division) => String(division.id) === String(divisionFilter),
+    );
+
+    if (!divisionStillAvailable) {
+      setDivisionFilter("");
+    }
+  }, [divisionFilter, divisionOptions]);
+
+  const filteredRows = useMemo(() => {
+    if (!divisionFilter) {
       return rows;
     }
-    return rows.filter((row) => row.match?.event?.id === eventFilter);
-  }, [rows, eventFilter]);
+
+    return rows.filter((row) => row.match?.division?.id === divisionFilter);
+  }, [divisionFilter, rows]);
 
   const aggregatedRows = useMemo(() => {
     const map = new Map();
 
-    filteredRowsByEvent.forEach((row) => {
+    filteredRows.forEach((row) => {
       const playerId = row.player?.id;
       if (!playerId) return;
 
@@ -99,6 +158,7 @@ export default function PlayersPage() {
       entry.assists += row.assists || 0;
       entry.blocks += row.blocks || 0;
       entry.turnovers += row.turnovers || 0;
+      entry.callahans += row.callahans || 0;
       entry.matchIds.add(row.match_id);
     });
 
@@ -114,7 +174,7 @@ export default function PlayersPage() {
         goalsPerGame: games ? entry.goals / games : 0,
       };
     });
-  }, [filteredRowsByEvent]);
+  }, [filteredRows]);
 
   const filteredAggregated = useMemo(() => {
     return aggregatedRows.filter((row) => {
@@ -196,11 +256,29 @@ export default function PlayersPage() {
 
   const handleEventFilterChange = (nextFilter) => {
     setEventFilter(nextFilter);
-    if (nextFilter === "all") {
+    setDivisionFilter("");
+
+    if (!nextFilter) {
       setSearchParams({}, { replace: true });
       return;
     }
     setSearchParams({ eventId: nextFilter }, { replace: true });
+  };
+
+  const handleDivisionFilterChange = (nextFilter) => {
+    setDivisionFilter(nextFilter);
+
+    if (!eventFilter) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    if (!nextFilter) {
+      setSearchParams({ eventId: eventFilter }, { replace: true });
+      return;
+    }
+
+    setSearchParams({ eventId: eventFilter, divisionId: nextFilter }, { replace: true });
   };
 
   return (
@@ -225,9 +303,13 @@ export default function PlayersPage() {
         <Card className="space-y-4 p-4 sm:p-6">
           <SectionHeader
             eyebrow="Player stats"
-            description={`Showing ${sortedRows.length} of ${aggregatedRows.length} players${
-              eventFilter !== "all" ? " (event filter applied)" : ""
-            }`}
+            description={
+              eventFilter
+                ? `Showing ${sortedRows.length} of ${aggregatedRows.length} players for the selected event${
+                    divisionFilter ? " and division." : "."
+                  }`
+                : "Select an event to load player stats."
+            }
             action={
               <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end sm:justify-end">
                 <Field className="w-full max-w-sm" label="Search player" htmlFor="player-search">
@@ -244,15 +326,38 @@ export default function PlayersPage() {
                     id="player-event-filter"
                     value={eventFilter}
                     onChange={(e) => handleEventFilterChange(e.target.value)}
+                    disabled={eventsLoading || events.length === 0}
                   >
-                    <option value="all">All events</option>
-                    {eventOptions.map((event) => (
+                    <option value="">
+                      {eventsLoading
+                        ? "Loading events..."
+                        : events.length
+                          ? "Select an event..."
+                          : "No events available"}
+                    </option>
+                    {events.map((event) => (
                       <option key={event.id} value={event.id}>
                         {event.name}
                       </option>
                     ))}
                   </Select>
                 </Field>
+                {divisionOptions.length > 0 ? (
+                  <Field className="w-full max-w-xs" label="Division" htmlFor="player-division-filter">
+                    <Select
+                      id="player-division-filter"
+                      value={divisionFilter}
+                      onChange={(e) => handleDivisionFilterChange(e.target.value)}
+                    >
+                      <option value="">All divisions</option>
+                      {divisionOptions.map((division) => (
+                        <option key={division.id} value={division.id}>
+                          {division.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                ) : null}
               </div>
             }
           />
@@ -282,7 +387,19 @@ export default function PlayersPage() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {eventsError ? (
+                  <tr>
+                    <td colSpan={statHeaders.length + 2} className="px-2 py-4 text-center text-sm text-ink-muted">
+                      {eventsError}
+                    </td>
+                  </tr>
+                ) : !eventFilter ? (
+                  <tr>
+                    <td colSpan={statHeaders.length + 2} className="px-2 py-4 text-center text-sm text-ink-muted">
+                      Select an event to load player stats.
+                    </td>
+                  </tr>
+                ) : loading ? (
                   <tr>
                     <td colSpan={statHeaders.length + 2} className="px-2 py-4 text-center text-sm text-ink-muted">
                       Loading player stats...
@@ -299,7 +416,14 @@ export default function PlayersPage() {
                     <tr key={row.playerId} className="border-t border-border hover:bg-surface-muted">
                       <td className="px-3 py-2 text-center font-semibold text-ink-muted">{row.jerseyNumber ?? "-"}</td>
                       <td className="px-3 py-2">
-                        <Link to={`/players/${row.playerId}`} className="font-semibold text-ink hover:text-accent">
+                        <Link
+                          to={
+                            eventFilter
+                              ? `/players/${row.playerId}?eventId=${encodeURIComponent(eventFilter)}`
+                              : `/players/${row.playerId}`
+                          }
+                          className="font-semibold text-ink hover:text-accent"
+                        >
                           {row.playerName}
                         </Link>
                       </td>

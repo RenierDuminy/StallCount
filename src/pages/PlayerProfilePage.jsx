@@ -1,14 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { getPlayerMatchStats } from "../services/teamService";
 import { Card, Panel, SectionHeader, SectionShell, Field, Select } from "../components/ui/primitives";
 
 export default function PlayerProfilePage() {
   const { playerId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialEventId = searchParams.get("eventId") || "all";
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [eventFilter, setEventFilter] = useState("all");
+  const [eventFilter, setEventFilter] = useState(initialEventId);
+
+  useEffect(() => {
+    const requestedEventId = searchParams.get("eventId") || "all";
+    setEventFilter((current) => (current === requestedEventId ? current : requestedEventId));
+  }, [searchParams]);
 
   useEffect(() => {
     let ignore = false;
@@ -109,6 +116,22 @@ export default function PlayerProfilePage() {
     });
     }, [filteredRows]);
 
+  useEffect(() => {
+    if (eventFilter === "all") {
+      if (searchParams.has("eventId")) {
+        setSearchParams({}, { replace: true });
+      }
+      return;
+    }
+
+    if (searchParams.get("eventId") !== eventFilter) {
+      setSearchParams({ eventId: eventFilter }, { replace: true });
+    }
+  }, [eventFilter, searchParams, setSearchParams]);
+
+  const backToPlayersHref =
+    eventFilter !== "all" ? `/players?eventId=${encodeURIComponent(eventFilter)}` : "/players";
+
   return (
     <div className="pb-16 text-ink">
       <SectionShell as="header" className="pt-6">
@@ -118,7 +141,7 @@ export default function PlayerProfilePage() {
             title={`${profile?.name || identity.name}${(profile?.jersey ?? identity.jersey) ? ` (#${profile?.jersey ?? identity.jersey})` : ""}`}
             description={`Per-match contributions across recorded games (${profile?.games || 0} total${eventFilter !== "all" ? " for this event" : ""}).`}
             action={
-              <Link to="/players" className="sc-button is-ghost">
+              <Link to={backToPlayersHref} className="sc-button is-ghost">
                 Back to players
               </Link>
             }
@@ -239,11 +262,4 @@ function buildMatchLabel(row) {
   const teamA = row.match?.team_a?.short_name || row.match?.team_a?.name || "Team A";
   const teamB = row.match?.team_b?.short_name || row.match?.team_b?.name || "Team B";
   return `${teamA} vs ${teamB}`;
-}
-
-function formatMatchTime(value) {
-  if (!value) return "TBD time";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "TBD time";
-  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }

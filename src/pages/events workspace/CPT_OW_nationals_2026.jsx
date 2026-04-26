@@ -14,19 +14,9 @@ import { getEventHierarchy } from "../../services/leagueService";
 export const EVENT_ID = "db83a03e-b2bc-455a-a916-abe849fc65ec";
 export const EVENT_SLUG = "cpt-ow-nationals-2026";
 export const EVENT_NAME = "CPT OW Nationals 2026";
-
-const INFO_PACK_HREF = "/events/cpt-ow-nationals-2026/own-2026-infopack.pdf";
-const INFO_DOCUMENTS = [
-  {
-    name: "OWN 2026 infopack.pdf",
-    href: INFO_PACK_HREF,
-  },
-];
 const MATCH_LIMIT = 200;
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
-const DOCUMENT_GRID_CLASS =
-  "grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))]";
 const SECTION_GRID_CLASS =
   "grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr))]";
 const VENUE_GRID_CLASS =
@@ -445,37 +435,6 @@ const buildPoolStandings = (pool, matches) => {
   );
 };
 
-function PdfIcon(props) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-      {...props}
-    >
-      <path
-        d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M14 2v5h5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8 16h8M8 12h3"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 export default function CptOwNationals2026WorkspacePage() {
   const [matches, setMatches] = useState([]);
   const [eventData, setEventData] = useState(null);
@@ -663,26 +622,6 @@ export default function CptOwNationals2026WorkspacePage() {
             >
               WFDF rules
             </a>
-          </div>
-          <div className={DOCUMENT_GRID_CLASS}>
-            {INFO_DOCUMENTS.map((document) => (
-              <a
-                key={document.href}
-                href={document.href}
-                target="_blank"
-                rel="noreferrer"
-                className="group flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2 transition hover:bg-surface-muted"
-              >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-600 text-white">
-                  <PdfIcon className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-ink group-hover:underline break-words whitespace-normal">
-                    {document.name}
-                  </p>
-                </div>
-              </a>
-            ))}
           </div>
           {error && <div className="sc-alert is-error">{error}</div>}
         </Card>

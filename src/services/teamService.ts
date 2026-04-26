@@ -2,6 +2,7 @@ import { supabase } from "./supabaseClient";
 import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
 
 const TEAMS_CACHE_TTL_MS = 10 * 60 * 1000;
+const PLAYER_MATCH_STATS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 export type TeamRow = {
   id: string;
@@ -375,17 +376,40 @@ export type PlayerMatchStatRow = {
   assists: number | null;
   blocks: number | null;
   turnovers: number | null;
+  callahans: number | null;
   match: {
     id: string;
     start_time: string | null;
     status: string | null;
     event: { id: string; name: string | null } | null;
+    division: { id: string; name: string | null } | null;
     team_a: { id: string; name: string | null; short_name: string | null } | null;
     team_b: { id: string; name: string | null; short_name: string | null } | null;
   } | null;
   player: { id: string; name: string | null; jersey_number: number | null } | null;
   team: { id: string; name: string | null; short_name: string | null } | null;
 };
+
+const PLAYER_MATCH_STATS_SELECT = `
+  match_id,
+  player_id,
+  team_id,
+  goals,
+  assists,
+  blocks,
+  turnovers,
+  match:matches(
+    id,
+    start_time,
+    status,
+    event:events(id, name),
+    division:divisions(id, name),
+    team_a:teams!matches_team_a_fkey(id, name, short_name),
+    team_b:teams!matches_team_b_fkey(id, name, short_name)
+  ),
+  player:player(id, name, jersey_number),
+  team:teams(id, name, short_name)
+`;
 
 type PlayerStatQueryRow = {
   match_id: string;
@@ -400,6 +424,68 @@ type PlayerStatQueryRow = {
     jersey_number: number | null;
   } | null;
 };
+
+type CallahanMatchLogRow = {
+  match_id: string;
+  actor_id: string | null;
+};
+
+const CALLAHAN_EVENT_TYPE_ID = 18;
+
+async function buildCallahanCountMap(options: {
+  matchIds?: string[];
+  playerIds?: string[];
+} = {}): Promise<Map<string, number>> {
+  const uniqueMatchIds = Array.from(
+    new Set((options.matchIds ?? []).filter((id) => typeof id === "string" && id.trim().length > 0)),
+  );
+  const uniquePlayerIds = Array.from(
+    new Set((options.playerIds ?? []).filter((id) => typeof id === "string" && id.trim().length > 0)),
+  );
+
+  let query = supabase
+    .from("match_logs")
+    .select("match_id, actor_id")
+    .eq("event_type_id", CALLAHAN_EVENT_TYPE_ID)
+    .not("actor_id", "is", null);
+
+  if (uniqueMatchIds.length) {
+    query = query.in("match_id", uniqueMatchIds);
+  }
+
+  if (uniquePlayerIds.length) {
+    query = query.in("actor_id", uniquePlayerIds);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(error.message || "Failed to load Callahan match logs");
+  }
+
+  const counts = new Map<string, number>();
+
+  ((data ?? []) as CallahanMatchLogRow[]).forEach((row) => {
+    if (!row?.match_id || !row?.actor_id) {
+      return;
+    }
+
+    const key = `${row.match_id}:${row.actor_id}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+
+  return counts;
+}
+
+function attachCallahanCounts(
+  rows: PlayerMatchStatRow[],
+  callahanCounts: Map<string, number>,
+): PlayerMatchStatRow[] {
+  return rows.map((row) => ({
+    ...row,
+    callahans: callahanCounts.get(`${row.match_id}:${row.player_id}`) ?? 0,
+  }));
+}
 
 export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[]> {
   if (!teamId) {
@@ -482,37 +568,52 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
   });
 }
 
-export async function getAllPlayerMatchStats(): Promise<PlayerMatchStatRow[]> {
-  const { data, error } = await supabase
-    .from("player_match_stats")
-    .select(
-      `
-        match_id,
-        player_id,
-        team_id,
-        goals,
-        assists,
-        blocks,
-        turnovers,
-        match:matches(
-          id,
-          start_time,
-          status,
-          event:events(id, name),
-          team_a:teams!matches_team_a_fkey(id, name, short_name),
-          team_b:teams!matches_team_b_fkey(id, name, short_name)
-        ),
-        player:player(id, name, jersey_number),
-        team:teams(id, name, short_name)
-      `
-    )
-    .order("match_id", { ascending: false });
-
-  if (error) {
-    throw new Error(error.message || "Failed to load player match stats");
+export async function getEventPlayerMatchStats(eventId: string): Promise<PlayerMatchStatRow[]> {
+  const normalizedEventId = typeof eventId === "string" ? eventId.trim() : "";
+  if (!normalizedEventId) {
+    return [];
   }
 
-  return (data ?? []) as PlayerMatchStatRow[];
+  return getCachedQuery(
+    `player-match-stats:event:${normalizedEventId}`,
+    async () => {
+      const { data: matchRows, error: matchError } = await supabase
+        .from("matches")
+        .select("id")
+        .eq("event_id", normalizedEventId);
+
+      if (matchError) {
+        throw new Error(matchError.message || "Failed to load event matches");
+      }
+
+      const matchIds = (matchRows ?? [])
+        .map((row) => row?.id)
+        .filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+
+      if (!matchIds.length) {
+        return [];
+      }
+
+      const { data, error } = await supabase
+        .from("player_match_stats")
+        .select(PLAYER_MATCH_STATS_SELECT)
+        .in("match_id", matchIds)
+        .order("match_id", { ascending: false });
+
+      if (error) {
+        throw new Error(error.message || "Failed to load player match stats");
+      }
+
+      const rows = (data ?? []) as PlayerMatchStatRow[];
+      const callahanCounts = await buildCallahanCountMap({
+        matchIds,
+        playerIds: rows.map((row) => row.player_id),
+      });
+
+      return attachCallahanCounts(rows, callahanCounts);
+    },
+    { ttlMs: PLAYER_MATCH_STATS_CACHE_TTL_MS },
+  );
 }
 
 export async function getPlayerMatchStats(playerId: string): Promise<PlayerMatchStatRow[]> {
@@ -520,27 +621,7 @@ export async function getPlayerMatchStats(playerId: string): Promise<PlayerMatch
 
   const { data, error } = await supabase
     .from("player_match_stats")
-    .select(
-      `
-        match_id,
-        player_id,
-        team_id,
-        goals,
-        assists,
-        blocks,
-        turnovers,
-        match:matches(
-          id,
-          start_time,
-          status,
-          event:events(id, name),
-          team_a:teams!matches_team_a_fkey(id, name, short_name),
-          team_b:teams!matches_team_b_fkey(id, name, short_name)
-        ),
-        player:player(id, name, jersey_number),
-        team:teams(id, name, short_name)
-      `
-    )
+    .select(PLAYER_MATCH_STATS_SELECT)
     .eq("player_id", playerId)
     .order("match_id", { ascending: false });
 
@@ -548,7 +629,13 @@ export async function getPlayerMatchStats(playerId: string): Promise<PlayerMatch
     throw new Error(error.message || "Failed to load player match stats");
   }
 
-  return (data ?? []) as PlayerMatchStatRow[];
+  const rows = (data ?? []) as PlayerMatchStatRow[];
+  const callahanCounts = await buildCallahanCountMap({
+    matchIds: rows.map((row) => row.match_id),
+    playerIds: [playerId],
+  });
+
+  return attachCallahanCounts(rows, callahanCounts);
 }
 
 export type SpiritScoreRow = {
