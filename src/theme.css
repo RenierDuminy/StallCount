@@ -516,6 +516,21 @@ a:focus-visible {
   border-color: rgba(239, 68, 68, 0.8);
 }
 
+.sc-match-card-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), min(100%, 500px)));
+  justify-content: start;
+}
+
+.sc-match-card-grid-wide {
+  justify-content: start;
+}
+
+.sc-match-card-grid-compact {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 260px));
+}
+
 .sc-match-card-score-wrap {
   container-type: inline-size;
   width: 100%;
@@ -576,12 +591,32 @@ a:focus-visible {
 
   .sc-match-card-score-value {
     grid-area: score;
-    font-size: clamp(1.25rem, 8cqi, 1.5rem);
+    font-size: clamp(1rem, 8cqi, 1rem);
   }
 
   .sc-match-card-team-name {
     justify-self: stretch;
     font-size: clamp(1.2rem, 6.5cqi, 1.125rem);
+  }
+}
+
+@media (max-width: 640px) {
+  .sc-match-card-team-name {
+    font-size: 1.0625rem;
+  }
+}
+
+@media (min-width: 640px) {
+  .sc-match-card-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), min(100%, 500px)));
+  }
+
+  .sc-match-card-grid-compact {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 260px));
+  }
+
+  .sc-match-card-grid-wide {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 18rem));
   }
 }
 

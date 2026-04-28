@@ -17,8 +17,42 @@ export const EVENT_NAME = "CPT OW Nationals 2026";
 const MATCH_LIMIT = 200;
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
-const SECTION_GRID_CLASS =
-  "grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr))]";
+const TEAM_STANDINGS_GRID_STYLE = {
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 14rem), 1fr))",
+};
+const FINAL_STANDINGS_GRID_STYLE = {
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 18rem), 1fr))",
+};
+const FINAL_STANDINGS = [
+  {
+    division: "Open",
+    teams: [
+      "Mutiny",
+      "Kaalvoet",
+      "Rex",
+      "Bunnies",
+      "Gradient",
+      "Maties Ma'Gents",
+      "Wits Phoenix Rising",
+      "Zephyr",
+      "UCT Man Cubs",
+      "Inyhwagi (SA U20)",
+      "UFH Simbas",
+    ],
+  },
+  {
+    division: "Women",
+    teams: [
+      "Hot Sauce",
+      "UCT Bengals",
+      "Fierce",
+      "Maties Ma'Ladies",
+      "Craft",
+      "Wicked",
+      "UFH Nalas",
+    ],
+  },
+];
 const VENUE_GRID_CLASS =
   "flex flex-wrap gap-2";
 const MATCH_GRID_CLASS =
@@ -343,13 +377,12 @@ const StandingsTable = ({ rows }) => {
   }
   return (
     <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded border border-border bg-surface">
-      <table className="w-full min-w-max whitespace-nowrap text-sm">
+      <table className="w-full table-fixed whitespace-nowrap text-xs">
         <thead className="bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
           <tr>
-            <th className="px-3 py-1.5 text-left font-semibold">Team</th>
-            <th className="px-3 py-1.5 text-center font-semibold">Win/Loss</th>
-            <th className="px-3 py-1.5 text-center font-semibold">Played</th>
-            <th className="px-3 py-1.5 text-center font-semibold">Score +/-</th>
+            <th className="w-full px-1 py-1 text-left font-semibold">Team</th>
+            <th className="w-10 px-0.5 py-1 text-center font-semibold">W-L</th>
+            <th className="w-9 px-0.5 py-1 text-center font-semibold">+/-</th>
           </tr>
         </thead>
         <tbody>
@@ -363,12 +396,13 @@ const StandingsTable = ({ rows }) => {
                     : "var(--sc-surface-muted)",
               }}
             >
-              <td className="px-3 py-1.5">
-                {row.shortName ? `${row.name} (${row.shortName})` : row.name}
+              <td className="min-w-0 px-1 py-1" title={row.name}>
+                <span className="block truncate">
+                  {row.name}
+                </span>
               </td>
-              <td className="px-3 py-1.5 text-center">{`${row.wins}-${row.losses}`}</td>
-              <td className="px-3 py-1.5 text-center">{row.played}</td>
-              <td className="px-3 py-1.5 text-center">{formatScoreDiff(row.scoreDiff)}</td>
+              <td className="px-0.5 py-1 text-center tabular-nums">{`${row.wins}-${row.losses}`}</td>
+              <td className="px-0.5 py-1 text-center tabular-nums">{formatScoreDiff(row.scoreDiff)}</td>
             </tr>
           ))}
         </tbody>
@@ -630,6 +664,34 @@ export default function CptOwNationals2026WorkspacePage() {
           <SectionHeader
             title="Team standings"
           />
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Final standings
+            </p>
+            <div className="grid items-start gap-2" style={FINAL_STANDINGS_GRID_STYLE}>
+              {FINAL_STANDINGS.map((division) => (
+                <Panel key={division.division} variant="muted" className="min-w-0 space-y-2 border border-white/50 p-3">
+                  <p className="text-sm font-semibold uppercase tracking-wide text-ink">
+                    {division.division}
+                  </p>
+                  <ol className="space-y-1 text-sm text-ink">
+                    {division.teams.map((team, index) => (
+                      <li key={team} className="flex min-w-0 gap-2">
+                        <span className="w-5 shrink-0 text-right tabular-nums text-ink-muted">
+                          {index + 1}.
+                        </span>
+                        <span className="min-w-0 break-words">{team}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </Panel>
+              ))}
+            </div>
+          </div>
+          <div className="border-t border-white/30 pt-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Pool standings
+            </p>
           {loading && standingsByPool.length === 0 ? (
             <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
               Loading standings...
@@ -639,10 +701,10 @@ export default function CptOwNationals2026WorkspacePage() {
               No pools configured for this event.
             </Card>
           ) : (
-            <div className={SECTION_GRID_CLASS}>
+            <div className="grid items-start gap-2" style={TEAM_STANDINGS_GRID_STYLE}>
               {standingsByPool.map((pool) => (
-                <Panel key={pool.id} variant="muted" className="min-w-0 space-y-2 border border-white/50 p-3">
-                  <p className="text-sm font-semibold uppercase tracking-wide text-ink">
+                <Panel key={pool.id} variant="muted" className="min-w-0 space-y-1.5 border border-white/50 p-2">
+                  <p className="truncate text-xs font-semibold uppercase tracking-wide text-ink" title={pool.name}>
                     {pool.name}
                   </p>
                   <StandingsTable rows={pool.rows} />
@@ -650,6 +712,7 @@ export default function CptOwNationals2026WorkspacePage() {
               ))}
             </div>
           )}
+          </div>
         </Card>
 
         <Card className="min-w-0 space-y-2 border border-white/70 p-3 sm:p-4">

@@ -33,6 +33,9 @@ const AUTO_ROSTER_SYNC_INTERVAL_MS = 30 * 1000;
 const ROSTER_SCRIPT_SLUG = "STB_RL_26_update_rosters";
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
+const TEAM_STANDINGS_GRID_STYLE = {
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 14rem), 1fr))",
+};
 const SUMMARY_RULES_HREF = "/rules/stellenbosch-rl-2026-rules-summary.pdf";
 const FULL_RULES_HREF = "/rules/stellenbosch-rl-2026-rules.pdf";
 const RULE_DOCUMENTS = [
@@ -43,92 +46,6 @@ const RULE_DOCUMENTS = [
   {
     name: "Rules-of-Ultimate - STB 5v5 edition.pdf",
     href: FULL_RULES_HREF,
-  },
-];
-const HANDBOOK_PHASES = [
-  {
-    id: "phase-1",
-    phase: "Phase 1",
-    dates: "14 Apr - 30 Apr",
-    mmp: "Pool stage",
-    fmp: "Development stage",
-  },
-  {
-    id: "phase-2",
-    phase: "Phase 2",
-    dates: "4 May - 21 May",
-    mmp: "Crossover stage",
-    fmp: "Pool stage",
-  },
-  {
-    id: "phase-3",
-    phase: "Phase 3",
-    dates: "20 Jul - 6 Aug",
-    mmp: "Seeding stage",
-    fmp: "Crossover and seeding stage",
-  },
-  {
-    id: "phase-4",
-    phase: "Phase 4",
-    dates: "10 Aug - 25 Aug",
-    mmp: "Knockouts",
-    fmp: "Knockouts",
-  },
-];
-const HANDBOOK_DIVISIONS = [
-  {
-    id: "mmp",
-    name: "MMP League",
-    description: "Mondays, Tuesdays, and Thursdays",
-    pools: [
-      {
-        id: "pool-a",
-        name: "Pool A",
-        teams: ["Eendrag 1", "Piekemol", "Helshoogte", "Huis Visser"],
-      },
-      {
-        id: "pool-b",
-        name: "Pool B",
-        teams: ["Wilgenhof 1", "Dagbreek 1", "Majuba", "Eendrag 3"],
-      },
-      {
-        id: "pool-c",
-        name: "Pool C",
-        teams: ["Simonsberg", "Metanoia", "Dagbreek 3", "Helderberg"],
-      },
-      {
-        id: "pool-d",
-        name: "Pool D",
-        teams: ["Barbarians", "Eendrag 2", "Dagbreek 2", "Wilgenhof 2"],
-      },
-    ],
-  },
-  {
-    id: "fmp",
-    name: "FMP League",
-    description: "Wednesdays",
-    pools: [
-      {
-        id: "pool-e",
-        name: "Pool E",
-        teams: [
-          "Harmonica",
-          "Lydia/Venustia",
-          "Metanoia/Silene",
-          "Isa/Olympus",
-        ],
-      },
-      {
-        id: "pool-f",
-        name: "Pool F",
-        teams: [
-          "Nerina/Heemstede",
-          "Irene/Sonop",
-          "Huis ten Bosch/Minerva",
-          "Valkyries (CSCs + unaffiliated)",
-        ],
-      },
-    ],
   },
 ];
 const PHASE_WEEK_GROUPS = [
@@ -254,67 +171,6 @@ const PHASE_WEEK_GROUPS = [
   },
 ];
 
-const normalizePoolTeams = (teams = []) =>
-  teams
-    .map((team, index) => {
-      if (typeof team === "string") {
-        return {
-          id: `team-${index}-${team}`,
-          name: team,
-          shortName: null,
-          seed: null,
-          order: index,
-        };
-      }
-
-      return {
-        id: team?.team?.id || `team-${index}-${team?.team?.name || "team"}`,
-        name: team?.team?.name || "Team",
-        shortName: team?.team?.short_name || null,
-        seed:
-          typeof team?.seed === "number" && !Number.isNaN(team.seed)
-            ? team.seed
-            : null,
-        order: index,
-      };
-    })
-    .sort((left, right) => {
-      if (left.seed !== null && right.seed !== null) {
-        return left.seed - right.seed || left.order - right.order;
-      }
-      if (left.seed !== null) return -1;
-      if (right.seed !== null) return 1;
-      return left.order - right.order;
-    });
-
-const getFallbackDivisions = () =>
-  HANDBOOK_DIVISIONS.map((division) => ({
-    id: division.id,
-    name: division.name,
-    description: division.description,
-    pools: division.pools.map((pool) => ({
-      id: pool.id,
-      name: pool.name,
-      teams: normalizePoolTeams(pool.teams),
-    })),
-  }));
-
-const getConfiguredDivisions = (eventData) =>
-  (eventData?.divisions || [])
-    .map((division) => ({
-      id: division.id,
-      name: division.name || "Division",
-      description: division.level || null,
-      pools: (division.pools || []).map((pool) => ({
-        id: pool.id,
-        name: pool.name || "Pool",
-        teams: normalizePoolTeams(pool.teams || []),
-      })),
-    }))
-    .filter((division) =>
-      division.pools.some((pool) => Array.isArray(pool.teams) && pool.teams.length > 0),
-    );
-
 function PdfIcon(props) {
   return (
     <svg
@@ -404,6 +260,134 @@ const sortByStartTimeAsc = (left, right) => {
   const leftTime = left?.start_time ? new Date(left.start_time).getTime() : Infinity;
   const rightTime = right?.start_time ? new Date(right.start_time).getTime() : Infinity;
   return leftTime - rightTime;
+};
+
+const buildPoolTeams = (pool) => {
+  const rows = [];
+  const seen = new Set();
+  (pool?.teams || []).forEach((entry) => {
+    if (!entry?.team?.id || seen.has(entry.team.id)) return;
+    seen.add(entry.team.id);
+    rows.push({
+      id: entry.team.id,
+      name: entry.team.name || "Team",
+      shortName: entry.team.short_name || null,
+      seed:
+        typeof entry.seed === "number" && !Number.isNaN(entry.seed)
+          ? entry.seed
+          : null,
+    });
+  });
+  rows.sort((a, b) => {
+    if (a.seed !== null && b.seed !== null) {
+      return a.seed - b.seed || a.name.localeCompare(b.name);
+    }
+    if (a.seed !== null) return -1;
+    if (b.seed !== null) return 1;
+    return a.name.localeCompare(b.name);
+  });
+  return rows;
+};
+
+const formatScoreDiff = (value) => {
+  if (!Number.isFinite(value) || value === 0) return "0";
+  return value > 0 ? `+${value}` : `${value}`;
+};
+
+const StandingsTable = ({ rows }) => {
+  if (!rows.length) {
+    return <p className="text-sm text-ink-muted">No standings available yet.</p>;
+  }
+  return (
+    <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded border border-border bg-surface">
+      <table className="w-full table-fixed whitespace-nowrap text-xs">
+        <thead className="bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
+          <tr>
+            <th className="w-full px-1 py-1 text-left font-semibold">Team</th>
+            <th className="w-10 px-0.5 py-1 text-center font-semibold">W-L</th>
+            <th className="w-9 px-0.5 py-1 text-center font-semibold">+/-</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr
+              key={row.id}
+              style={{
+                background:
+                  index % 2 === 0
+                    ? "var(--sc-surface)"
+                    : "var(--sc-surface-muted)",
+              }}
+            >
+              <td className="min-w-0 px-1 py-1" title={row.name}>
+                <span className="block truncate">{row.name}</span>
+              </td>
+              <td className="px-0.5 py-1 text-center tabular-nums">{`${row.wins}-${row.losses}`}</td>
+              <td className="px-0.5 py-1 text-center tabular-nums">{formatScoreDiff(row.scoreDiff)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const buildPoolStandings = (pool, matches) => {
+  const teams = buildPoolTeams(pool);
+  const standingsByTeam = new Map(
+    teams.map((team) => [
+      team.id,
+      {
+        ...team,
+        wins: 0,
+        losses: 0,
+        played: 0,
+        scoreDiff: 0,
+      },
+    ]),
+  );
+
+  const poolMatches = (matches || []).filter((match) => match?.pool_id === pool?.id);
+
+  poolMatches.forEach((match) => {
+    if (!isFinishedMatch(match?.status)) return;
+    if (typeof match?.score_a !== "number" || typeof match?.score_b !== "number") {
+      return;
+    }
+
+    const teamAId = match.team_a?.id;
+    const teamBId = match.team_b?.id;
+    const teamAStanding = teamAId ? standingsByTeam.get(teamAId) : null;
+    const teamBStanding = teamBId ? standingsByTeam.get(teamBId) : null;
+
+    if (teamAStanding) {
+      teamAStanding.played += 1;
+      teamAStanding.scoreDiff += match.score_a - match.score_b;
+      if (match.score_a > match.score_b) {
+        teamAStanding.wins += 1;
+      } else if (match.score_a < match.score_b) {
+        teamAStanding.losses += 1;
+      }
+    }
+
+    if (teamBStanding) {
+      teamBStanding.played += 1;
+      teamBStanding.scoreDiff += match.score_b - match.score_a;
+      if (match.score_b > match.score_a) {
+        teamBStanding.wins += 1;
+      } else if (match.score_b < match.score_a) {
+        teamBStanding.losses += 1;
+      }
+    }
+  });
+
+  return Array.from(standingsByTeam.values()).sort(
+    (a, b) =>
+      b.wins - a.wins ||
+      a.losses - b.losses ||
+      b.scoreDiff - a.scoreDiff ||
+      a.name.localeCompare(b.name),
+  );
 };
 
 const padNumber = (value) => String(value).padStart(2, "0");
@@ -498,10 +482,17 @@ const getRosterScriptScheduleSnapshot = (value = new Date()) => {
 
 const DAY_MATCH_GRID_CLASS = "flex flex-wrap gap-2";
 const DAY_MATCH_CARD_WIDTH_CLASS = "w-full sm:w-[17rem] xl:w-[18rem]";
+const DAY_FINISHED_MATCH_CARD_WIDTH_CLASS =
+  "w-[calc(50%-0.25rem)] min-w-0 sm:w-[12rem] xl:w-[12.5rem]";
+
+const getDayMatchCardWidthClass = (match) =>
+  isFinishedMatch(match?.status)
+    ? DAY_FINISHED_MATCH_CARD_WIDTH_CLASS
+    : DAY_MATCH_CARD_WIDTH_CLASS;
 
 function DayScheduleColumn({ day, matches, renderMatchCard, loading }) {
   return (
-    <section className="space-y-2.5 px-1">
+    <section className="space-y-2 px-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
           {day.day}
@@ -515,7 +506,7 @@ function DayScheduleColumn({ day, matches, renderMatchCard, loading }) {
       ) : (
         <div className={DAY_MATCH_GRID_CLASS}>
           {matches.map((match) => (
-            <div key={match.id} className={DAY_MATCH_CARD_WIDTH_CLASS}>
+            <div key={match.id} className={getDayMatchCardWidthClass(match)}>
               {renderMatchCard(match)}
             </div>
           ))}
@@ -526,8 +517,12 @@ function DayScheduleColumn({ day, matches, renderMatchCard, loading }) {
 }
 
 function WeekScheduleCard({ week, renderMatchCard, loading }) {
+  const visibleDays = loading
+    ? week.days
+    : week.days.filter((day) => day.matches.length > 0);
+
   return (
-    <div className="space-y-4 rounded-xl border border-border/70 bg-surface-muted/40 p-4">
+    <div className="space-y-3 rounded-xl border border-border/70 bg-surface-muted/40 px-2 py-3 sm:px-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-base font-semibold text-ink">{week.label}</p>
@@ -536,10 +531,10 @@ function WeekScheduleCard({ week, renderMatchCard, loading }) {
         <Chip>{week.matchCount} matches</Chip>
       </div>
       <div className="divide-y divide-border/60">
-        {week.days.map((day) => (
+        {visibleDays.map((day) => (
           <div
             key={`${week.id}-${day.day}`}
-            className="py-3 first:pt-0 last:pb-0"
+            className="py-2.5 first:pt-0 last:pb-0"
           >
             <DayScheduleColumn
               day={day}
@@ -647,13 +642,16 @@ export default function StellenboschRl2026WorkspacePage() {
   }, [canRunAdminScripts, refreshTimerState]);
 
   const workspaceTitle = eventData?.name || EVENT_NAME;
-  const configuredDivisions = getConfiguredDivisions(eventData);
-  const displayDivisions =
-    configuredDivisions.length > 0 ? configuredDivisions : getFallbackDivisions();
-  const structureSourceLabel =
-    configuredDivisions.length > 0
-      ? "Configured event structure"
-      : "Fixture handbook structure";
+  const standingsByPool = useMemo(() => {
+    if (!eventData?.divisions?.length) return [];
+    return eventData.divisions.flatMap((division, divisionIndex) =>
+      (division?.pools || []).map((pool, poolIndex) => ({
+        id: pool.id || `${division.id || divisionIndex}-${poolIndex}`,
+        name: pool.name || "Pool",
+        rows: buildPoolStandings(pool, matches),
+      })),
+    );
+  }, [eventData, matches]);
   const datedMatches = useMemo(
     () =>
       (matches || [])
@@ -813,26 +811,28 @@ export default function StellenboschRl2026WorkspacePage() {
 
   return (
     <div className="pb-16 text-ink">
-      <SectionShell as="main" className="space-y-6 py-8">
-        <Card className="space-y-3 p-6 sm:p-8">
+      <SectionShell as="main" className="space-y-5 px-2 py-6 sm:px-3">
+        <Card className="space-y-3 px-3 py-4 sm:px-4">
           <SectionHeader
             title={workspaceTitle}
             action={
-              <div className="flex flex-wrap items-center gap-2">
-                <Link
-                  to={`/event-rosters?eventId=${encodeURIComponent(EVENT_ID)}`}
-                  className="sc-button"
-                >
-                  View event roster
-                </Link>
-                <Link
-                  to={`/players?eventId=${encodeURIComponent(EVENT_ID)}`}
-                  className="sc-button"
-                >
-                  Player standings
-                </Link>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex-none">
+                  <Link
+                    to={`/event-rosters?eventId=${encodeURIComponent(EVENT_ID)}`}
+                    className="sc-button min-w-0 text-center text-xs leading-tight min-[380px]:text-sm"
+                  >
+                    View event roster
+                  </Link>
+                  <Link
+                    to={`/players?eventId=${encodeURIComponent(EVENT_ID)}`}
+                    className="sc-button min-w-0 text-center text-xs leading-tight min-[380px]:text-sm"
+                  >
+                    Player standings
+                  </Link>
+                </div>
                 {canRunAdminScripts ? (
-                  <>
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       className="sc-button is-ghost"
@@ -855,7 +855,7 @@ export default function StellenboschRl2026WorkspacePage() {
                     >
                       Edit custom script
                     </Link>
-                  </>
+                  </div>
                 ) : null}
               </div>
             }
@@ -873,9 +873,6 @@ export default function StellenboschRl2026WorkspacePage() {
                   <PdfIcon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                    PDF document
-                  </p>
                   <p className="text-sm font-semibold text-ink group-hover:underline break-words whitespace-normal">
                     {document.name}
                   </p>
@@ -907,12 +904,9 @@ export default function StellenboschRl2026WorkspacePage() {
                 <Chip>Auto roster sync</Chip>
                 <Chip variant="ghost">Daily at 17:00 SAST</Chip>
               </div>
-              <p className="text-sm text-ink-muted">
-                This roster sync now runs automatically on the backend, independent of whether this page is open.
-                Next run: {autoSyncSchedule.nextSlotLabel} ({formatDurationUntil(autoSyncSchedule.millisUntilNextSlot)}).
-              </p>
               <p className="text-xs text-ink-muted">
-                Current slot: {autoSyncSchedule.currentSlotLabel}.
+                Next run: {autoSyncSchedule.nextSlotLabel} ({formatDurationUntil(autoSyncSchedule.millisUntilNextSlot)}).
+                {" "}Current slot: {autoSyncSchedule.currentSlotLabel}.
                 {timerState?.last_successful_run_at ? (
                   <>
                     {" "}Last successful update: {formatSastScheduleTime(timerState.last_successful_run_at)}.
@@ -936,120 +930,53 @@ export default function StellenboschRl2026WorkspacePage() {
           ) : null}
         </Card>
 
-        <Card className="space-y-4 p-5 sm:p-6">
-          <SectionHeader
-            title="2026 structure overview"
-          />
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {HANDBOOK_PHASES.map((phase) => (
-              <Panel key={phase.id} variant="muted" className="space-y-2 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                      {phase.phase}
+        <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
+          <SectionHeader title="Team standings" />
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Pool standings
+            </p>
+            {loading && standingsByPool.length === 0 ? (
+              <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
+                Loading standings...
+              </Card>
+            ) : standingsByPool.length === 0 ? (
+              <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
+                No pools configured for this event.
+              </Card>
+            ) : (
+              <div className="grid items-start gap-2" style={TEAM_STANDINGS_GRID_STYLE}>
+                {standingsByPool.map((pool) => (
+                  <Panel
+                    key={pool.id}
+                    variant="muted"
+                    className="min-w-0 space-y-1.5 border border-white/50 p-2"
+                  >
+                    <p
+                      className="truncate text-xs font-semibold uppercase tracking-wide text-ink"
+                      title={pool.name}
+                    >
+                      {pool.name}
                     </p>
-                    <p className="text-sm font-semibold text-ink">{phase.dates}</p>
-                  </div>
-                  <Chip>{phase.mmp}</Chip>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="rounded-xl border border-border bg-surface px-3 py-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                      Mens Residence
-                    </p>
-                    <p className="text-sm font-medium text-ink">{phase.mmp}</p>
-                  </div>
-                  <div className="rounded-xl border border-border bg-surface px-3 py-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                      Womens Residence
-                    </p>
-                    <p className="text-sm font-medium text-ink">{phase.fmp}</p>
-                  </div>
-                </div>
-              </Panel>
-            ))}
-          </div>
-          <Panel variant="muted" className="min-w-0 space-y-4 overflow-hidden p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  Pools and assigned teams
-                </p>
-                <p className="text-sm text-ink-muted">
-                  Using configured event pools when available, with the fixture handbook as fallback.
-                </p>
+                    <StandingsTable rows={pool.rows} />
+                  </Panel>
+                ))}
               </div>
-              <Chip>{structureSourceLabel}</Chip>
-            </div>
-            <div className="grid min-w-0 gap-4 xl:grid-cols-2">
-              {displayDivisions.map((division) => (
-                <Card
-                  key={division.id}
-                  variant="bordered"
-                  className="min-w-0 space-y-4 overflow-hidden p-4"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-lg font-semibold text-ink">{division.name}</p>
-                      {division.description ? (
-                        <p className="text-sm text-ink-muted">{division.description}</p>
-                      ) : null}
-                    </div>
-                    <Chip>{division.pools.length} pools</Chip>
-                  </div>
-                  <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain pb-2">
-                    <div className="flex min-w-max gap-3">
-                      {division.pools.map((pool) => (
-                        <Panel
-                          key={pool.id}
-                          variant="tinted"
-                          className="w-[180px] shrink-0 space-y-2 p-2.5"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-semibold text-ink">
-                              {pool.name}
-                            </p>
-                            <Chip>{pool.teams.length} teams</Chip>
-                          </div>
-                          <div className="space-y-2">
-                            {pool.teams.map((team) => (
-                              <div
-                                key={team.id}
-                                className="rounded-lg border border-border bg-surface px-2 py-1.5"
-                              >
-                                <p className="text-xs font-medium leading-snug text-ink">
-                                  {team.name}
-                                  {team.shortName ? ` (${team.shortName})` : ""}
-                                </p>
-                                {team.seed !== null ? (
-                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
-                                    Seed {team.seed}
-                                  </p>
-                                ) : null}
-                              </div>
-                            ))}
-                          </div>
-                        </Panel>
-                      ))}
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </Panel>
+            )}
+          </div>
         </Card>
 
         <div className="divide-y divide-border/70">
           {phaseSchedules.map((phase) => (
             <section
               key={phase.id}
-              className="space-y-4 py-5 first:pt-0 last:pb-0 sm:py-6"
+              className="space-y-3 py-4 first:pt-0 last:pb-0 sm:py-5"
             >
               <SectionHeader
                 title={`${phase.title} weekly fixtures`}
                 action={<Chip>{phase.weeks.length} weeks</Chip>}
               />
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {phase.weeks.map((week) => (
                   <WeekScheduleCard
                     key={week.id}
@@ -1067,15 +994,6 @@ export default function StellenboschRl2026WorkspacePage() {
           <SectionHeader
             title="Knockout layout pending"
           />
-          <Panel variant="muted" className="space-y-3 p-4 text-sm text-ink-muted">
-            <p>
-              A detailed structure will be added here once the knockout stage format 
-              and matchups are confirmed. Please 
-              check back closer to the end of Phase 3 for updates on the knockout stage 
-              layout and schedule.
-            </p>
-
-          </Panel>
         </Card>
       </SectionShell>
     </div>
