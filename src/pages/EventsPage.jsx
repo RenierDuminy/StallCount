@@ -8,15 +8,16 @@ import { getMatchMediaDetails } from "../utils/matchMedia";
 import { getEventWorkspacePath } from "./eventWorkspaces";
 
 const MATCHES_REFRESH_INTERVAL_MS = 30 * 1000;
-const RULE_FORMAT_LABELS = {
-  wfdfChampionship: "WFDF Championship",
-  localSimple: "Local Simple",
-};
 const DIVISION_LABELS = {
   mixed: "Mixed",
   open: "Open",
   openwomen: "Open/Women",
   women: "Women",
+};
+const EVENT_STATUS_TABS = {
+  current: new Set(["active", "current", "live"]),
+  past: new Set(["completed", "finished", "past"]),
+  upcoming: new Set(["scheduled", "upcoming"]),
 };
 
 const parseEventRules = (rawRules) => {
@@ -32,16 +33,34 @@ const parseEventRules = (rawRules) => {
   return null;
 };
 
-const coerceNumber = (value) => {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
+const normalizeEventStatusTab = (value) => {
+  const normalized = (value || "").toString().trim().toLowerCase();
+  if (normalized === "active" || normalized === "current" || normalized === "live") {
+    return "current";
+  }
+  if (normalized === "past" || normalized === "completed" || normalized === "finished") {
+    return "past";
+  }
+  if (normalized === "upcoming" || normalized === "upcomming" || normalized === "scheduled") {
+    return "upcoming";
+  }
+  return "current";
+};
+
+const getEventStatusTab = (event) => {
+  const status = (event?.status || "").toString().trim().toLowerCase();
+  if (EVENT_STATUS_TABS.current.has(status)) return "current";
+  if (EVENT_STATUS_TABS.past.has(status)) return "past";
+  if (EVENT_STATUS_TABS.upcoming.has(status)) return "upcoming";
+  return "current";
 };
 
 export default function EventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialEventId = searchParams.get("eventId") || null;
+  const initialStatusTab = normalizeEventStatusTab(searchParams.get("status"));
   const [events, setEvents] = useState([]);
-  const [eventStatusTab, setEventStatusTab] = useState("current");
+  const [eventStatusTab, setEventStatusTab] = useState(initialStatusTab);
   const [selectedEventId, setSelectedEventId] = useState(initialEventId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -78,14 +97,14 @@ export default function EventsPage() {
   }, []);
 
   const requestedEventId = searchParams.get("eventId") || null;
+  const requestedStatusTab = normalizeEventStatusTab(searchParams.get("status"));
+
+  useEffect(() => {
+    setEventStatusTab(requestedStatusTab);
+  }, [requestedStatusTab]);
 
   const filteredEvents = useMemo(() => {
-    const allowedStatuses =
-      eventStatusTab === "past"
-        ? new Set(["completed"])
-        : eventStatusTab === "upcoming"
-          ? new Set(["scheduled"])
-          : new Set(["live"]);
+    const allowedStatuses = EVENT_STATUS_TABS[eventStatusTab] || EVENT_STATUS_TABS.current;
 
     return events.filter((event) => {
       const status = (event?.status || "").toString().trim().toLowerCase();
@@ -95,19 +114,34 @@ export default function EventsPage() {
 
   useEffect(() => {
     if (!events.length) return;
+    let nextTab = eventStatusTab;
     let nextId = requestedEventId;
-    if (!nextId || !filteredEvents.some((evt) => evt.id === nextId)) {
-      nextId = filteredEvents[0]?.id || null;
+
+    if (nextId && !filteredEvents.some((evt) => evt.id === nextId)) {
+      const requestedEvent = events.find((evt) => evt.id === nextId);
+      if (requestedEvent) {
+        nextTab = getEventStatusTab(requestedEvent);
+      }
     }
+
+    const nextFilteredEvents =
+      nextTab === eventStatusTab
+        ? filteredEvents
+        : events.filter((event) => EVENT_STATUS_TABS[nextTab].has((event?.status || "").toString().trim().toLowerCase()));
+
+    if (!nextId || !nextFilteredEvents.some((evt) => evt.id === nextId)) {
+      nextId = nextFilteredEvents[0]?.id || null;
+    }
+    setEventStatusTab(nextTab);
     setSelectedEventId(nextId);
     if (nextId) {
-      if (requestedEventId !== nextId) {
-        setSearchParams({ eventId: nextId }, { replace: true });
+      if (requestedEventId !== nextId || requestedStatusTab !== nextTab) {
+        setSearchParams({ eventId: nextId, status: nextTab }, { replace: true });
       }
     } else if (requestedEventId) {
       setSearchParams({}, { replace: true });
     }
-  }, [events, filteredEvents, requestedEventId, setSearchParams]);
+  }, [eventStatusTab, events, filteredEvents, requestedEventId, requestedStatusTab, setSearchParams]);
 
   const selectedEvent = useMemo(
     () => filteredEvents.find((evt) => evt.id === selectedEventId) || null,
@@ -170,7 +204,7 @@ export default function EventsPage() {
   const handleSelectEvent = (eventId) => {
     setSelectedEventId(eventId);
     if (eventId) {
-      setSearchParams({ eventId }, { replace: true });
+      setSearchParams({ eventId, status: eventStatusTab }, { replace: true });
     } else {
       setSearchParams({}, { replace: true });
     }
@@ -254,57 +288,12 @@ export default function EventsPage() {
     [selectedEvent?.rules],
   );
 
-  const formatLabel = useMemo(() => {
-    const format = selectedEventRules?.format;
-    if (!format) return null;
-    const normalized = `${format}`.trim();
-    if (!normalized) return null;
-    return RULE_FORMAT_LABELS[normalized] || normalized;
-  }, [selectedEventRules]);
-
   const divisionLabel = useMemo(() => {
     const division = selectedEventRules?.division;
     if (!division) return null;
     const normalized = `${division}`.trim().toLowerCase();
     if (!normalized) return null;
     return DIVISION_LABELS[normalized] || normalized[0].toUpperCase() + normalized.slice(1);
-  }, [selectedEventRules]);
-
-  const timeoutsLabel = useMemo(() => {
-    const timeouts = selectedEventRules?.timeouts;
-    if (!timeouts || typeof timeouts !== "object") return null;
-    const perTeam = coerceNumber(timeouts.perTeamPerGame);
-    const duration = coerceNumber(timeouts.durationSeconds);
-    const parts = [];
-    if (perTeam !== null) {
-      parts.push(`${perTeam} per team`);
-    }
-    if (duration !== null) {
-      parts.push(`${duration} sec`);
-    }
-    if (!parts.length) return null;
-    return parts.join(", ");
-  }, [selectedEventRules]);
-
-  const rulesSummary = useMemo(() => {
-    const rules = selectedEventRules;
-    if (!rules || typeof rules !== "object") return null;
-    const game = rules.game || {};
-    const half = rules.half || {};
-    const timeouts = rules.timeouts || {};
-    const clock = rules.clock || {};
-
-    const rows = [
-      { label: "Game to", value: game.pointTarget },
-      { label: "Game time cap (min)", value: game.timeCapMinutes },
-      { label: "Game soft cap (min)", value: game.softCapMinutes },
-      { label: "Halftime at", value: half.halftimePointTarget },
-      { label: "Halftime cap (min)", value: half.halftimeCapMinutes },
-      { label: "Halftime break (min)", value: half.halftimeBreakMinutes },
-      { label: "Timeouts per team", value: timeouts.perTeamPerGame },
-    ].filter((row) => row.value !== null && row.value !== undefined && row.value !== "");
-
-    return rows.length ? rows : null;
   }, [selectedEventRules]);
 
   return (
@@ -330,14 +319,17 @@ export default function EventsPage() {
                 <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
                   <div className="grid w-full grid-cols-3 gap-2 sm:w-auto">
                     {[
-                      { key: "current", label: "Current" },
-                      { key: "upcoming", label: "Upcoming" },
+                      { key: "current", label: "Active" },
                       { key: "past", label: "Past" },
+                      { key: "upcoming", label: "Upcoming" },
                     ].map((tab) => (
                       <button
                         key={tab.key}
                         type="button"
-                        onClick={() => setEventStatusTab(tab.key)}
+                        onClick={() => {
+                          setEventStatusTab(tab.key);
+                          setSearchParams({ status: tab.key }, { replace: true });
+                        }}
                         className={`${eventStatusTab === tab.key ? "sc-button" : "sc-button is-ghost"} min-w-0 justify-center px-3`}
                       >
                         {tab.label}

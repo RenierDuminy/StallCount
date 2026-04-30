@@ -16,6 +16,7 @@ import { getCurrentUser } from "../services/userService";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabaseClient";
 import { getPlayersByIds } from "../services/playerService";
+import { getEventWorkspacePath } from "./eventWorkspaces";
 import { Card, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
 import { StandardEventMatchCard } from "../components/StandardEventMatchCard";
 import {
@@ -37,7 +38,7 @@ const DESKTOP_HOME_LIMITS = {
   broadcastMatches: 5,
   finalMatches: 16,
   liveEvents: 50,
-  activeEvents: 6,
+  activeEvents: 5,
   timelineEvents: 8,
   streamMatches: 5,
   upcomingMatches: 10,
@@ -50,7 +51,7 @@ const MOBILE_HOME_LIMITS = {
   broadcastMatches: 3,
   finalMatches: 8,
   liveEvents: 10,
-  activeEvents: 3,
+  activeEvents: 5,
   timelineEvents: 4,
   streamMatches: 3,
   upcomingMatches: 6,
@@ -721,9 +722,44 @@ export default function HomePage() {
     [mySubscriptionsPreview, teamLookup, matchLookup, playerLookup, eventLookup],
   );
 
-  const activeTimelineEvents = useMemo(() => filterActiveEvents(safeEvents), [safeEvents]);
-  const filteredTimelineEvents = useMemo(() => filterTimelineEvents(safeEvents), [safeEvents]);
-  const timelineEmptyMessage = "No upcoming events on the calendar.";
+  const activeTimelineEvents = useMemo(
+    () => filterEventsByStatusGroup(safeEvents, "active"),
+    [safeEvents],
+  );
+  const pastTimelineEvents = useMemo(
+    () => filterEventsByStatusGroup(safeEvents, "past"),
+    [safeEvents],
+  );
+  const upcomingTimelineEvents = useMemo(
+    () => filterEventsByStatusGroup(safeEvents, "upcoming"),
+    [safeEvents],
+  );
+  const homepageEventSections = useMemo(
+    () => [
+      {
+        key: "active",
+        title: "Active events",
+        events: activeTimelineEvents,
+        limit: homeLimits.activeEvents,
+        emptyMessage: "No active events right now.",
+      },
+      {
+        key: "past",
+        title: "Past events",
+        events: pastTimelineEvents,
+        limit: homeLimits.timelineEvents,
+        emptyMessage: "No past events on the calendar.",
+      },
+      {
+        key: "upcoming",
+        title: "Upcoming events",
+        events: upcomingTimelineEvents,
+        limit: homeLimits.timelineEvents,
+        emptyMessage: "No upcoming events on the calendar.",
+      },
+    ],
+    [activeTimelineEvents, homeLimits.activeEvents, homeLimits.timelineEvents, pastTimelineEvents, upcomingTimelineEvents],
+  );
 
   const streamMatches = useMemo(() => {
     const map = new Map();
@@ -1063,43 +1099,29 @@ export default function HomePage() {
       <main className="space-y-0">
         <SectionShell as="section">
           <Card className="space-y-3 p-3 sm:space-y-5 sm:p-6 lg:p-7">
-            <SectionHeader title="Active events" />
-            {loading && safeEvents.length === 0 ? (
-              <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
-                Loading events...
-              </Card>
-            ) : activeTimelineEvents.length === 0 ? (
-              <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
-                No active events right now.
-              </Card>
-            ) : (
-              <div className="space-y-2 sm:space-y-3">
-                {activeTimelineEvents.slice(0, homeLimits.activeEvents).map((event) => (
-                  <HomeEventCard key={event.id} event={event} />
-                ))}
+            {homepageEventSections.map((section, index) => (
+              <div
+                key={section.key}
+                className={index === 0 ? "" : "mt-3 border-t border-border/60 pt-3 sm:mt-6 sm:pt-4"}
+              >
+                <SectionHeader title={section.title} />
+                {loading && safeEvents.length === 0 ? (
+                  <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
+                    Loading events...
+                  </Card>
+                ) : section.events.length === 0 ? (
+                  <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
+                    {section.emptyMessage}
+                  </Card>
+                ) : (
+                  <div className="space-y-2 sm:space-y-3">
+                    {section.events.slice(0, section.limit).map((event) => (
+                      <HomeEventCard key={event.id} event={event} eventStatusTab={section.key} />
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-
-            <div className="mt-3 border-t border-border/60 pt-3 sm:mt-6 sm:pt-4">
-              <SectionHeader
-                title="Upcoming events"
-              />
-              {loading && safeEvents.length === 0 ? (
-                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
-                  Loading events...
-                </Card>
-              ) : filteredTimelineEvents.length === 0 ? (
-                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
-                  {timelineEmptyMessage}
-                </Card>
-              ) : (
-                <div className="space-y-2 sm:space-y-3">
-                  {filteredTimelineEvents.slice(0, homeLimits.timelineEvents).map((event) => (
-                    <HomeEventCard key={event.id} event={event} />
-                  ))}
-                </div>
-              )}
-            </div>
+            ))}
           </Card>
         </SectionShell>
 
@@ -1267,13 +1289,24 @@ export default function HomePage() {
   );
 }
 
-const HomeEventCard = memo(function HomeEventCard({ event }) {
+const HomeEventCard = memo(function HomeEventCard({ event, eventStatusTab }) {
+  const eventWorkspacePath = getEventWorkspacePath(event.id);
+  const searchParams = new URLSearchParams({ eventId: event.id });
+  if (eventStatusTab) {
+    searchParams.set("status", eventStatusTab);
+  }
+  const fallbackPath = `/events?${searchParams.toString()}`;
+  const cardClassName =
+    eventStatusTab === "active"
+      ? "block border-white/90 p-3 transition hover:border-white hover:text-ink sm:p-4"
+      : "block p-3 transition hover:border-accent/70 hover:text-ink sm:p-4";
+
   return (
     <Card
       as={Link}
-      to={`/events?eventId=${event.id}`}
+      to={eventWorkspacePath || fallbackPath}
       variant="muted"
-      className="block p-3 transition hover:border-accent/70 hover:text-ink sm:p-4"
+      className={cardClassName}
     >
       <div className="flex flex-col gap-2 sm:gap-3 md:flex-row md:items-center md:justify-between">
         <div>
@@ -1592,34 +1625,25 @@ function formatLiveEventSummary(liveEvent, match) {
   return teamName ? `${teamName} ${liveEvent.event_type || "event"}` : liveEvent.event_type || "Live event";
 }
 
-function filterTimelineEvents(events = []) {
-  const now = Date.now();
-  return events
-    .filter((event) => {
-      const startTime = event.start_date ? new Date(event.start_date).getTime() : null;
-      return !startTime || startTime >= now;
-    })
-    .sort((a, b) => {
-      const aTime = a.start_date ? new Date(a.start_date).getTime() : Number.MAX_SAFE_INTEGER;
-      const bTime = b.start_date ? new Date(b.start_date).getTime() : Number.MAX_SAFE_INTEGER;
-      return aTime - bTime;
-    });
-}
+const EVENT_STATUS_GROUPS = {
+  active: new Set(["active", "current", "live"]),
+  past: new Set(["completed", "finished", "past"]),
+  upcoming: new Set(["scheduled", "upcoming"]),
+};
 
-function filterActiveEvents(events = []) {
-  const now = Date.now();
+function filterEventsByStatusGroup(events = [], group) {
+  const allowedStatuses = EVENT_STATUS_GROUPS[group] || new Set();
+  const sortDescending = group === "active" || group === "past";
+
   return events
     .filter((event) => {
-      const startTime = event.start_date ? new Date(event.start_date).getTime() : null;
-      const endTime = event.end_date ? new Date(event.end_date).getTime() : null;
-      if (startTime === null || Number.isNaN(startTime)) return false;
-      if (endTime === null || Number.isNaN(endTime)) return now >= startTime;
-      return now >= startTime && now <= endTime;
+      const status = (event?.status || "").toString().trim().toLowerCase();
+      return allowedStatuses.has(status);
     })
     .sort((a, b) => {
       const aTime = a.start_date ? new Date(a.start_date).getTime() : Number.MAX_SAFE_INTEGER;
       const bTime = b.start_date ? new Date(b.start_date).getTime() : Number.MAX_SAFE_INTEGER;
-      return aTime - bTime;
+      return sortDescending ? bTime - aTime : aTime - bTime;
     });
 }
 

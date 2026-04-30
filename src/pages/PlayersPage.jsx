@@ -4,6 +4,25 @@ import { getEventPlayerMatchStats } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
 import { Card, SectionHeader, SectionShell, Field, Input, Select } from "../components/ui/primitives";
 
+function getStatRowTeam(row) {
+  const statTeam = row.team || null;
+  const fallbackTeam =
+    row.team_id && row.match
+      ? [row.match.team_a, row.match.team_b].find((team) => team?.id === row.team_id) || null
+      : null;
+  const teamId = statTeam?.id || fallbackTeam?.id || row.team_id || null;
+  const teamName = statTeam?.short_name || statTeam?.name || fallbackTeam?.short_name || fallbackTeam?.name || null;
+
+  if (!teamId && !teamName) {
+    return null;
+  }
+
+  return {
+    id: teamId,
+    name: teamName || "Team",
+  };
+}
+
 export default function PlayersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialEventId = searchParams.get("eventId") || "";
@@ -149,29 +168,57 @@ export default function PlayersPage() {
           turnovers: 0,
           games: 0,
           matchIds: new Set(),
+          teamOptions: new Map(),
           callahans: 0,
         });
       }
 
       const entry = map.get(playerId);
-      entry.goals += row.goals || 0;
-      entry.assists += row.assists || 0;
+      const goals = row.goals || 0;
+      const assists = row.assists || 0;
+      entry.goals += goals;
+      entry.assists += assists;
       entry.blocks += row.blocks || 0;
       entry.turnovers += row.turnovers || 0;
       entry.callahans += row.callahans || 0;
       entry.matchIds.add(row.match_id);
+
+      const team = getStatRowTeam(row);
+      if (team) {
+        const teamKey = team.id || team.name;
+        if (!entry.teamOptions.has(teamKey)) {
+          entry.teamOptions.set(teamKey, {
+            id: team.id,
+            name: team.name,
+            goals: 0,
+            assists: 0,
+            total: 0,
+          });
+        }
+
+        const teamEntry = entry.teamOptions.get(teamKey);
+        teamEntry.goals += goals;
+        teamEntry.assists += assists;
+        teamEntry.total += goals + assists;
+      }
     });
 
     return Array.from(map.values()).map((entry) => {
       const games = entry.matchIds.size || 0;
       const total = entry.goals + entry.assists;
+      const primaryTeam =
+        Array.from(entry.teamOptions.values()).sort((a, b) => {
+          if (b.total !== a.total) return b.total - a.total;
+          if (b.goals !== a.goals) return b.goals - a.goals;
+          return a.name.localeCompare(b.name);
+        })[0] || null;
+
       return {
         ...entry,
         games,
         total,
-        totalsPerGame: games ? total / games : 0,
-        assistsPerGame: games ? entry.assists / games : 0,
-        goalsPerGame: games ? entry.goals / games : 0,
+        teamId: primaryTeam?.id ?? null,
+        teamName: primaryTeam?.name ?? null,
       };
     });
   }, [filteredRows]);
@@ -201,12 +248,6 @@ export default function PlayersPage() {
             return row.goals;
           case "games":
             return row.games;
-          case "totalsPerGame":
-            return row.totalsPerGame;
-          case "assistsPerGame":
-            return row.assistsPerGame;
-          case "goalsPerGame":
-            return row.goalsPerGame;
           case "callahans":
             return row.callahans;
           default:
@@ -248,11 +289,9 @@ export default function PlayersPage() {
     { key: "assists", label: "Assists" },
     { key: "goals", label: "Goals" },
     { key: "games", label: "Games" },
-    { key: "totalsPerGame", label: "Tot/Gm" },
-    { key: "assistsPerGame", label: "Ast/Gm" },
-    { key: "goalsPerGame", label: "Gls/Gm" },
     { key: "callahans", label: "Callahans" },
   ];
+  const tableColumnCount = statHeaders.length + 3;
 
   const handleEventFilterChange = (nextFilter) => {
     setEventFilter(nextFilter);
@@ -300,7 +339,7 @@ export default function PlayersPage() {
           </Card>
         )}
 
-        <Card className="space-y-4 p-4 sm:p-6">
+        <Card className="space-y-4 px-2 py-4 sm:px-3 sm:py-6">
           <SectionHeader
             eyebrow="Player stats"
             description={
@@ -318,7 +357,7 @@ export default function PlayersPage() {
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Name or jersey #"
+                    placeholder="Name or jersey"
                   />
                 </Field>
                 <Field className="w-full max-w-xs" label="Event" htmlFor="player-event-filter">
@@ -365,21 +404,22 @@ export default function PlayersPage() {
           <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
             <table className="min-w-full text-left text-sm text-ink">
               <thead>
-                <tr className="uppercase tracking-wide text-[11px] text-ink-muted">
-                  <th className="px-3 py-2 text-center">#</th>
-                  <th className="px-3 py-2">Name</th>
+                <tr className="uppercase text-[11px] text-ink-muted">
+                  <th className="px-1 py-2 text-center" aria-label="Rank"></th>
+                  <th className="px-1 py-2">Name</th>
+                  <th className="px-1 py-2">Team</th>
                   {statHeaders.map((col) => (
-                    <th key={col.key} className="px-3 py-2 text-center">
+                    <th key={col.key} className="px-1 py-2 text-center">
                       <button
                         type="button"
                         onClick={() => toggleSort(col.key)}
-                        className={`flex w-full items-center justify-center gap-1 rounded-md px-1 py-0.5 text-xs font-semibold transition ${
+                        className={`flex w-full items-center justify-center gap-px rounded-md px-0 py-0.5 text-xs font-semibold transition ${
                           sortBy === col.key ? "bg-surface-muted text-ink" : "text-ink-muted hover:bg-surface"
                         }`}
                       >
                         <span>{col.label}</span>
                         <span className="text-[10px] leading-none">
-                          {sortBy === col.key ? (sortDirection === "asc" ? "ASC" : "DESC") : ""}
+                          {sortBy === col.key ? (sortDirection === "asc" ? "\u2191" : "\u2193") : ""}
                         </span>
                       </button>
                     </th>
@@ -389,33 +429,33 @@ export default function PlayersPage() {
               <tbody>
                 {eventsError ? (
                   <tr>
-                    <td colSpan={statHeaders.length + 2} className="px-2 py-4 text-center text-sm text-ink-muted">
+                    <td colSpan={tableColumnCount} className="px-1 py-4 text-center text-sm text-ink-muted">
                       {eventsError}
                     </td>
                   </tr>
                 ) : !eventFilter ? (
                   <tr>
-                    <td colSpan={statHeaders.length + 2} className="px-2 py-4 text-center text-sm text-ink-muted">
+                    <td colSpan={tableColumnCount} className="px-1 py-4 text-center text-sm text-ink-muted">
                       Select an event to load player stats.
                     </td>
                   </tr>
                 ) : loading ? (
                   <tr>
-                    <td colSpan={statHeaders.length + 2} className="px-2 py-4 text-center text-sm text-ink-muted">
+                    <td colSpan={tableColumnCount} className="px-1 py-4 text-center text-sm text-ink-muted">
                       Loading player stats...
                     </td>
                   </tr>
                 ) : sortedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={statHeaders.length + 2} className="px-2 py-4 text-center text-sm text-ink-muted">
+                    <td colSpan={tableColumnCount} className="px-1 py-4 text-center text-sm text-ink-muted">
                       No player stats found.
                     </td>
                   </tr>
                 ) : (
-                  sortedRows.map((row) => (
+                  sortedRows.map((row, index) => (
                     <tr key={row.playerId} className="border-t border-border hover:bg-surface-muted">
-                      <td className="px-3 py-2 text-center font-semibold text-ink-muted">{row.jerseyNumber ?? "-"}</td>
-                      <td className="px-3 py-2">
+                      <td className="px-1 py-2 text-center font-semibold text-ink-muted">{index + 1}</td>
+                      <td className="px-1 py-2">
                         <Link
                           to={
                             eventFilter
@@ -427,14 +467,24 @@ export default function PlayersPage() {
                           {row.playerName}
                         </Link>
                       </td>
-                      <td className="px-3 py-2 text-center font-semibold">{row.total}</td>
-                      <td className="px-3 py-2 text-center font-semibold">{row.assists}</td>
-                      <td className="px-3 py-2 text-center font-semibold">{row.goals}</td>
-                      <td className="px-3 py-2 text-center font-semibold">{row.games}</td>
-                      <td className="px-3 py-2 text-center font-semibold">{row.totalsPerGame.toFixed(1)}</td>
-                      <td className="px-3 py-2 text-center font-semibold">{row.assistsPerGame.toFixed(1)}</td>
-                      <td className="px-3 py-2 text-center font-semibold">{row.goalsPerGame.toFixed(1)}</td>
-                      <td className="px-3 py-2 text-center font-semibold">{row.callahans}</td>
+                      <td className="px-1 py-2">
+                        {row.teamName ? (
+                          row.teamId ? (
+                            <Link to={`/teams/${row.teamId}`} className="font-semibold text-ink hover:text-accent">
+                              {row.teamName}
+                            </Link>
+                          ) : (
+                            <span className="font-semibold text-ink">{row.teamName}</span>
+                          )
+                        ) : (
+                          <span className="text-ink-muted">-</span>
+                        )}
+                      </td>
+                      <td className="px-1 py-2 text-center font-semibold">{row.total}</td>
+                      <td className="px-1 py-2 text-center font-semibold">{row.assists}</td>
+                      <td className="px-1 py-2 text-center font-semibold">{row.goals}</td>
+                      <td className="px-1 py-2 text-center font-semibold">{row.games}</td>
+                      <td className="px-1 py-2 text-center font-semibold">{row.callahans}</td>
                     </tr>
                   ))
                 )}

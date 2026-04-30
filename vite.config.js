@@ -10,6 +10,7 @@ export default defineConfig({
       includeAssets: [
         "favicon.svg",
         "robots.txt",
+        "sitemap.xml",
         "assets/stallcount-logo.svg",
         "assets/stallcount-logo.png",
       ],
