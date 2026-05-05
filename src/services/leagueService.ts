@@ -11,6 +11,13 @@ export type DivisionRow = {
   created_at: string;
 };
 
+export type EventRosterDivisionRow = {
+  id: string;
+  name: string;
+  level: string | null;
+  teamIds: string[];
+};
+
 export type EventRow = {
   id: string;
   name: string;
@@ -79,6 +86,63 @@ export async function getDivisions(limit = 6): Promise<DivisionRow[]> {
       }
 
       return (data ?? []) as DivisionRow[];
+    },
+    { ttlMs: DIVISIONS_CACHE_TTL_MS },
+  );
+}
+
+export async function getEventRosterDivisions(eventId: string): Promise<EventRosterDivisionRow[]> {
+  if (!eventId) {
+    return [];
+  }
+
+  return getCachedQuery(
+    `event-rosters:divisions:${eventId}`,
+    async () => {
+      const { data: divisionRows, error: divisionError } = await supabase
+        .from("divisions")
+        .select("id, name, level")
+        .eq("event_id", eventId)
+        .order("name", { ascending: true });
+
+      if (divisionError) {
+        throw new Error(divisionError.message || "Failed to load event divisions");
+      }
+
+      const divisions = (divisionRows ?? []) as Array<{
+        id: string;
+        name: string;
+        level: string | null;
+      }>;
+      const divisionIds = divisions.map((division) => division.id).filter(Boolean);
+
+      const { data: divisionTeamRows, error: divisionTeamError } = divisionIds.length
+        ? await supabase
+            .from("division_teams")
+            .select("division_id, team_id")
+            .in("division_id", divisionIds)
+        : { data: [], error: null };
+
+      if (divisionTeamError) {
+        throw new Error(divisionTeamError.message || "Failed to load division teams");
+      }
+
+      const teamIdsByDivision = new Map<string, string[]>();
+      ((divisionTeamRows ?? []) as Array<{ division_id: string | null; team_id: string | null }>).forEach((row) => {
+        if (!row.division_id || !row.team_id) {
+          return;
+        }
+        const teamIds = teamIdsByDivision.get(row.division_id) ?? [];
+        teamIds.push(row.team_id);
+        teamIdsByDivision.set(row.division_id, teamIds);
+      });
+
+      return divisions.map((division) => ({
+        id: division.id,
+        name: division.name,
+        level: division.level ?? null,
+        teamIds: teamIdsByDivision.get(division.id) ?? [],
+      }));
     },
     { ttlMs: DIVISIONS_CACHE_TTL_MS },
   );

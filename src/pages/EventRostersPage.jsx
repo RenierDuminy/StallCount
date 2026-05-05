@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Card, Field, Panel, SectionHeader, SectionShell, Select } from "../components/ui/primitives";
-import { getEventsList } from "../services/leagueService";
+import { getEventRosterDivisions, getEventsList } from "../services/leagueService";
 import { getEventRosters } from "../services/playerService";
 
 export default function EventRostersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialEventId = searchParams.get("eventId") || "";
+  const initialDivisionId = searchParams.get("divisionId") || "";
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(initialEventId);
+  const [divisions, setDivisions] = useState([]);
+  const [selectedDivisionId, setSelectedDivisionId] = useState(initialDivisionId);
   const [rosters, setRosters] = useState([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
+  const [loadingDivisions, setLoadingDivisions] = useState(false);
   const [loadingRosters, setLoadingRosters] = useState(false);
   const [error, setError] = useState("");
 
@@ -43,16 +47,63 @@ export default function EventRostersPage() {
     if (!events.length) return;
     if (!selectedEventId || !events.some((evt) => evt.id === selectedEventId)) {
       setSelectedEventId(events[0]?.id || "");
+      setSelectedDivisionId("");
     }
   }, [events, selectedEventId]);
 
   useEffect(() => {
+    const params = {};
     if (selectedEventId) {
-      setSearchParams({ eventId: selectedEventId });
-    } else {
-      setSearchParams({});
+      params.eventId = selectedEventId;
     }
-  }, [selectedEventId, setSearchParams]);
+    if (selectedDivisionId) {
+      params.divisionId = selectedDivisionId;
+    }
+    setSearchParams(params);
+  }, [selectedEventId, selectedDivisionId, setSearchParams]);
+
+  useEffect(() => {
+    if (!selectedEventId) {
+      setDivisions([]);
+      setSelectedDivisionId("");
+      return;
+    }
+
+    let ignore = false;
+    async function loadDivisions() {
+      setLoadingDivisions(true);
+      setError("");
+      try {
+        const list = await getEventRosterDivisions(selectedEventId);
+        if (!ignore) {
+          setDivisions(list || []);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setError(err instanceof Error ? err.message : "Unable to load event divisions.");
+          setDivisions([]);
+          setSelectedDivisionId("");
+        }
+      } finally {
+        if (!ignore) {
+          setLoadingDivisions(false);
+        }
+      }
+    }
+    loadDivisions();
+    return () => {
+      ignore = true;
+    };
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    if (loadingDivisions || !selectedDivisionId) {
+      return;
+    }
+    if (!divisions.some((division) => division.id === selectedDivisionId)) {
+      setSelectedDivisionId("");
+    }
+  }, [divisions, loadingDivisions, selectedDivisionId]);
 
   useEffect(() => {
     if (!selectedEventId) {
@@ -85,11 +136,19 @@ export default function EventRostersPage() {
     };
   }, [selectedEventId]);
 
+  const selectedDivision = divisions.find((division) => division.id === selectedDivisionId) || null;
+
+  const selectedDivisionTeamIds = useMemo(
+    () => new Set(selectedDivision?.teamIds || []),
+    [selectedDivision],
+  );
+
   const groupedTeams = useMemo(() => {
     const map = new Map();
     rosters.forEach((entry) => {
       const teamId = entry.team?.id || entry.team_id;
       if (!teamId) return;
+      if (selectedDivisionId && !selectedDivisionTeamIds.has(teamId)) return;
       if (!map.has(teamId)) {
         map.set(teamId, {
           teamId,
@@ -126,9 +185,13 @@ export default function EventRostersPage() {
       });
     });
     return teams;
-  }, [rosters]);
+  }, [rosters, selectedDivisionId, selectedDivisionTeamIds]);
 
   const maxPlayers = groupedTeams.reduce((max, team) => Math.max(max, team.players.length), 0);
+  const visibleRosterAssignmentCount = groupedTeams.reduce(
+    (total, team) => total + team.players.length,
+    0,
+  );
 
   const selectedEvent = events.find((evt) => evt.id === selectedEventId) || null;
 
@@ -141,24 +204,44 @@ export default function EventRostersPage() {
             title="Team rosters by event"
             description="View the full set of registered players grouped by their teams."
             action={
-              <Field className="w-full max-w-xs" label="Select event" htmlFor="event-roster-filter">
-                <Select
-                  id="event-roster-filter"
-                  value={selectedEventId}
-                  onChange={(event) => setSelectedEventId(event.target.value)}
-                  disabled={loadingEvents || events.length === 0}
-                >
-                  {events.length === 0 ? (
-                    <option value="">No events available</option>
-                  ) : (
-                    events.map((event) => (
-                      <option key={event.id} value={event.id}>
-                        {event.name}
+              <>
+                <Field className="w-full min-w-[13rem] max-w-xs" label="Select event" htmlFor="event-roster-filter">
+                  <Select
+                    id="event-roster-filter"
+                    value={selectedEventId}
+                    onChange={(event) => {
+                      setSelectedEventId(event.target.value);
+                      setSelectedDivisionId("");
+                    }}
+                    disabled={loadingEvents || events.length === 0}
+                  >
+                    {events.length === 0 ? (
+                      <option value="">No events available</option>
+                    ) : (
+                      events.map((event) => (
+                        <option key={event.id} value={event.id}>
+                          {event.name}
+                        </option>
+                      ))
+                    )}
+                  </Select>
+                </Field>
+                <Field className="w-full min-w-[12rem] max-w-xs" label="Select division" htmlFor="event-division-filter">
+                  <Select
+                    id="event-division-filter"
+                    value={selectedDivisionId}
+                    onChange={(event) => setSelectedDivisionId(event.target.value)}
+                    disabled={!selectedEventId || loadingDivisions || divisions.length === 0}
+                  >
+                    <option value="">All divisions</option>
+                    {divisions.map((division) => (
+                      <option key={division.id} value={division.id}>
+                        {division.level ? `${division.name} - ${division.level}` : division.name}
                       </option>
-                    ))
-                  )}
-                </Select>
-              </Field>
+                    ))}
+                  </Select>
+                </Field>
+              </>
             }
           />
           {selectedEvent && (
@@ -188,7 +271,9 @@ export default function EventRostersPage() {
             eyebrow="Rosters"
             description={
               selectedEventId
-                ? `Showing ${groupedTeams.length} teams - ${rosters.length} player assignments`
+                ? `Showing ${groupedTeams.length} teams - ${visibleRosterAssignmentCount} player assignments${
+                    selectedDivision ? ` in ${selectedDivision.name}` : ""
+                  }`
                 : "Select an event to display its rosters"
             }
           />
@@ -203,7 +288,9 @@ export default function EventRostersPage() {
             </Panel>
           ) : groupedTeams.length === 0 ? (
             <Panel variant="muted" className="p-5 text-center text-sm text-ink-muted">
-              No roster entries were found for this event.
+              {selectedDivisionId
+                ? "No roster entries were found for this division."
+                : "No roster entries were found for this event."}
             </Panel>
           ) : (
             <div className="overflow-x-auto">
