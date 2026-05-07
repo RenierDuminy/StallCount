@@ -36,6 +36,9 @@ const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const TEAM_STANDINGS_GRID_STYLE = {
   gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 14rem), 1fr))",
 };
+const MENS_DIVISION_POOL_LETTERS = new Set(["a", "b", "c", "d"]);
+const MENS_DIVISION_STANDINGS_START_DATE = "2026-04-13";
+const MENS_DIVISION_STANDINGS_END_DATE = "2026-05-21";
 const SUMMARY_RULES_HREF = "/rules/stellenbosch-rl-2026-rules-summary.pdf";
 const FULL_RULES_HREF = "/rules/stellenbosch-rl-2026-rules.pdf";
 const RULE_DOCUMENTS = [
@@ -51,7 +54,7 @@ const RULE_DOCUMENTS = [
 const PHASE_WEEK_GROUPS = [
   {
     id: "phase-1",
-    title: "Phase 1",
+    title: "Pool play",
     description: "Round robin pool games (MMP) and development fixtures (FMP).",
     weeks: [
       {
@@ -91,7 +94,7 @@ const PHASE_WEEK_GROUPS = [
   },
   {
     id: "phase-2",
-    title: "Phase 2",
+    title: "Pool crossover",
     description: "MMP crossover games with FMP round robin pool games.",
     weeks: [
       {
@@ -131,7 +134,7 @@ const PHASE_WEEK_GROUPS = [
   },
   {
     id: "phase-3",
-    title: "Phase 3",
+    title: "Seeding Games",
     description: "MMP seeding games with FMP crossover and seeding fixtures.",
     weeks: [
       {
@@ -167,6 +170,210 @@ const PHASE_WEEK_GROUPS = [
           { id: "2026-08-06", day: "Thursday", date: "6 Aug" },
         ],
       },
+    ],
+  },
+];
+const SEEDING_PLACEHOLDER_WEEKS = [
+  {
+    id: "week-7-seeding",
+    label: "Week 7",
+    stage: "Initial Seeding",
+    days: [
+      {
+        day: "Monday",
+        items: [{ code: "Men_Seed_13 vs Men_Seed_14", matchup: "" }],
+      },
+      {
+        day: "Tuesday",
+        detail: "Men's MMP Fixtures",
+        items: [
+          { code: "Men_Seed_1 vs Men_Seed_2", matchup: "" },
+          { code: "Men_Seed_3 vs Men_Seed_4", matchup: "" },
+          { code: "Men_Seed_5 vs Men_Seed_6", matchup: "" },
+          { code: "Men_Seed_7 vs Men_Seed_8", matchup: "" },
+          { code: "Men_Seed_9 vs Men_Seed_10", matchup: "" },
+          { code: "Men_Seed_11 vs Men_Seed_12", matchup: "" },
+        ],
+      },
+      {
+        day: "Wednesday",
+        detail: "Women's FMP Fixtures",
+        items: [
+          { code: "Women_E1 vs Women_F1", matchup: "" },
+          { code: "Women_E2 vs Women_F2", matchup: "" },
+          { code: "Women_E3 vs Women_F3", matchup: "" },
+          { code: "Women_E4 vs Women_F4", matchup: "" },
+        ],
+      },
+      {
+        day: "Thursday",
+        items: [{ code: "Men_Seed_15 vs Men_Seed_16", matchup: "" }],
+      },
+    ],
+  },
+  {
+    id: "week-8-seeding",
+    label: "Week 8",
+    stage: "Cross-Seeding",
+    days: [
+      {
+        day: "Monday",
+        items: [{ code: "Men_Seed_1 vs Men_Seed_8", matchup: "" }],
+      },
+      {
+        day: "Tuesday",
+        detail: "Men's MMP Fixtures",
+        items: [
+          { code: "Men_Seed_3 vs Men_Seed_6", matchup: "" },
+          { code: "Men_Seed_4 vs Men_Seed_5", matchup: "" },
+          { code: "Men_Seed_9 vs Men_Seed_16", matchup: "" },
+          { code: "Men_Seed_10 vs Men_Seed_15", matchup: "" },
+          { code: "Men_Seed_11 vs Men_Seed_14", matchup: "" },
+          { code: "Men_Seed_12 vs Men_Seed_13", matchup: "" },
+        ],
+      },
+      {
+        day: "Wednesday",
+        detail: "Women's FMP Fixtures",
+        items: [
+          { code: "Women_E1 vs Women_F2", matchup: "" },
+          { code: "Women_E2 vs Women_F1", matchup: "" },
+          { code: "Women_E3 vs Women_F4", matchup: "" },
+          { code: "Women_E4 vs Women_F3", matchup: "" },
+        ],
+      },
+      {
+        day: "Thursday",
+        items: [{ code: "Men_Seed_2 vs Men_Seed_7", matchup: "" }],
+      },
+    ],
+  },
+  {
+    id: "week-9-seeding",
+    label: "Week 9",
+    stage: "Final Seeding",
+    days: [
+      {
+        day: "Monday",
+        items: [{ code: "Men_Seed_13 vs Men_Seed_14", matchup: "" }],
+      },
+      {
+        day: "Tuesday",
+        detail: "Men's MMP Fixtures",
+        items: [
+          { code: "Men_Seed_1 vs Men_Seed_2", matchup: "" },
+          { code: "Men_Seed_3 vs Men_Seed_4", matchup: "" },
+          { code: "Men_Seed_5 vs Men_Seed_6", matchup: "" },
+          { code: "Men_Seed_7 vs Men_Seed_8", matchup: "" },
+          { code: "Men_Seed_9 vs Men_Seed_10", matchup: "" },
+          { code: "Men_Seed_11 vs Men_Seed_12", matchup: "" },
+        ],
+      },
+      {
+        day: "Wednesday",
+        detail: "Women's FMP Fixtures",
+        items: [
+          { code: "Women_Seed_1 vs Women_Seed_2", matchup: "" },
+          { code: "Women_Seed_3 vs Women_Seed_4", matchup: "" },
+          { code: "Women_Seed_5 vs Women_Seed_6", matchup: "" },
+          { code: "Women_Seed_7 vs Women_Seed_8", matchup: "" },
+        ],
+      },
+      {
+        day: "Thursday",
+        items: [{ code: "Men_Seed_15 vs Men_Seed_16", matchup: "" }],
+      },
+    ],
+  },
+];
+const KNOCKOUT_PLACEHOLDER_WEEKS = [
+  {
+    id: "week-10-knockouts",
+    label: "Week 10",
+    stage: "QF",
+    days: [
+      {
+        day: "Monday",
+        items: [{ code: "QF_5", matchup: "Seed 9 v Seed 16" }],
+      },
+      {
+        day: "Tuesday",
+        items: [
+          { code: "QF_1", matchup: "Seed 1 v Seed 8" },
+          { code: "QF_2", matchup: "Seed 2 v Seed 7" },
+          { code: "QF_3", matchup: "Seed 3 v Seed 6" },
+          { code: "QF_4", matchup: "Seed 4 v Seed 5" },
+          { code: "QF_7", matchup: "Seed 11 v Seed 14" },
+        ],
+      },
+      {
+        day: "Wednesday",
+        items: [
+          { code: "FMP_QF_1", matchup: "Seed 1 v Seed 8" },
+          { code: "FMP_QF_2", matchup: "Seed 2 v Seed 7" },
+          { code: "FMP_QF_3", matchup: "Seed 3 v Seed 6" },
+          { code: "FMP_QF_4", matchup: "Seed 4 v Seed 5" },
+        ],
+      },
+      {
+        day: "Thursday",
+        items: [
+          { code: "QF_6", matchup: "Seed 10 v Seed 15" },
+          { code: "QF_8", matchup: "Seed 12 v Seed 13" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "week-11-knockouts",
+    label: "Week 11",
+    stage: "SF",
+    days: [
+      {
+        day: "Monday",
+        items: [{ code: "SF_5", matchup: "Winner QF_5 v Winner QF_6" }],
+      },
+      {
+        day: "Tuesday",
+        items: [
+          { code: "SF_1", matchup: "Winner QF_1 v Winner QF_4" },
+          { code: "SF_2", matchup: "Winner QF_2 v Winner QF_3" },
+          { code: "SF_3", matchup: "Loser QF_1 v Loser QF_4" },
+          { code: "SF_4", matchup: "Loser QF_2 v Loser QF_3" },
+          { code: "SF_7", matchup: "Winner QF_7 v Winner QF_8" },
+        ],
+      },
+      {
+        day: "Wednesday",
+        items: [
+          { code: "FMP_SF_1", matchup: "Winner FMP_QF_1 v Winner FMP_QF_4" },
+          { code: "FMP_SF_2", matchup: "Winner FMP_QF_2 v Winner FMP_QF_3" },
+          { code: "FMP_SF_3", matchup: "Loser FMP_QF_1 v Loser FMP_QF_4" },
+          { code: "FMP_SF_4", matchup: "Loser FMP_QF_2 v Loser FMP_QF_3" },
+        ],
+      },
+      {
+        day: "Thursday",
+        items: [{ code: "SF_6", matchup: "Loser QF_5 v Loser QF_6" }],
+      },
+    ],
+  },
+  {
+    id: "week-12-finals",
+    label: "Week 12",
+    stage: "Finals",
+    days: [
+      { day: "Monday", items: [] },
+      {
+        day: "Tuesday",
+        items: [
+          { code: "Final_1", matchup: "Winner SF_1 v Winner SF_2" },
+          { code: "Bronze_1", matchup: "Loser SF_1 v Loser SF_2" },
+          { code: "(MMP and FMP)", matchup: "" },
+        ],
+      },
+      { day: "Wednesday", items: [] },
+      { day: "Thursday", items: [] },
     ],
   },
 ];
@@ -289,12 +496,88 @@ const buildPoolTeams = (pool) => {
   return rows;
 };
 
+const getEventPools = (eventData) =>
+  (eventData?.divisions || []).flatMap((division, divisionIndex) =>
+    (division?.pools || []).map((pool, poolIndex) => ({
+      ...pool,
+      id: pool.id || `${division.id || divisionIndex}-${poolIndex}`,
+      name: pool.name || "Pool",
+    })),
+  );
+
+const getPoolLetter = (pool) => {
+  const normalizedName = (pool?.name || "").toString().trim().toLowerCase();
+  const poolMatch = normalizedName.match(/\bpool\s*([a-z])\b/);
+  const singleLetterMatch = normalizedName.match(/^([a-z])$/);
+  return poolMatch?.[1] || singleLetterMatch?.[1] || "";
+};
+
+const isCombinedHousePool = (pool) =>
+  MENS_DIVISION_POOL_LETTERS.has(getPoolLetter(pool));
+
+const buildStandingsPoolGroups = (eventData) => {
+  const pools = getEventPools(eventData);
+  const combinedPools = pools.filter(isCombinedHousePool);
+  const separatePools = pools.filter((pool) => !isCombinedHousePool(pool));
+
+  return [
+    ...(combinedPools.length
+      ? [
+          {
+            id: "mens-division",
+            name: "Men's Division",
+            pools: combinedPools,
+            showRank: true,
+            matchMode: "team_date_range",
+            matchStartDateKey: MENS_DIVISION_STANDINGS_START_DATE,
+            matchEndDateKey: MENS_DIVISION_STANDINGS_END_DATE,
+          },
+        ]
+      : []),
+    ...separatePools.map((pool) => ({
+      id: pool.id,
+      name: pool.name,
+      pools: [pool],
+    })),
+  ];
+};
+
+const buildPoolGroupTeams = (pools) => {
+  const rowsByTeam = new Map();
+  (pools || []).forEach((pool) => {
+    buildPoolTeams(pool).forEach((team) => {
+      const existing = rowsByTeam.get(team.id);
+      if (!existing) {
+        rowsByTeam.set(team.id, team);
+        return;
+      }
+      if (
+        existing.seed === null ||
+        (team.seed !== null && team.seed < existing.seed)
+      ) {
+        rowsByTeam.set(team.id, team);
+      }
+    });
+  });
+  return Array.from(rowsByTeam.values()).sort((a, b) => {
+    if (a.seed !== null && b.seed !== null) {
+      return a.seed - b.seed || a.name.localeCompare(b.name);
+    }
+    if (a.seed !== null) return -1;
+    if (b.seed !== null) return 1;
+    return a.name.localeCompare(b.name);
+  });
+};
+
+const buildPoolGroupIds = (pools) =>
+  new Set((pools || []).map((pool) => pool?.id).filter(Boolean));
+
 const formatScoreDiff = (value) => {
   if (!Number.isFinite(value) || value === 0) return "0";
   return value > 0 ? `+${value}` : `${value}`;
 };
 
-const StandingsTable = ({ rows }) => {
+const StandingsTable = ({ rows, showRank = false }) => {
   if (!rows.length) {
     return <p className="text-sm text-ink-muted">No standings available yet.</p>;
   }
@@ -303,7 +586,11 @@ const StandingsTable = ({ rows }) => {
       <table className="w-full table-fixed whitespace-nowrap text-xs">
         <thead className="bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
           <tr>
+            {showRank ? (
+              <th className="w-8 px-0.5 py-1 text-center font-semibold">#</th>
+            ) : null}
             <th className="w-full px-1 py-1 text-left font-semibold">Team</th>
+            <th className="w-10 px-0.5 py-1 text-center font-semibold">Pts</th>
             <th className="w-10 px-0.5 py-1 text-center font-semibold">W-L</th>
             <th className="w-9 px-0.5 py-1 text-center font-semibold">+/-</th>
           </tr>
@@ -319,9 +606,15 @@ const StandingsTable = ({ rows }) => {
                     : "var(--sc-surface-muted)",
               }}
             >
+              {showRank ? (
+                <td className="px-0.5 py-1 text-center tabular-nums text-ink-muted">
+                  {index + 1}
+                </td>
+              ) : null}
               <td className="min-w-0 px-1 py-1" title={row.name}>
                 <span className="block truncate">{row.name}</span>
               </td>
+              <td className="px-0.5 py-1 text-center tabular-nums">{row.points}</td>
               <td className="px-0.5 py-1 text-center tabular-nums">{`${row.wins}-${row.losses}`}</td>
               <td className="px-0.5 py-1 text-center tabular-nums">{formatScoreDiff(row.scoreDiff)}</td>
             </tr>
@@ -332,8 +625,17 @@ const StandingsTable = ({ rows }) => {
   );
 };
 
-const buildPoolStandings = (pool, matches) => {
-  const teams = buildPoolTeams(pool);
+const isDateKeyInRange = (dateKey, startDateKey, endDateKey) => {
+  if (!dateKey) return false;
+  if (startDateKey && dateKey < startDateKey) return false;
+  if (endDateKey && dateKey > endDateKey) return false;
+  return true;
+};
+
+const buildPoolGroupStandings = (pools, matches, options = {}) => {
+  const teams = buildPoolGroupTeams(pools);
+  const poolIds = buildPoolGroupIds(pools);
+  const teamIds = new Set(teams.map((team) => team.id));
   const standingsByTeam = new Map(
     teams.map((team) => [
       team.id,
@@ -342,12 +644,31 @@ const buildPoolStandings = (pool, matches) => {
         wins: 0,
         losses: 0,
         played: 0,
+        points: 0,
         scoreDiff: 0,
       },
     ]),
   );
 
-  const poolMatches = (matches || []).filter((match) => match?.pool_id === pool?.id);
+  const poolMatches = (matches || []).filter((match) => {
+    if (options.matchMode === "team_date_range") {
+      if (
+        !isDateKeyInRange(
+          formatDateKey(match?.start_time),
+          options.matchStartDateKey,
+          options.matchEndDateKey,
+        )
+      ) {
+        return false;
+      }
+
+      const teamAId = match?.team_a?.id;
+      const teamBId = match?.team_b?.id;
+      return teamIds.has(teamAId) && teamIds.has(teamBId);
+    }
+
+    return match?.pool_id && poolIds.has(match.pool_id);
+  });
 
   poolMatches.forEach((match) => {
     if (!isFinishedMatch(match?.status)) return;
@@ -365,8 +686,10 @@ const buildPoolStandings = (pool, matches) => {
       teamAStanding.scoreDiff += match.score_a - match.score_b;
       if (match.score_a > match.score_b) {
         teamAStanding.wins += 1;
+        teamAStanding.points += 3;
       } else if (match.score_a < match.score_b) {
         teamAStanding.losses += 1;
+        teamAStanding.points += 1;
       }
     }
 
@@ -375,17 +698,20 @@ const buildPoolStandings = (pool, matches) => {
       teamBStanding.scoreDiff += match.score_b - match.score_a;
       if (match.score_b > match.score_a) {
         teamBStanding.wins += 1;
+        teamBStanding.points += 3;
       } else if (match.score_b < match.score_a) {
         teamBStanding.losses += 1;
+        teamBStanding.points += 1;
       }
     }
   });
 
   return Array.from(standingsByTeam.values()).sort(
     (a, b) =>
+      b.points - a.points ||
+      b.scoreDiff - a.scoreDiff ||
       b.wins - a.wins ||
       a.losses - b.losses ||
-      b.scoreDiff - a.scoreDiff ||
       a.name.localeCompare(b.name),
   );
 };
@@ -549,6 +875,48 @@ function WeekScheduleCard({ week, renderMatchCard, loading }) {
   );
 }
 
+function PlaceholderScheduleWeek({ week }) {
+  return (
+    <div className="space-y-3 rounded-xl border border-border/70 bg-surface-muted/40 px-2 py-3 sm:px-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-base font-semibold text-ink">{week.label}</p>
+          <p className="text-sm text-ink-muted">{week.stage}</p>
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-4">
+        {week.days.map((day) => (
+          <section key={`${week.id}-${day.day}`} className="space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+              {day.day}
+            </p>
+            {day.detail ? (
+              <p className="text-xs font-semibold text-ink">{day.detail}</p>
+            ) : null}
+            {day.items.length ? (
+              <div className="space-y-2">
+                {day.items.map((item) => (
+                  <div
+                    key={`${week.id}-${day.day}-${item.code}`}
+                    className="rounded-lg border border-border bg-surface px-3 py-2"
+                  >
+                    <p className="text-sm font-semibold text-ink">{item.code}</p>
+                    {item.matchup ? (
+                      <p className="text-sm text-ink-muted">{item.matchup}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-ink-muted">TBC</p>
+            )}
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function StellenboschRl2026WorkspacePage() {
   const { session, roles } = useAuth();
   const scriptRunLockRef = useRef(false);
@@ -642,16 +1010,14 @@ export default function StellenboschRl2026WorkspacePage() {
   }, [canRunAdminScripts, refreshTimerState]);
 
   const workspaceTitle = eventData?.name || EVENT_NAME;
-  const standingsByPool = useMemo(() => {
-    if (!eventData?.divisions?.length) return [];
-    return eventData.divisions.flatMap((division, divisionIndex) =>
-      (division?.pools || []).map((pool, poolIndex) => ({
-        id: pool.id || `${division.id || divisionIndex}-${poolIndex}`,
-        name: pool.name || "Pool",
-        rows: buildPoolStandings(pool, matches),
+  const standingsGroups = useMemo(
+    () =>
+      buildStandingsPoolGroups(eventData).map((group) => ({
+        ...group,
+        rows: buildPoolGroupStandings(group.pools, matches, group),
       })),
-    );
-  }, [eventData, matches]);
+    [eventData, matches],
+  );
   const datedMatches = useMemo(
     () =>
       (matches || [])
@@ -822,7 +1188,7 @@ export default function StellenboschRl2026WorkspacePage() {
                     to={`/event-rosters?eventId=${encodeURIComponent(EVENT_ID)}`}
                     className="sc-button min-w-0 text-center text-xs leading-tight min-[380px]:text-sm"
                   >
-                    View event roster
+                    Team rosters
                   </Link>
                   <Link
                     to={`/players?eventId=${encodeURIComponent(EVENT_ID)}`}
@@ -933,32 +1299,29 @@ export default function StellenboschRl2026WorkspacePage() {
         <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
           <SectionHeader title="Team standings" />
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Pool standings
-            </p>
-            {loading && standingsByPool.length === 0 ? (
+            {loading && standingsGroups.length === 0 ? (
               <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
                 Loading standings...
               </Card>
-            ) : standingsByPool.length === 0 ? (
+            ) : standingsGroups.length === 0 ? (
               <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
-                No pools configured for this event.
+                No pool teams configured for this event.
               </Card>
             ) : (
               <div className="grid items-start gap-2" style={TEAM_STANDINGS_GRID_STYLE}>
-                {standingsByPool.map((pool) => (
+                {standingsGroups.map((group) => (
                   <Panel
-                    key={pool.id}
+                    key={group.id}
                     variant="muted"
                     className="min-w-0 space-y-1.5 border border-white/50 p-2"
                   >
                     <p
                       className="truncate text-xs font-semibold uppercase tracking-wide text-ink"
-                      title={pool.name}
+                      title={group.name}
                     >
-                      {pool.name}
+                      {group.name}
                     </p>
-                    <StandingsTable rows={pool.rows} />
+                    <StandingsTable rows={group.rows} showRank={group.showRank} />
                   </Panel>
                 ))}
               </div>
@@ -973,28 +1336,38 @@ export default function StellenboschRl2026WorkspacePage() {
               className="space-y-3 py-4 first:pt-0 last:pb-0 sm:py-5"
             >
               <SectionHeader
-                title={`${phase.title} weekly fixtures`}
+                title={phase.title}
                 action={<Chip>{phase.weeks.length} weeks</Chip>}
               />
               <div className="space-y-3">
-                {phase.weeks.map((week) => (
-                  <WeekScheduleCard
-                    key={week.id}
-                    week={week}
-                    renderMatchCard={renderMatchCard}
-                    loading={loading}
-                  />
-                ))}
+                {phase.id === "phase-3"
+                  ? SEEDING_PLACEHOLDER_WEEKS.map((week) => (
+                      <PlaceholderScheduleWeek key={week.id} week={week} />
+                    ))
+                  : phase.weeks.map((week) => (
+                      <WeekScheduleCard
+                        key={week.id}
+                        week={week}
+                        renderMatchCard={renderMatchCard}
+                        loading={loading}
+                      />
+                    ))}
               </div>
             </section>
           ))}
         </div>
 
-        <Card className="space-y-4 p-5 sm:p-6">
+        <section className="space-y-3 py-4 sm:py-5">
           <SectionHeader
-            title="Knockout layout pending"
+            title="Knockouts"
+            action={<Chip>Weeks 10-12</Chip>}
           />
-        </Card>
+          <div className="space-y-3">
+            {KNOCKOUT_PLACEHOLDER_WEEKS.map((week) => (
+              <PlaceholderScheduleWeek key={week.id} week={week} />
+            ))}
+          </div>
+        </section>
       </SectionShell>
     </div>
   );
