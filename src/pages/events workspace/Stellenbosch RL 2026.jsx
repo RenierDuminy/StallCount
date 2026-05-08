@@ -33,6 +33,10 @@ const AUTO_ROSTER_SYNC_INTERVAL_MS = 30 * 1000;
 const ROSTER_SCRIPT_SLUG = "STB_RL_26_update_rosters";
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
+const STANDINGS_WIN_POINTS = 3;
+const STANDINGS_LOSS_POINTS = 1;
+const STANDINGS_CLOSE_LOSS_POINTS = 2;
+const STANDINGS_CLOSE_LOSS_MAX_MARGIN = 4;
 const TEAM_STANDINGS_GRID_STYLE = {
   gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 14rem), 1fr))",
 };
@@ -577,6 +581,11 @@ const formatScoreDiff = (value) => {
   return value > 0 ? `+${value}` : `${value}`;
 };
 
+const getStandingsLossPoints = (scoreFor, scoreAgainst) =>
+  scoreAgainst - scoreFor <= STANDINGS_CLOSE_LOSS_MAX_MARGIN
+    ? STANDINGS_CLOSE_LOSS_POINTS
+    : STANDINGS_LOSS_POINTS;
+
 const StandingsTable = ({ rows, showRank = false }) => {
   if (!rows.length) {
     return <p className="text-sm text-ink-muted">No standings available yet.</p>;
@@ -686,10 +695,10 @@ const buildPoolGroupStandings = (pools, matches, options = {}) => {
       teamAStanding.scoreDiff += match.score_a - match.score_b;
       if (match.score_a > match.score_b) {
         teamAStanding.wins += 1;
-        teamAStanding.points += 3;
+        teamAStanding.points += STANDINGS_WIN_POINTS;
       } else if (match.score_a < match.score_b) {
         teamAStanding.losses += 1;
-        teamAStanding.points += 1;
+        teamAStanding.points += getStandingsLossPoints(match.score_a, match.score_b);
       }
     }
 
@@ -698,10 +707,10 @@ const buildPoolGroupStandings = (pools, matches, options = {}) => {
       teamBStanding.scoreDiff += match.score_b - match.score_a;
       if (match.score_b > match.score_a) {
         teamBStanding.wins += 1;
-        teamBStanding.points += 3;
+        teamBStanding.points += STANDINGS_WIN_POINTS;
       } else if (match.score_b < match.score_a) {
         teamBStanding.losses += 1;
-        teamBStanding.points += 1;
+        teamBStanding.points += getStandingsLossPoints(match.score_b, match.score_a);
       }
     }
   });
@@ -1298,6 +1307,10 @@ export default function StellenboschRl2026WorkspacePage() {
 
         <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
           <SectionHeader title="Team standings" />
+          <p className="text-xs text-ink-muted">
+            Points: {STANDINGS_WIN_POINTS} for a win, {STANDINGS_CLOSE_LOSS_POINTS} for losing by {STANDINGS_CLOSE_LOSS_MAX_MARGIN} or less,
+            and {STANDINGS_LOSS_POINTS} for any other loss.
+          </p>
           <div>
             {loading && standingsGroups.length === 0 ? (
               <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
