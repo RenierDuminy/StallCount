@@ -135,6 +135,9 @@ export function useScoreKeeperActions(controller) {
       await controller.loadMatches(undefined, { preferredMatchId: updated.id });
 
       controller.setSetupModalOpen(false);
+      if (typeof controller.onInitialiseComplete === "function") {
+        await controller.onInitialiseComplete(updated);
+      }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to initialise match.";

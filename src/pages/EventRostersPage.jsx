@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Card, Field, Panel, SectionHeader, SectionShell, Select } from "../components/ui/primitives";
 import { getEventRosterDivisions, getEventsList } from "../services/leagueService";
 import { getEventRosters } from "../services/playerService";
+import { getEventWorkspacePath } from "./eventWorkspaces";
 
 export default function EventRostersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -194,6 +195,10 @@ export default function EventRostersPage() {
   );
 
   const selectedEvent = events.find((evt) => evt.id === selectedEventId) || null;
+  const selectedEventPath = selectedEventId
+    ? getEventWorkspacePath(selectedEventId) ||
+      `/events?eventId=${encodeURIComponent(selectedEventId)}`
+    : "";
 
   return (
     <div className="pb-16 text-ink">
@@ -205,6 +210,11 @@ export default function EventRostersPage() {
             description="View the full set of registered players grouped by their teams."
             action={
               <>
+                {selectedEventPath && (
+                  <Link to={selectedEventPath} className="sc-button">
+                    Back to event
+                  </Link>
+                )}
                 <Field className="w-full min-w-[13rem] max-w-xs" label="Select event" htmlFor="event-roster-filter">
                   <Select
                     id="event-roster-filter"

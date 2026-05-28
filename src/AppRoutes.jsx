@@ -47,6 +47,9 @@ const PlayoffStructurePage = lazy(() => import("./pages/PlayoffStructurePage"));
 const MediaAdminPage = lazy(() => import("./pages/MediaAdminPage"));
 const EventRostersPageLazy = lazy(() => import("./pages/EventRostersPage"));
 const EventRulesPageLazy = lazy(() => import("./pages/EventRulesPage"));
+const cptMxLeagueWorkspace = eventWorkspaces.find(
+  (workspace) => workspace.path === "/events/ctfda-mx-league",
+);
 
 const routeFallback = (
   <div className="sc-shell flex min-h-[40vh] items-center justify-center text-sm text-[var(--sc-ink-muted)]">
@@ -89,7 +92,15 @@ export default function AppRoutes() {
           <Route path="/community" element={<CommunityPage />} />
           <Route path="/event-rosters" element={<EventRostersPageLazy />} />
           <Route path="/event-rules" element={<EventRulesPageLazy />} />
-          {eventWorkspaces.map((workspace) => (
+          {cptMxLeagueWorkspace ? (
+            <Route
+              path="/events/ctfda-mx-league"
+              element={<cptMxLeagueWorkspace.Component />}
+            />
+          ) : null}
+          {eventWorkspaces
+            .filter((workspace) => workspace.path !== "/events/ctfda-mx-league")
+            .map((workspace) => (
             <Route
               key={workspace.path}
               path={workspace.path}

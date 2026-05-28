@@ -58,10 +58,22 @@ const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
 const SOFT_CAP_TIMER_LABEL = "Soft Cap";
+const SETUP_MATCH_STATUSES = new Set([
+  "halftime",
+  "initialized",
+  "live",
+  "postponed",
+  "scheduled",
+]);
 
 const OPTIMISTIC_PREFIX = "local-";
 
 const MAX_OVERTIME_SECONDS = 30 * 60;
+
+function isSetupMatchStatus(match) {
+  const normalizedStatus = String(match?.status || "").trim().toLowerCase();
+  return SETUP_MATCH_STATUSES.has(normalizedStatus);
+}
 
 const DEFAULT_EVENT_RULES = {
   format: "wfdfChampionship",
@@ -766,9 +778,10 @@ const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
         const data = await getMatchesByEvent(targetEventId, 24, {
           includeFinished: false,
         });
-        setMatches(data);
+        const setupMatches = (data || []).filter(isSetupMatchStatus);
+        setMatches(setupMatches);
 
-        if (data.length === 0) {
+        if (setupMatches.length === 0) {
           setSelectedMatchId(null);
           return;
         }
@@ -777,12 +790,12 @@ const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
           preferredMatchId ||
           (preserveSelection ? selectedMatchId : null) ||
           null;
-        const matchExists = requestedId && data.some((match) => match.id === requestedId);
+        const matchExists = requestedId && setupMatches.some((match) => match.id === requestedId);
         if (matchExists) {
           setSelectedMatchId(requestedId);
           return;
         }
-        setSelectedMatchId(allowDefaultSelect ? data[0].id : null);
+        setSelectedMatchId(allowDefaultSelect ? setupMatches[0].id : null);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unable to load matches.";
         setMatchesError(message);
@@ -819,6 +832,7 @@ const previousSecondaryRunningRef = useRef(false);
 const previousPrimaryRunningRef = useRef(false);
 const stoppageActiveRef = useRef(false);
 const appliedEventRulesRef = useRef(null);
+const urlHydrationRef = useRef(false);
 const [trackedSecondaryEventVersion, setTrackedSecondaryEventVersion] = useState(0);
   const [matchStarted, setMatchStarted] = useState(false);
   const consoleReady = Boolean(activeMatch);
@@ -997,7 +1011,7 @@ useEffect(() => {
       return;
     }
     const stored = loadScorekeeperSession(userId);
-    if (stored?.data?.matchId) {
+    if (stored?.data?.ruleset === "5v5" && stored?.data?.matchId) {
       setResumeCandidate(stored.data);
       setResumeHandled(false);
       setResumeError(null);
@@ -1574,6 +1588,7 @@ useEffect(() => {
     const primarySeconds = getPrimaryRemainingSeconds();
     const secondarySecondsSnapshot = getSecondaryRemainingSeconds();
     const snapshot = {
+      ruleset: "5v5",
       matchId,
       selectedMatchId,
       eventId: selectedEventId,
@@ -2688,6 +2703,143 @@ const rosterNameLookup = useMemo(() => {
   useEffect(() => {
     refreshMatchLogsRef.current = refreshMatchLogs;
   }, [refreshMatchLogs]);
+
+  useEffect(() => {
+    if (urlHydrationRef.current || typeof window === "undefined") return undefined;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("mode") !== "5v5") return undefined;
+
+    const urlMatchId = params.get("matchId");
+    const urlEventId = params.get("eventId");
+    if (!urlMatchId) return undefined;
+
+    urlHydrationRef.current = true;
+    let ignore = false;
+
+    const hydrateFromUrl = async () => {
+      resumeHydrationRef.current = true;
+      setResumeCandidate(null);
+      setResumeHandled(true);
+      setResumeError(null);
+      setResumeBusy(false);
+      setSetupModalOpen(false);
+
+      if (urlEventId) {
+        setSelectedEventId(urlEventId);
+      }
+      setSelectedMatchId(urlMatchId);
+
+      try {
+        const stored = userId ? loadScorekeeperSession(userId) : null;
+        const storedSnapshot =
+          stored?.data?.ruleset === "5v5" &&
+          (stored.data.matchId === urlMatchId || stored.data.selectedMatchId === urlMatchId)
+            ? stored.data
+            : null;
+
+        if (storedSnapshot) {
+          setSetupForm({
+            ...DEFAULT_SETUP_FORM,
+            ...(storedSnapshot.setupForm || {}),
+          });
+          setRules((prev) => ({
+            ...prev,
+            ...(storedSnapshot.rules || {}),
+          }));
+          setRulesManuallyEdited(Boolean(storedSnapshot.rules));
+          setScore(storedSnapshot.score ?? { a: 0, b: 0 });
+          setTimeoutUsage(storedSnapshot.timeoutUsage ?? { ...DEFAULT_TIMEOUT_USAGE });
+        }
+
+        let targetMatch =
+          (activeMatch?.id === urlMatchId ? activeMatch : null) ||
+          matches.find((match) => match.id === urlMatchId) ||
+          null;
+
+        if (!targetMatch) {
+          targetMatch = await getMatchById(urlMatchId);
+        }
+
+        if (ignore) return;
+        if (!targetMatch) {
+          throw new Error("Unable to locate the initialised 5v5 match.");
+        }
+
+        const targetEventId =
+          targetMatch.event_id || targetMatch.event?.id || urlEventId || null;
+
+        if (targetEventId) {
+          setSelectedEventId(targetEventId);
+        }
+        setActiveMatch(targetMatch);
+        setSelectedMatchId(targetMatch.id);
+        setMatches((prev) => {
+          const exists = prev.some((match) => match.id === targetMatch.id);
+          if (exists) {
+            return prev.map((match) => (match.id === targetMatch.id ? targetMatch : match));
+          }
+          return [targetMatch, ...prev];
+        });
+
+        const teamA = targetMatch.team_a?.id || null;
+        const teamB = targetMatch.team_b?.id || null;
+        if (!teamA && !teamB) {
+          setRosters({ teamA: [], teamB: [] });
+        } else {
+          setRostersLoading(true);
+          setRostersError(null);
+          try {
+            const rosterData = await fetchRostersForTeams(teamA, teamB, targetEventId);
+            if (!ignore) {
+              setRosters(rosterData);
+            }
+          } catch (err) {
+            if (!ignore) {
+              setRostersError(err instanceof Error ? err.message : "Failed to load rosters.");
+            }
+          } finally {
+            if (!ignore) {
+              setRostersLoading(false);
+            }
+          }
+        }
+
+        await Promise.all([
+          loadMatchEventDefinitions(),
+          refreshMatchLogs(targetMatch.id, {
+            a: targetMatch.score_a ?? 0,
+            b: targetMatch.score_b ?? 0,
+          }),
+        ]);
+
+        appliedEventRulesRef.current = `match-${targetMatch.id}`;
+        setConsoleError(null);
+      } catch (err) {
+        if (!ignore) {
+          setConsoleError(
+            err instanceof Error ? err.message : "Failed to open the 5v5 console.",
+          );
+        }
+      } finally {
+        setTimeout(() => {
+          resumeHydrationRef.current = false;
+        }, 0);
+      }
+    };
+
+    void hydrateFromUrl();
+
+    return () => {
+      ignore = true;
+    };
+  }, [
+    activeMatch,
+    matches,
+    userId,
+    fetchRostersForTeams,
+    loadMatchEventDefinitions,
+    refreshMatchLogs,
+  ]);
 
   // user-interaction handlers moved to useScoreKeeperActions
 

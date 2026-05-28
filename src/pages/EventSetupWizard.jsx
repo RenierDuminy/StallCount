@@ -1702,6 +1702,73 @@ export default function EventSetupWizardPage() {
     );
   }, [event.name, divisions, derivedSubmissionCounts, eventMode, selectedEventId]);
 
+  const confirmationChecklist = useMemo(() => {
+    const hasEventBasics = Boolean(event.name && event.name.trim());
+    const hasSelectedEvent =
+      eventMode === "edit" ? Boolean(selectedEventId) : true;
+    const hasDivisions = divisions.length > 0;
+    const hasPools = divisions.some(
+      (division) => (division.pools || []).length > 0,
+    );
+    const hasValidTeams = derivedSubmissionCounts.validTeams > 0;
+
+    return [
+      {
+        key: "event",
+        label: "Event name captured",
+        detail: hasEventBasics
+          ? event.name.trim()
+          : "Add an event name in the Event step.",
+        isComplete: hasEventBasics,
+      },
+      ...(eventMode === "edit"
+        ? [
+            {
+              key: "selected-event",
+              label: "Existing event selected",
+              detail: hasSelectedEvent
+                ? "The selected event will be updated."
+                : "Choose the event to edit in the Event step.",
+              isComplete: hasSelectedEvent,
+            },
+          ]
+        : []),
+      {
+        key: "divisions",
+        label: "At least one division added",
+        detail: hasDivisions
+          ? `${divisions.length} division${divisions.length === 1 ? "" : "s"} added.`
+          : "Add a division in the Divisions step.",
+        isComplete: hasDivisions,
+      },
+      {
+        key: "pools",
+        label: "At least one pool added",
+        detail: hasPools
+          ? `${summary.poolCount} pool${summary.poolCount === 1 ? "" : "s"} added.`
+          : "Add a pool in the Pools step.",
+        isComplete: hasPools,
+      },
+      {
+        key: "teams",
+        label: "At least one valid team assigned to a pool",
+        detail: hasValidTeams
+          ? `${derivedSubmissionCounts.validTeams} valid pool team assignment${
+              derivedSubmissionCounts.validTeams === 1 ? "" : "s"
+            }.`
+          : "Assign a team from the teams directory in Teams & matches.",
+        isComplete: hasValidTeams,
+      },
+    ];
+  }, [
+    event.name,
+    eventMode,
+    selectedEventId,
+    divisions,
+    summary.poolCount,
+    derivedSubmissionCounts.validTeams,
+  ]);
+
   const isEditingExistingEvent = eventMode === "edit" && Boolean(selectedEventId);
 
   const renderEventStep = () => {
@@ -3767,42 +3834,62 @@ export default function EventSetupWizardPage() {
       <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader
           eyebrow="Confirmation"
-          title="Submit hierarchy to database"
+          title="Outstanding checklist"
+          description="Clear each required item before submitting the event hierarchy."
         />
-          {!isSubmissionReady ? (
-            <Card variant="muted" className="wizard-pad-md wizard-text-muted">
-              Complete the earlier steps and ensure at least one pool has
-              assigned teams before submitting.
-            </Card>
-          ) : (
-            <>
-              <p className="wizard-text">
-                Once confirmed, the event, its venues, divisions, pools, pool
-                teams, and scheduled matches will be created in the database as
-                a single batch.
+          <div className="wizard-confirm-checklist">
+            {confirmationChecklist.map((item) => (
+              <label
+                key={item.key}
+                className={mergeClassNames(
+                  "wizard-confirm-checklist__item",
+                  item.isComplete && "is-complete",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={item.isComplete}
+                  disabled
+                  readOnly
+                />
+                <span>
+                  <span className="wizard-text-strong">{item.label}</span>
+                  <span className="wizard-text-muted-xs">{item.detail}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          {!isSubmissionReady && (
+            <div className="sc-alert is-error">
+              Complete the outstanding checklist items before submitting.
+            </div>
+          )}
+          {isSubmissionReady && (
+            <p className="wizard-text">
+              Once confirmed, the event, its venues, divisions, pools, pool
+              teams, and scheduled matches will be created in the database as a
+              single batch.
+            </p>
+          )}
+          {submissionState.error && (
+            <div className="sc-alert is-error">{submissionState.error}</div>
+          )}
+          {submissionSucceeded && submissionState.summary && (
+            <div className="sc-alert is-success wizard-stack-xs">
+              <p>Event created successfully.</p>
+              <p className="wizard-text-xs">
+                Event ID:{" "}
+                <span className="wizard-mono">{submissionState.eventId}</span>
               </p>
-              {submissionState.error && (
-                <div className="sc-alert is-error">{submissionState.error}</div>
-              )}
-              {submissionSucceeded && submissionState.summary && (
-                <div className="sc-alert is-success wizard-stack-xs">
-                  <p>Event created successfully.</p>
-                  <p className="wizard-text-xs">
-                    Event ID:{" "}
-                    <span className="wizard-mono">{submissionState.eventId}</span>
-                  </p>
-                  <p className="wizard-text-muted-xs">
-                    Venues {submissionState.summary.eventVenueCount ?? 0} /
-                    Divisions {submissionState.summary.divisionCount} /
-                    Division teams{" "}
-                    {submissionState.summary.divisionTeamCount ?? 0} / Pools{" "}
-                    {submissionState.summary.poolCount} / Pool teams{" "}
-                    {submissionState.summary.poolTeamCount} / Matches{" "}
-                    {submissionState.summary.matchCount}
-                  </p>
-                </div>
-              )}
-            </>
+              <p className="wizard-text-muted-xs">
+                Venues {submissionState.summary.eventVenueCount ?? 0} /
+                Divisions {submissionState.summary.divisionCount} / Division
+                teams {submissionState.summary.divisionTeamCount ?? 0} / Pools{" "}
+                {submissionState.summary.poolCount} / Pool teams{" "}
+                {submissionState.summary.poolTeamCount} / Matches{" "}
+                {submissionState.summary.matchCount}
+              </p>
+            </div>
           )}
         </Panel>
       </div>

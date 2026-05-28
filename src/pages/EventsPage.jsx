@@ -20,6 +20,23 @@ const EVENT_STATUS_TABS = {
   upcoming: new Set(["scheduled", "upcoming"]),
 };
 
+const parseDateOnly = (value, endOfDay = false) => {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+  const date = match
+    ? new Date(
+        Number(match[1]),
+        Number(match[2]) - 1,
+        Number(match[3]),
+        endOfDay ? 23 : 0,
+        endOfDay ? 59 : 0,
+        endOfDay ? 59 : 0,
+        endOfDay ? 999 : 0,
+      )
+    : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
 const parseEventRules = (rawRules) => {
   if (!rawRules) return null;
   if (typeof rawRules === "string") {
@@ -52,8 +69,18 @@ const getEventStatusTab = (event) => {
   if (EVENT_STATUS_TABS.current.has(status)) return "current";
   if (EVENT_STATUS_TABS.past.has(status)) return "past";
   if (EVENT_STATUS_TABS.upcoming.has(status)) return "upcoming";
+
+  const startDate = parseDateOnly(event?.start_date);
+  const endDate = parseDateOnly(event?.end_date || event?.start_date, true);
+  const now = new Date();
+
+  if (endDate && endDate < now) return "past";
+  if (startDate && startDate > now) return "upcoming";
   return "current";
 };
+
+const getEventsForStatusTab = (events, statusTab) =>
+  events.filter((event) => getEventStatusTab(event) === statusTab);
 
 export default function EventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -104,12 +131,8 @@ export default function EventsPage() {
   }, [requestedStatusTab]);
 
   const filteredEvents = useMemo(() => {
-    const allowedStatuses = EVENT_STATUS_TABS[eventStatusTab] || EVENT_STATUS_TABS.current;
-
-    return events.filter((event) => {
-      const status = (event?.status || "").toString().trim().toLowerCase();
-      return allowedStatuses.has(status);
-    });
+    const normalizedTab = normalizeEventStatusTab(eventStatusTab);
+    return getEventsForStatusTab(events, normalizedTab);
   }, [eventStatusTab, events]);
 
   useEffect(() => {
@@ -127,7 +150,7 @@ export default function EventsPage() {
     const nextFilteredEvents =
       nextTab === eventStatusTab
         ? filteredEvents
-        : events.filter((event) => EVENT_STATUS_TABS[nextTab].has((event?.status || "").toString().trim().toLowerCase()));
+        : getEventsForStatusTab(events, nextTab);
 
     if (!nextId || !nextFilteredEvents.some((evt) => evt.id === nextId)) {
       nextId = nextFilteredEvents[0]?.id || null;
@@ -144,8 +167,8 @@ export default function EventsPage() {
   }, [eventStatusTab, events, filteredEvents, requestedEventId, requestedStatusTab, setSearchParams]);
 
   const selectedEvent = useMemo(
-    () => filteredEvents.find((evt) => evt.id === selectedEventId) || null,
-    [filteredEvents, selectedEventId],
+    () => events.find((evt) => evt.id === selectedEventId) || null,
+    [events, selectedEventId],
   );
 
   useEffect(() => {
@@ -208,6 +231,19 @@ export default function EventsPage() {
     } else {
       setSearchParams({}, { replace: true });
     }
+  };
+
+  const handleSelectEventStatusTab = (tabKey) => {
+    const nextTab = normalizeEventStatusTab(tabKey);
+    const nextEvents = getEventsForStatusTab(events, nextTab);
+    const nextEventId = nextEvents[0]?.id || null;
+
+    setEventStatusTab(nextTab);
+    setSelectedEventId(nextEventId);
+    setSearchParams(
+      nextEventId ? { eventId: nextEventId, status: nextTab } : { status: nextTab },
+      { replace: true },
+    );
   };
 
   useEffect(() => {
@@ -326,10 +362,7 @@ export default function EventsPage() {
                       <button
                         key={tab.key}
                         type="button"
-                        onClick={() => {
-                          setEventStatusTab(tab.key);
-                          setSearchParams({ status: tab.key }, { replace: true });
-                        }}
+                        onClick={() => handleSelectEventStatusTab(tab.key)}
                         className={`${eventStatusTab === tab.key ? "sc-button" : "sc-button is-ghost"} min-w-0 justify-center px-3`}
                       >
                         {tab.label}
@@ -355,37 +388,48 @@ export default function EventsPage() {
                 {filteredEvents.map((event) => {
                   const isActive = event.id === selectedEventId;
                   const eventWorkspacePath = getEventWorkspacePath(event.id);
-                  return (
-                    <div
-                      key={event.id}
-                      className={`${isActive ? "sc-button is-square" : "sc-button is-ghost is-square"} flex min-h-[88px] w-full overflow-hidden rounded-[var(--sc-radius-md)] p-0`}
-                      style={{ borderColor: "rgba(255, 255, 255, 0.9)" }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleSelectEvent(event.id)}
-                        className="is-option flex min-h-[88px] flex-1 items-center justify-start border-0 bg-transparent px-4 text-left text-inherit shadow-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-inset"
+                  const eventCardClassName = `${
+                    isActive ? "sc-button is-square" : "sc-button is-ghost is-square"
+                  } flex min-h-[88px] w-full overflow-hidden rounded-[var(--sc-radius-md)] p-0`;
+
+                  if (eventWorkspacePath) {
+                    return (
+                      <Link
+                        key={event.id}
+                        to={eventWorkspacePath}
+                        className={eventCardClassName}
+                        style={{ borderColor: "rgba(255, 255, 255, 0.9)" }}
+                        aria-label={`Open ${event.name} overview`}
+                        title={`Open ${event.name} overview`}
                       >
-                        <p className="text-base font-semibold leading-tight">{event.name}</p>
-                      </button>
-                      {eventWorkspacePath ? (
-                        <Link
-                          to={eventWorkspacePath}
-                          className="flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l border-white/30 bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-inherit transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-inset"
-                          aria-label={`Open ${event.name} overview`}
-                          title={`Open ${event.name} overview`}
-                        >
-                          Open
-                        </Link>
-                      ) : (
-                        <span
-                          className="flex min-h-[88px] w-20 shrink-0 items-center justify-center border-l border-white/20 bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-ink-muted"
-                          aria-hidden="true"
-                        >
+                        <span className="is-option flex min-h-[88px] flex-1 items-center justify-start border-0 bg-transparent px-4 text-left text-inherit shadow-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-inset">
+                          <span className="text-base font-semibold leading-tight">{event.name}</span>
+                        </span>
+                        <span className="flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l border-white/30 bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-inherit">
                           Open
                         </span>
-                      )}
-                    </div>
+                      </Link>
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={event.id}
+                      type="button"
+                      onClick={() => handleSelectEvent(event.id)}
+                      className={eventCardClassName}
+                      style={{ borderColor: "rgba(255, 255, 255, 0.9)" }}
+                    >
+                      <span className="is-option flex min-h-[88px] flex-1 items-center justify-start border-0 bg-transparent px-4 text-left text-inherit shadow-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-inset">
+                        <span className="text-base font-semibold leading-tight">{event.name}</span>
+                      </span>
+                      <span
+                        className="flex min-h-[88px] w-20 shrink-0 items-center justify-center border-l border-white/20 bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-ink-muted"
+                        aria-hidden="true"
+                      >
+                        Open
+                      </span>
+                    </button>
                   );
                 })}
               </div>

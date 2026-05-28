@@ -7,7 +7,7 @@ module.exports = async function stbRl26UpdateRostersLocal({
   log,
 }) {
   const EXPECTED_EVENT_ID = "e6a34716-f9d6-4d70-bc1a-b610a04e3eaf";
-  const SCRIPT_VERSION = "2026-04-29-local-reconcile-1";
+  const SCRIPT_VERSION = "2026-05-23-local-womens-residence-1";
   const SIGNUP_CSV_URL_STORAGE_KEY = "stallcount:signup-management:csv-url:v1";
   const SIGNUP_DOB_MODE_STORAGE_KEY = "stallcount:signup-management:dob-mode:v1";
   const SCRIPT_STATE_STORAGE_KEY = "stallcount:custom-script:STB_RL_26_update_rosters_local:state:v1";
@@ -53,31 +53,35 @@ module.exports = async function stbRl26UpdateRostersLocal({
     teamOption("Barbarians", "f346e038-d4d6-45ab-9c50-caf842d5808d"),
   ];
   const SECONDARY_TEAM_OPTIONS = [
-    teamOption("Academia"),
-    teamOption("Aristea", "88edb974-649e-4bfc-92d0-ebc04ec64161"),
+    teamOption("Academia", "862e13df-dac1-41b1-89a7-8783e7681f88"),
+    teamOption("Aristea", "6ad73cfa-d99d-447a-ae5f-1e2be36f2594"),
     teamOption("Aurora"),
     teamOption("Capri"),
-    teamOption("Equite", "528fda20-3ff8-43ed-855d-58a0ce53befc"),
+    teamOption("Equite", "abf01658-1261-475b-90a6-c4614a6ce49d"),
     teamOption("Erica"),
     teamOption("Goldfields"),
     teamOption("Harmonie", "d1e84d70-4302-488f-bd4b-05393f7c456b"),
-    teamOption("Heemstede"),
+    teamOption("Harmonica", "d1e84d70-4302-488f-bd4b-05393f7c456b"),
+    teamOption("Heemstede", "c6370c05-fdc8-428b-90dd-1e313cca17b9"),
+    teamOption("Huis Tenerva", "6ad73cfa-d99d-447a-ae5f-1e2be36f2594"),
     teamOption("Huis Neethling"),
     teamOption("Huis ten Bosch", "6ad73cfa-d99d-447a-ae5f-1e2be36f2594"),
-    teamOption("Irene", "79f344b4-977b-4460-b512-8ee468a591b3"),
+    teamOption("Irene", "abf01658-1261-475b-90a6-c4614a6ce49d"),
     teamOption("Isa", "7b3aa1b4-e133-444e-a72f-08dc6156e9f3"),
-    teamOption("Lydia", "b7d93f26-e409-4410-88b4-23682126988b"),
+    teamOption("Lydia", "862e13df-dac1-41b1-89a7-8783e7681f88"),
+    teamOption("Metadia", "862e13df-dac1-41b1-89a7-8783e7681f88"),
     teamOption("Metanoia", "862e13df-dac1-41b1-89a7-8783e7681f88"),
     teamOption("Minerva", "6ad73cfa-d99d-447a-ae5f-1e2be36f2594"),
-    teamOption("Monica"),
+    teamOption("Monica", "d1e84d70-4302-488f-bd4b-05393f7c456b"),
     teamOption("Nemesia"),
     teamOption("Nerina", "c6370c05-fdc8-428b-90dd-1e313cca17b9"),
+    teamOption("Nerinastede", "c6370c05-fdc8-428b-90dd-1e313cca17b9"),
     teamOption("Olympus", "7b3aa1b4-e133-444e-a72f-08dc6156e9f3"),
     teamOption("Pieke", "f70a2efb-ea3f-4595-bb3a-a03d33eb87ff"),
     teamOption("Serruria"),
     teamOption("Silene", "862e13df-dac1-41b1-89a7-8783e7681f88"),
-    teamOption("Sonop", "79f344b4-977b-4460-b512-8ee468a591b3"),
-    teamOption("Venustia", "b7d93f26-e409-4410-88b4-23682126988b"),
+    teamOption("Sonop", "abf01658-1261-475b-90a6-c4614a6ce49d"),
+    teamOption("Venustia", "6ad73cfa-d99d-447a-ae5f-1e2be36f2594"),
     teamOption("Valkyries", "abf01658-1261-475b-90a6-c4614a6ce49d"),
   ];
   const TEAM_RESOLUTION_CONFIG = {

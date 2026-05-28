@@ -6,7 +6,6 @@ import { normaliseRoleList } from "../utils/accessControl";
 
 const ADMIN_MODULE_PRIORITY = [
   "Score keeper",
-  "Score keeper 5v5",
   "Spirit scores",
   "Captain",
   "Event access control",
@@ -21,16 +20,9 @@ const ADMIN_MODULES = [
   {
     label: "Score keeper",
     description:
-      "Run the live scoreboard, reconcile offline submissions, and monitor match flow.",
+      "Set up and open the 7v7 or 5v5 scorekeeping consoles from one workspace.",
     to: "/score-keeper",
     accent: "bg-brand/10 text-ink",
-  },
-  {
-    label: "Score keeper 5v5",
-    description:
-      "Use the 5v5 scorekeeping workspace for matches that run on the 5v5 ruleset.",
-    to: "/score-keeper-5v5",
-    accent: "bg-violet-100 text-violet-700",
   },
   {
     label: "Scrimmage",

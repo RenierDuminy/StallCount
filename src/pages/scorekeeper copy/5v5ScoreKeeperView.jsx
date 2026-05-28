@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import { formatClock, formatMatchLabel } from "./5v5scorekeeperUtils";
 import { useScoreKeeperData } from "./5v5useScoreKeeperData";
@@ -663,13 +664,12 @@ export default function ScoreKeeperView() {
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:items-end">
-                  <button
-                    type="button"
-                    onClick={() => setSetupModalOpen(true)}
+                  <Link
+                    to="/score-keeper"
                     className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-emerald-400 hover:text-emerald-800"
                   >
                     Setup
-                  </button>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -917,14 +917,12 @@ export default function ScoreKeeperView() {
             className="space-y-[var(--setup-button-size)] rounded-3xl border border-slate-200 bg-white p-2 text-center"
             style={{ "--setup-button-size": "4.5rem" }}
           >
-            <button
-              type="button"
-              onClick={() => setSetupModalOpen(true)}
-              disabled={initialising}
-              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+            <Link
+              to="/score-keeper"
+              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark"
             >
-              {initialising ? "Initialising..." : "Match setup"}
-            </button>
+              Open scorekeeper setup
+            </Link>
             {consoleError && (
               <p className="text-sm text-rose-600">{consoleError}</p>
             )}
@@ -984,7 +982,7 @@ export default function ScoreKeeperView() {
       )}
 
       {setupModalOpen && (
-        <ActionModal title="Match setup" onClose={() => setSetupModalOpen(false)} alignTop scrollable wide>
+        <ActionModal title="5v5 match setup" onClose={() => setSetupModalOpen(false)} alignTop scrollable wide>
           <form className="space-y-2" onSubmit={handleInitialiseMatch}>
             <div className="space-y-1.5">
               <div>

@@ -22,11 +22,16 @@ const eventWorkspaces = Object.entries(workspaceModules)
         : null;
     const derivedSlug = explicitSlug || slugify(eventName);
     if (!derivedSlug) return null;
+    const priority =
+      typeof mod.EVENT_WORKSPACE_PRIORITY === "number"
+        ? mod.EVENT_WORKSPACE_PRIORITY
+        : 0;
     return {
       eventId,
       slug: derivedSlug,
       path: `/events/${derivedSlug}`,
       Component,
+      priority,
       meta: {
         eventName: eventName || derivedSlug.replace(/-/g, " "),
         sourcePath: path.replace(/^\.\//, "src/pages/"),
@@ -35,8 +40,13 @@ const eventWorkspaces = Object.entries(workspaceModules)
   })
   .filter(Boolean);
 
+const eventWorkspacePriorityByEventId = {};
 const eventWorkspacePathByEventId = eventWorkspaces.reduce((acc, workspace) => {
-  acc[workspace.eventId] = workspace.path;
+  const currentPriority = eventWorkspacePriorityByEventId[workspace.eventId];
+  if (currentPriority === undefined || workspace.priority > currentPriority) {
+    acc[workspace.eventId] = workspace.path;
+    eventWorkspacePriorityByEventId[workspace.eventId] = workspace.priority;
+  }
   return acc;
 }, {});
 

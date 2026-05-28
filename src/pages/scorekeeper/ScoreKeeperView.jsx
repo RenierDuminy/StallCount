@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
+import { saveScorekeeperSession } from "../../services/scorekeeperSessionStore";
 import { formatClock } from "./scorekeeperUtils";
 import { useScoreKeeperData } from "./useScoreKeeperData";
 import { useScoreKeeperActions } from "./useScoreKeeperActions";
+import { useScoreKeeperData as useScoreKeeper5v5Data } from "../scorekeeper copy/5v5useScoreKeeperData";
+import { useScoreKeeperActions as useScoreKeeper5v5Actions } from "../scorekeeper copy/5v5useScoreKeeperActions";
 import { ScorekeeperPopups } from "./ScorekeeperPopup";
 import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
 import {
@@ -62,8 +65,59 @@ const SECONDARY_TIMER_GUIDES = {
 };
 
 export default function ScoreKeeperView() {
+  const navigate = useNavigate();
   const data = useScoreKeeperData();
   const actions = useScoreKeeperActions(data);
+  const fiveVFiveData = useScoreKeeper5v5Data();
+  const fiveVFiveController = {
+    ...fiveVFiveData,
+    onInitialiseComplete: (match) => {
+      const eventId =
+        match?.event_id ||
+        match?.event?.id ||
+        fiveVFiveData.selectedEventId ||
+        "";
+      const matchId = match?.id || fiveVFiveData.selectedMatchId || "";
+      if (fiveVFiveData.userId && matchId) {
+        const now = Date.now();
+        saveScorekeeperSession(fiveVFiveData.userId, {
+          ruleset: "5v5",
+          matchId,
+          selectedMatchId: matchId,
+          eventId,
+          matchStarted: false,
+          setupForm: { ...fiveVFiveData.setupForm },
+          rules: { ...fiveVFiveData.rules },
+          score: {
+            a: match?.score_a ?? 0,
+            b: match?.score_b ?? 0,
+          },
+          pendingEntries: [],
+          timer: {
+            seconds: (fiveVFiveData.rules.matchDuration || 0) * 60,
+            running: false,
+            label: "Game time",
+            savedAt: now,
+            totalSeconds: (fiveVFiveData.rules.matchDuration || 0) * 60,
+          },
+          secondaryTimer: {
+            seconds: fiveVFiveData.rules.timeoutSeconds || 0,
+            running: false,
+            label: "Timeout",
+            savedAt: now,
+            totalSeconds: fiveVFiveData.rules.timeoutSeconds || 0,
+          },
+          timeoutUsage: { A: 0, B: 0 },
+        });
+      }
+      const params = new URLSearchParams();
+      params.set("mode", "5v5");
+      if (eventId) params.set("eventId", eventId);
+      if (matchId) params.set("matchId", matchId);
+      navigate(`/score-keeper-5v5?${params.toString()}`);
+    },
+  };
+  const fiveVFiveActions = useScoreKeeper5v5Actions(fiveVFiveController);
 
   const {
     events,
@@ -1029,7 +1083,7 @@ export default function ScoreKeeperView() {
               disabled={initialising}
               className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {initialising ? "Initialising..." : "Match setup"}
+              {initialising ? "Initialising..." : "7v7 match setup"}
             </button>
             <Link
               to={spiritScoresUrl}
@@ -1037,6 +1091,14 @@ export default function ScoreKeeperView() {
             >
               Enter spirit scores
             </Link>
+            <button
+              type="button"
+              onClick={() => fiveVFiveData.setSetupModalOpen(true)}
+              disabled={fiveVFiveData.initialising}
+              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full bg-violet-600 px-4 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {fiveVFiveData.initialising ? "Initialising..." : "5v5 match setup"}
+            </button>
             {consoleError && (
               <p className="text-sm text-rose-600">{consoleError}</p>
             )}
@@ -1055,6 +1117,7 @@ export default function ScoreKeeperView() {
         }}
         setup={{
           open: setupModalOpen,
+          title: "7v7 match setup",
           onClose: () => setSetupModalOpen(false),
           onSubmit: handleInitialiseMatch,
           events,
@@ -1080,6 +1143,7 @@ export default function ScoreKeeperView() {
           initialising,
           selectedMatch,
           isStartMatchReady,
+          error: consoleError,
         }}
         possession={{
           open: possessionModalOpen,
@@ -1149,6 +1213,46 @@ export default function ScoreKeeperView() {
           onDelete: handleSimpleEventDelete,
           displayTeamA,
           displayTeamB,
+        }}
+      />
+      <ScorekeeperPopups
+        setup={{
+          open: fiveVFiveData.setupModalOpen,
+          title: "5v5 match setup",
+          onClose: () => fiveVFiveData.setSetupModalOpen(false),
+          onSubmit: fiveVFiveActions.handleInitialiseMatch,
+          events: fiveVFiveData.events,
+          eventsLoading: fiveVFiveData.eventsLoading,
+          eventsError: fiveVFiveData.eventsError,
+          selectedEventId: fiveVFiveData.selectedEventId,
+          onSelectEvent: fiveVFiveData.setSelectedEventId,
+          onSelectMatch: fiveVFiveData.setSelectedMatchId,
+          matches: fiveVFiveData.matches,
+          matchesLoading: fiveVFiveData.matchesLoading,
+          matchesError: fiveVFiveData.matchesError,
+          selectedMatchId: fiveVFiveData.selectedMatchId,
+          onRefreshMatches: fiveVFiveData.loadMatches,
+          rules: fiveVFiveData.rules,
+          setRules: fiveVFiveData.setRules,
+          setupForm: fiveVFiveData.setupForm,
+          setSetupForm: fiveVFiveData.setSetupForm,
+          teamAId: fiveVFiveData.teamAId,
+          teamBId: fiveVFiveData.teamBId,
+          displayTeamA: fiveVFiveData.displayTeamA,
+          displayTeamB: fiveVFiveData.displayTeamB,
+          isAbbaEnabled:
+            (fiveVFiveData.rules.division || "").toLowerCase() === "mixed" &&
+            fiveVFiveData.rules.mixedRatioRule !== "B",
+          initialising: fiveVFiveData.initialising,
+          selectedMatch: fiveVFiveData.selectedMatch,
+          isStartMatchReady:
+            Boolean(fiveVFiveData.setupForm.startingTeamId) &&
+            (
+              (fiveVFiveData.rules.division || "").toLowerCase() !== "mixed" ||
+              fiveVFiveData.rules.mixedRatioRule === "B" ||
+              ["male", "female"].includes(fiveVFiveData.setupForm.abbaPattern)
+            ),
+          error: fiveVFiveData.consoleError,
         }}
       />
     </ScorekeeperShell>

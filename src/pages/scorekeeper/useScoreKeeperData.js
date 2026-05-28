@@ -60,8 +60,20 @@ const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
 const SOFT_CAP_TIMER_LABEL = "Soft Cap";
 const TIME_CAP_TARGET_LABEL = "Time cap reached, new match target set.";
+const SETUP_MATCH_STATUSES = new Set([
+  "halftime",
+  "initialized",
+  "live",
+  "postponed",
+  "scheduled",
+]);
 
 const OPTIMISTIC_PREFIX = "local-";
+
+function isSetupMatchStatus(match) {
+  const normalizedStatus = String(match?.status || "").trim().toLowerCase();
+  return SETUP_MATCH_STATUSES.has(normalizedStatus);
+}
 
 const DEFAULT_EVENT_RULES = {
   format: "wfdfChampionship",
@@ -789,9 +801,10 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
         const data = await getMatchesByEvent(targetEventId, 24, {
           includeFinished: false,
         });
-        setMatches(data);
+        const setupMatches = (data || []).filter(isSetupMatchStatus);
+        setMatches(setupMatches);
 
-        if (data.length === 0) {
+        if (setupMatches.length === 0) {
           setSelectedMatchId(null);
           return;
         }
@@ -800,12 +813,12 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
           preferredMatchId ||
           (preserveSelection ? selectedMatchId : null) ||
           null;
-        const matchExists = requestedId && data.some((match) => match.id === requestedId);
+        const matchExists = requestedId && setupMatches.some((match) => match.id === requestedId);
         if (matchExists) {
           setSelectedMatchId(requestedId);
           return;
         }
-        setSelectedMatchId(allowDefaultSelect ? data[0].id : null);
+        setSelectedMatchId(allowDefaultSelect ? setupMatches[0].id : null);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unable to load matches.";
         setMatchesError(message);
@@ -1038,7 +1051,8 @@ useEffect(() => {
       return;
     }
     const stored = loadScorekeeperSession(userId);
-    if (stored?.data?.matchId) {
+    const storedRuleset = stored?.data?.ruleset || "7v7";
+    if (storedRuleset === "7v7" && stored?.data?.matchId) {
       setResumeCandidate(stored.data);
       setResumeHandled(false);
       setResumeError(null);
@@ -1596,6 +1610,7 @@ useEffect(() => {
     const primarySeconds = getPrimaryRemainingSeconds();
     const secondarySecondsSnapshot = getSecondaryRemainingSeconds();
     const snapshot = {
+      ruleset: "7v7",
       matchId,
       selectedMatchId,
       eventId: selectedEventId,

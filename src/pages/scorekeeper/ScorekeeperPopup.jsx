@@ -23,6 +23,7 @@ export function ScorekeeperPopups({
   const { candidate, handled, busy, error, onResume, onDiscard } = resume;
   const {
     open: setupOpen,
+    title: setupTitle = "7v7 match setup",
     onClose: onSetupClose,
     onSubmit: onSetupSubmit,
     events = [],
@@ -48,6 +49,7 @@ export function ScorekeeperPopups({
     initialising,
     selectedMatch,
     isStartMatchReady,
+    error: setupError,
   } = setup;
   const {
     open: possessionOpen,
@@ -173,7 +175,7 @@ export function ScorekeeperPopups({
       )}
 
       {setupOpen && (
-        <ActionModal title="Match setup" onClose={onSetupClose} alignTop scrollable wide>
+        <ActionModal title={setupTitle} onClose={onSetupClose} alignTop scrollable wide>
           <form className="space-y-2" onSubmit={onSetupSubmit}>
             <div className="space-y-1.5">
               <div>
@@ -491,6 +493,11 @@ export function ScorekeeperPopups({
             >
               {initialising ? "Initialising..." : "Initialise"}
             </button>
+            {setupError && (
+              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {setupError}
+              </p>
+            )}
           </form>
         </ActionModal>
       )}
