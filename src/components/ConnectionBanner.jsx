@@ -37,7 +37,7 @@ export default function ConnectionBanner() {
       </button>
     </div>
   ) : (
-    <div className="w-full bg-amber-500/90 px-4 py-2 text-center text-sm font-semibold text-white">
+    <div className="w-full border-b border-warning-border bg-warning-bg px-4 py-2 text-center text-sm font-semibold text-warning-ink">
       Offline. You can keep entering scores - changes are queued and sync when you're back online.
     </div>
   );

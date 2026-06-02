@@ -271,6 +271,19 @@ export default function TeamProfilePage() {
     return { received, given };
   }, [filteredSpiritScores, state.team]);
 
+  const hasSpiritScores = spiritBreakdown.received.length > 0 || spiritBreakdown.given.length > 0;
+
+  const visibleTabs = useMemo(() => {
+    return TABS.filter((tab) => tab.id !== "spirit" || hasSpiritScores);
+  }, [hasSpiritScores]);
+
+  useEffect(() => {
+    if (visibleTabs.some((tab) => tab.id === activeTab)) {
+      return;
+    }
+    setActiveTab("games");
+  }, [activeTab, visibleTabs]);
+
   const recordLabel =
     metrics.draws > 0
       ? `${metrics.wins}-${metrics.losses}-${metrics.draws}`
@@ -285,17 +298,15 @@ export default function TeamProfilePage() {
         state.team.division.event ? ` · ${state.team.division.event.name}` : ""
       }`
     : "Division assignment pending";
-  const locationLabel = state.team?.division?.event?.location || "";
   const displayName = state.team?.name
     ? `${state.team.name}${state.team.short_name ? ` (${state.team.short_name})` : ""}`
     : "Loading team...";
 
   return (
     <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
-      <SectionShell className="space-y-6 py-8">
-        <Card variant="light" className="space-y-5 p-6 sm:p-8 shadow-xl shadow-[rgba(8,25,21,0.08)]">
+      <SectionShell className="space-y-3 py-3 sm:space-y-6 sm:py-8">
+        <Card variant="light" className="space-y-3 p-4 shadow-xl shadow-[rgba(8,25,21,0.08)] sm:space-y-5 sm:p-8">
           <SectionHeader
-            eyebrow="Team profile"
             eyebrowVariant="tag"
             title={displayName}
             description={divisionSummary}
@@ -307,14 +318,11 @@ export default function TeamProfilePage() {
               </div>
             }
             >
-              <div className="flex flex-wrap gap-2">
-                {locationLabel && <Chip variant="ghost">{`Location: ${locationLabel}`}</Chip>}
-              </div>
             </SectionHeader>
         </Card>
 
         {state.error ? (
-          <Card variant="light" className="p-6 text-sm text-rose-700 shadow-md shadow-[rgba(8,25,21,0.06)]">
+          <Card variant="light" className="p-4 text-sm text-rose-700 shadow-md shadow-[rgba(8,25,21,0.06)] sm:p-6">
             {state.error}{" "}
             <Link to="/teams" className="font-semibold underline">
               Return to teams list
@@ -323,7 +331,7 @@ export default function TeamProfilePage() {
           </Card>
         ) : (
           <>
-            <Card variant="light" className="space-y-6 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
+            <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)] sm:space-y-6 sm:p-6">
               <SectionHeader
                 eyebrow="Season snapshot"
                 eyebrowVariant="tag"
@@ -346,7 +354,7 @@ export default function TeamProfilePage() {
                   </Field>
                 }
               />
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-2 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
                 <SummaryStat label="Games played" value={metrics.gamesPlayed} />
                 <SummaryStat label="Record (W-L-D)" value={ready ? recordLabel : "—"} />
                 <SummaryStat
@@ -354,19 +362,19 @@ export default function TeamProfilePage() {
                   value={ready ? `${metrics.goalsFor} / ${metrics.goalsAgainst}` : "—"}
                 />
                 <SummaryStat label="Goal diff" value={ready ? metrics.goalDiff : "—"} />
-                <SummaryStat label="Spirit average" value={spiritAverageLabel} />
+                {hasSpiritScores && <SummaryStat label="Spirit average" value={spiritAverageLabel} />}
                 <SummaryStat label="Active players" value={metrics.activePlayers} />
               </div>
             </Card>
 
-            <Card variant="light" className="space-y-6 p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
-              <div className="flex flex-wrap items-center gap-3">
-                {TABS.map((tab) => (
+            <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)] sm:space-y-6 sm:p-6">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                {visibleTabs.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
-                    className={`rounded-full border border-[var(--sc-surface-light-border)] px-4 py-2 text-sm font-semibold transition ${
+                    className={`rounded-full border border-[var(--sc-surface-light-border)] px-3 py-1.5 text-sm font-semibold transition sm:px-4 sm:py-2 ${
                       activeTab === tab.id
                         ? "border-[#0a3d29] bg-[#0a3d29] text-white shadow"
                         : "text-[var(--sc-surface-light-ink)]/75 hover:bg-white/70"
@@ -377,11 +385,11 @@ export default function TeamProfilePage() {
                 ))}
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {state.loading ? (
                   <Panel
                     variant="light"
-                    className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/70 p-6 text-center text-sm text-[var(--sc-surface-light-ink)]/70"
+                    className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/70 p-4 text-center text-sm text-[var(--sc-surface-light-ink)]/70 sm:p-6"
                   >
                     Loading live team data...
                   </Panel>
@@ -396,7 +404,7 @@ export default function TeamProfilePage() {
                         rosterCount={eventFilter === "all" ? state.roster.length : filteredPlayerStats.length}
                       />
                     )}
-                    {activeTab === "spirit" && (
+                    {activeTab === "spirit" && visibleTabs.some((tab) => tab.id === "spirit") && (
                       <SpiritTab
                         received={spiritBreakdown.received}
                         given={spiritBreakdown.given}
@@ -427,12 +435,12 @@ function GamesTable({ matches, teamId, venueLookup }) {
       <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
         <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
           <tr>
-            <th className="px-4 py-3">Date &amp; time</th>
-            <th className="px-4 py-3">Team 1</th>
-            <th className="px-4 py-3 text-center">Score</th>
-            <th className="px-4 py-3">Team 2</th>
-            <th className="px-4 py-3">Pool</th>
-            <th className="px-4 py-3">Field</th>
+            <th className="px-3 py-2 sm:px-4 sm:py-3">Date &amp; time</th>
+            <th className="px-3 py-2 sm:px-4 sm:py-3">Team 1</th>
+            <th className="px-3 py-2 text-center sm:px-4 sm:py-3">Score</th>
+            <th className="px-3 py-2 sm:px-4 sm:py-3">Team 2</th>
+            <th className="px-3 py-2 sm:px-4 sm:py-3">Pool</th>
+            <th className="px-3 py-2 sm:px-4 sm:py-3">Field</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
@@ -455,7 +463,7 @@ function GamesTable({ matches, teamId, venueLookup }) {
 
             return (
               <tr key={match.id} className="align-top">
-                <td className="whitespace-nowrap px-4 py-3 text-[var(--sc-surface-light-ink)]/70">
+                <td className="whitespace-nowrap px-3 py-2 text-[var(--sc-surface-light-ink)]/70 sm:px-4 sm:py-3">
                   <div className="flex items-center gap-2">
                     <span>{formatMatchTime(match.start_time)}</span>
                     {mediaDetails ? (
@@ -463,7 +471,7 @@ function GamesTable({ matches, teamId, venueLookup }) {
                     ) : null}
                   </div>
                 </td>
-                <td className="px-4 py-3 font-semibold text-[var(--sc-surface-light-ink)]">
+                <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)] sm:px-4 sm:py-3">
                   {leftTeam ? (
                     <Link
                       to={`/teams/${leftTeam.id}`}
@@ -475,12 +483,12 @@ function GamesTable({ matches, teamId, venueLookup }) {
                     "TBD"
                   )}
                 </td>
-                <td className={`px-4 py-3 text-center text-base font-semibold ${scoreClass}`}>
+                <td className={`px-3 py-2 text-center text-base font-semibold sm:px-4 sm:py-3 ${scoreClass}`}>
                   {Number.isFinite(leftScore) && Number.isFinite(rightScore)
                     ? `${leftScore} - ${rightScore}`
                     : "TBD"}
                 </td>
-                <td className="px-4 py-3 font-semibold text-[var(--sc-surface-light-ink)]">
+                <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)] sm:px-4 sm:py-3">
                   {rightTeam ? (
                     <Link
                       to={`/teams/${rightTeam.id}`}
@@ -492,10 +500,10 @@ function GamesTable({ matches, teamId, venueLookup }) {
                     "TBD"
                   )}
                 </td>
-                <td className="px-4 py-3 text-[var(--sc-surface-light-ink)]/70">
+                <td className="px-3 py-2 text-[var(--sc-surface-light-ink)]/70 sm:px-4 sm:py-3">
                   {match.pool?.name || match.division?.name || "—"}
                 </td>
-                <td className="px-4 py-3 text-[var(--sc-surface-light-ink)]/70">
+                <td className="px-3 py-2 text-[var(--sc-surface-light-ink)]/70 sm:px-4 sm:py-3">
                   {resolveVenueName(match)}
                 </td>
               </tr>
@@ -561,7 +569,7 @@ function PlayersTable({ stats, rosterCount }) {
 
   if (!stats?.length) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         <EmptyState message="No player stats recorded for this team yet." />
         <p className="text-center text-sm text-[var(--sc-surface-light-ink)]/70">
           Active roster count: {rosterCount || 0}
@@ -571,19 +579,19 @@ function PlayersTable({ stats, rosterCount }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       <Panel variant="light" className="overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)]">
         <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
           <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
             <tr>
-              <th className="px-4 py-3">{renderSortLabel("Number", "jerseyNumber")}</th>
-              <th className="px-4 py-3">{renderSortLabel("Player", "playerName")}</th>
-              <th className="px-4 py-3 text-right">{renderSortLabel("Goals", "goals")}</th>
-              <th className="px-4 py-3 text-right">{renderSortLabel("Assists", "assists")}</th>
-              <th className="px-4 py-3 text-right">{renderSortLabel("Blocks", "blocks")}</th>
-              <th className="px-4 py-3 text-right">{renderSortLabel("Turnovers", "turnovers")}</th>
-              <th className="px-4 py-3 text-right">{renderSortLabel("Games", "games")}</th>
-              <th className="px-4 py-3 text-right">{renderSortLabel("Total (G+A)", "total")}</th>
+              <th className="px-3 py-2 sm:px-4 sm:py-3">{renderSortLabel("Number", "jerseyNumber")}</th>
+              <th className="px-3 py-2 sm:px-4 sm:py-3">{renderSortLabel("Player", "playerName")}</th>
+              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Goals", "goals")}</th>
+              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Assists", "assists")}</th>
+              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Blocks", "blocks")}</th>
+              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Turnovers", "turnovers")}</th>
+              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Games", "games")}</th>
+              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Total (G+A)", "total")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
@@ -591,10 +599,10 @@ function PlayersTable({ stats, rosterCount }) {
               const total = stat.goals + stat.assists;
               return (
                 <tr key={stat.playerId}>
-                  <td className="px-4 py-3 font-semibold text-[var(--sc-surface-light-ink)]">
+                  <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)] sm:px-4 sm:py-3">
                     {stat.jerseyNumber ?? "--"}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2 sm:px-4 sm:py-3">
                     <div className="font-semibold text-[var(--sc-surface-light-ink)]">
                       <Link
                         to={`/players/${stat.playerId}`}
@@ -604,14 +612,14 @@ function PlayersTable({ stats, rosterCount }) {
                       </Link>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right font-semibold text-[var(--sc-surface-light-ink)]">
+                  <td className="px-3 py-2 text-right font-semibold text-[var(--sc-surface-light-ink)] sm:px-4 sm:py-3">
                     {stat.goals}
                   </td>
-                  <td className="px-4 py-3 text-right">{stat.assists}</td>
-                  <td className="px-4 py-3 text-right">{stat.blocks}</td>
-                  <td className="px-4 py-3 text-right">{stat.turnovers}</td>
-                  <td className="px-4 py-3 text-right">{stat.games || 0}</td>
-                  <td className="px-4 py-3 text-right">{formatPerGame(total, stat.games)}</td>
+                  <td className="px-3 py-2 text-right sm:px-4 sm:py-3">{stat.assists}</td>
+                  <td className="px-3 py-2 text-right sm:px-4 sm:py-3">{stat.blocks}</td>
+                  <td className="px-3 py-2 text-right sm:px-4 sm:py-3">{stat.turnovers}</td>
+                  <td className="px-3 py-2 text-right sm:px-4 sm:py-3">{stat.games || 0}</td>
+                  <td className="px-3 py-2 text-right sm:px-4 sm:py-3">{formatPerGame(total, stat.games)}</td>
                 </tr>
               );
             })}
@@ -628,7 +636,7 @@ function PlayersTable({ stats, rosterCount }) {
 function SpiritTab({ received, given, teamId }) {
   return (
     <div className="overflow-x-auto">
-      <div className="flex min-w-full flex-col gap-6 lg:flex-row lg:items-start">
+      <div className="flex min-w-full flex-col gap-3 sm:gap-6 lg:flex-row lg:items-start">
         <div className="w-full lg:min-w-[700px] lg:flex-1">
           <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">Spirit received</h3>
           <p className="text-sm text-[var(--sc-surface-light-ink)]/70">
@@ -666,7 +674,7 @@ function SpiritTable({ entries, emptyLabel, teamId, variant = "received" }) {
   return (
     <Panel
       variant="light"
-      className="mt-3 overflow-hidden rounded-lg border border-[var(--sc-surface-light-border)]/70 shadow-sm shadow-[rgba(8,25,21,0.04)]"
+      className="mt-2 overflow-hidden rounded-lg border border-[var(--sc-surface-light-border)]/70 shadow-sm shadow-[rgba(8,25,21,0.04)] sm:mt-3"
     >
       <div className="overflow-x-auto bg-white/90">
         <table className="min-w-[720px] text-sm text-[var(--sc-surface-light-ink)]/85">
@@ -732,11 +740,11 @@ function SpiritTable({ entries, emptyLabel, teamId, variant = "received" }) {
 
 function SummaryStat({ label, value }) {
   return (
-    <Panel variant="light" className="p-4 shadow-sm shadow-[rgba(8,25,21,0.04)]">
+    <Panel variant="light" className="p-3 shadow-sm shadow-[rgba(8,25,21,0.04)] sm:p-4">
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-semibold text-[var(--sc-surface-light-ink)]">{value}</p>
+      <p className="mt-0.5 text-xl font-semibold text-[var(--sc-surface-light-ink)] sm:mt-1 sm:text-2xl">{value}</p>
     </Panel>
   );
 }
@@ -745,7 +753,7 @@ function EmptyState({ message }) {
   return (
     <Panel
       variant="light"
-      className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/70 px-6 py-8 text-center text-sm text-[var(--sc-surface-light-ink)]/70"
+      className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/70 px-4 py-5 text-center text-sm text-[var(--sc-surface-light-ink)]/70 sm:px-6 sm:py-8"
     >
       {message}
     </Panel>
@@ -781,19 +789,6 @@ function formatMatchTime(value) {
   }
   try {
     return GAME_TIME_FORMATTER.format(new Date(value));
-  } catch {
-    return value;
-  }
-}
-
-function formatFullDate(value) {
-  if (!value) return "—";
-  try {
-    return new Date(value).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
   } catch {
     return value;
   }

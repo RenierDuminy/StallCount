@@ -420,6 +420,8 @@ export default function MediaAdminPage() {
       <SectionShell as="header" className="py-4">
         <Card className="space-y-4 overflow-hidden p-5 sm:p-6">
           <SectionHeader
+            eyebrow="Media"
+            eyebrowVariant="media"
             title="Match media control"
             action={
               <div className="flex flex-wrap gap-2">
@@ -454,7 +456,7 @@ export default function MediaAdminPage() {
             as="section"
             className={`space-y-4 p-5 xl:col-span-7 transition-all ${
               selectedEventId
-                ? "border-[rgba(121,184,255,0.28)] bg-[linear-gradient(180deg,rgba(121,184,255,0.08),transparent_32%)]"
+                ? "border-media-border bg-media-bg"
                 : ""
             }`}
           >
@@ -558,7 +560,7 @@ export default function MediaAdminPage() {
               <SectionHeader title="Selected match details" />
               {selectedMatch ? (
                 <div className="grid gap-2.5">
-                  <div className="space-y-1 rounded-2xl border border-[rgba(121,184,255,0.3)] bg-[linear-gradient(180deg,rgba(121,184,255,0.08),transparent_55%)] p-3">
+                  <div className="space-y-1 rounded-2xl border border-media-border bg-media-bg p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Match</p>
                     <p className="text-sm font-semibold text-ink">{formatMatchLabel(selectedMatch)}</p>
                     <p className="text-xs text-ink-muted">
@@ -571,7 +573,7 @@ export default function MediaAdminPage() {
                   <div
                     className={`space-y-1 border p-3 ${
                       selectedMedia?.url
-                        ? "rounded-2xl border-[rgba(79,209,161,0.28)] bg-[linear-gradient(180deg,rgba(79,209,161,0.08),transparent_55%)]"
+                        ? "rounded-2xl border-media-border bg-media-bg"
                         : "rounded-2xl border-border/70"
                     }`}
                   >
@@ -874,11 +876,11 @@ function mergeTeamColorAttributes(existingAttributes, nextColorAttributes) {
 function getStatCardClassName(tone) {
   switch (tone) {
     case "active":
-      return "border-[rgba(121,184,255,0.34)] bg-[radial-gradient(circle_at_top_left,rgba(121,184,255,0.16),transparent_60%)]";
+      return "border-media-border bg-media-bg";
     case "loading":
-      return "border-[rgba(255,231,168,0.34)] bg-[radial-gradient(circle_at_top_left,rgba(255,231,168,0.14),transparent_60%)]";
+      return "border-warning-border bg-warning-bg";
     case "success":
-      return "border-[rgba(79,209,161,0.34)] bg-[radial-gradient(circle_at_top_left,rgba(79,209,161,0.16),transparent_60%)]";
+      return "border-media-border bg-media-bg";
     default:
       return "border-border/70 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_60%)]";
   }

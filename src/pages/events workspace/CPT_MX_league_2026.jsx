@@ -19,39 +19,6 @@ const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const TEAM_STANDINGS_GRID_STYLE = {
   gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 14rem), 1fr))",
 };
-const FINAL_STANDINGS_GRID_STYLE = {
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 18rem), 1fr))",
-};
-const FINAL_STANDINGS = [
-  {
-    division: "Open",
-    teams: [
-      "Mutiny",
-      "Kaalvoet",
-      "Rex",
-      "Bunnies",
-      "Gradient",
-      "Maties Ma'Gents",
-      "Wits Phoenix Rising",
-      "Zephyr",
-      "UCT Man Cubs",
-      "Inyhwagi (SA U20)",
-      "UFH Simbas",
-    ],
-  },
-  {
-    division: "Women",
-    teams: [
-      "Hot Sauce",
-      "UCT Bengals",
-      "Fierce",
-      "Maties Ma'Ladies",
-      "Craft",
-      "Wicked",
-      "UFH Nalas",
-    ],
-  },
-];
 const VENUE_GRID_CLASS =
   "flex flex-wrap gap-2";
 
@@ -389,25 +356,12 @@ export default function CptMxLeagueWorkspacePage() {
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
               Final standings
             </p>
-            <div className="grid items-start gap-2" style={FINAL_STANDINGS_GRID_STYLE}>
-              {FINAL_STANDINGS.map((division) => (
-                <Panel key={division.division} variant="muted" className="min-w-0 space-y-2 border border-white/50 p-3">
-                  <p className="text-sm font-semibold uppercase tracking-wide text-ink">
-                    {division.division}
-                  </p>
-                  <ol className="space-y-1 text-sm text-ink">
-                    {division.teams.map((team, index) => (
-                      <li key={team} className="flex min-w-0 gap-2">
-                        <span className="w-5 shrink-0 text-right tabular-nums text-ink-muted">
-                          {index + 1}.
-                        </span>
-                        <span className="min-w-0 break-words">{team}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </Panel>
-              ))}
-            </div>
+            <Panel
+              variant="muted"
+              className="border border-white/50 p-4 text-center text-sm font-semibold uppercase tracking-wide text-ink-muted"
+            >
+              TBC
+            </Panel>
           </div>
           <div className="border-t border-white/30 pt-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">

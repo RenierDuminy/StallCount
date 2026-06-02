@@ -1,4 +1,7 @@
 import { supabase } from "./supabaseClient";
+import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
+
+const SUBSCRIPTIONS_CACHE_TTL_MS = 30 * 1000;
 
 export type SubscriptionTargetType = "match" | "team" | "player" | "event" | "division";
 
@@ -20,17 +23,23 @@ function normalizeTopics(topics: Array<string | null | undefined>): string[] {
 
 export async function getSubscriptions(profileId: string): Promise<SubscriptionRow[]> {
   if (!profileId) return [];
-  const { data, error } = await supabase
-    .from("subscriptions")
-    .select("id, profile_id, target_type, target_id, topics, created_at")
-    .eq("profile_id", profileId)
-    .order("created_at", { ascending: false });
+  return getCachedQuery(
+    `subscriptions:${profileId}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .select("id, profile_id, target_type, target_id, topics, created_at")
+        .eq("profile_id", profileId)
+        .order("created_at", { ascending: false });
 
-  if (error) {
-    throw new Error(error.message || "Failed to load subscriptions");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load subscriptions");
+      }
 
-  return (data ?? []) as SubscriptionRow[];
+      return (data ?? []) as SubscriptionRow[];
+    },
+    { ttlMs: SUBSCRIPTIONS_CACHE_TTL_MS },
+  );
 }
 
 export async function upsertSubscription(options: {
@@ -61,6 +70,7 @@ export async function upsertSubscription(options: {
     throw new Error(error?.message || "Failed to follow target");
   }
 
+  invalidateCachedQueries(`subscriptions:${options.profileId}`);
   return data as SubscriptionRow;
 }
 
@@ -70,6 +80,7 @@ export async function deleteSubscriptionById(id: string) {
   if (error) {
     throw new Error(error.message || "Failed to delete subscription");
   }
+  invalidateCachedQueries("subscriptions");
 }
 
 export async function unfollowTarget(options: {
@@ -89,6 +100,7 @@ export async function unfollowTarget(options: {
   if (error) {
     throw new Error(error.message || "Failed to unfollow target");
   }
+  invalidateCachedQueries(`subscriptions:${options.profileId}`);
 }
 
 export function resolveTopicsInput(raw: string): string[] {

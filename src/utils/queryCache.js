@@ -98,11 +98,16 @@ function fetchAndCache(key, fetcher) {
 }
 
 export async function getCachedQuery(rawKey, fetcher, options = {}) {
-  const { ttlMs = DEFAULT_TTL_MS, staleWhileRevalidate = true, forceRefresh = false } = options;
+  const {
+    ttlMs = DEFAULT_TTL_MS,
+    staleWhileRevalidate = true,
+    forceRefresh = false,
+    refreshOnPageReload = true,
+  } = options;
   const key = buildKey(rawKey);
   const cached = readCacheEntry(key);
 
-  if (forceRefresh || FORCE_FRESH_FETCH_ON_PAGE_RELOAD) {
+  if (forceRefresh || (refreshOnPageReload && FORCE_FRESH_FETCH_ON_PAGE_RELOAD)) {
     try {
       return await fetchAndCache(key, fetcher);
     } catch (error) {

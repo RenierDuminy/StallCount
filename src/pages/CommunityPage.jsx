@@ -54,8 +54,8 @@ const SCRIMMAGE_FEATURES = [
 export default function CommunityPage() {
   return (
     <div className="pb-16 text-ink">
-      <SectionShell as="header" className="py-6">
-        <Card className="space-y-4 p-6 sm:p-8">
+      <SectionShell as="header" className="py-3 sm:py-6">
+        <Card className="space-y-3 p-4 sm:space-y-4 sm:p-8">
           <SectionHeader
             eyebrow="Community"
             title="Connect with the Ultimate Frisbee community."
@@ -64,18 +64,18 @@ export default function CommunityPage() {
         </Card>
       </SectionShell>
 
-      <SectionShell as="section" className="space-y-4 sm:space-y-6">
-        <Card className="space-y-4 p-6">
+      <SectionShell as="section" className="space-y-3 sm:space-y-6">
+        <Card className="space-y-3 p-4 sm:space-y-4 sm:p-6">
           <SectionHeader
             eyebrow="Scrimmage"
             title="Run pickup games with real-time tools."
             description="Keep reps organized with live scoring and a shared play log."
 
           />
-          <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-[1.4fr_1fr]">
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
               {SCRIMMAGE_FEATURES.map((feature) => (
-                <Panel key={feature.title} variant="muted" className="space-y-2 p-4">
+                <Panel key={feature.title} variant="muted" className="space-y-1.5 p-3 sm:space-y-2 sm:p-4">
                   <p className="text-sm font-semibold text-ink">{feature.title}</p>
                   <p className="text-sm text-ink-muted">{feature.description}</p>
                 </Panel>
@@ -88,17 +88,17 @@ export default function CommunityPage() {
         </Card>
       </SectionShell>
 
-      <SectionShell as="section" className="space-y-4 sm:space-y-6">
-        <Card className="space-y-4 p-6">
+      <SectionShell as="section" className="space-y-3 sm:space-y-6">
+        <Card className="space-y-3 p-4 sm:space-y-4 sm:p-6">
           <SectionHeader
             eyebrow="Resources"
             title="Community resources"
             description="Everything you need to stay plugged in with your local ultimate scene."
           />
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-3">
             {COMMUNITY_RESOURCES.map((resource) => (
-              <Card key={resource.title} variant="muted" className="flex h-full flex-col gap-3 p-5">
-                <div className="space-y-2">
+              <Card key={resource.title} variant="muted" className="flex h-full flex-col gap-2 p-4 sm:gap-3 sm:p-5">
+                <div className="space-y-1.5 sm:space-y-2">
                   <Chip variant="tag">{resource.tag}</Chip>
                   <h3 className="text-lg font-semibold text-ink">{resource.title}</h3>
                   <p className="text-sm text-ink-muted">{resource.description}</p>

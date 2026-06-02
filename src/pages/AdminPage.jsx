@@ -22,70 +22,70 @@ const ADMIN_MODULES = [
     description:
       "Set up and open the 7v7 or 5v5 scorekeeping consoles from one workspace.",
     to: "/score-keeper",
-    accent: "bg-brand/10 text-ink",
+    accent: "border border-live-border bg-live-bg text-live-ink",
   },
   {
     label: "Scrimmage",
     description:
       "Scrimmage console with the same live scoring workflow for test matches.",
     to: "/admin/scrimmage",
-    accent: "bg-emerald-100 text-emerald-700",
+    accent: "border border-live-border bg-live-bg text-live-ink",
   },
   {
     label: "Scoreboard debug",
     description:
       "Temporary sandbox to enter device data, preview the board, and inspect payloads.",
     to: "/admin/scoreboard-debug",
-    accent: "bg-indigo-100 text-indigo-700",
+    accent: "border border-admin-border bg-admin-bg text-admin-ink",
   },
   {
     label: "Captain",
     description:
       "Manage rosters, submit spirit scores, and coordinate pre-game logistics.",
     to: "/captain",
-    accent: "bg-sky-100 text-sky-700",
+    accent: "border border-warning-border bg-warning-bg text-warning-ink",
   },
   {
     label: "Sys admin",
     description:
       "Configure leagues, manage access, and oversee StallCount's operational data.",
     to: "/sys-admin",
-    accent: "bg-amber-100 text-amber-700",
+    accent: "border border-admin-border bg-admin-bg text-admin-ink",
   },
   {
     label: "Access control",
     description:
       "Scan every account, view their IDs, and change access tiers without leaving the admin hub.",
     to: "/admin/access",
-    accent: "bg-fuchsia-100 text-fuchsia-700",
+    accent: "border border-admin-border bg-admin-bg text-admin-ink",
   },
   {
     label: "Event access control",
     description:
       "Review event-linked access and role assignments tied to specific competitions.",
     to: "/admin/event-access",
-    accent: "bg-teal-100 text-teal-700",
+    accent: "border border-admin-border bg-admin-bg text-admin-ink",
   },
   {
     label: "Signup management",
     description:
       "Compare event roster players with an imported external signup CSV using name and date of birth.",
     to: "/admin/signup-management",
-    accent: "bg-cyan-100 text-cyan-700",
+    accent: "border border-admin-border bg-admin-bg text-admin-ink",
   },
   {
     label: "Tournament director",
     description:
       "Desktop command center to view, create, and alter tournament data across every table.",
     to: "/tournament-director",
-    accent: "bg-slate-200 text-slate-800",
+    accent: "border border-admin-border bg-admin-bg text-admin-ink",
   },
   {
     label: "Playoff structure",
     description:
       "Inspect bracket definitions, linked playoff matches, and future source-based resolution work.",
     to: "/admin/playoff-structure",
-    accent: "bg-orange-100 text-orange-700",
+    accent: "border border-warning-border bg-warning-bg text-warning-ink",
     allowedRoles: ["admin", "administrator", "sys_admin", "tournament_director"],
   },
   {
@@ -93,28 +93,28 @@ const ADMIN_MODULES = [
     description:
       "Attach or edit stream links for existing matches without leaving the admin suite.",
     to: "/admin/media",
-    accent: "bg-rose-100 text-rose-700",
+    accent: "border border-media-border bg-media-bg text-media-ink",
   },
   {
     label: "Event setup",
     description:
       "Step-by-step flow to create events, their divisions, pools, and seeded matches before publishing.",
     to: "/admin/event-setup",
-    accent: "bg-lime-100 text-lime-700",
+    accent: "border border-warning-border bg-warning-bg text-warning-ink",
   },
   {
     label: "Custom scripts",
     description:
       "View, edit, and run bundled admin JS scripts with local browser overrides.",
     to: "/admin/custom-scripts",
-    accent: "bg-stone-200 text-stone-800",
+    accent: "border border-admin-border bg-admin-bg text-admin-ink",
     allowedRoles: ["admin"],
   },
   {
     label: "Spirit scores",
     description: "Capture and review spirit scores for completed matches.",
     to: "/spirit-scores",
-    accent: "bg-emerald-100 text-emerald-700",
+    accent: "border border-border bg-surface-muted text-ink",
   },
 ];
 
@@ -166,6 +166,7 @@ export default function AdminPage() {
         <Card className="space-y-4 p-6 sm:p-8">
           <SectionHeader
             eyebrow="Admin"
+            eyebrowVariant="admin"
             title="Admin tools"
             description="Choose your workspace to access the specialised controls you need."
           />

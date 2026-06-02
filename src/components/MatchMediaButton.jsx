@@ -20,7 +20,7 @@ export function MatchMediaButton({ media, className }) {
   };
 
   const baseClassName =
-    "inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white/70 text-slate-700 transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea4335]";
+    "inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-media-border bg-media-bg text-media-ink transition hover:-translate-y-0.5 hover:bg-media-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-media";
   const mergedClassName = className ? `${baseClassName} ${className}` : baseClassName;
 
   return (

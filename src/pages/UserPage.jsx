@@ -2,9 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Card, Chip, Panel, SectionShell, SectionHeader } from "../components/ui/primitives";
-import { getCurrentUser } from "../services/userService";
+import { getCurrentUser, getRoleCatalog } from "../services/userService";
 import { supabase } from "../services/supabaseClient";
-import { getUserRoleSlugs, normaliseRoleList } from "../utils/accessControl";
+import {
+  CAPTAIN_ACCESS_ROLES,
+  EVENT_ACCESS_PERMISSIONS,
+  SCOREKEEPER_ACCESS_ROLES,
+  TOURNAMENT_DIRECTOR_ACCESS_ROLES,
+  getUserRoleSlugs,
+  normaliseRoleList,
+  userHasAnyPermission,
+} from "../utils/accessControl";
 
 const ROLE_LABELS = {
   admin: "Administrator",
@@ -19,6 +27,55 @@ const ACCESS_LEVELS = {
 };
 
 const NON_ELEVATED_ROLE_SLUGS = new Set(["user"]);
+const ADMIN_ROLE_SLUGS = new Set(["admin", "administrator", "sys_admin"]);
+
+const QUICK_ACCESS_TOOLS = [
+  {
+    key: "scorekeeper",
+    label: "Score keeper",
+    description: "Open live scoring.",
+    to: "/score-keeper",
+    roles: SCOREKEEPER_ACCESS_ROLES,
+    accent:
+      "border-2 border-live-border bg-[rgba(251,113,133,0.22)] text-live-ink shadow-[0_8px_22px_rgba(251,113,133,0.14)]",
+  },
+  {
+    key: "captain",
+    label: "Captain",
+    description: "Manage captain workflows.",
+    to: "/captain",
+    roles: CAPTAIN_ACCESS_ROLES,
+    accent:
+      "border-2 border-warning-border bg-[rgba(251,191,36,0.22)] text-warning-ink shadow-[0_8px_22px_rgba(251,191,36,0.14)]",
+  },
+  {
+    key: "tournament-director",
+    label: "Tournament director",
+    description: "Manage event operations.",
+    to: "/tournament-director",
+    roles: TOURNAMENT_DIRECTOR_ACCESS_ROLES,
+    accent:
+      "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-admin-ink shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
+  },
+  {
+    key: "admin-tools",
+    label: "Admin tools",
+    description: "Open operational admin.",
+    to: "/admin",
+    requireElevated: true,
+    accent:
+      "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-admin-ink shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
+  },
+  {
+    key: "event-access-control",
+    label: "Event access control",
+    description: "Manage event-linked access.",
+    to: "/admin/event-access",
+    permissions: EVENT_ACCESS_PERMISSIONS,
+    accent:
+      "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-admin-ink shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
+  },
+];
 
 const ROLE_LIBRARY = {
   user: {
@@ -127,6 +184,10 @@ function isElevatedRole(role) {
   return Boolean(role) && !NON_ELEVATED_ROLE_SLUGS.has(role);
 }
 
+function hasAnyRole(roleSet, allowedRoles) {
+  return normaliseRoleList(allowedRoles).some((role) => roleSet.has(role));
+}
+
 function getAssignmentRoleLabel(assignment) {
   const value = assignment?.roleName || assignment?.role?.name || assignment?.roleId || "Role";
   return String(value).trim() || "Role";
@@ -151,6 +212,7 @@ export default function UserPage() {
   const { session, roles: sessionRoles } = useAuth();
   const user = session?.user || null;
   const [profile, setProfile] = useState(null);
+  const [roleCatalog, setRoleCatalog] = useState(null);
   const [profileLoading, setProfileLoading] = useState(Boolean(user));
   const [profileError, setProfileError] = useState(null);
   const accessInfo = useMemo(() => resolveAccessLevel(user), [user]);
@@ -184,6 +246,32 @@ export default function UserPage() {
     }
 
     loadProfile();
+    return () => {
+      isCancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!user) {
+      setRoleCatalog(null);
+      return;
+    }
+
+    getRoleCatalog()
+      .then((catalog) => {
+        if (!isCancelled) {
+          setRoleCatalog(Array.isArray(catalog) ? catalog : []);
+        }
+      })
+      .catch((error) => {
+        console.error("[UserPage] Unable to load role catalog", error);
+        if (!isCancelled) {
+          setRoleCatalog([]);
+        }
+      });
+
     return () => {
       isCancelled = true;
     };
@@ -255,6 +343,17 @@ export default function UserPage() {
     () => normalizedRoles.filter((role) => !ROLE_LIBRARY[role]),
     [normalizedRoles]
   );
+
+  const roleAssignmentsForAccess = useMemo(() => {
+    if (Array.isArray(sessionRoles) && sessionRoles.length > 0) {
+      return sessionRoles;
+    }
+
+    return [
+      ...(Array.isArray(globalAssignmentSource) ? globalAssignmentSource : []),
+      ...(Array.isArray(eventAssignmentSource) ? eventAssignmentSource : []),
+    ];
+  }, [eventAssignmentSource, globalAssignmentSource, sessionRoles]);
 
   const accessLevelLabels = useMemo(() => {
     const labels = [];
@@ -361,6 +460,24 @@ export default function UserPage() {
     [recognisedRoles],
   );
 
+  const quickAccessTools = useMemo(() => {
+    const roleSet = new Set(normalizedRoles);
+    const hasAdminRole = Array.from(roleSet).some((role) => ADMIN_ROLE_SLUGS.has(role));
+    return QUICK_ACCESS_TOOLS.filter((tool) => {
+      if (hasAdminRole) return true;
+      if (tool.requireElevated) return elevatedRoles.length > 0;
+      if (tool.permissions) {
+        return userHasAnyPermission(
+          user,
+          tool.permissions,
+          roleAssignmentsForAccess,
+          roleCatalog,
+        );
+      }
+      return hasAnyRole(roleSet, tool.roles);
+    });
+  }, [elevatedRoles.length, normalizedRoles, roleAssignmentsForAccess, roleCatalog, user]);
+
   const profileEntries = useMemo(() => {
     if (!user) return [];
     const metadata = user.user_metadata || {};
@@ -382,12 +499,11 @@ export default function UserPage() {
 
   return (
     <div className="pb-16 text-ink">
-      <SectionShell className="space-y-6">
-        <Card className="space-y-5 p-6 sm:p-7">
+      <SectionShell className="space-y-3 sm:space-y-6">
+        <Card className="space-y-3 p-4 sm:space-y-5 sm:p-7">
           <SectionHeader
             eyebrow="Account overview"
             title={displayName}
-            description="Quick access to the information we have on record for your StallCount login."
             action={
               user ? (
                 <button className="sc-button is-ghost" type="button" onClick={handleLogout}>
@@ -401,27 +517,27 @@ export default function UserPage() {
             }
           />
           {profileLoading && (
-            <Panel variant="muted" className="p-4 text-sm text-ink-muted">
+            <Panel variant="muted" className="p-3 text-sm text-ink-muted sm:p-4">
               Loading your dashboard profile...
             </Panel>
           )}
           {profileError && (
-            <Panel variant="muted" className="p-4 text-sm text-ink">
+            <Panel variant="muted" className="p-3 text-sm text-ink sm:p-4">
               {profileError}
             </Panel>
           )}
         </Card>
 
-        <Card className="space-y-4 p-6">
+        <section className="space-y-3 border-t border-border pt-3 sm:space-y-4 sm:pt-5">
           {!user ? (
             <p className="text-sm text-ink-muted">You are not signed in. Log in to view your profile information.</p>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
               {profileEntries.map((entry) => (
-                <Panel key={entry.label} variant="muted" className="p-4 text-sm">
+                <Panel key={entry.label} variant="muted" className="p-3 text-sm sm:p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{entry.label}</p>
                   {entry.isAccessGroupedList ? (
-                    <div className="mt-2 space-y-2">
+                    <div className="mt-1.5 space-y-1.5 sm:mt-2 sm:space-y-2">
                       {(entry.groups || []).map((group) => (
                         <div key={`${entry.label}-${group.topic}`} className="space-y-1">
                           <p className="break-words text-base font-semibold text-ink">{group.topic}</p>
@@ -442,21 +558,38 @@ export default function UserPage() {
               ))}
             </div>
           )}
-        </Card>
+        </section>
+
+        {quickAccessTools.length > 0 ? (
+          <section className="grid grid-cols-2 gap-2 border-t border-border pt-3 sm:flex sm:flex-wrap sm:items-center sm:pt-5">
+            <p className="col-span-2 text-xs font-semibold uppercase tracking-wide text-ink-muted sm:mr-1">
+              Quick access
+            </p>
+            {quickAccessTools.map((tool) => (
+              <Link
+                key={tool.key}
+                to={tool.to}
+                className={`inline-flex min-h-11 items-center justify-center rounded-full px-2 py-2 text-center text-[10px] font-semibold uppercase leading-tight tracking-wide transition hover:brightness-110 sm:min-h-9 sm:px-3 sm:py-1.5 sm:text-xs ${tool.accent}`}
+              >
+                {tool.label}
+              </Link>
+            ))}
+          </section>
+        ) : null}
 
         {user ? (
           <>
             {elevatedRoles.length === 0 ? (
-              <Card className="p-6 text-sm text-ink-muted">
+              <section className="border-t border-border pt-3 text-sm text-ink-muted sm:pt-5">
                 You currently have viewer-level access. Reach out to an administrator if you require elevated permissions for officiating duties.
-              </Card>
+              </section>
             ) : moduleRoles.length > 0 ? (
               moduleRoles.map((role) => {
                 const module = ROLE_LIBRARY[role];
                 return (
-                  <Card key={role} className="space-y-4 p-6">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-2">
+                  <section key={role} className="space-y-3 border-t border-border pt-3 sm:space-y-4 sm:pt-5">
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-3">
+                      <div className="space-y-1.5 sm:space-y-2">
                         <h3 className="text-xl font-semibold text-ink">{module.label}</h3>
                         <p className="text-sm text-ink-muted">{module.description}</p>
                       </div>
@@ -464,20 +597,20 @@ export default function UserPage() {
                         {role.replace(/_/g, " ")}
                       </Chip>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-2 sm:space-y-3">
                       {module.actions.map((action) => (
-                        <Panel key={action} variant="muted" className="p-4 text-sm text-ink">
+                        <Panel key={action} variant="muted" className="p-3 text-sm text-ink sm:p-4">
                           {action}
                         </Panel>
                       ))}
                     </div>
-                  </Card>
+                  </section>
                 );
               })
             ) : null}
 
-            <Card className="space-y-4 p-6">
-              <div className="flex flex-wrap items-start justify-between gap-4">
+            <section className="space-y-3 border-t border-border pt-3 sm:space-y-4 sm:pt-5">
+              <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
                 <SectionHeader
                   title="Need help?"
                   description="Reach out if you hit an issue, need access changes, or have general questions."
@@ -485,12 +618,12 @@ export default function UserPage() {
                 <img
                   src="/assets/RCFD Logo (light).png"
                   alt="RCDF logo"
-                  className="h-20 w-auto object-contain p-1"
+                  className="h-14 w-auto object-contain p-1 sm:h-20"
                   loading="lazy"
                 />
               </div>
-              <div className="grid gap-4 text-sm">
-                <Panel variant="muted" className="flex flex-col gap-2 p-4">
+              <div className="grid gap-3 text-sm sm:gap-4">
+                <Panel variant="muted" className="flex flex-col gap-1.5 p-3 sm:gap-2 sm:p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">General enquiries</p>
                   <p className="text-ink">
                     StallCount is a product of RCDF (Pty) Ltd. For more information or assistance, drop us an email at{" "}
@@ -503,7 +636,7 @@ export default function UserPage() {
                   </p>
                 </Panel>
               </div>
-            </Card>
+            </section>
           </>
         ) : null}
       </SectionShell>

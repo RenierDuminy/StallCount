@@ -535,7 +535,7 @@ export default function EventsPage() {
                     tabIndex={0}
                     onClick={handleMediaClick}
                     onKeyDown={handleMediaKeyDown}
-                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border bg-white/70 text-ink transition hover:-translate-y-0.5 hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea4335]"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-media-border bg-media-bg text-media-ink transition hover:-translate-y-0.5 hover:bg-media-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-media"
                     title={`Watch on ${mediaProviderLabel}`}
                     aria-label={`Watch on ${mediaProviderLabel}`}
                   >
@@ -545,12 +545,12 @@ export default function EventsPage() {
 
                 const statusClass =
                   match.status === "live"
-                    ? "bg-emerald-100 text-emerald-800"
+                    ? "border border-live-border bg-live-bg text-live-ink"
                     : match.status === "halftime"
-                      ? "bg-sky-100 text-sky-800"
+                      ? "border border-live-border bg-live-bg text-live-ink"
                       : match.status === "scheduled" || match.status === "ready" || match.status === "pending"
-                        ? "bg-slate-100 text-slate-700"
-                        : "bg-amber-100 text-amber-800";
+                        ? "border border-border bg-surface-muted text-ink-muted"
+                        : "border border-warning-border bg-warning-bg text-warning-ink";
 
                 const content = (
                   <>

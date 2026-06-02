@@ -1,7 +1,8 @@
 import { supabase, type PlayerRow } from "./supabaseClient";
-import { getCachedQuery, invalidateCachedQuery } from "../utils/queryCache";
+import { getCachedQuery, invalidateCachedQueries, invalidateCachedQuery } from "../utils/queryCache";
 
 const PLAYER_DIRECTORY_CACHE_TTL_MS = 10 * 60 * 1000;
+const PLAYER_IDS_CACHE_TTL_MS = 10 * 60 * 1000;
 
 type TeamRosterRow = {
   id: string;
@@ -201,11 +202,18 @@ export async function getPlayerDirectory(): Promise<PlayerDirectoryRow[]> {
 export async function getPlayersByIds(ids: string[]): Promise<PlayerDirectoryRow[]> {
   const uniqueIds = Array.from(new Set((ids || []).filter((id) => typeof id === "string" && id.trim().length > 0)));
   if (!uniqueIds.length) return [];
-  const { data, error } = await supabase.from("player").select(PLAYER_SELECT).in("id", uniqueIds);
-  if (error) {
-    throw new Error(error.message || "Failed to load players");
-  }
-  return (data ?? []) as PlayerDirectoryRow[];
+  return getCachedQuery(
+    `players:ids:${uniqueIds.join(",")}`,
+    async () => {
+      const { data, error } = await supabase.from("player").select(PLAYER_SELECT).in("id", uniqueIds);
+      if (error) {
+        throw new Error(error.message || "Failed to load players");
+      }
+      const lookup = new Map(((data ?? []) as PlayerDirectoryRow[]).map((row) => [row.id, row]));
+      return uniqueIds.map((id) => lookup.get(id)).filter((row): row is PlayerDirectoryRow => Boolean(row));
+    },
+    { ttlMs: PLAYER_IDS_CACHE_TTL_MS },
+  );
 }
 
 type UpsertPlayerPayload = {
@@ -239,6 +247,7 @@ export async function upsertPlayer(payload: UpsertPlayerPayload) {
       throw new Error(normalizePlayerWriteError(error, "Unable to update player"));
     }
     invalidateCachedQuery("players:directory");
+    invalidateCachedQueries("players:ids");
     return payload.id;
   }
 
@@ -253,6 +262,7 @@ export async function upsertPlayer(payload: UpsertPlayerPayload) {
   }
 
   invalidateCachedQuery("players:directory");
+  invalidateCachedQueries("players:ids");
 
   return data?.id as string;
 }

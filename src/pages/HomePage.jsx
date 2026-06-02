@@ -1,27 +1,22 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { getAllTeams, getTeamsByIds, getTeamMatches } from "../services/teamService";
-import { getEventsList } from "../services/leagueService";
-import { getTableCount } from "../services/statsService";
+import { getTeamsByIds, getTeamMatches } from "../services/teamService";
 import {
-  getRecentMatches,
-  getOpenMatches,
   getMatchesByIds,
-  getRecentFinalMatches,
-  getRecentMatchesWithMedia,
 } from "../services/matchService";
-import { getRecentLiveEvents } from "../services/liveEventService";
 import { getSubscriptions } from "../services/subscriptionService";
 import { getCurrentUser } from "../services/userService";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../services/supabaseClient";
-import { getPlayersByIds } from "../services/playerService";
+import {
+  getHomeBelowFoldSummary,
+  getHomeFinalsSummary,
+  getHomeHeroSummary,
+  getHomeStreamingSummary,
+} from "../services/homeSummaryService";
 import { getEventWorkspacePath } from "./eventWorkspaces";
 import { Card, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
 import { StandardEventMatchCard } from "../components/StandardEventMatchCard";
 import {
-  getMatchMediaDetails,
-  getMatchMediaProviderLabel,
   hasMatchMedia,
 } from "../utils/matchMedia";
 
@@ -29,7 +24,6 @@ const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const MAX_MY_TEAMS = 2;
 const MAX_MY_MATCHES = 3;
-const MAX_SUBSCRIPTIONS_PREVIEW = 4;
 const DESKTOP_HOME_LIMITS = {
   teams: 8,
   events: 40,
@@ -126,7 +120,9 @@ export default function HomePage() {
   const [liveEvents, setLiveEvents] = useState([]);
   const [stats, setStats] = useState({ teams: 0, players: 0, events: 0 });
   const [loading, setLoading] = useState(true);
+  const [belowFoldLoading, setBelowFoldLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [belowFoldError, setBelowFoldError] = useState(null);
   const [heroActionStatus, setHeroActionStatus] = useState(null);
 
   const [profile, setProfile] = useState(null);
@@ -136,15 +132,13 @@ export default function HomePage() {
   const [personalizedMessage, setPersonalizedMessage] = useState(null);
   const [myTeamInsights, setMyTeamInsights] = useState([]);
   const [myMatchInsights, setMyMatchInsights] = useState([]);
-  const [followedPlayers, setFollowedPlayers] = useState([]);
   const [myTeamsLoading, setMyTeamsLoading] = useState(false);
   const [myMatchesLoading, setMyMatchesLoading] = useState(false);
 
-  const [signingOut, setSigningOut] = useState(false);
-  const [signOutError, setSignOutError] = useState(null);
   const [renderStreaming, setRenderStreaming] = useState(false);
   const [renderMatches, setRenderMatches] = useState(false);
   const [renderFinals, setRenderFinals] = useState(false);
+  const [renderEventTimeline, setRenderEventTimeline] = useState(false);
   const [renderPersonalized, setRenderPersonalized] = useState(false);
   const [streamsLoading, setStreamsLoading] = useState(false);
   const [finalsLoading, setFinalsLoading] = useState(false);
@@ -187,69 +181,32 @@ export default function HomePage() {
   useEffect(() => {
     let ignore = false;
 
-    async function loadPublicData() {
+    async function loadHeroData() {
       setLoading(true);
       setError(null);
       try {
-        const results = await Promise.all([
-          toSettled(getAllTeams(homeLimits.teams)),
-          toSettled(getEventsList(homeLimits.events)),
-          toSettled(getOpenMatches(homeLimits.openMatches)),
-          toSettled(getRecentLiveEvents(homeLimits.liveEvents)),
-          toSettled(getTableCount("player")),
-          toSettled(getTableCount("teams")),
-          toSettled(getTableCount("events")),
-        ]);
+        const summary = await getHomeHeroSummary({
+          limits: {
+            openMatches: homeLimits.openMatches,
+            liveEvents: homeLimits.liveEvents,
+          },
+        });
 
         if (ignore) return;
 
-        const [
-          teamsResult,
-          eventsResult,
-          openMatchesResult,
-          liveEventsResult,
-          playersCountResult,
-          teamsCountResult,
-          eventsCountResult,
-        ] = results;
+        setOpenMatches(summary.openMatches);
+        setLiveEvents(summary.liveEvents);
 
-        const failures = [];
-
-        if (teamsResult.status === "fulfilled") {
-          setFeaturedTeams(teamsResult.value);
-        } else {
-          failures.push("teams");
-          console.error("[HomePage] Failed to load teams:", teamsResult.reason);
-        }
-
-        if (eventsResult.status === "fulfilled") {
-          setEvents(eventsResult.value);
-        } else {
-          failures.push("events");
-          console.error("[HomePage] Failed to load events:", eventsResult.reason);
-        }
-
-        if (openMatchesResult.status === "fulfilled") {
-          setOpenMatches(openMatchesResult.value);
-        } else {
-          failures.push("upcoming matches");
-          console.error("[HomePage] Failed to load open matches:", openMatchesResult.reason);
-        }
-
-        if (liveEventsResult.status === "fulfilled") {
-          setLiveEvents(liveEventsResult.value);
-        } else {
-          console.error("[HomePage] Failed to load live events:", liveEventsResult.reason);
-        }
-
-        setStats({
-          players: playersCountResult.status === "fulfilled" ? playersCountResult.value : 0,
-          teams: teamsCountResult.status === "fulfilled" ? teamsCountResult.value : 0,
-          events: eventsCountResult.status === "fulfilled" ? eventsCountResult.value : 0,
-        });
-
-        if (failures.length > 0) {
-          setError(`Unable to load ${failures.join(", ")}. Please refresh and try again.`);
+        if (summary.failures.length > 0) {
+          summary.failures.forEach((failure) => {
+            console.error(`[HomePage] ${failure.message}`);
+          });
+          const criticalFailures = summary.failures
+            .map((failure) => failure.key)
+            .filter((key) => key !== "live events");
+          if (criticalFailures.length > 0) {
+            setError(`Unable to load ${criticalFailures.join(", ")}. Please refresh and try again.`);
+          }
         }
       } catch (err) {
         if (!ignore) {
@@ -263,12 +220,61 @@ export default function HomePage() {
       }
     }
 
-    loadPublicData();
+    loadHeroData();
 
     return () => {
       ignore = true;
     };
-  }, [homeLimits]);
+  }, [homeLimits.liveEvents, homeLimits.openMatches]);
+
+  useEffect(() => {
+    if (!renderEventTimeline) return undefined;
+
+    let ignore = false;
+
+    async function loadBelowFoldData() {
+      setBelowFoldLoading(true);
+      setBelowFoldError(null);
+      try {
+        const summary = await getHomeBelowFoldSummary({
+          limits: {
+            teams: homeLimits.teams,
+            events: homeLimits.events,
+          },
+        });
+
+        if (ignore) return;
+
+        setFeaturedTeams(summary.teams);
+        setEvents(summary.events);
+        setStats(summary.stats);
+
+        if (summary.failures.length > 0) {
+          summary.failures.forEach((failure) => {
+            console.error(`[HomePage] ${failure.message}`);
+          });
+          setBelowFoldError(
+            `Unable to load ${summary.failures.map((failure) => failure.key).join(", ")}. Please refresh and try again.`,
+          );
+        }
+      } catch (err) {
+        if (!ignore) {
+          console.error("[HomePage] Failed to load below-the-fold summary:", err);
+          setBelowFoldError(err?.message || "Unable to load event data.");
+        }
+      } finally {
+        if (!ignore) {
+          setBelowFoldLoading(false);
+        }
+      }
+    }
+
+    loadBelowFoldData();
+
+    return () => {
+      ignore = true;
+    };
+  }, [homeLimits.events, homeLimits.teams, renderEventTimeline]);
 
   useEffect(() => {
     if (!renderStreaming) return undefined;
@@ -278,28 +284,22 @@ export default function HomePage() {
     async function loadStreamData() {
       setStreamsLoading(true);
       try {
-        const results = await Promise.all([
-          toSettled(getRecentMatches(homeLimits.recentMatches)),
-          toSettled(getRecentMatchesWithMedia(homeLimits.broadcastMatches)),
-        ]);
+        const summary = await getHomeStreamingSummary({
+          limits: {
+            recentMatches: homeLimits.recentMatches,
+            broadcastMatches: homeLimits.broadcastMatches,
+          },
+        });
 
         if (ignore) return;
 
-        const [latestMatchesResult, recentBroadcastMatchesResult] = results;
+        setLatestMatches(summary.latestMatches);
+        setRecentBroadcastMatches(summary.recentBroadcastMatches);
 
-        if (latestMatchesResult.status === "fulfilled") {
-          setLatestMatches(latestMatchesResult.value);
-        } else {
-          console.error("[HomePage] Failed to load recent matches:", latestMatchesResult.reason);
-        }
-
-        if (recentBroadcastMatchesResult.status === "fulfilled") {
-          setRecentBroadcastMatches(recentBroadcastMatchesResult.value);
-        } else {
-          console.error(
-            "[HomePage] Failed to load recent matches with media:",
-            recentBroadcastMatchesResult.reason,
-          );
+        if (summary.failures.length > 0) {
+          summary.failures.forEach((failure) => {
+            console.error(`[HomePage] ${failure.message}`);
+          });
         }
       } catch (err) {
         if (!ignore) {
@@ -325,10 +325,15 @@ export default function HomePage() {
     let ignore = false;
     setFinalsLoading(true);
 
-    getRecentFinalMatches(homeLimits.finalMatches)
-      .then((rows) => {
+    getHomeFinalsSummary({ limits: { finalMatches: homeLimits.finalMatches } })
+      .then((summary) => {
         if (!ignore) {
-          setRecentFinalMatches(rows || []);
+          setRecentFinalMatches(summary.recentFinalMatches);
+          if (summary.failures.length > 0) {
+            summary.failures.forEach((failure) => {
+              console.error(`[HomePage] ${failure.message}`);
+            });
+          }
         }
       })
       .catch((err) => {
@@ -420,17 +425,6 @@ export default function HomePage() {
       new Set(
         (subscriptions || [])
           .filter((sub) => normalizeTargetType(sub.target_type) === "match")
-          .map((sub) => sub.target_id)
-          .filter(Boolean),
-      ),
-    );
-  }, [subscriptions]);
-
-  const followedPlayerIds = useMemo(() => {
-    return Array.from(
-      new Set(
-        (subscriptions || [])
-          .filter((sub) => normalizeTargetType(sub.target_type) === "player")
           .map((sub) => sub.target_id)
           .filter(Boolean),
       ),
@@ -545,29 +539,6 @@ export default function HomePage() {
     };
   }, [followedMatchIds]);
 
-  useEffect(() => {
-    if (!followedPlayerIds.length) {
-      setFollowedPlayers([]);
-      return;
-    }
-    let ignore = false;
-    getPlayersByIds(followedPlayerIds)
-      .then((rows) => {
-        if (!ignore) {
-          setFollowedPlayers(rows || []);
-        }
-      })
-      .catch((err) => {
-        if (!ignore) {
-          console.error("[HomePage] Unable to load followed players:", err);
-          setFollowedPlayers([]);
-        }
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [followedPlayerIds]);
-
   const safeEvents = useMemo(() => events ?? [], [events]);
   const safeLatestMatches = useMemo(() => latestMatches ?? [], [latestMatches]);
   const safeOpenMatches = useMemo(() => openMatches ?? [], [openMatches]);
@@ -660,67 +631,6 @@ export default function HomePage() {
   }, [safeOpenMatches, heroCardIsLive, heroCardMatch]);
 
   const isLoggedIn = Boolean(session?.user);
-  const teamLookup = useMemo(
-    () =>
-      buildTeamLookup({
-        featuredTeams,
-        matches: [...safeLatestMatches, ...safeOpenMatches, ...myMatchInsights],
-        myTeams: myTeamInsights,
-      }),
-    [featuredTeams, safeLatestMatches, safeOpenMatches, myMatchInsights, myTeamInsights],
-  );
-
-  const matchLookup = useMemo(
-    () => buildMatchLookup([...safeLatestMatches, ...safeOpenMatches, ...myMatchInsights]),
-    [safeLatestMatches, safeOpenMatches, myMatchInsights],
-  );
-
-  const playerLookup = useMemo(() => {
-    const map = new Map();
-    (followedPlayers || []).forEach((player) => {
-      if (player?.id) {
-        map.set(player.id, player.name || "Player");
-      }
-    });
-    return map;
-  }, [followedPlayers]);
-
-  const mySubscriptionsPreview = useMemo(() => {
-    const seen = new Set();
-    const unique = [];
-    (subscriptions || []).forEach((sub) => {
-      const key = `${normalizeTargetType(sub.target_type)}:${sub.target_id}`;
-      if (seen.has(key)) {
-        return;
-      }
-      seen.add(key);
-      if (unique.length < MAX_SUBSCRIPTIONS_PREVIEW) {
-        unique.push(sub);
-      }
-    });
-    return unique;
-  }, [subscriptions]);
-
-  const eventLookup = useMemo(() => {
-    const map = new Map();
-    safeEvents.forEach((event) => {
-      if (event?.id) {
-        map.set(event.id, event.name || "Event");
-      }
-    });
-    return map;
-  }, [safeEvents]);
-
-  const mySubscriptionsDetailed = useMemo(
-    () =>
-      mySubscriptionsPreview.map((sub) => ({
-        ...sub,
-        normalizedType: normalizeTargetType(sub.target_type),
-        label: describeSubscriptionTarget(sub, teamLookup, matchLookup, playerLookup, eventLookup),
-        href: buildSubscriptionLink(sub),
-      })),
-    [mySubscriptionsPreview, teamLookup, matchLookup, playerLookup, eventLookup],
-  );
 
   const activeTimelineEvents = useMemo(
     () => filterEventsByStatusGroup(safeEvents, "active"),
@@ -738,10 +648,10 @@ export default function HomePage() {
     () => [
       {
         key: "active",
-        title: "Active events",
+        title: "Current events",
         events: activeTimelineEvents,
         limit: homeLimits.activeEvents,
-        emptyMessage: "No active events right now.",
+        emptyMessage: "No current events right now.",
       },
       {
         key: "past",
@@ -823,21 +733,6 @@ export default function HomePage() {
     ? `${formatMatchup(nextScheduledMatch)}`
     : "Add your fixtures";
 
-  async function handleLogout() {
-    setSignOutError(null);
-    setSigningOut(true);
-    try {
-      const { error: signOutErr } = await supabase.auth.signOut();
-      if (signOutErr) {
-        throw signOutErr;
-      }
-    } catch (err) {
-      setSignOutError(err?.message || "Unable to log out right now.");
-    } finally {
-      setSigningOut(false);
-    }
-  }
-
   async function handleShareMatch(match) {
     if (!match) return;
     const link = buildMatchLink(match.id, { absolute: true });
@@ -872,21 +767,21 @@ export default function HomePage() {
     const lastEvent = live ? formatLiveEventSummary(liveEvent, match) : null;
     const trackerHref = buildMatchLink(match.id);
     const notificationHref = `/notifications?targetType=match&targetId=${match.id}`;
-    const metaParts = live
+    const liveMetaParts = live
       ? [liveClockLabel || "Waiting for next score update", lastEvent ? `Last event: ${lastEvent}` : "No logs yet"]
-      : [`Scheduled: ${formatHeadingDateTime(match.start_time)}`, formatVenueDetails(match)].filter(Boolean);
+      : [];
 
     return (
       <StandardEventMatchCard
         key={match.id}
         match={match}
         variant="muted"
-        className={`sc-frosted sc-live-card ${compact ? "p-3 sm:p-4" : "p-3 sm:p-5"} ${
-          live ? "is-live border-2 border-rose-500/70 bg-rose-500/10" : ""
+        className={`sc-frosted sc-live-card home-hero-match ${compact ? "p-3 sm:p-4" : "p-3 sm:p-5"} ${
+          live ? "is-live border-2 border-live-border bg-live-bg" : ""
         }`}
         eyebrow={pointStatus && live ? `${pointStatus} point` : live ? "Live now" : "Next up"}
         title={formatMatchup(match)}
-        meta={metaParts.join(" | ")}
+        meta={liveMetaParts.join(" | ")}
         score={live ? formatLiveScore(match) : null}
         status={live ? "Live" : formatMatchStatus(match.status) || "Scheduled"}
         actions={
@@ -903,6 +798,7 @@ export default function HomePage() {
         hideEyebrow={false}
         compact={compact}
         hideFinishedVenue={false}
+        hideVenue
       />
     );
   };
@@ -910,18 +806,18 @@ export default function HomePage() {
   return (
     <div className="home-page pb-10 text-ink sm:pb-20">
       <SectionShell as="header" className="space-y-3 pb-1 pt-2 sm:space-y-6 sm:pt-8 sm:pb-2">
-        <Card className="sc-hero p-3 sm:p-8 lg:p-10">
+        <Card className="sc-hero home-hero-board p-3 sm:p-8 lg:p-10">
           <div className="space-y-4 sm:space-y-8">
-            <div className={showMultiLiveHero ? "space-y-3 sm:space-y-6" : "grid gap-4 sm:gap-8 lg:grid-cols-[1.05fr,0.95fr] lg:items-start"}>
-              <div className="space-y-3 sm:space-y-6">
-                <div className="space-y-2 sm:space-y-4">
-                  <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
-                    Live now, next up, and standings - at a glance
-                  </h1>
-                </div>
-                <div className="sc-metric-row">
+            <div className={showMultiLiveHero ? "space-y-3 sm:space-y-6" : "home-hero-grid"}>
+              <div className="home-hero-panel space-y-3 sm:space-y-6">
+                <div className="sc-metric-row home-hero-metrics">
                   {heroStats.map((item) => (
-                    <Metric key={item.label} className="sc-metric--stacked" value={loading ? "..." : item.value} label={item.label} />
+                    <Metric
+                      key={item.label}
+                      className="sc-metric--stacked"
+                      value={belowFoldLoading ? "--" : item.value}
+                      label={item.label}
+                    />
                   ))}
                 </div>
                 {heroActionStatus && (
@@ -933,12 +829,11 @@ export default function HomePage() {
                   {heroCardMatch ? (
                     renderHeroMatchCard(heroCardMatch)
                   ) : (
-                    <Card variant="muted" className="sc-frosted sc-live-card p-3 sm:p-5">
+                    <div className="home-empty-state text-left">
                       <p className="text-2xl font-semibold text-ink">No matches scheduled</p>
-                      <p className="mt-2 text-sm text-ink-muted">Add matches to see them here.</p>
-                    </Card>
+                    </div>
                   )}
-                  <Panel variant="tinted" className="p-3 sm:p-4">
+                  <Panel variant="tinted" className="home-next-strip p-3 sm:p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
                       <span>Next scheduled</span>
                       {nextScheduledMatch?.start_time && (
@@ -960,7 +855,7 @@ export default function HomePage() {
                 <div className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {liveHeroMatches.map((match) => renderHeroMatchCard(match, { compact: true }))}
                 </div>
-                <Panel variant="tinted" className="p-3 sm:p-4">
+                <Panel variant="tinted" className="home-next-strip p-3 sm:p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
                     <span>Next scheduled</span>
                     {nextScheduledMatch?.start_time && (
@@ -986,12 +881,9 @@ export default function HomePage() {
           rootMargin="220px 0px"
         >
           {renderPersonalized && (
-        <SectionShell as="section" className="home-lazy-section__content">
-          <Card className="space-y-3 p-3 sm:space-y-5 sm:p-6">
+        <SectionShell as="section" className="home-lazy-section__content home-section space-y-3 sm:space-y-5">
             <SectionHeader
-              title="My teams, matches, alerts"
-              description="All your followed teams, matches, and subscriptions in one place."
-              divider
+              title="Your notifications"
               action={
                 <>
                   <Link to="/notifications" className="sc-button text-xs">
@@ -1003,49 +895,50 @@ export default function HomePage() {
                 </>
               }
             >
-              {profile?.full_name && <p className="text-xs text-ink-muted">Signed in as {profile.full_name}</p>}
             </SectionHeader>
             {personalizedError && (
-              <Card
-                as="p"
-                variant="muted"
-                className="border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-100 sm:p-4"
+              <p
+                className="rounded-xl border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-100 sm:p-4"
               >
                 {personalizedError}
-              </Card>
+              </p>
             )}
             {personalizedMessage && (
-              <Card as="p" variant="muted" className="border border-border bg-[rgba(6,22,18,0.7)] p-3 text-sm text-ink sm:p-4">
+              <p className="rounded-xl border border-border/70 bg-[rgba(6,22,18,0.45)] p-3 text-sm text-ink sm:p-4">
                 {personalizedMessage}
-              </Card>
+              </p>
             )}
-            <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <Panel className="p-3 sm:p-5">
-                <h3 className="text-lg font-semibold text-ink">My teams</h3>
-                <div className="mt-2 sm:mt-3">
+            <div className="home-dashboard-grid">
+              <div className="home-dashboard-column">
+                <div className="home-dashboard-column__title">
+                  <h3 className="text-lg font-semibold text-ink">Teams</h3>
+                </div>
+                <div>
                   {myTeamsLoading ? (
                     <p className="text-sm text-ink-muted">Loading teams...</p>
                   ) : myTeamInsights.length === 0 ? (
                     <p className="text-sm text-ink-muted">Follow a team to see records and fixtures here.</p>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="home-mini-list">
                       {myTeamInsights.map((team) => (
-                        <Card key={team.teamId} variant="muted" className="p-2.5 sm:p-3">
+                        <div key={team.teamId} className="home-mini-row">
                           <p className="text-sm font-semibold text-ink">{team.name}</p>
                           <div className="mt-1 space-y-1 text-xs text-ink-muted">
                             {team.record && <p>Record {formatRecord(team.record)}</p>}
                             {team.nextFixture && <p>Next: {formatFixture(team.nextFixture)}</p>}
                             {team.lastResult && <p>Last: {formatResult(team.lastResult)}</p>}
                           </div>
-                        </Card>
+                        </div>
                       ))}
                     </div>
                   )}
                 </div>
-              </Panel>
-              <Panel className="p-3 sm:p-5">
-                <h3 className="text-lg font-semibold text-ink">My matches</h3>
-                <div className="mt-2 sm:mt-3">
+              </div>
+              <div className="home-dashboard-column">
+                <div className="home-dashboard-column__title">
+                  <h3 className="text-lg font-semibold text-ink">Matches</h3>
+                </div>
+                <div>
                   {myMatchesLoading ? (
                     <p className="text-sm text-ink-muted">Loading matches...</p>
                   ) : myMatchInsights.length === 0 ? (
@@ -1056,87 +949,75 @@ export default function HomePage() {
                         <StandardEventMatchCard
                           key={match.id}
                           match={match}
-                          eyebrow={match.event?.name || match.venue?.name || "Match"}
+                          eyebrow={match.event?.name || "Match"}
                           title={formatMatchup(match)}
-                          meta={formatMatchMeta(match)}
+                          meta={null}
                           score={isMatchLive(match.status) || isMatchFinal(match.status) ? formatLiveScore(match) : null}
                           status={formatMatchStatus(match.status) || "Scheduled"}
                           hideEyebrow={false}
                           compact
                           hideFinishedVenue={false}
+                          hideVenue
                         />
                       ))}
                     </div>
                   )}
                 </div>
-              </Panel>
-              <Panel className="p-3 sm:p-5">
-                <h3 className="text-lg font-semibold text-ink">My subscriptions</h3>
-                <div className="mt-2 sm:mt-3">
-                  {mySubscriptionsDetailed.length === 0 ? (
-                    <p className="text-sm text-ink-muted">Follow teams, matches, or players to receive alerts.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {mySubscriptionsDetailed.map((sub) => (
-                        <Card key={sub.id} variant="muted" className="flex items-center justify-between gap-2 p-2.5 sm:gap-3 sm:p-3">
-                          <div>
-                            <p className="text-sm font-semibold text-ink">{sub.label}</p>
-                            <p className="text-xs uppercase tracking-wide text-ink-muted">{sub.normalizedType}</p>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </Panel>
+              </div>
             </div>
-          </Card>
         </SectionShell>
           )}
         </LazyHomeSection>
       )}
 
       <main className="space-y-0">
-        <SectionShell as="section">
-          <Card className="space-y-3 p-3 sm:space-y-5 sm:p-6 lg:p-7">
-            {homepageEventSections.map((section, index) => (
-              <div
-                key={section.key}
-                className={index === 0 ? "" : "mt-3 border-t border-border/60 pt-3 sm:mt-6 sm:pt-4"}
-              >
-                <SectionHeader title={section.title} />
-                {loading && safeEvents.length === 0 ? (
-                  <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
-                    Loading events...
-                  </Card>
-                ) : section.events.length === 0 ? (
-                  <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
-                    {section.emptyMessage}
-                  </Card>
-                ) : (
-                  <div className="space-y-2 sm:space-y-3">
-                    {section.events.slice(0, section.limit).map((event) => (
-                      <HomeEventCard key={event.id} event={event} eventStatusTab={section.key} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </Card>
-        </SectionShell>
+        <LazyHomeSection onVisible={() => setRenderEventTimeline(true)} placeholderHeight={520} rootMargin="520px 0px">
+          {renderEventTimeline && (
+          <SectionShell as="section" className="home-lazy-section__content home-section home-timeline">
+              {belowFoldError && (
+                <p
+                  className="rounded-xl border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-100 sm:p-4"
+                >
+                  {belowFoldError}
+                </p>
+              )}
+              {homepageEventSections.map((section) => (
+                <div
+                  key={section.key}
+                  className="home-timeline-section"
+                >
+                  <SectionHeader title={section.title} />
+                  {belowFoldLoading && safeEvents.length === 0 ? (
+                    <div className="home-empty-state">
+                      Loading events...
+                    </div>
+                  ) : section.events.length === 0 ? (
+                    <div className="home-empty-state">
+                      {section.emptyMessage}
+                    </div>
+                  ) : (
+                    <div className="home-timeline-list home-timeline-list--grid">
+                      {section.events.slice(0, section.limit).map((event) => (
+                        <HomeEventCard key={event.id} event={event} eventStatusTab={section.key} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+          </SectionShell>
+          )}
+        </LazyHomeSection>
 
         <LazyHomeSection onVisible={() => setRenderStreaming(true)} placeholderHeight={520}>
           {renderStreaming && (
-          <SectionShell as="section" className="home-lazy-section__content">
+          <SectionShell as="section" className="home-lazy-section__content home-section space-y-3 sm:space-y-5">
             <SectionHeader
-              eyebrow="Streaming"
+              eyebrowVariant="media"
               title="Featured broadcasts"
-              description="Upcoming streams and recently completed matches with media."
             />
-            <div className="grid gap-3 sm:gap-6 lg:grid-cols-2">
-              <Card className="space-y-3 p-3 sm:space-y-4 sm:p-6">
+            <div className="home-media-grid">
+              <div className="home-media-column space-y-3 sm:space-y-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Upcoming with media</p>
                   <h3 className="text-lg font-semibold text-ink">Next to stream</h3>
                 </div>
                 {streamsLoading && upcomingStreamMatches.length === 0 ? (
@@ -1150,11 +1031,10 @@ export default function HomePage() {
                 ) : (
                   <p className="text-sm text-ink-muted">No upcoming matches with media linked.</p>
                 )}
-              </Card>
+              </div>
 
-              <Card className="space-y-3 p-3 sm:space-y-4 sm:p-6">
+              <div className="home-media-column space-y-3 sm:space-y-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Recent with media</p>
                   <h3 className="text-lg font-semibold text-ink">Latest replays</h3>
                 </div>
                 {streamsLoading && recentStreamMatches.length === 0 ? (
@@ -1168,7 +1048,7 @@ export default function HomePage() {
                 ) : (
                   <p className="text-sm text-ink-muted">No recent matches with media linked.</p>
                 )}
-              </Card>
+              </div>
             </div>
           </SectionShell>
           )}
@@ -1176,59 +1056,60 @@ export default function HomePage() {
 
         <LazyHomeSection onVisible={() => setRenderFinals(true)} placeholderHeight={420}>
           {renderFinals && (
-          <SectionShell as="section" className="home-lazy-section__content">
-            <Card className="space-y-3 p-3 sm:space-y-4 sm:p-6">
+          <SectionShell as="section" className="home-lazy-section__content home-section space-y-3 sm:space-y-4">
               <SectionHeader
                 title="Latest results"
               />
               {finalsLoading && latestResults.length === 0 ? (
-                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
+                <div className="home-empty-state">
                   Loading results...
-                </Card>
+                </div>
               ) : latestResults.length === 0 ? (
-                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
+                <div className="home-empty-state">
                   No finals saved yet.
-                </Card>
+                </div>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+                <div className="home-score-grid">
                   {latestResults.map((match) => (
                     <StandardEventMatchCard
                       key={match.id}
                       match={match}
+                      className="home-score-card"
                       eyebrow={match.event?.name || "Match"}
                       title={formatMatchup(match)}
-                      meta={formatMatchMeta(match)}
+                      meta={null}
                       score={formatLiveScore(match)}
                       status={formatMatchStatus(match.status) || "Final"}
                       hideEyebrow={false}
                       compact={false}
                       scoreAlign="right"
+                      hideVenue
                     />
                   ))}
                 </div>
               )}
-            </Card>
           </SectionShell>
           )}
         </LazyHomeSection>
 
         <LazyHomeSection onVisible={() => setRenderMatches(true)} placeholderHeight={440}>
           {renderMatches && (
-          <SectionShell as="section" className="home-lazy-section__content">
-            <Card className="space-y-3 p-3 sm:space-y-4 sm:p-6">
+          <SectionShell as="section" className="home-lazy-section__content home-section space-y-3 sm:space-y-4">
               <SectionHeader
+                eyebrow="Live"
+                eyebrowVariant="live"
                 title="Live & upcoming"
               />
               {loading && liveAndUpcomingMatches.length === 0 ? (
-                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
+                <div className="home-empty-state">
                   Loading matches...
-                </Card>
+                </div>
               ) : liveAndUpcomingMatches.length === 0 ? (
-                <Card variant="muted" className="p-3 text-center text-sm text-ink-muted sm:p-5">
+                <div className="home-empty-state">
                   No open matches right now.
-                </Card>
+                </div>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+                <div className="home-agenda-grid">
                   {liveAndUpcomingMatches.map((match) => {
                     const live = isMatchLive(match.status);
                     const final = isMatchFinal(match.status);
@@ -1241,50 +1122,26 @@ export default function HomePage() {
                         key={match.id}
                         match={match}
                         variant="tintedAlt"
-                        eyebrow={match.event?.name || match.venue?.name || "Match"}
+                        className="home-agenda-card"
+                        eyebrow={match.event?.name || "Match"}
                         title={formatMatchup(match)}
-                        meta={formatMatchMeta(match)}
+                        meta={null}
                         score={showScore ? formatLiveScore(match) : null}
                         status={statusLabel}
                         hideEyebrow={false}
                         compact={false}
                         hideFinishedVenue={false}
+                        hideVenue
                       />
                     );
                   })}
                 </div>
               )}
-            </Card>
           </SectionShell>
           )}
         </LazyHomeSection>
 
       </main>
-
-      <footer className="sc-shell mt-0">
-        <div className="sc-card-muted flex flex-col gap-2 p-3 text-sm sm:gap-3 sm:p-4 md:flex-row md:items-center md:justify-between">
-          <p className="font-semibold text-ink">
-            {new Date().getFullYear()} StallCount. Built for Ultimate event control rooms. StallCount is a product of RCFD (Pty) Ltd. For more information contact rcfdltf@gmail.com
-          </p>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 md:gap-4">
-            <Link to="/matches" className="font-semibold text-accent">
-              Matches
-            </Link>
-            <Link to="/teams" className="font-semibold text-accent">
-              Teams
-            </Link>
-            <Link to="/players" className="font-semibold text-accent">
-              Players
-            </Link>
-            {session && (
-              <button type="button" onClick={handleLogout} disabled={signingOut} className="sc-button is-ghost">
-                {signingOut ? "Signing out..." : "Log out"}
-              </button>
-            )}
-          </div>
-        </div>
-        {signOutError && <p className="sc-shell pb-2 text-xs text-rose-300">{signOutError}</p>}
-      </footer>
     </div>
   );
 }
@@ -1298,8 +1155,8 @@ const HomeEventCard = memo(function HomeEventCard({ event, eventStatusTab }) {
   const fallbackPath = `/events?${searchParams.toString()}`;
   const cardClassName =
     eventStatusTab === "active"
-      ? "block border-white/90 p-3 transition hover:border-white hover:text-ink sm:p-4"
-      : "block p-3 transition hover:border-accent/70 hover:text-ink sm:p-4";
+      ? "home-event-row is-active block border-white/90 p-3 transition hover:border-white hover:text-ink sm:p-3"
+      : "home-event-row block p-3 transition hover:border-accent/70 hover:text-ink sm:p-3";
 
   return (
     <Card
@@ -1310,14 +1167,10 @@ const HomeEventCard = memo(function HomeEventCard({ event, eventStatusTab }) {
     >
       <div className="flex flex-col gap-2 sm:gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-            {event.location ? `${event.location} - ` : ""}
-            {formatEventType(event.type)}
-          </p>
-          <h3 className="text-lg font-semibold text-ink">{event.name}</h3>
+          <h3 className="text-base font-semibold leading-snug text-ink">{event.name}</h3>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <p className="text-left text-sm text-ink-muted">
+          <p className="home-event-row__date text-left">
             {formatDateRange(event.start_date, event.end_date)}
           </p>
         </div>
@@ -1332,12 +1185,13 @@ const HomeStreamMatchCard = memo(function HomeStreamMatchCard({ match }) {
       match={match}
       eyebrow={match.event?.name || "Stream"}
       title={formatMatchup(match)}
-      meta={`${formatMatchTime(match.start_time)} | Provider: ${formatMediaProvider(match)}`}
+      meta={null}
       score={isMatchLive(match.status) || isMatchFinal(match.status) ? formatLiveScore(match) : null}
       status={formatMatchStatus(match.status) || "Scheduled"}
       hideEyebrow={false}
       compact
       hideFinishedVenue={false}
+      hideVenue
     />
   );
 });
@@ -1387,10 +1241,6 @@ function matchHasStream(match) {
   return hasMatchMedia(match);
 }
 
-function formatMediaProvider(match) {
-  return getMatchMediaDetails(match)?.providerLabel || getMatchMediaProviderLabel(match);
-}
-
 function formatLiveScore(match) {
   const left = typeof match.score_a === "number" ? match.score_a : "-";
   const right = typeof match.score_b === "number" ? match.score_b : "-";
@@ -1402,24 +1252,6 @@ function formatMatchStatus(status) {
   const normalized = status.toString().trim().toLowerCase();
   if (!normalized) return "";
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
-function formatMatchMeta(match) {
-  const parts = [];
-  if (match?.start_time) {
-    parts.push(formatMatchTime(match.start_time));
-  }
-  return parts.join(" | ") || "Details pending";
-}
-
-function formatVenueDetails(match) {
-  if (!match?.venue) return null;
-  const city = match.venue.city ? match.venue.city.toString().trim() : "";
-  const location = match.venue.location ? match.venue.location.toString().trim() : "";
-  const field = match.venue.name ? match.venue.name.toString().trim() : "";
-  const parts = [city, location, field].filter(Boolean);
-  if (parts.length === 0) return null;
-  return parts.join(", ");
 }
 
 function buildMatchLink(matchId, options = {}) {
@@ -1515,71 +1347,6 @@ function formatResult(result) {
   if (!result) return "--";
   return `${result.scoreFor}-${result.scoreAgainst} vs ${result.opponentName || "Opponent"}`;
 }
-function buildTeamLookup({ featuredTeams = [], matches = [], myTeams = [] }) {
-  const map = new Map();
-  featuredTeams.forEach((team) => {
-    if (team?.id) {
-      map.set(team.id, team.name || "Team");
-    }
-  });
-  myTeams.forEach((team) => {
-    if (team?.teamId) {
-      map.set(team.teamId, team.name || "Team");
-    }
-  });
-  matches.forEach((match) => {
-    if (match?.team_a?.id) {
-      map.set(match.team_a.id, match.team_a.name || "Team A");
-    }
-    if (match?.team_b?.id) {
-      map.set(match.team_b.id, match.team_b.name || "Team B");
-    }
-  });
-  return map;
-}
-
-function buildMatchLookup(matches = []) {
-  const map = new Map();
-  matches.forEach((match) => {
-    if (match?.id) {
-      map.set(match.id, match);
-    }
-  });
-  return map;
-}
-
-function describeSubscriptionTarget(sub, teamLookup, matchLookup, playerLookup, eventLookup) {
-  const type = normalizeTargetType(sub.target_type);
-  const id = sub.target_id;
-  if (type === "team") {
-    return teamLookup.get(id) || `Team ${id.slice(0, 4)}`;
-  }
-  if (type === "match") {
-    const match = matchLookup.get(id);
-    return match ? formatMatchup(match) : `Match ${id.slice(0, 4)}`;
-  }
-  if (type === "player") {
-    return playerLookup?.get(id) || `Player ${id.slice(0, 4)}`;
-  }
-  if (type === "event") {
-    return eventLookup?.get(id) || `Event ${id.slice(0, 4)}`;
-  }
-  if (type === "division") {
-    return `Division ${id.slice(0, 4)}`;
-  }
-  return `Subscription ${id.slice(0, 4)}`;
-}
-
-function buildSubscriptionLink(sub) {
-  const type = normalizeTargetType(sub.target_type);
-  const id = sub.target_id;
-  if (type === "team") return `/teams/${id}`;
-  if (type === "match") return `/matches?matchId=${id}`;
-  if (type === "player") return `/players/${id}`;
-  if (type === "event") return `/matches?eventId=${id}`;
-  if (type === "division") return "/events";
-  return "/notifications";
-}
 function deriveClockLabel(match, liveEvent) {
   if (!match || !liveEvent) return null;
   const data = liveEvent.data || {};
@@ -1645,11 +1412,6 @@ function filterEventsByStatusGroup(events = [], group) {
       const bTime = b.start_date ? new Date(b.start_date).getTime() : Number.MAX_SAFE_INTEGER;
       return sortDescending ? bTime - aTime : aTime - bTime;
     });
-}
-
-function formatEventType(type) {
-  if (!type) return "Event";
-  return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
 function getMatchCompletionTime(match) {

@@ -2,6 +2,8 @@ import { supabase } from "./supabaseClient";
 import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
 
 const TEAMS_CACHE_TTL_MS = 10 * 60 * 1000;
+const TEAM_IDS_CACHE_TTL_MS = 10 * 60 * 1000;
+const TEAM_MATCHES_CACHE_TTL_MS = 30 * 1000;
 const PLAYER_MATCH_STATS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 export type TeamRow = {
@@ -36,6 +38,60 @@ export async function getAllTeams(limit?: number): Promise<TeamRow[]> {
     },
     { ttlMs: TEAMS_CACHE_TTL_MS },
   );
+}
+
+export type TeamPageResult = {
+  rows: TeamRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export async function getTeamsPage(options: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+} = {}): Promise<TeamPageResult> {
+  const pageSize = Math.max(1, Math.min(options.pageSize ?? 20, 100));
+  const page = Math.max(0, options.page ?? 0);
+  const search = typeof options.search === "string" ? options.search.trim() : "";
+  const normalizedSearch = search.toLowerCase();
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  return getCachedQuery(
+    `teams:page:${pageSize}:${page}:${normalizedSearch || "all"}`,
+    async () => {
+      let query = supabase
+        .from("teams")
+        .select("id, name, short_name, created_at, attributes", { count: "exact" })
+        .order("name", { ascending: true })
+        .range(from, to);
+
+      if (normalizedSearch) {
+        const pattern = `%${normalizeTeamSearchPattern(normalizedSearch)}%`;
+        query = query.or(`name.ilike.${pattern},short_name.ilike.${pattern}`);
+      }
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        throw new Error(error.message || "Failed to load teams");
+      }
+
+      return {
+        rows: (data ?? []) as TeamRow[],
+        total: count ?? 0,
+        page,
+        pageSize,
+      };
+    },
+    { ttlMs: TEAMS_CACHE_TTL_MS, refreshOnPageReload: false },
+  );
+}
+
+function normalizeTeamSearchPattern(value: string): string {
+  return value.replace(/[%,()]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 type DivisionIdRow = {
@@ -135,6 +191,7 @@ export async function createTeam(payload: {
   }
 
   invalidateCachedQueries("teams:list");
+  invalidateCachedQueries("teams:ids");
   return data as TeamRow;
 }
 
@@ -168,6 +225,7 @@ export async function updateTeamAttributes(
   }
 
   invalidateCachedQueries("teams:list");
+  invalidateCachedQueries("teams:ids");
   return data as TeamRow;
 }
 
@@ -184,17 +242,23 @@ export async function getTeamsByIds(ids: string[]): Promise<TeamRow[]> {
     return [];
   }
 
-  const { data, error } = await supabase
-    .from("teams")
-    .select("id, name, short_name, created_at, attributes")
-    .in("id", uniqueIds);
+  return getCachedQuery(
+    `teams:ids:${uniqueIds.join(",")}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("teams")
+        .select("id, name, short_name, created_at, attributes")
+        .in("id", uniqueIds);
 
-  if (error) {
-    throw new Error(error.message || "Failed to load teams by id");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load teams by id");
+      }
 
-  const lookup = new Map(((data ?? []) as TeamRow[]).map((row) => [row.id, row]));
-  return uniqueIds.map((id) => lookup.get(id)).filter((row): row is TeamRow => Boolean(row));
+      const lookup = new Map(((data ?? []) as TeamRow[]).map((row) => [row.id, row]));
+      return uniqueIds.map((id) => lookup.get(id)).filter((row): row is TeamRow => Boolean(row));
+    },
+    { ttlMs: TEAM_IDS_CACHE_TTL_MS },
+  );
 }
 
 export type TeamDivisionInfo = {
@@ -323,37 +387,43 @@ export async function getTeamMatches(teamId: string): Promise<TeamMatchRow[]> {
     return [];
   }
 
-  const { data, error } = await supabase
-    .from("matches")
-    .select(
-      `
-        id,
-        start_time,
-        status,
-        score_a,
-        score_b,
-        media_link,
-        media_provider,
-        media_url,
-        media_status,
-        has_media,
-        venue_id,
-        event:events(id, name),
-        division:divisions(id, name),
-        pool:pools(id, name),
-        venue:venues(id, name),
-        team_a:teams!matches_team_a_fkey(id, name, short_name),
-        team_b:teams!matches_team_b_fkey(id, name, short_name)
-      `
-    )
-    .or(`team_a.eq.${teamId},team_b.eq.${teamId}`)
-    .order("start_time", { ascending: true });
+  return getCachedQuery(
+    `teams:matches:${teamId}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("matches")
+        .select(
+          `
+            id,
+            start_time,
+            status,
+            score_a,
+            score_b,
+            media_link,
+            media_provider,
+            media_url,
+            media_status,
+            has_media,
+            venue_id,
+            event:events(id, name),
+            division:divisions(id, name),
+            pool:pools(id, name),
+            venue:venues(id, name),
+            team_a:teams!matches_team_a_fkey(id, name, short_name),
+            team_b:teams!matches_team_b_fkey(id, name, short_name)
+          `,
+        )
+        .or(`team_a.eq.${teamId},team_b.eq.${teamId}`)
+        .order("start_time", { ascending: true });
 
-  if (error) {
-    throw new Error(error.message || "Failed to load team matches");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load team matches");
+      }
 
-  return (data ?? []) as TeamMatchRow[];
+      return (data ?? []) as TeamMatchRow[];
+    },
+    { ttlMs: TEAM_MATCHES_CACHE_TTL_MS },
+  );
 }
 
 export type PlayerStatRow = {

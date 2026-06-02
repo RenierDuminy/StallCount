@@ -10,7 +10,7 @@ import {
 } from "../services/playerService";
 import { getTeamsLinkedToEvent } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
-import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
+import { SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
 import usePersistentState from "../hooks/usePersistentState";
 
 const EMPTY_PLAYER_FORM = {
@@ -22,13 +22,11 @@ const EMPTY_PLAYER_FORM = {
   description: "",
 };
 
-const CAPTAIN_PLAYER_FILTER_KEY = "stallcount:captain:player-filter:v1";
 const CAPTAIN_PLAYER_FORM_KEY = "stallcount:captain:player-form:v1";
 const CAPTAIN_SELECTED_EVENT_KEY = "stallcount:captain:selected-event:v1";
 const CAPTAIN_SELECTED_TEAM_KEY = "stallcount:captain:selected-team:v1";
 const CAPTAIN_ASSIGN_PLAYER_KEY = "stallcount:captain:assign-player:v1";
 const CAPTAIN_ASSIGN_FILTER_KEY = "stallcount:captain:assign-filter:v1";
-const CAPTAIN_ASSIGN_ROLE_KEY = "stallcount:captain:assign-role:v1";
 const PLAYER_RESULT_LIMIT = 8;
 
 function normalizeName(value) {
@@ -131,9 +129,43 @@ function getRosterRoleTags(entry) {
   return tags;
 }
 
+function EditIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="3"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
 export default function CaptainPage() {
   const [playerDirectory, setPlayerDirectory] = useState([]);
-  const [playerFilter, setPlayerFilter] = usePersistentState(CAPTAIN_PLAYER_FILTER_KEY, "");
   const [playerForm, setPlayerForm] = usePersistentState(CAPTAIN_PLAYER_FORM_KEY, EMPTY_PLAYER_FORM);
   const [playerSaving, setPlayerSaving] = useState(false);
   const [playerAlert, setPlayerAlert] = useState(null);
@@ -146,10 +178,11 @@ export default function CaptainPage() {
   const [rosterEntries, setRosterEntries] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterAlert, setRosterAlert] = useState(null);
-  const [assignPlayerId, setAssignPlayerId] = usePersistentState(CAPTAIN_ASSIGN_PLAYER_KEY, "");
+  const [assignPlayerIds, setAssignPlayerIds] = usePersistentState(CAPTAIN_ASSIGN_PLAYER_KEY, []);
   const [assignPlayerFilter, setAssignPlayerFilter] = usePersistentState(CAPTAIN_ASSIGN_FILTER_KEY, "");
-  const [assignCaptainRole, setAssignCaptainRole] = usePersistentState(CAPTAIN_ASSIGN_ROLE_KEY, "");
   const [assigning, setAssigning] = useState(false);
+  const [editingRosterEntryId, setEditingRosterEntryId] = useState("");
+  const [playerEditorOpen, setPlayerEditorOpen] = useState(false);
   const previousEventIdRef = useRef(selectedEventId);
 
   useEffect(() => {
@@ -166,9 +199,9 @@ export default function CaptainPage() {
     if (eventChanged) {
       setSelectedTeamId("");
       setRosterEntries([]);
-      setAssignPlayerId("");
+      setAssignPlayerIds([]);
       setAssignPlayerFilter("");
-      setAssignCaptainRole("");
+      setEditingRosterEntryId("");
     }
 
     if (!selectedEventId) {
@@ -207,9 +240,8 @@ export default function CaptainPage() {
     };
   }, [
     selectedEventId,
-    setAssignCaptainRole,
     setAssignPlayerFilter,
-    setAssignPlayerId,
+    setAssignPlayerIds,
     setSelectedTeamId,
   ]);
 
@@ -222,7 +254,7 @@ export default function CaptainPage() {
   }, [selectedTeamId, selectedEventId]);
 
   const filteredPlayers = useMemo(() => {
-    const term = playerFilter.trim().toLowerCase();
+    const term = playerForm.name.trim().toLowerCase();
     if (!term) return playerDirectory;
     return playerDirectory.filter((player) => {
       const haystack = [player.name, player.gender_code, player.jersey_number]
@@ -231,7 +263,7 @@ export default function CaptainPage() {
         .toLowerCase();
       return haystack.includes(term);
     });
-  }, [playerDirectory, playerFilter]);
+  }, [playerDirectory, playerForm.name]);
 
   const possibleDuplicates = useMemo(() => {
     if (!playerForm.name.trim()) return [];
@@ -361,33 +393,7 @@ export default function CaptainPage() {
     };
   }, [playerDirectory, playerForm.birthday, playerForm.gender_code, playerForm.id, playerForm.name]);
 
-  const playerOptions = useMemo(() => {
-    const entries = [];
-    const seen = new Set();
-
-    for (const entry of possibleDuplicates) {
-      if (!entry?.player?.id) continue;
-      if (entry.player.id === playerForm.id) continue;
-      if (seen.has(entry.player.id)) continue;
-      seen.add(entry.player.id);
-      entries.push(entry);
-    }
-
-    if (playerFilter.trim()) {
-      for (const player of filteredPlayers) {
-        if (!player?.id) continue;
-        if (player.id === playerForm.id) continue;
-        if (seen.has(player.id)) continue;
-        seen.add(player.id);
-        entries.push({
-          player,
-          matchLabel: "Search result",
-        });
-      }
-    }
-
-    return entries.slice(0, PLAYER_RESULT_LIMIT);
-  }, [filteredPlayers, playerFilter, playerForm.id, possibleDuplicates]);
+  const hasExistingPlayerLookupInput = Boolean(playerForm.name.trim());
 
   const rosterPlayerIds = useMemo(() => {
     const ids = new Set();
@@ -400,6 +406,52 @@ export default function CaptainPage() {
     return ids;
   }, [rosterEntries]);
 
+  const playerOptions = useMemo(() => {
+    if (!hasExistingPlayerLookupInput) return [];
+
+    const entries = [];
+    const seen = new Set();
+
+    for (const entry of possibleDuplicates) {
+      if (!entry?.player?.id) continue;
+      if (entry.player.id === playerForm.id) continue;
+      if (seen.has(entry.player.id)) continue;
+      seen.add(entry.player.id);
+      entries.push(entry);
+    }
+
+    for (const player of filteredPlayers) {
+      if (!player?.id) continue;
+      if (player.id === playerForm.id) continue;
+      if (seen.has(player.id)) continue;
+      seen.add(player.id);
+      entries.push({
+        player,
+        matchLabel: "Search result",
+      });
+    }
+
+    return entries
+      .sort((left, right) => {
+        const leftAssigned = rosterPlayerIds.has(left.player.id);
+        const rightAssigned = rosterPlayerIds.has(right.player.id);
+        const assignedDelta = Number(rightAssigned) - Number(leftAssigned);
+        if (assignedDelta !== 0) return assignedDelta;
+
+        const scoreDelta = (right.score || 0) - (left.score || 0);
+        if (scoreDelta !== 0) return scoreDelta;
+
+        return `${left.player.name || ""}`.localeCompare(`${right.player.name || ""}`);
+      })
+      .slice(0, PLAYER_RESULT_LIMIT);
+  }, [
+    filteredPlayers,
+    hasExistingPlayerLookupInput,
+    playerForm.id,
+    possibleDuplicates,
+    rosterPlayerIds,
+  ]);
+
   const sortedRosterEntries = useMemo(
     () => [...rosterEntries].sort(compareRosterEntries),
     [rosterEntries],
@@ -411,33 +463,60 @@ export default function CaptainPage() {
     }
 
     const term = assignPlayerFilter.trim().toLowerCase();
+    if (!term) {
+      return [];
+    }
 
     const options = playerDirectory
-      .filter((player) => player?.id && !rosterPlayerIds.has(player.id))
+      .filter((player) => player?.id)
       .filter((player) => {
-        if (!term) {
-          return true;
-        }
         const haystack = [player.name, player.gender_code, player.jersey_number, player.birthday]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
         return haystack.includes(term);
       })
-      .sort((left, right) => `${left.name || ""}`.localeCompare(`${right.name || ""}`));
+      .sort((left, right) => {
+        const assignedDelta = Number(rosterPlayerIds.has(right.id)) - Number(rosterPlayerIds.has(left.id));
+        if (assignedDelta !== 0) return assignedDelta;
+        return `${left.name || ""}`.localeCompare(`${right.name || ""}`);
+      });
 
     return options.slice(0, PLAYER_RESULT_LIMIT);
   }, [assignPlayerFilter, playerDirectory, rosterPlayerIds, selectedEventId, selectedTeamId]);
 
-  const selectedAssignPlayer = useMemo(
-    () => playerDirectory.find((player) => player.id === assignPlayerId) || null,
-    [assignPlayerId, playerDirectory],
+  const selectedAssignPlayerIds = useMemo(() => {
+    if (Array.isArray(assignPlayerIds)) {
+      return assignPlayerIds.filter(Boolean);
+    }
+    return assignPlayerIds ? [assignPlayerIds] : [];
+  }, [assignPlayerIds]);
+
+  const selectedAssignPlayers = useMemo(() => {
+    const selectedIds = new Set(selectedAssignPlayerIds);
+    return playerDirectory.filter((player) => selectedIds.has(player.id));
+  }, [playerDirectory, selectedAssignPlayerIds]);
+
+  const assignableSelectedPlayerIds = useMemo(
+    () => selectedAssignPlayerIds.filter((playerId) => !rosterPlayerIds.has(playerId)),
+    [rosterPlayerIds, selectedAssignPlayerIds],
   );
 
-  const assignAlreadyLinked = useMemo(
-    () => Boolean(assignPlayerId) && rosterPlayerIds.has(assignPlayerId),
-    [assignPlayerId, rosterPlayerIds],
-  );
+  function toggleAssignPlayer(playerId) {
+    if (!playerId || rosterPlayerIds.has(playerId)) return;
+
+    setAssignPlayerIds((previous) => {
+      const current = Array.isArray(previous)
+        ? previous.filter(Boolean)
+        : previous
+          ? [previous]
+          : [];
+      if (current.includes(playerId)) {
+        return current.filter((id) => id !== playerId);
+      }
+      return [...current, playerId];
+    });
+  }
 
   async function loadDirectory() {
     try {
@@ -504,6 +583,19 @@ export default function CaptainPage() {
       return;
     }
 
+    if (!playerForm.id && duplicateBanner?.tone === "danger") {
+      const confirmed = window.confirm(
+        "Warning: Possible duplication. Add this player anyway?"
+      );
+      if (!confirmed) {
+        setPlayerAlert({
+          tone: "error",
+          message: "Player was not added. Review the possible duplicate before continuing.",
+        });
+        return;
+      }
+    }
+
     setPlayerSaving(true);
     setPlayerAlert(null);
 
@@ -540,15 +632,11 @@ export default function CaptainPage() {
 
   async function handleAddToRoster(event) {
     event.preventDefault();
-    if (!selectedTeamId || !selectedEventId || !assignPlayerId) {
+    if (!selectedTeamId || !selectedEventId || assignableSelectedPlayerIds.length === 0) {
       setRosterAlert({
         tone: "error",
-        message: "Select a team, event, and player before adding.",
+        message: "Select a team, event, and at least one player before adding.",
       });
-      return;
-    }
-    if (rosterPlayerIds.has(assignPlayerId)) {
-      setRosterAlert(null);
       return;
     }
 
@@ -556,21 +644,30 @@ export default function CaptainPage() {
     setRosterAlert(null);
 
     try {
-      await addPlayerToRoster({
-        playerId: assignPlayerId,
-        teamId: selectedTeamId,
-        eventId: selectedEventId,
-        captainRole: assignCaptainRole || null,
+      await Promise.all(
+        assignableSelectedPlayerIds.map((playerId) =>
+          addPlayerToRoster({
+            playerId,
+            teamId: selectedTeamId,
+            eventId: selectedEventId,
+            captainRole: null,
+          }),
+        ),
+      );
+      setRosterAlert({
+        tone: "success",
+        message:
+          assignableSelectedPlayerIds.length === 1
+            ? "Player added to roster."
+            : `${assignableSelectedPlayerIds.length} players added to roster.`,
       });
-      setRosterAlert({ tone: "success", message: "Player added to roster." });
-      setAssignPlayerId("");
+      setAssignPlayerIds([]);
       setAssignPlayerFilter("");
-      setAssignCaptainRole("");
       await loadRoster(selectedTeamId, selectedEventId);
     } catch (err) {
       setRosterAlert({
         tone: "error",
-        message: err.message || "Unable to add the player to the roster.",
+        message: err.message || "Unable to add players to the roster.",
       });
     } finally {
       setAssigning(false);
@@ -587,6 +684,7 @@ export default function CaptainPage() {
     try {
       await removePlayerFromRoster(entryId);
       setRosterAlert({ tone: "success", message: "Roster entry removed." });
+      setEditingRosterEntryId("");
       await loadRoster(selectedTeamId, selectedEventId);
     } catch (err) {
       setRosterAlert({
@@ -601,6 +699,7 @@ export default function CaptainPage() {
     try {
       await updateRosterCaptainRole(entryId, roleValue || null);
       setRosterAlert({ tone: "success", message: "Captain assignment updated." });
+      setEditingRosterEntryId("");
       await loadRoster(selectedTeamId, selectedEventId);
     } catch (err) {
       setRosterAlert({
@@ -611,180 +710,27 @@ export default function CaptainPage() {
   }
 
   return (
-    <div className="pb-16 text-ink">
-      <SectionShell as="header" className="py-4 sm:py-6">
-        <Card className="space-y-4 p-6 sm:p-8">
+    <div className="pb-12 text-ink sm:pb-16">
+      <SectionShell as="header" className="py-3 sm:py-5">
+        <div className="border-b border-border pb-3 sm:pb-5">
           <SectionHeader
-            eyebrow="Backend workspace"
             title="Captain workspace"
-            description="Maintain your player list and control the roster assignments for current events."
             action={
               <Link to="/admin" className="sc-button is-ghost">
                 Back to admin hub
               </Link>
             }
           />
-        </Card>
+        </div>
       </SectionShell>
 
-      <SectionShell as="main" className="space-y-10 py-6">
-        <Card as="section" className="grid gap-8 p-6 lg:grid-cols-[1.1fr,0.9fr]">
-          <div className="space-y-6">
-            <SectionHeader
-              eyebrow="Directory"
-              title="Player directory"
-              description="Add new players or update jersey numbers, names, and bios in the public.player table."
-            />
-
-            <form className="space-y-4" onSubmit={handlePlayerSubmit}>
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Player name" htmlFor="player-name">
-                  <Input
-                    id="player-name"
-                    type="text"
-                    value={playerForm.name}
-                    onChange={(event) => handlePlayerFieldChange("name", event.target.value)}
-                    required
-                  />
-                </Field>
-                <Field label="Gender code" htmlFor="player-gender">
-                  <Select
-                    id="player-gender"
-                    value={playerForm.gender_code}
-                    onChange={(event) => handlePlayerFieldChange("gender_code", event.target.value)}
-                    required
-                  >
-                    <option value="">Select</option>
-                    <option value="M">M</option>
-                    <option value="W">W</option>
-                  </Select>
-                </Field>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Birthday" htmlFor="player-birthday">
-                  <Input
-                    id="player-birthday"
-                    type="date"
-                    value={playerForm.birthday}
-                    onChange={(event) => handlePlayerFieldChange("birthday", event.target.value)}
-                    required
-                  />
-                </Field>
-                <Field label="Jersey # (optional)" htmlFor="player-jersey">
-                  <Input
-                    id="player-jersey"
-                    type="number"
-                    value={playerForm.jersey_number}
-                    onChange={(event) => handlePlayerFieldChange("jersey_number", event.target.value)}
-                    min="0"
-                  />
-                </Field>
-              </div>
-
-              {playerAlert && (
-                <div className={`sc-alert ${playerAlert.tone === "error" ? "is-error" : "is-success"}`}>
-                  {playerAlert.message}
-                </div>
-              )}
-
-              <div className="flex flex-wrap items-center gap-3">
-                <button type="submit" disabled={playerSaving} className="sc-button disabled:cursor-not-allowed">
-                  {playerSaving ? "Saving..." : playerForm.id ? "Update player" : "Add player"}
-                </button>
-                <button type="button" onClick={resetPlayerForm} className="sc-button is-ghost">
-                  Clear form
-                </button>
-              </div>
-
-              {duplicateBanner && (
-                <div
-                  className={[
-                    "rounded-xl border px-3 py-2 text-sm font-medium",
-                    duplicateBanner.tone === "danger"
-                      ? "border-red-500/50 bg-red-500/10 text-red-200"
-                      : "border-yellow-400/50 bg-yellow-400/10 text-yellow-100",
-                  ].join(" ")}
-                >
-                  {duplicateBanner.message}
-                </div>
-              )}
-            </form>
-          </div>
-
-          <Panel variant="muted" className="space-y-4 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Existing players</h3>
-              <span className="text-xs text-ink-muted">{playerDirectory.length} total</span>
-            </div>
-
-            <Field label="Search roster" htmlFor="player-search">
-              <Input
-                id="player-search"
-                type="search"
-                placeholder="Search by name, jersey, or gender"
-                value={playerFilter}
-                onChange={(event) => setPlayerFilter(event.target.value)}
-                className="is-compact"
-              />
-            </Field>
-
-            <div className="space-y-2 rounded-xl border border-border/70 bg-surface p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                Possible duplicates
-              </p>
-              {playerDirectory.length === 0 ? (
-                <p className="text-xs text-ink-muted">
-                  No players yet. Use the form to add your first athlete.
-                </p>
-              ) : playerOptions.length === 0 ? (
-                <p className="text-xs text-ink-muted">
-                  {playerFilter.trim()
-                    ? "No players match your search."
-                    : playerForm.name.trim()
-                      ? "No likely duplicates for the current form values."
-                      : "Start typing a name or use search to find existing players."}
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {playerOptions.map((entry) => (
-                    <li
-                      key={`dup-${entry.player.id}`}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-2 py-1.5"
-                    >
-                      <div className="min-w-0 text-xs">
-                        <p className="truncate font-semibold text-ink">
-                          {entry.player.name}
-                          {entry.player.jersey_number != null ? ` #${entry.player.jersey_number}` : ""}
-                        </p>
-                        <p className="truncate text-ink-muted">
-                          {entry.player.birthday || "DOB unknown"} - {entry.player.gender_code || "-"}
-                        </p>
-                        <p className="truncate text-[11px] text-ink-muted/90">{entry.matchLabel}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleSelectPlayer(entry.player)}
-                        className="sc-button is-ghost text-xs"
-                      >
-                        Load
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </Panel>
-        </Card>
-
-        <Card as="section" className="space-y-6 p-6">
+      <SectionShell as="main" className="space-y-6 py-3 sm:space-y-8 sm:py-5">
+        <section className="space-y-4 rounded-xl border border-border/80 border-l-4 border-l-warning-border bg-[rgba(15,37,31,0.38)] p-3 sm:space-y-5 sm:p-4">
           <SectionHeader
-            eyebrow="Assignments"
             title="Team roster control"
-            description="Link players to specific events and teams via public.team_roster. Pick an event first, then choose one of that event's linked teams."
           />
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
             <Field label="Select event" htmlFor="roster-event">
               <Select
                 id="roster-event"
@@ -807,8 +753,9 @@ export default function CaptainPage() {
                 onChange={(event) => {
                   setSelectedTeamId(event.target.value);
                   setRosterEntries([]);
-                  setAssignPlayerId("");
+                  setAssignPlayerIds([]);
                   setAssignPlayerFilter("");
+                  setEditingRosterEntryId("");
                 }}
                 disabled={!selectedEventId || eventTeamsLoading}
               >
@@ -828,9 +775,8 @@ export default function CaptainPage() {
             </Field>
           </div>
 
-          <Panel variant="muted" className="space-y-4 p-4">
+          <section className="space-y-3 border-t border-border-strong pt-4 sm:space-y-4 sm:pt-5">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Available players</h3>
               <span className="text-xs text-ink-muted">{assignPlayerOptions.length} shown</span>
             </div>
 
@@ -846,7 +792,17 @@ export default function CaptainPage() {
               />
             </Field>
 
-            <div className="space-y-2 rounded-xl border border-border/70 bg-surface p-3">
+            <div>
+              <button
+                type="button"
+                onClick={() => setPlayerEditorOpen(true)}
+                className="sc-button is-ghost text-xs"
+              >
+                Create/Update player
+              </button>
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-border-strong bg-surface p-2.5 sm:p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Players to assign</p>
               {!selectedEventId || !selectedTeamId ? (
                 <p className="text-xs text-ink-muted">Select an event and team first.</p>
@@ -854,102 +810,116 @@ export default function CaptainPage() {
                 <p className="text-xs text-ink-muted">Loading roster players...</p>
               ) : playerDirectory.length === 0 ? (
                 <p className="text-xs text-ink-muted">No players in directory yet.</p>
+              ) : !assignPlayerFilter.trim() ? (
+                <p className="text-xs text-ink-muted">Start typing to search available players.</p>
               ) : assignPlayerOptions.length === 0 ? (
                 <p className="text-xs text-ink-muted">
-                  {assignPlayerFilter.trim()
-                    ? "No players match your search."
-                    : "All directory players are already assigned for this team/event."}
+                  No players match your search.
                 </p>
               ) : (
                 <ul className="space-y-2">
-                  {assignPlayerOptions.map((player) => (
-                    <li
-                      key={`assign-${player.id}`}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-2 py-1.5"
-                    >
-                      <div className="min-w-0 text-xs">
-                        <p className="truncate font-semibold text-ink">
-                          {player.name}
-                          {player.jersey_number != null ? ` #${player.jersey_number}` : ""}
-                        </p>
-                        <p className="truncate text-ink-muted">
-                          {player.birthday || "DOB unknown"} - {player.gender_code || "-"}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setAssignPlayerId(player.id)}
-                        className="sc-button is-ghost text-xs"
+                  {assignPlayerOptions.map((player) => {
+                    const isAssigned = rosterPlayerIds.has(player.id);
+                    const isSelected = selectedAssignPlayerIds.includes(player.id);
+
+                    return (
+                      <li
+                        key={`assign-${player.id}`}
+                        className={`flex items-center justify-between gap-2 rounded-lg border border-border/60 px-2 py-1.5 sm:px-2.5 ${
+                          isAssigned ? "bg-surface-muted/50 text-ink-muted" : ""
+                        }`}
                       >
-                        {assignPlayerId === player.id ? "Selected" : "Select"}
-                      </button>
-                    </li>
-                  ))}
+                        <div className="flex min-w-0 items-center gap-2 text-xs">
+                          {isAssigned ? (
+                            <span
+                              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent/70 bg-accent/15 text-accent"
+                              title="Already assigned"
+                            >
+                              <CheckIcon />
+                            </span>
+                          ) : (
+                            <span className="h-5 w-5 shrink-0" aria-hidden="true" />
+                          )}
+                          <div className="min-w-0">
+                            <p className={`truncate font-semibold ${isAssigned ? "text-ink-muted" : "text-ink"}`}>
+                              {player.name}
+                              {player.jersey_number != null ? ` #${player.jersey_number}` : ""}
+                            </p>
+                            <p className="truncate text-ink-muted">
+                              {player.birthday || "DOB unknown"} - {player.gender_code || "-"}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleAssignPlayer(player.id)}
+                          className={`sc-button is-ghost text-xs ${
+                            isAssigned ? "cursor-not-allowed opacity-45 hover:text-ink-muted" : ""
+                          }`}
+                          disabled={isAssigned}
+                        >
+                          {isSelected ? "Selected" : "Select"}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
 
             <form
-              className="space-y-3 rounded-xl border border-border/70 bg-surface px-3 py-3 text-sm"
+              className="space-y-2.5 rounded-xl border border-border-strong bg-surface px-3 py-2.5 text-sm sm:space-y-3 sm:py-3"
               onSubmit={handleAddToRoster}
             >
               <div className="space-y-1">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                  Selected player
+                  Selected players
                 </p>
-                {selectedAssignPlayer ? (
-                  <>
-                    <p className="font-semibold text-ink">
-                      {selectedAssignPlayer.name || "Unnamed player"}
-                      {selectedAssignPlayer.jersey_number != null ? ` #${selectedAssignPlayer.jersey_number}` : ""}
-                    </p>
-                    <p className="text-xs text-ink-muted">
-                      {selectedAssignPlayer.birthday || "DOB unknown"} - {selectedAssignPlayer.gender_code || "-"}
-                    </p>
-                  </>
+                {selectedAssignPlayers.length > 0 ? (
+                  <ul className="space-y-1 text-xs text-ink">
+                    {selectedAssignPlayers.map((player) => (
+                      <li key={`selected-${player.id}`} className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate font-semibold">
+                          {player.name || "Unnamed player"}
+                          {player.jersey_number != null ? ` #${player.jersey_number}` : ""}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleAssignPlayer(player.id)}
+                          className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted hover:text-ink"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 ) : (
                   <p className="text-xs text-ink-muted">
-                    Choose a player from the list above to assign them to this roster.
+                    Choose one or more players from the list above to assign them to this roster.
                   </p>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-end gap-3">
-                <Field label="Captain role" htmlFor="captain-role" className="min-w-[11rem] flex-1">
-                  <Select
-                    id="captain-role"
-                    value={assignCaptainRole}
-                    onChange={(event) => setAssignCaptainRole(event.target.value)}
-                    disabled={!selectedTeamId || !selectedEventId}
-                    className="is-compact"
-                  >
-                    <option value="">None</option>
-                    <option value="captain">Captain</option>
-                    <option value="spirit">Spirit captain</option>
-                  </Select>
-                </Field>
+              <div className="flex flex-wrap items-end gap-2 sm:gap-3">
                 <button
                   type="submit"
                   disabled={
                     assigning ||
                     !selectedTeamId ||
                     !selectedEventId ||
-                    !assignPlayerId ||
-                    assignAlreadyLinked
+                    assignableSelectedPlayerIds.length === 0
                   }
                   className="sc-button disabled:cursor-not-allowed"
                 >
-                  {assigning ? "Adding..." : "Add to roster"}
+                  {assigning
+                    ? "Adding..."
+                    : assignableSelectedPlayerIds.length > 1
+                      ? `Add ${assignableSelectedPlayerIds.length} to roster`
+                      : "Add to roster"}
                 </button>
               </div>
-
-              {assignAlreadyLinked && (
-                <div className="rounded-xl border border-yellow-400/50 bg-yellow-400/10 px-3 py-2 text-sm font-medium text-yellow-100">
-                  Already assigned
-                </div>
-              )}
             </form>
-          </Panel>
+          </section>
 
           {rosterAlert && (
             <div className={`sc-alert ${rosterAlert.tone === "error" ? "is-error" : "is-success"}`}>
@@ -957,72 +927,274 @@ export default function CaptainPage() {
             </div>
           )}
 
-          <Panel variant="muted" className="p-0">
+          <section className="overflow-hidden rounded-xl border border-border-strong bg-surface-muted">
             {rosterLoading ? (
-              <div className="p-6 text-center text-sm text-ink-muted">Loading roster...</div>
+              <div className="p-4 text-center text-sm text-ink-muted sm:p-6">Loading roster...</div>
             ) : sortedRosterEntries.length === 0 ? (
-              <div className="p-6 text-center text-sm text-ink-muted">
+              <div className="p-4 text-center text-sm text-ink-muted sm:p-6">
                 {selectedTeamId
                   ? "No roster entries for this filter yet."
                   : "Select an event and team to view its roster."}
               </div>
             ) : (
               <ul className="divide-y divide-border">
-                {sortedRosterEntries.map((entry) => (
-                  <li key={entry.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-3 text-sm">
-                    <div>
-                      <p className="flex flex-wrap items-center gap-2 font-semibold text-ink">
-                        {getRosterRoleTags(entry).length > 0 ? (
-                          <span className="flex flex-nowrap gap-1">
-                            {getRosterRoleTags(entry).map((tag) => (
-                              <span
-                                key={`${entry.id}-${tag.label}`}
-                                title={tag.title}
-                                className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
-                                style={{
-                                  background: "var(--sc-accent)",
-                                  color: "var(--sc-button-ink)",
-                                  borderColor: "var(--sc-accent-strong)",
-                                }}
-                              >
-                                {tag.label}
+                {sortedRosterEntries.map((entry) => {
+                  const isEditing = editingRosterEntryId === entry.id;
+                  const playerName = entry.player?.name || "Unnamed player";
+
+                  return (
+                    <li key={entry.id} className="px-3 py-2.5 text-sm sm:px-4 sm:py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="flex flex-wrap items-center gap-2 font-semibold text-ink">
+                            {getRosterRoleTags(entry).length > 0 ? (
+                              <span className="flex flex-nowrap gap-1">
+                                {getRosterRoleTags(entry).map((tag) => (
+                                  <span
+                                    key={`${entry.id}-${tag.label}`}
+                                    title={tag.title}
+                                    className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
+                                    style={{
+                                      background: "var(--sc-accent)",
+                                      color: "var(--sc-button-ink)",
+                                      borderColor: "var(--sc-accent-strong)",
+                                    }}
+                                  >
+                                    {tag.label}
+                                  </span>
+                                ))}
                               </span>
-                            ))}
-                          </span>
-                        ) : null}
-                        <span>{entry.player?.name || "Unnamed player"}</span>
-                        {entry.player?.jersey_number != null ? (
-                          <span className="text-xs font-medium text-ink-muted">
-                            #{entry.player.jersey_number}
-                          </span>
-                        ) : null}
-                      </p>
-                    </div>
-                    <div className="flex flex-nowrap items-center gap-2 text-xs">
-                      <Select
-                        className="is-compact"
-                        value={entry.is_captain ? "captain" : entry.is_spirit_captain ? "spirit" : ""}
-                        onChange={(event) => handleUpdateCaptain(entry.id, event.target.value || null)}
-                      >
-                        <option value="">None</option>
-                        <option value="captain">Captain</option>
-                        <option value="spirit">Spirit captain</option>
-                      </Select>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveRosterEntry(entry.id)}
-                        className="sc-button is-ghost text-xs text-rose-200 hover:text-white"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                            ) : null}
+                            <span className="min-w-0 truncate">{playerName}</span>
+                            {entry.player?.jersey_number != null ? (
+                              <span className="text-xs font-medium text-ink-muted">
+                                #{entry.player.jersey_number}
+                              </span>
+                            ) : null}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditingRosterEntryId(isEditing ? "" : entry.id)}
+                          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition ${
+                            isEditing
+                              ? "border-accent bg-accent text-[var(--sc-button-ink)]"
+                              : "border-border bg-surface text-ink-muted hover:border-accent hover:text-ink"
+                          }`}
+                          aria-expanded={isEditing}
+                          aria-label={`Edit roster controls for ${playerName}`}
+                          title="Edit roster entry"
+                        >
+                          <EditIcon />
+                        </button>
+                      </div>
+
+                      {isEditing ? (
+                        <div className="mt-2.5 flex flex-col gap-2 rounded-xl border border-border/70 bg-surface px-3 py-2.5 text-xs sm:mt-3 sm:flex-row sm:items-center sm:justify-end sm:py-3">
+                          <Select
+                            className="is-compact sm:w-48"
+                            value={entry.is_captain ? "captain" : entry.is_spirit_captain ? "spirit" : ""}
+                            onChange={(event) => handleUpdateCaptain(entry.id, event.target.value || null)}
+                            aria-label={`Captain role for ${playerName}`}
+                          >
+                            <option value="">None</option>
+                            <option value="captain">Captain</option>
+                            <option value="spirit">Spirit captain</option>
+                          </Select>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRosterEntry(entry.id)}
+                            className="sc-button is-ghost text-xs text-rose-200 hover:text-white"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             )}
-          </Panel>
-        </Card>
+          </section>
+        </section>
       </SectionShell>
+
+      {playerEditorOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/55 px-3 py-4 backdrop-blur-[2px] sm:py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Create/Update players"
+          onClick={() => setPlayerEditorOpen(false)}
+        >
+          <section
+            className="w-full max-w-5xl rounded-xl border border-border/80 border-l-4 border-l-accent bg-surface-muted p-3 text-ink shadow-strong sm:p-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3 border-b border-border-strong pb-3">
+              <SectionHeader
+                title="Create/Update players"
+              />
+              <button
+                type="button"
+                onClick={() => setPlayerEditorOpen(false)}
+                className="sc-button is-ghost shrink-0 text-xs"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-5 sm:space-y-6">
+              <section className="space-y-3 sm:space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Existing players</h3>
+                  <span className="text-xs text-ink-muted">{playerDirectory.length} total</span>
+                </div>
+
+                <div className="space-y-2 rounded-xl border border-border-strong bg-surface p-2.5 sm:p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    Possible duplicates
+                  </p>
+                  {playerDirectory.length === 0 ? (
+                    <p className="text-xs text-ink-muted">
+                      No players yet. Use the form to add your first athlete.
+                    </p>
+                  ) : !hasExistingPlayerLookupInput ? (
+                    <p className="text-xs text-ink-muted">
+                      Start typing in Player name to find existing players.
+                    </p>
+                  ) : playerOptions.length === 0 ? (
+                    <p className="text-xs text-ink-muted">
+                      No players match the current player name.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {playerOptions.map((entry) => {
+                        const isAssigned = rosterPlayerIds.has(entry.player.id);
+
+                        return (
+                          <li
+                            key={`dup-${entry.player.id}`}
+                            className={`flex items-center justify-between gap-2 rounded-lg border border-border/60 px-2 py-1.5 sm:px-2.5 ${
+                              isAssigned ? "bg-surface-muted/50 text-ink-muted" : ""
+                            }`}
+                          >
+                            <div className="flex min-w-0 items-center gap-2 text-xs">
+                              {isAssigned ? (
+                                <span
+                                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent/70 bg-accent/15 text-accent"
+                                  title="Already assigned"
+                                >
+                                  <CheckIcon />
+                                </span>
+                              ) : (
+                                <span className="h-5 w-5 shrink-0" aria-hidden="true" />
+                              )}
+                              <div className="min-w-0">
+                                <p className={`truncate font-semibold ${isAssigned ? "text-ink-muted" : "text-ink"}`}>
+                                  {entry.player.name}
+                                  {entry.player.jersey_number != null ? ` #${entry.player.jersey_number}` : ""}
+                                </p>
+                                <p className="truncate text-ink-muted">
+                                  {entry.player.birthday || "DOB unknown"} - {entry.player.gender_code || "-"}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectPlayer(entry.player)}
+                              className={`sc-button is-ghost text-xs ${
+                                isAssigned ? "cursor-not-allowed opacity-45 hover:text-ink-muted" : ""
+                              }`}
+                              disabled={isAssigned}
+                            >
+                              Load
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </section>
+
+              <form className="space-y-3 border-t border-border-strong pt-4 sm:space-y-4 sm:pt-5" onSubmit={handlePlayerSubmit}>
+                <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+                  <Field label="Player name" htmlFor="player-name">
+                    <Input
+                      id="player-name"
+                      type="text"
+                      value={playerForm.name}
+                      onChange={(event) => handlePlayerFieldChange("name", event.target.value)}
+                      required
+                    />
+                  </Field>
+                  <Field label="Birthday" htmlFor="player-birthday">
+                    <Input
+                      id="player-birthday"
+                      type="date"
+                      value={playerForm.birthday}
+                      onChange={(event) => handlePlayerFieldChange("birthday", event.target.value)}
+                      required
+                    />
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3 md:col-span-2 md:gap-4">
+                    <Field label="Gender code" htmlFor="player-gender">
+                      <Select
+                        id="player-gender"
+                        value={playerForm.gender_code}
+                        onChange={(event) => handlePlayerFieldChange("gender_code", event.target.value)}
+                        required
+                      >
+                        <option value="">Select</option>
+                        <option value="M">M</option>
+                        <option value="W">W</option>
+                      </Select>
+                    </Field>
+                    <Field label="Jersey # (optional)" htmlFor="player-jersey">
+                      <Input
+                        id="player-jersey"
+                        type="number"
+                        value={playerForm.jersey_number}
+                        onChange={(event) => handlePlayerFieldChange("jersey_number", event.target.value)}
+                        min="0"
+                      />
+                    </Field>
+                  </div>
+                </div>
+
+                {playerAlert && (
+                  <div className={`sc-alert ${playerAlert.tone === "error" ? "is-error" : "is-success"}`}>
+                    {playerAlert.message}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <button type="submit" disabled={playerSaving} className="sc-button disabled:cursor-not-allowed">
+                    {playerSaving ? "Saving..." : playerForm.id ? "Update player" : "Add player"}
+                  </button>
+                  <button type="button" onClick={resetPlayerForm} className="sc-button is-ghost">
+                    Clear form
+                  </button>
+                </div>
+
+                {duplicateBanner && (
+                  <div
+                    className={[
+                      "rounded-xl border px-3 py-2 text-sm font-medium",
+                      duplicateBanner.tone === "danger"
+                        ? "border-red-500/50 bg-red-500/10 text-red-200"
+                        : "border-yellow-400/50 bg-yellow-400/10 text-yellow-100",
+                    ].join(" ")}
+                  >
+                    {duplicateBanner.message}
+                  </div>
+                )}
+              </form>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

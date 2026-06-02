@@ -4,6 +4,7 @@ import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
 const RECENT_MATCHES_CACHE_TTL_MS = 30 * 1000;
 const OPEN_MATCHES_CACHE_TTL_MS = 30 * 1000;
 const EVENT_MATCHES_CACHE_TTL_MS = 60 * 1000;
+const MATCH_IDS_CACHE_TTL_MS = 30 * 1000;
 
 const MATCH_FIELDS = `
   id,
@@ -206,6 +207,8 @@ export async function createMatch(payload = {}) {
   invalidateCachedQueries("matches:open");
   invalidateCachedQueries("matches:recent");
   invalidateCachedQueries("matches:recent-finals");
+  invalidateCachedQueries("matches:ids");
+  invalidateCachedQueries("teams:matches");
 
   return data || null;
 }
@@ -254,6 +257,8 @@ export async function updateMatch(matchId, payload = {}) {
   }
   invalidateCachedQueries("matches:open");
   invalidateCachedQueries("matches:recent");
+  invalidateCachedQueries("matches:ids");
+  invalidateCachedQueries("teams:matches");
 
   return data || null;
 }
@@ -285,6 +290,8 @@ export async function deleteMatch(matchId) {
   invalidateCachedQueries("matches:open");
   invalidateCachedQueries("matches:recent");
   invalidateCachedQueries("matches:recent-finals");
+  invalidateCachedQueries("matches:ids");
+  invalidateCachedQueries("teams:matches");
 
   return existing || null;
 }
@@ -328,6 +335,13 @@ export async function initialiseMatch(matchId, payload) {
   }
 
   if (data) {
+    if (data.event_id) {
+      invalidateCachedQueries(`matches:event:${data.event_id}`);
+    }
+    invalidateCachedQueries("matches:open");
+    invalidateCachedQueries("matches:recent");
+    invalidateCachedQueries("matches:ids");
+    invalidateCachedQueries("teams:matches");
     return data;
   }
 
@@ -357,6 +371,8 @@ export async function updateMatchStatus(matchId, nextStatus = "finished") {
   }
   invalidateCachedQueries("matches:open");
   invalidateCachedQueries("matches:recent");
+  invalidateCachedQueries("matches:ids");
+  invalidateCachedQueries("teams:matches");
 
   return data || null;
 }
@@ -385,6 +401,10 @@ export async function updateMatchParticipants(matchId, payload = {}) {
   if (data?.event_id) {
     invalidateCachedQueries(`matches:event:${data.event_id}`);
   }
+  invalidateCachedQueries("matches:open");
+  invalidateCachedQueries("matches:recent");
+  invalidateCachedQueries("matches:ids");
+  invalidateCachedQueries("teams:matches");
 
   return data || null;
 }
@@ -410,6 +430,8 @@ export async function updateMatchMediaLink(matchId, mediaPayload) {
   }
   invalidateCachedQueries("matches:recent");
   invalidateCachedQueries("matches:recent-with-media");
+  invalidateCachedQueries("matches:ids");
+  invalidateCachedQueries("teams:matches");
 
   return data || null;
 }
@@ -427,16 +449,22 @@ export async function getMatchesByIds(ids = []) {
     return [];
   }
 
-  const { data, error } = await supabase
-    .from("matches")
-    .select(MATCH_FIELDS)
-    .in("id", uniqueIds);
+  return getCachedQuery(
+    `matches:ids:${uniqueIds.join(",")}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("matches")
+        .select(MATCH_FIELDS)
+        .in("id", uniqueIds);
 
-  if (error) {
-    throw new Error(error.message || "Failed to load matches by id");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load matches by id");
+      }
 
-  const rows = data ?? [];
-  const lookup = new Map(rows.map((row) => [row.id, row]));
-  return uniqueIds.map((id) => lookup.get(id)).filter(Boolean);
+      const rows = data ?? [];
+      const lookup = new Map(rows.map((row) => [row.id, row]));
+      return uniqueIds.map((id) => lookup.get(id)).filter(Boolean);
+    },
+    { ttlMs: MATCH_IDS_CACHE_TTL_MS },
+  );
 }

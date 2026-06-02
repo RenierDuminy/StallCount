@@ -25,6 +25,10 @@ const chipVariants = {
   default: "sc-chip",
   tag: "sc-tag",
   ghost: "sc-pill-ghost",
+  warning: "sc-chip sc-chip--warning",
+  media: "sc-chip sc-chip--media",
+  admin: "sc-chip sc-chip--admin",
+  live: "sc-chip sc-chip--live",
 };
 
 const MATCH_CARD_PHASES = {
@@ -47,12 +51,12 @@ const MATCH_CARD_CANCELED_STATUSES = new Set(["canceled", "cancelled"]);
 
 const MATCH_CARD_PHASE_STYLES = {
   [MATCH_CARD_PHASES.scheduled]: {
-    panelClass: "border-amber-400/35",
-    statusClass: "text-amber-200",
+    panelClass: "border-warning-border",
+    statusClass: "text-warning-ink",
   },
   [MATCH_CARD_PHASES.live]: {
-    panelClass: "border-rose-400/45 bg-rose-500/5",
-    statusClass: "text-rose-300",
+    panelClass: "border-live-border bg-live-bg",
+    statusClass: "text-live-ink",
   },
   [MATCH_CARD_PHASES.finished]: {
     panelClass: "border-emerald-400/35",
@@ -197,6 +201,7 @@ export function MatchCard({
   hideScheduledStatus = false,
   scheduledVenueNameOnly = false,
   hideFinishedVenue = true,
+  hideVenue = false,
   compact = false,
   ...props
 }) {
@@ -211,8 +216,9 @@ export function MatchCard({
     (!statusLabel || normalizedStatusLabel === MATCH_CARD_PHASES.scheduled);
   const usesResolvedLayout =
     matchPhase === MATCH_CARD_PHASES.finished || matchPhase === MATCH_CARD_PHASES.canceled;
-  const venueLabel =
-    hideFinishedVenue && usesResolvedLayout
+  const venueLabel = hideVenue
+    ? ""
+    : hideFinishedVenue && usesResolvedLayout
       ? ""
       : getVenueLabel(venue, {
           nameOnly: scheduledVenueNameOnly && isScheduledStatus,
@@ -243,6 +249,7 @@ export function MatchCard({
         : "justify-start";
   const scoreAlignClass =
     centerScoreSection ? "text-center" : scoreAlign === "right" ? "text-right" : "text-left";
+  const scoreToneClass = matchPhase === MATCH_CARD_PHASES.live ? "text-live" : "text-accent";
 
   return (
     <Panel
@@ -293,7 +300,7 @@ export function MatchCard({
                     >
                       {finishedScoreParts.teamA}
                     </span>
-                    <span className="sc-match-card-score-value whitespace-nowrap text-center text-2xl tabular-nums text-accent">
+                    <span className={cx("sc-match-card-score-value whitespace-nowrap text-center text-2xl tabular-nums", scoreToneClass)}>
                       {finishedScoreParts.scoreA} - {finishedScoreParts.scoreB}
                     </span>
                     <span
@@ -307,12 +314,12 @@ export function MatchCard({
                   </p>
                 </div>
               ) : displayScore ? (
-                <p className="max-w-full break-words text-2xl font-semibold text-accent">{displayScore}</p>
+                <p className={cx("max-w-full break-words text-2xl font-semibold", scoreToneClass)}>{displayScore}</p>
               ) : null}
               {displayStatus ? (
                 <p className={cx("text-xs font-semibold uppercase tracking-wide", phaseStyle.statusClass)}>
                   {matchPhase === MATCH_CARD_PHASES.live ? (
-                    <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-rose-400 align-middle" />
+                    <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-live align-middle" />
                   ) : null}
                   {displayStatus}
                 </p>

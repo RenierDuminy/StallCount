@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getDivisions, getEventsList, getEventsByIds } from "../services/leagueService";
-import { getRecentMatches } from "../services/matchService";
+import { getMatchesByEvent, getMatchesByIds } from "../services/matchService";
 import { getPlayerDirectory, getPlayersByIds } from "../services/playerService";
-import { getAllTeams } from "../services/teamService";
+import { getAllTeams, getTeamsByIds } from "../services/teamService";
 import { getRecentLiveEvents } from "../services/liveEventService";
 import { supabase } from "../services/supabaseClient";
 import {
@@ -13,7 +13,7 @@ import {
   resolveTopicsInput,
   upsertSubscription,
 } from "../services/subscriptionService";
-import { Card, Panel, SectionHeader, SectionShell, Chip, Field, Input, Select, Textarea } from "../components/ui/primitives";
+import { Panel, SectionHeader, SectionShell, Chip, Field, Input, Select } from "../components/ui/primitives";
 
 const TARGET_OPTIONS = [
   { value: "match", label: "Match" },
@@ -157,8 +157,11 @@ export default function NotificationsPage() {
 
   const [targetType, setTargetType] = useState(TARGET_OPTIONS[0].value);
   const [targetId, setTargetId] = useState("");
+  const [matchEventId, setMatchEventId] = useState("");
+  const [matchDivisionId, setMatchDivisionId] = useState("");
+  const [matchEvents, setMatchEvents] = useState([]);
+  const [matchDivisions, setMatchDivisions] = useState([]);
   const [selectedTopics, setSelectedTopics] = useState(["match_start", "match_final"]);
-  const [customTopics, setCustomTopics] = useState("");
   const [topicEdits, setTopicEdits] = useState({});
   const [choices, setChoices] = useState([]);
   const [choiceLoading, setChoiceLoading] = useState(false);
@@ -204,6 +207,25 @@ export default function NotificationsPage() {
   useEffect(() => {
     notifiedEventIdsRef.current.clear();
   }, [profileId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getEventsList(200), getDivisions(200)])
+      .then(([events, divisions]) => {
+        if (cancelled) return;
+        setMatchEvents(events || []);
+        setMatchDivisions(divisions || []);
+      })
+      .catch((err) => {
+        console.error("[Notifications] Failed to load match filters", err);
+        if (cancelled) return;
+        setMatchEvents([]);
+        setMatchDivisions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const showNotificationPayload = useCallback(async (payload) => {
     if (!payload) throw new Error("No notification payload specified.");
@@ -291,7 +313,7 @@ export default function NotificationsPage() {
         if (targetType === "event") {
           rows = await getEventsList(200);
         } else if (targetType === "match") {
-          rows = await getRecentMatches(200);
+          rows = matchEventId ? await getMatchesByEvent(matchEventId, 200) : [];
         } else if (targetType === "team") {
           rows = await getAllTeams(200);
         } else if (targetType === "player") {
@@ -328,7 +350,7 @@ export default function NotificationsPage() {
     return () => {
       cancelled = true;
     };
-  }, [choiceDisplayLabel, targetType]);
+  }, [choiceDisplayLabel, matchEventId, targetType]);
 
   useEffect(() => {
     const missingEventIds = subscriptions
@@ -381,6 +403,76 @@ export default function NotificationsPage() {
       ignore = true;
     };
   }, [subscriptions, targetLabels]);
+
+  useEffect(() => {
+    const missingTeamIds = subscriptions
+      .filter((sub) => sub.target_type === "team")
+      .map((sub) => sub.target_id)
+      .filter((id) => id && !targetLabels[`team:${id}`]);
+    if (!missingTeamIds.length) return undefined;
+    let ignore = false;
+    getTeamsByIds(missingTeamIds)
+      .then((rows) => {
+        if (ignore || !rows?.length) return;
+        setTargetLabels((prev) => {
+          const next = { ...prev };
+          rows.forEach((row) => {
+            next[`team:${row.id}`] = row.name || row.short_name || "Unknown team";
+          });
+          return next;
+        });
+      })
+      .catch((err) => {
+        console.error("[Notifications] Failed to load team labels", err);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [subscriptions, targetLabels]);
+
+  useEffect(() => {
+    const missingMatchIds = subscriptions
+      .filter((sub) => sub.target_type === "match")
+      .map((sub) => sub.target_id)
+      .filter((id) => id && !targetLabels[`match:${id}`]);
+    if (!missingMatchIds.length) return undefined;
+    let ignore = false;
+    getMatchesByIds(missingMatchIds)
+      .then((rows) => {
+        if (ignore || !rows?.length) return;
+        setTargetLabels((prev) => {
+          const next = { ...prev };
+          rows.forEach((row) => {
+            next[`match:${row.id}`] = formatMatchChoiceLabel(row) || "Unknown match";
+          });
+          return next;
+        });
+      })
+      .catch((err) => {
+        console.error("[Notifications] Failed to load match labels", err);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [formatMatchChoiceLabel, subscriptions, targetLabels]);
+
+  useEffect(() => {
+    const missingDivisionIds = subscriptions
+      .filter((sub) => sub.target_type === "division")
+      .map((sub) => sub.target_id)
+      .filter((id) => id && !targetLabels[`division:${id}`]);
+    if (!missingDivisionIds.length || !matchDivisions.length) return;
+    setTargetLabels((prev) => {
+      const next = { ...prev };
+      missingDivisionIds.forEach((id) => {
+        const division = matchDivisions.find((item) => String(item.id) === String(id));
+        if (division) {
+          next[`division:${id}`] = division.name || "Unknown division";
+        }
+      });
+      return next;
+    });
+  }, [matchDivisions, subscriptions, targetLabels]);
 
   useEffect(() => {
     if (!pushState.supported) return undefined;
@@ -462,13 +554,18 @@ export default function NotificationsPage() {
   }
 
   function buildTopicsFromForm() {
-    return uniqueTopics([...selectedTopics, ...resolveTopicsInput(customTopics)]);
+    return uniqueTopics(selectedTopics);
   }
 
   const filteredChoices = useMemo(() => {
-    if (!choiceSearch.trim()) return choices;
+    const scopedChoices =
+      targetType === "match" && matchDivisionId
+        ? choices.filter((item) => String(item.division_id || "") === String(matchDivisionId))
+        : choices;
+
+    if (!choiceSearch.trim()) return scopedChoices;
     const text = choiceSearch.toLowerCase();
-    return choices.filter((item) => {
+    return scopedChoices.filter((item) => {
       const haystack = [
         item.name,
         item.full_name,
@@ -478,12 +575,33 @@ export default function NotificationsPage() {
         item.type,
         item.start_time,
         item.id,
+        item.event?.name,
+        formatMatchChoiceLabel(item),
       ]
         .filter(Boolean)
         .map((value) => String(value).toLowerCase());
       return haystack.some((entry) => entry.includes(text));
     });
-  }, [choiceSearch, choices]);
+  }, [choiceSearch, choices, formatMatchChoiceLabel, matchDivisionId, targetType]);
+
+  const matchDivisionOptions = useMemo(() => {
+    const divisionIds = new Set(
+      choices
+        .map((match) => match?.division_id)
+        .filter((id) => id !== null && id !== undefined)
+        .map(String),
+    );
+    if (divisionIds.size === 0) return [];
+    return matchDivisions.filter((division) => divisionIds.has(String(division.id)));
+  }, [choices, matchDivisions]);
+
+  useEffect(() => {
+    if (targetType !== "match" || !matchDivisionId) return;
+    const stillAvailable = matchDivisionOptions.some((division) => String(division.id) === String(matchDivisionId));
+    if (!stillAvailable) {
+      setMatchDivisionId("");
+    }
+  }, [matchDivisionId, matchDivisionOptions, targetType]);
 
   async function handleCreateSubscription(event) {
     event.preventDefault();
@@ -508,7 +626,6 @@ export default function NotificationsPage() {
       });
       setSuccess("Follow preferences saved.");
       setTargetId("");
-      setCustomTopics("");
       setSelectedTopics(["match_start", "match_final"]);
       const rows = await getSubscriptions(profileId);
       setSubscriptions(rows);
@@ -545,7 +662,10 @@ export default function NotificationsPage() {
 
   const getSubscriptionLabel = useCallback(
     (type, id) => {
-      return targetLabels[`${type}:${id}`] || `Unknown ${type}`;
+      const label = targetLabels[`${type}:${id}`];
+      if (label) return label;
+      const shortId = typeof id === "string" && id.length > 8 ? `${id.slice(0, 8)}...` : id;
+      return shortId ? `${type} ${shortId}` : `Unknown ${type}`;
     },
     [targetLabels],
   );
@@ -679,60 +799,41 @@ export default function NotificationsPage() {
   return (
     <div className="sc-page">
       <div className="relative z-10">
-        <SectionShell as="header" className="pt-6">
-          <Card className="space-y-6 p-6 sm:p-8">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  <Chip>Notifications</Chip>
-                  <span>Follow updates across StallCount</span>
-                </div>
-                <h1 className="text-3xl font-semibold text-ink">Signal preferences</h1>
-                <p className="max-w-2xl text-sm text-ink-muted">
-                  Subscribe to matches, teams, players, events, or divisions. Fine-tune the event types you want to be
-                  nudged about so your phone only buzzes for the right moments.
-                </p>
+        <SectionShell as="header" className="pt-4 sm:pt-5">
+          <section className="space-y-3 border-b border-border pb-4 sm:pb-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <h1 className="text-2xl font-semibold text-ink sm:text-3xl">Notifications</h1>
               </div>
-              <Panel variant="muted" className="w-full max-w-xs space-y-1 border border-border p-5 text-right">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Active follows</p>
-                <p className="text-3xl font-bold text-accent">{loading ? "..." : subscriptions.length}</p>
-                <p className="text-[11px] text-ink-muted">targets currently tracked</p>
-              </Panel>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <div className="border-l-4 border-l-accent bg-surface-muted/50 px-3 py-2 text-right">
+                  <p className="font-semibold uppercase tracking-wide text-ink-muted">Follows</p>
+                  <p className="text-xl font-bold text-accent">{loading ? "..." : subscriptions.length}</p>
+                </div>
+                <div className="border-l-4 border-l-border-strong bg-surface-muted/50 px-3 py-2 text-right">
+                  <p className="font-semibold uppercase tracking-wide text-ink-muted">Push</p>
+                  <p className="font-semibold text-ink">{pushState.enabled ? "On" : pushState.permission}</p>
+                </div>
+              </div>
             </div>
 
-            <Panel variant="tinted" className="space-y-4 border border-border p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="space-y-2">
-                  <h2 className="text-xl font-semibold text-ink">Browser push status</h2>
-                  <p className="text-sm text-ink-muted">
-                    We use the PWA service worker to deliver alerts in the background. Enable this to receive match
-                    updates without opening the site.
-                  </p>
-                </div>
-                <Panel variant="muted" className="w-full max-w-xs space-y-1 border border-border p-4 text-right">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">Permission</p>
-                  <p className="text-lg font-semibold text-ink">{pushState.permission}</p>
-                  <p className="text-[11px] text-ink-muted">
-                    {pushState.enabled ? "Subscribed" : "Not subscribed"}
-                  </p>
-                </Panel>
-              </div>
+            <section className="space-y-2">
 
               {!pushState.supported ? (
-                <Panel variant="muted" className="border border-rose-400/40 bg-rose-500/10 text-sm text-rose-200">
+                <div className="border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
                   Push notifications are not supported in this browser.
-                </Panel>
+                </div>
               ) : pushState.permission === "denied" ? (
-                <Panel variant="muted" className="border border-rose-400/40 bg-rose-500/10 text-sm text-rose-200">
+                <div className="border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
                   Notifications are blocked in your browser. Update the permission settings and retry.
-                </Panel>
+                </div>
               ) : (
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={handleEnablePush}
                     disabled={pushState.busy || pushState.enabled}
-                    className="sc-button w-full justify-center sm:w-auto"
+                    className="sc-button w-full justify-center text-xs sm:w-auto"
                   >
                     {pushState.busy ? "Working..." : pushState.enabled ? "Enabled" : "Enable push"}
                   </button>
@@ -741,7 +842,7 @@ export default function NotificationsPage() {
                       type="button"
                       onClick={handleDisablePush}
                       disabled={pushState.busy}
-                      className="sc-button is-ghost w-full justify-center sm:w-auto"
+                      className="sc-button is-ghost w-full justify-center text-xs sm:w-auto"
                     >
                       Disable push
                     </button>
@@ -749,34 +850,34 @@ export default function NotificationsPage() {
                 </div>
               )}
               {pushState.error && (
-                <Panel variant="muted" className="border border-rose-400/40 bg-rose-500/10 text-sm text-rose-200">
+                <div className="border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
                   {pushState.error}
-                </Panel>
+                </div>
               )}
-            </Panel>
-          </Card>
+            </section>
+          </section>
         </SectionShell>
 
-        <SectionShell as="main" className="space-y-6 pb-16">
+        <SectionShell as="main" className="space-y-6 pb-16 pt-4">
         {isLoggedOut && (
-          <Card variant="muted" className="border border-rose-400/30 p-4 text-sm text-rose-200">
+          <div className="border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
             Sign in to create or manage your notification subscriptions.
-          </Card>
+          </div>
         )}
 
         {error && (
-          <Card variant="muted" className="border border-rose-400/45 p-4 text-sm text-rose-200">
+          <div className="border border-rose-400/45 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
             {error}
-          </Card>
+          </div>
         )}
         {success && (
-          <Card variant="muted" className="border border-emerald-400/30 p-4 text-sm text-ink">
+          <div className="border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm text-ink">
             {success}
-          </Card>
+          </div>
         )}
 
-        <Card as="section" className="space-y-5 p-6 sm:p-8">
-          <SectionHeader title="Follow something new" description="Pick a target and the topics you care about." />
+        <section className="space-y-5 border-b border-border pb-5 sm:pb-7">
+          <SectionHeader title="Follow something new" />
           <form className="grid gap-4 lg:grid-cols-[1fr,1fr]" onSubmit={handleCreateSubscription}>
             <div className="space-y-3">
               <Field label="Target type" htmlFor="notifications-target-type">
@@ -787,6 +888,10 @@ export default function NotificationsPage() {
                     setTargetType(e.target.value);
                     setTargetId("");
                     setChoiceSearch("");
+                    if (e.target.value !== "match") {
+                      setMatchEventId("");
+                      setMatchDivisionId("");
+                    }
                   }}
                   disabled={saving || isLoggedOut}
                 >
@@ -799,19 +904,65 @@ export default function NotificationsPage() {
               </Field>
 
               <div className="space-y-2">
+                {targetType === "match" ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Event" htmlFor="notifications-match-event">
+                      <Select
+                        id="notifications-match-event"
+                        value={matchEventId}
+                        onChange={(e) => {
+                          setMatchEventId(e.target.value);
+                          setMatchDivisionId("");
+                          setTargetId("");
+                          setChoiceSearch("");
+                        }}
+                        disabled={saving || isLoggedOut}
+                      >
+                        <option value="">Choose an event</option>
+                        {matchEvents.map((eventItem) => (
+                          <option key={eventItem.id} value={eventItem.id}>
+                            {eventItem.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Division" htmlFor="notifications-match-division">
+                      <Select
+                        id="notifications-match-division"
+                        value={matchDivisionId}
+                        onChange={(e) => {
+                          setMatchDivisionId(e.target.value);
+                          setTargetId("");
+                          setChoiceSearch("");
+                        }}
+                        disabled={saving || isLoggedOut || !matchEventId || matchDivisionOptions.length === 0}
+                      >
+                        <option value="">All divisions</option>
+                        {matchDivisionOptions.map((division) => (
+                          <option key={division.id} value={division.id}>
+                            {division.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+                ) : null}
+
                 <label className="block text-sm font-semibold text-ink">
                   Pick a {targetType}
                 </label>
                 <Input
                   type="text"
-                  placeholder="Search by name or location"
+                  placeholder={targetType === "match" ? "Search listed matches" : "Search by name or location"}
                   value={choiceSearch}
                   onChange={(e) => setChoiceSearch(e.target.value)}
-                  disabled={saving || isLoggedOut}
+                  disabled={saving || isLoggedOut || (targetType === "match" && !matchEventId)}
                 />
                 <div className="max-h-56 overflow-auto rounded-2xl border border-border/80 bg-surface-muted">
                   {choiceLoading ? (
                     <p className="px-3 py-2 text-xs text-ink-muted">Loading {targetType}s...</p>
+                  ) : targetType === "match" && !matchEventId ? (
+                    <p className="px-3 py-2 text-xs text-ink-muted">Choose an event to list matches.</p>
                   ) : filteredChoices.length === 0 ? (
                     <p className="px-3 py-2 text-xs text-ink-muted">No results.</p>
                   ) : (
@@ -856,14 +1007,6 @@ export default function NotificationsPage() {
                 <input type="hidden" value={targetId} required readOnly />
               </div>
 
-              <Panel variant="muted" className="text-xs text-ink-muted">
-                <p className="font-semibold text-ink">How this works</p>
-                <ul className="mt-1 list-disc space-y-1 pl-4">
-                  <li>Each row in <code>public.subscriptions</code> maps you to one entity.</li>
-                  <li>Topics are matched against <code>live_events.event_type</code> / match log events.</li>
-                  <li>Leave topics empty to pause alerts for that target.</li>
-                </ul>
-              </Panel>
             </div>
 
             <div className="space-y-3">
@@ -895,17 +1038,6 @@ export default function NotificationsPage() {
                 </div>
               </div>
 
-              <Field label="Additional topics (comma or newline separated)" htmlFor="notifications-topics">
-                <Textarea
-                  id="notifications-topics"
-                  rows={3}
-                  placeholder="e.g. custom_event, roster_change"
-                  value={customTopics}
-                  onChange={(e) => setCustomTopics(e.target.value)}
-                  disabled={saving || isLoggedOut}
-                />
-              </Field>
-
               <button
                 type="submit"
                 className="sc-button w-full justify-center disabled:cursor-not-allowed disabled:opacity-60"
@@ -915,23 +1047,22 @@ export default function NotificationsPage() {
               </button>
             </div>
           </form>
-        </Card>
+        </section>
 
-        <Card as="section" className="space-y-5 p-6 sm:p-8">
+        <section className="space-y-5 border-b border-border pb-5 sm:pb-7">
           <SectionHeader
             title="Your subscriptions"
-            description="One row per target you follow."
             action={<Chip variant="ghost">{loading ? "Loading..." : `${subscriptions.length} tracked`}</Chip>}
           />
 
           {loading ? (
-            <Panel variant="muted" className="border border-dashed border-border bg-transparent py-6 text-center text-sm text-ink-muted">
+            <div className="border border-dashed border-border py-6 text-center text-sm text-ink-muted">
               Loading subscriptions...
-            </Panel>
+            </div>
           ) : subscriptions.length === 0 ? (
-            <Panel variant="muted" className="border border-dashed border-border bg-transparent py-6 text-center text-sm text-ink-muted">
+            <div className="border border-dashed border-border py-6 text-center text-sm text-ink-muted">
               No subscriptions yet. Add one above to start receiving notifications.
-            </Panel>
+            </div>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {subscriptions.map((sub) => (
@@ -996,31 +1127,30 @@ export default function NotificationsPage() {
               ))}
             </div>
           )}
-        </Card>
+        </section>
 
-        <Card as="section" className="space-y-5 p-6 sm:p-8">
+        <section className="space-y-5">
           <SectionHeader
             title="Recent notifications"
-            description="The latest updates that match your follow preferences."
             action={<Chip variant="ghost">{recentNotifications.length} shown</Chip>}
           />
 
           {isLoggedOut ? (
-            <Panel variant="muted" className="text-sm text-ink-muted">
+            <div className="text-sm text-ink-muted">
               Sign in and follow something to see recent notifications here.
-            </Panel>
+            </div>
           ) : recentError ? (
-            <Panel variant="muted" className="border border-rose-400/40 bg-rose-500/15 text-sm text-rose-200">
+            <div className="border border-rose-400/40 bg-rose-500/15 px-3 py-2 text-sm text-rose-200">
               {recentError}
-            </Panel>
+            </div>
           ) : recentLoading ? (
-            <Panel variant="muted" className="border border-dashed border-border bg-transparent py-4 text-center text-sm text-ink-muted">
+            <div className="border border-dashed border-border py-4 text-center text-sm text-ink-muted">
               Loading recent notifications...
-            </Panel>
+            </div>
           ) : recentNotifications.length === 0 ? (
-            <Panel variant="muted" className="border border-dashed border-border bg-transparent py-4 text-center text-sm text-ink-muted">
+            <div className="border border-dashed border-border py-4 text-center text-sm text-ink-muted">
               No recent notifications match your current follows.
-            </Panel>
+            </div>
           ) : (
             <div className="grid gap-1 md:grid-cols-2 xl:grid-cols-3">
               {recentNotifications.map((event) => {
@@ -1064,7 +1194,7 @@ export default function NotificationsPage() {
               })}
             </div>
           )}
-        </Card>
+        </section>
 
       </SectionShell>
     </div>

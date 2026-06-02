@@ -38,6 +38,30 @@ export default {
           strong: "var(--sc-accent-strong)",
           alt: "var(--sc-accent-alt)",
         },
+        warning: {
+          DEFAULT: "var(--sc-warning)",
+          ink: "var(--sc-warning-ink)",
+          bg: "var(--sc-warning-bg)",
+          border: "var(--sc-warning-border)",
+        },
+        media: {
+          DEFAULT: "var(--sc-media)",
+          ink: "var(--sc-media-ink)",
+          bg: "var(--sc-media-bg)",
+          border: "var(--sc-media-border)",
+        },
+        admin: {
+          DEFAULT: "var(--sc-admin)",
+          ink: "var(--sc-admin-ink)",
+          bg: "var(--sc-admin-bg)",
+          border: "var(--sc-admin-border)",
+        },
+        live: {
+          DEFAULT: "var(--sc-live)",
+          ink: "var(--sc-live-ink)",
+          bg: "var(--sc-live-bg)",
+          border: "var(--sc-live-border)",
+        },
       },
       borderRadius: {
         "sc-sm": "var(--sc-radius-sm)",

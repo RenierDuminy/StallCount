@@ -84,10 +84,11 @@ export default function PlayerProfilePage() {
         acc.assists += row.assists || 0;
         acc.blocks += row.blocks || 0;
         acc.turnovers += row.turnovers || 0;
+        acc.callahans += row.callahans || 0;
         acc.matches.add(row.match_id);
         return acc;
       },
-      { goals: 0, assists: 0, blocks: 0, turnovers: 0, matches: new Set() },
+      { goals: 0, assists: 0, blocks: 0, turnovers: 0, callahans: 0, matches: new Set() },
     );
 
     const games = totals.matches.size || 0;
@@ -134,33 +135,27 @@ export default function PlayerProfilePage() {
 
   return (
     <div className="pb-16 text-ink">
-      <SectionShell as="header" className="pt-6">
-        <Card className="space-y-4 p-5 sm:p-6">
+      <SectionShell as="header" className="pt-3 sm:pt-6">
+        <Card className="space-y-3 p-4 sm:space-y-4 sm:p-6">
           <SectionHeader
             eyebrow="Player profile"
             title={`${profile?.name || identity.name}${(profile?.jersey ?? identity.jersey) ? ` (#${profile?.jersey ?? identity.jersey})` : ""}`}
-            description={`Per-match contributions across recorded games (${profile?.games || 0} total${eventFilter !== "all" ? " for this event" : ""}).`}
             action={
               <Link to={backToPlayersHref} className="sc-button is-ghost">
                 Back to players
               </Link>
             }
           >
-            <p className="text-xs text-ink-muted">
-              Keep tabs on consistency, high-leverage playmaking, and areas to coach.
-            </p>
           </SectionHeader>
         </Card>
       </SectionShell>
 
-      <SectionShell as="main" className="space-y-4 sm:space-y-6">
+      <SectionShell as="main" className="space-y-3 sm:space-y-6">
         {error && <div className="sc-alert is-error">{error}</div>}
 
-        <Card className="space-y-5 p-5 sm:p-6">
+        <Card className="space-y-3 p-4 sm:space-y-5 sm:p-6">
           <SectionHeader
-            eyebrow="Performance summary"
-            title="Match impact ledger"
-            description="Totals and per-game rhythm derived from the latest recorded fixtures."
+            title="Performance summary"
             action={
               eventOptions.length > 0 ? (
                 <Field className="w-full max-w-xs" label="Event filter" htmlFor="player-event-filter">
@@ -182,36 +177,44 @@ export default function PlayerProfilePage() {
           />
 
           {loading ? (
-            <Panel variant="muted" className="p-4 text-sm text-ink-muted">
+            <Panel variant="muted" className="p-3 text-sm text-ink-muted sm:p-4">
               Loading player stats...
             </Panel>
           ) : !filteredRows.length ? (
-            <Panel variant="muted" className="p-4 text-sm text-ink-muted">
+            <Panel variant="muted" className="p-3 text-sm text-ink-muted sm:p-4">
               {eventFilter === "all"
                 ? "No stats recorded for this player yet."
                 : "No stats recorded for this player in the selected event."}
             </Panel>
           ) : (
             <>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 xl:grid-cols-6">
                 <SummaryTile label="Total points" value={profile.totalPoints} helper="Goals + assists" />
                 <SummaryTile label="Goals" value={profile.totals.goals} helper={`${profile.goalsPerGame.toFixed(1)} per game`} />
                 <SummaryTile label="Assists" value={profile.totals.assists} helper={`${profile.assistPerGame.toFixed(1)} per game`} />
                 <SummaryTile label="Blocks" value={profile.totals.blocks} helper="Defensive plays" />
                 <SummaryTile label="Turnovers" value={profile.totals.turnovers} helper="Recorded turnovers" />
                 <SummaryTile label="Games played" value={profile.games} helper="Matches with stats" />
+                {profile.totals.callahans > 0 && (
+                  <SummaryTile
+                    label="Callahans"
+                    value={profile.totals.callahans}
+                    helper="Defensive scores"
+                    tone="gold"
+                  />
+                )}
               </div>
 
               <Panel variant="blank" className="overflow-hidden p-0">
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
-                    <thead className="bg-surface-muted/40 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                    <thead className="bg-surface-muted/40 text-[8px] font-semibold uppercase tracking-wide text-ink-muted sm:text-[11px]">
                       <tr>
-                        <th className="px-4 py-3">Match</th>
-                        <th className="px-4 py-3 text-center">Goals</th>
-                        <th className="px-4 py-3 text-center">Assists</th>
-                        <th className="px-4 py-3 text-center">Blocks</th>
-                        <th className="px-4 py-3 text-center">Turnovers</th>
+                        <th className="px-3 py-1.5 sm:px-4 sm:py-2">Match</th>
+                        <th className="px-3 py-1.5 text-center sm:px-4 sm:py-2">Goals</th>
+                        <th className="px-3 py-1.5 text-center sm:px-4 sm:py-2">Assists</th>
+                        <th className="px-3 py-1.5 text-center sm:px-4 sm:py-2">Blocks</th>
+                        <th className="px-3 py-1.5 text-center sm:px-4 sm:py-2">Turnovers</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -221,7 +224,7 @@ export default function PlayerProfilePage() {
                           : "/matches";
                         return (
                           <tr key={row.match_id} className="border-t border-border/60">
-                            <td className="px-4 py-3">
+                            <td className="px-3 py-2 sm:px-4 sm:py-3">
                               <Link
                                 to={matchHref}
                                 className="font-semibold text-ink transition hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
@@ -229,10 +232,10 @@ export default function PlayerProfilePage() {
                                 {buildMatchLabel(row)}
                               </Link>
                             </td>
-                            <td className="px-4 py-3 text-center font-semibold">{row.goals ?? 0}</td>
-                            <td className="px-4 py-3 text-center font-semibold">{row.assists ?? 0}</td>
-                            <td className="px-4 py-3 text-center font-semibold">{row.blocks ?? 0}</td>
-                            <td className="px-4 py-3 text-center font-semibold">{row.turnovers ?? 0}</td>
+                            <td className="px-3 py-2 text-center font-semibold sm:px-4 sm:py-3">{row.goals ?? 0}</td>
+                            <td className="px-3 py-2 text-center font-semibold sm:px-4 sm:py-3">{row.assists ?? 0}</td>
+                            <td className="px-3 py-2 text-center font-semibold sm:px-4 sm:py-3">{row.blocks ?? 0}</td>
+                            <td className="px-3 py-2 text-center font-semibold sm:px-4 sm:py-3">{row.turnovers ?? 0}</td>
                           </tr>
                         );
                       })}
@@ -248,12 +251,21 @@ export default function PlayerProfilePage() {
   );
 }
 
-function SummaryTile({ label, value, helper }) {
+function SummaryTile({ label, value, helper, tone = "default" }) {
+  const isGold = tone === "gold";
+
   return (
-    <Panel variant="tinted" className="space-y-1.5 p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{label}</p>
-      <p className="text-2xl font-semibold text-ink">{value ?? 0}</p>
-      {helper ? <p className="text-xs text-ink-muted">{helper}</p> : null}
+    <Panel
+      variant="tinted"
+      className={`space-y-1 p-3 sm:space-y-1.5 sm:p-4 ${
+        isGold ? "border-amber-400/80 text-amber-200" : ""
+      }`}
+    >
+      <p className={`text-xs font-semibold uppercase tracking-wide ${isGold ? "text-amber-300" : "text-ink-muted"}`}>
+        {label}
+      </p>
+      <p className={`text-xl font-semibold sm:text-2xl ${isGold ? "text-amber-200" : "text-ink"}`}>{value ?? 0}</p>
+      {helper ? <p className={`text-xs ${isGold ? "text-amber-200/80" : "text-ink-muted"}`}>{helper}</p> : null}
     </Panel>
   );
 }

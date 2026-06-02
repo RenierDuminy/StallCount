@@ -20,6 +20,7 @@ export function StandardEventMatchCard({
   className = "",
   trailing = undefined,
   hideFinishedVenue = true,
+  hideVenue = false,
   hideEyebrow = true,
   hideScheduledStatus = true,
   scheduledVenueNameOnly = true,
@@ -62,6 +63,7 @@ export function StandardEventMatchCard({
         hideScheduledStatus={hideScheduledStatus}
         scheduledVenueNameOnly={scheduledVenueNameOnly}
         hideFinishedVenue={hideFinishedVenue}
+        hideVenue={hideVenue}
         compact={compact}
         {...linkProps}
       />
