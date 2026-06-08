@@ -7,7 +7,7 @@ import { useScoreKeeperData } from "./useScoreKeeperData";
 import { useScoreKeeperActions } from "./useScoreKeeperActions";
 import { useScoreKeeperData as useScoreKeeper5v5Data } from "../scorekeeper copy/5v5useScoreKeeperData";
 import { useScoreKeeperActions as useScoreKeeper5v5Actions } from "../scorekeeper copy/5v5useScoreKeeperActions";
-import { ScorekeeperPopups } from "./ScorekeeperPopup";
+import { ResumeSessionSection, ScorekeeperPopups } from "./ScorekeeperPopup";
 import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
 import {
   BlockEventCard,
@@ -69,6 +69,16 @@ export default function ScoreKeeperView() {
   const data = useScoreKeeperData();
   const actions = useScoreKeeperActions(data);
   const fiveVFiveData = useScoreKeeper5v5Data();
+  const {
+    consoleReady: fiveVFiveConsoleReady,
+    resumeCandidate: fiveVFiveResumeCandidate,
+    resumeHandled: fiveVFiveResumeHandled,
+    resumeBusy: fiveVFiveResumeBusy,
+    resumeError: fiveVFiveResumeError,
+    activeMatch: fiveVFiveActiveMatch,
+    handleResumeSession: handleFiveVFiveResumeSession,
+    handleDiscardResume: handleFiveVFiveDiscardResume,
+  } = fiveVFiveData;
   const fiveVFiveController = {
     ...fiveVFiveData,
     onInitialiseComplete: (match) => {
@@ -287,6 +297,65 @@ export default function ScoreKeeperView() {
   const isStartMatchReady =
     Boolean(setupForm.startingTeamId) &&
     (!isAbbaEnabled || ["male", "female"].includes(setupForm.abbaPattern));
+
+  const handleFiveVFiveResumeAndOpenConsole = async () => {
+    const candidate = fiveVFiveResumeCandidate;
+    const resumed = await handleFiveVFiveResumeSession();
+    if (resumed === false) return;
+
+    const eventId = candidate?.eventId || fiveVFiveData.selectedEventId || "";
+    const matchId =
+      candidate?.matchId ||
+      candidate?.selectedMatchId ||
+      fiveVFiveData.selectedMatchId ||
+      "";
+    const params = new URLSearchParams();
+    params.set("mode", "5v5");
+    if (eventId) params.set("eventId", eventId);
+    if (matchId) params.set("matchId", matchId);
+    navigate(`/score-keeper-5v5?${params.toString()}`);
+  };
+
+  useEffect(() => {
+    if (
+      consoleReady &&
+      resumeCandidate &&
+      !resumeHandled &&
+      !resumeBusy &&
+      (resumeCandidate.matchId === activeMatch?.id ||
+        resumeCandidate.selectedMatchId === activeMatch?.id)
+    ) {
+      void handleResumeSession();
+    }
+  }, [
+    consoleReady,
+    resumeCandidate,
+    resumeHandled,
+    resumeBusy,
+    activeMatch?.id,
+    handleResumeSession,
+  ]);
+
+  useEffect(() => {
+    if (
+      fiveVFiveConsoleReady &&
+      fiveVFiveResumeCandidate &&
+      !fiveVFiveResumeHandled &&
+      !fiveVFiveResumeBusy &&
+      (fiveVFiveResumeCandidate.matchId === fiveVFiveActiveMatch?.id ||
+        fiveVFiveResumeCandidate.selectedMatchId === fiveVFiveActiveMatch?.id)
+    ) {
+      void handleFiveVFiveResumeSession();
+    }
+  }, [
+    fiveVFiveConsoleReady,
+    fiveVFiveResumeCandidate,
+    fiveVFiveResumeHandled,
+    fiveVFiveResumeBusy,
+    fiveVFiveActiveMatch?.id,
+    handleFiveVFiveResumeSession,
+  ]);
+
   const renderMatchEventCard = (log, options) => {
     const { chronologicalIndex, editIndex } = options;
     const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
@@ -747,9 +816,35 @@ export default function ScoreKeeperView() {
           <div className="flex flex-col leading-tight">
             <h1 className="text-xl font-semibold text-white">Score keeper</h1>
           </div>
-          <Link to="/admin" className="sc-button is-light text-xs">
-            Back to admin hub
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/admin" className="sc-button is-light text-xs">
+              Back to admin hub
+            </Link>
+            {consoleReady ? (
+              <button
+                type="button"
+                onClick={() => setSetupModalOpen(true)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                aria-label="Open setup"
+                title="Setup"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
+                  <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.03.03a2.16 2.16 0 0 1-3.05 3.05l-.03-.03a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.09 1.65V21a2.16 2.16 0 0 1-4.32 0v-.05a1.8 1.8 0 0 0-1.09-1.65 1.8 1.8 0 0 0-1.98.36l-.03.03a2.16 2.16 0 1 1-3.05-3.05l.03-.03A1.8 1.8 0 0 0 3.6 15a1.8 1.8 0 0 0-1.65-1.09H1.9a2.16 2.16 0 0 1 0-4.32h.05A1.8 1.8 0 0 0 3.6 8.5a1.8 1.8 0 0 0-.36-1.98l-.03-.03a2.16 2.16 0 1 1 3.05-3.05l.03.03a1.8 1.8 0 0 0 1.98.36h.01a1.8 1.8 0 0 0 1.08-1.65V2.16a2.16 2.16 0 0 1 4.32 0v.05a1.8 1.8 0 0 0 1.09 1.65 1.8 1.8 0 0 0 1.98-.36l.03-.03a2.16 2.16 0 1 1 3.05 3.05l-.03.03a1.8 1.8 0 0 0-.36 1.98v.01a1.8 1.8 0 0 0 1.65 1.08h.05a2.16 2.16 0 0 1 0 4.32h-.05A1.8 1.8 0 0 0 19.4 15Z" />
+                </svg>
+              </button>
+            ) : null}
+          </div>
         </div>
       </ScorekeeperCard>
 
@@ -768,15 +863,6 @@ export default function ScoreKeeperView() {
                     {kickoffLabel} - {venueName || "Venue TBD"} - {statusLabel}
                   </p>
                 </div>
-                <div className="flex flex-col gap-2 sm:items-end">
-                  <button
-                    type="button"
-                    onClick={() => setSetupModalOpen(true)}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-emerald-400 hover:text-emerald-800"
-                  >
-                    Setup
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -785,9 +871,9 @@ export default function ScoreKeeperView() {
 
             <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-3">
               <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800">
+                <div className="min-w-0 rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800 [container-type:inline-size]">
                   <p
-                    className={`text-[clamp(3rem,12vw,5.5rem)] font-semibold leading-none ${
+                    className={`overflow-hidden whitespace-nowrap text-[min(5.5rem,32cqw)] font-semibold leading-none tabular-nums ${
                       primaryOvertime ? "text-[#b91c1c]" : "text-slate-900"
                     }`}
                   >
@@ -797,8 +883,8 @@ export default function ScoreKeeperView() {
                     {timerLabel || "Game time"}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800">
-                  <p className="text-[clamp(2.6rem,11vw,4.5rem)] font-semibold leading-none text-slate-900">
+                <div className="min-w-0 rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800 [container-type:inline-size]">
+                  <p className="overflow-hidden whitespace-nowrap text-[min(4.5rem,30cqw)] font-semibold leading-none text-slate-900 tabular-nums">
                     {formattedSecondaryClock}
                   </p>
                   <div className="mt-1 flex items-center justify-center text-slate-700">
@@ -816,11 +902,28 @@ export default function ScoreKeeperView() {
                   type="button"
                   onClick={() => setTimeModalOpen(true)}
                   disabled={!matchStarted}
-                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
                     matchStarted ? "bg-[#1e3a8a] text-white hover:bg-[#162e6a]" : "bg-slate-200 text-slate-600"
                   }`}
+                  aria-label="Additional time options"
+                  title="Additional time options"
                 >
-                  Additional time options
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-5 w-5"
+                    aria-hidden="true"
+                  >
+                    <path d="M10 2h4" />
+                    <path d="M12 14v-4" />
+                    <path d="M15.5 4.5 17 3" />
+                    <circle cx="12" cy="14" r="8" />
+                  </svg>
                 </button>
                 <button
                   type="button"
@@ -1027,49 +1130,59 @@ export default function ScoreKeeperView() {
           </div>
         </div>
 
-            {rostersError && (
-              <p className="rounded-3xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {rostersError}
-              </p>
-            )}
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-2 rounded-3xl border border-[#0f5132]/30 bg-white p-1.5">
-                <h3 className="text-center text-lg font-semibold text-[#0f5132]">
-                  {safeTeamAName} Players
-                </h3>
-                <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2 text-sm text-[#0f5132]">
-                  {rostersLoading ? (
-                    <p className="text-center text-xs">Loading roster...</p>
-                  ) : sortedRosters.teamA.length === 0 ? (
-                    <p className="text-center text-xs text-slate-500">No players assigned.</p>
-                  ) : (
-                    sortedRosters.teamA.map((player) => (
-                      <p key={player.id} className="border-b border-white/40 pb-1 last:border-b-0">
-                        {formatPlayerSelectLabel(player)}
-                      </p>
-                    ))
-                  )}
+            <details className="group rounded-3xl border border-[#0f5132]/30 bg-white p-2 text-[#0f5132]">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-2 py-1 text-sm font-semibold marker:hidden">
+                <span>Team rosters</span>
+                <span className="text-lg leading-none transition group-open:rotate-180" aria-hidden="true">
+                  v
+                </span>
+              </summary>
+              <div className="mt-2 space-y-2">
+                {rostersError && (
+                  <p className="rounded-3xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {rostersError}
+                  </p>
+                )}
+                <div className="grid gap-4 border-t border-[#0f5132]/20 pt-3 text-center md:grid-cols-2 md:gap-6">
+                  <div className="mx-auto w-full max-w-sm space-y-2">
+                    <h3 className="text-base font-semibold text-[#0f5132]">
+                      {safeTeamAName} Players
+                    </h3>
+                    <div className="space-y-1.5 text-sm text-[#0f5132]">
+                      {rostersLoading ? (
+                        <p className="text-xs">Loading roster...</p>
+                      ) : sortedRosters.teamA.length === 0 ? (
+                        <p className="text-xs text-slate-500">No players assigned.</p>
+                      ) : (
+                        sortedRosters.teamA.map((player) => (
+                          <p key={player.id} className="border-b border-[#0f5132]/10 pb-1 last:border-b-0">
+                            {formatPlayerSelectLabel(player)}
+                          </p>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="mx-auto w-full max-w-sm space-y-2">
+                    <h3 className="text-base font-semibold text-[#0f5132]">
+                      {safeTeamBName} Players
+                    </h3>
+                    <div className="space-y-1.5 text-sm text-[#0f5132]">
+                      {rostersLoading ? (
+                        <p className="text-xs">Loading roster...</p>
+                      ) : sortedRosters.teamB.length === 0 ? (
+                        <p className="text-xs text-slate-500">No players assigned.</p>
+                      ) : (
+                        sortedRosters.teamB.map((player) => (
+                          <p key={player.id} className="border-b border-[#0f5132]/10 pb-1 last:border-b-0">
+                            {formatPlayerSelectLabel(player)}
+                          </p>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="space-y-2 rounded-3xl border border-[#0f5132]/30 bg-white p-1.5">
-                <h3 className="text-center text-lg font-semibold text-[#0f5132]">
-                  {safeTeamBName} Players
-                </h3>
-                <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2 text-sm text-[#0f5132]">
-                  {rostersLoading ? (
-                    <p className="text-center text-xs">Loading roster...</p>
-                  ) : sortedRosters.teamB.length === 0 ? (
-                    <p className="text-center text-xs text-slate-500">No players assigned.</p>
-                  ) : (
-                    sortedRosters.teamB.map((player) => (
-                      <p key={player.id} className="border-b border-white/40 pb-1 last:border-b-0">
-                        {formatPlayerSelectLabel(player)}
-                      </p>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
+            </details>
 
           </section>
         ) : (
@@ -1102,6 +1215,22 @@ export default function ScoreKeeperView() {
             {consoleError && (
               <p className="text-sm text-rose-600">{consoleError}</p>
             )}
+            <ResumeSessionSection
+              candidate={resumeCandidate}
+              handled={resumeHandled}
+              busy={resumeBusy}
+              error={resumeError}
+              onResume={handleResumeSession}
+              onDiscard={handleDiscardResume}
+            />
+            <ResumeSessionSection
+              candidate={fiveVFiveResumeCandidate}
+              handled={fiveVFiveResumeHandled}
+              busy={fiveVFiveResumeBusy}
+              error={fiveVFiveResumeError}
+              onResume={handleFiveVFiveResumeAndOpenConsole}
+              onDiscard={handleFiveVFiveDiscardResume}
+            />
       </section>
       )}
     </main>

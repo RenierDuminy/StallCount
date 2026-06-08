@@ -2769,7 +2769,7 @@ const replaceSecondaryTimer = useCallback(
   // user-interaction handlers moved to useScoreKeeperActions
 
   const handleResumeSession = useCallback(async () => {
-    if (!resumeCandidate) return;
+    if (!resumeCandidate) return false;
     setResumeError(null);
     setResumeBusy(true);
     resumeHydrationRef.current = true;
@@ -2917,8 +2917,10 @@ const replaceSecondaryTimer = useCallback(
       }
       setResumeCandidate(null);
       setResumeHandled(true);
+      return true;
     } catch (err) {
       setResumeError(err instanceof Error ? err.message : "Failed to resume session.");
+      return false;
     } finally {
       setResumeBusy(false);
       setTimeout(() => {

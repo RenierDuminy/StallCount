@@ -37,7 +37,6 @@ const UserPage = lazy(() => import("./pages/UserPage"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const CustomScriptsPage = lazy(() => import("./pages/CustomScriptsPage"));
-const AdminScoreboardDebugPage = lazy(() => import("./pages/AdminScoreboardDebugPage"));
 const AdminAccessPage = lazy(() => import("./pages/AdminAccessPage"));
 const EventAccessPage = lazy(() => import("./pages/EventAccessPage"));
 const SignupManagementPage = lazy(() => import("./pages/SignupManagementPage"));
@@ -121,14 +120,6 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute requireNonViewer>
                 <AdminPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/scoreboard-debug"
-            element={
-              <ProtectedRoute>
-                <AdminScoreboardDebugPage />
               </ProtectedRoute>
             }
           />

@@ -25,6 +25,7 @@ import {
   DEFAULT_DISCUSSION_SECONDS,
   SCORE_NA_PLAYER_VALUE,
 } from "./5v5scorekeeperConstants";
+import { ResumeSessionSection } from "../scorekeeper/ScorekeeperPopup";
 
 const BLOCK_EVENT_TYPE_ID = 19;
 const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([
@@ -180,6 +181,26 @@ export default function ScoreKeeperView() {
   const isStartMatchReady =
     Boolean(setupForm.startingTeamId) &&
     (!isAbbaEnabled || ["male", "female"].includes(setupForm.abbaPattern));
+
+  useEffect(() => {
+    if (
+      consoleReady &&
+      resumeCandidate &&
+      !resumeHandled &&
+      !resumeBusy &&
+      (resumeCandidate.matchId === activeMatch?.id ||
+        resumeCandidate.selectedMatchId === activeMatch?.id)
+    ) {
+      void handleResumeSession();
+    }
+  }, [
+    consoleReady,
+    resumeCandidate,
+    resumeHandled,
+    resumeBusy,
+    activeMatch?.id,
+    handleResumeSession,
+  ]);
   const renderMatchEventCard = (log, options) => {
     const { chronologicalIndex, editIndex } = options;
     const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
@@ -645,6 +666,31 @@ export default function ScoreKeeperView() {
           <div className="flex flex-col leading-tight">
             <h1 className="text-xl font-semibold text-white">5v5 Score keeper</h1>
           </div>
+          <div className="flex items-center gap-2">
+            {consoleReady ? (
+              <Link
+                to="/score-keeper"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                aria-label="Open setup"
+                title="Setup"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
+                  <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.03.03a2.16 2.16 0 0 1-3.05 3.05l-.03-.03a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.09 1.65V21a2.16 2.16 0 0 1-4.32 0v-.05a1.8 1.8 0 0 0-1.09-1.65 1.8 1.8 0 0 0-1.98.36l-.03.03a2.16 2.16 0 1 1-3.05-3.05l.03-.03A1.8 1.8 0 0 0 3.6 15a1.8 1.8 0 0 0-1.65-1.09H1.9a2.16 2.16 0 0 1 0-4.32h.05A1.8 1.8 0 0 0 3.6 8.5a1.8 1.8 0 0 0-.36-1.98l-.03-.03a2.16 2.16 0 1 1 3.05-3.05l.03.03a1.8 1.8 0 0 0 1.98.36h.01a1.8 1.8 0 0 0 1.08-1.65V2.16a2.16 2.16 0 0 1 4.32 0v.05a1.8 1.8 0 0 0 1.09 1.65 1.8 1.8 0 0 0 1.98-.36l.03-.03a2.16 2.16 0 1 1 3.05 3.05l-.03.03a1.8 1.8 0 0 0-.36 1.98v.01a1.8 1.8 0 0 0 1.65 1.08h.05a2.16 2.16 0 0 1 0 4.32h-.05A1.8 1.8 0 0 0 19.4 15Z" />
+                </svg>
+              </Link>
+            ) : null}
+          </div>
         </div>
       </ScorekeeperCard>
 
@@ -663,14 +709,6 @@ export default function ScoreKeeperView() {
                     {kickoffLabel} - {venueName || "Venue TBD"} - {statusLabel}
                   </p>
                 </div>
-                <div className="flex flex-col gap-2 sm:items-end">
-                  <Link
-                    to="/score-keeper"
-                    className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-emerald-400 hover:text-emerald-800"
-                  >
-                    Setup
-                  </Link>
-                </div>
               </div>
             </div>
 
@@ -679,16 +717,16 @@ export default function ScoreKeeperView() {
 
             <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-3">
               <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800">
-                  <p className="text-[clamp(3rem,12vw,5.5rem)] font-semibold leading-none text-slate-900">
+                <div className="min-w-0 rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800 [container-type:inline-size]">
+                  <p className="overflow-hidden whitespace-nowrap text-[min(5.5rem,32cqw)] font-semibold leading-none text-slate-900 tabular-nums">
                     {formattedPrimaryClock}
                   </p>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
                     {timerLabel || "Game time"}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800">
-                  <p className="text-[clamp(2.6rem,11vw,4.5rem)] font-semibold leading-none text-slate-900">
+                <div className="min-w-0 rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800 [container-type:inline-size]">
+                  <p className="overflow-hidden whitespace-nowrap text-[min(4.5rem,30cqw)] font-semibold leading-none text-slate-900 tabular-nums">
                     {formattedSecondaryClock}
                   </p>
                   <div className="mt-1 flex items-center justify-center text-slate-700">
@@ -706,11 +744,28 @@ export default function ScoreKeeperView() {
                   type="button"
                   onClick={() => setTimeModalOpen(true)}
                   disabled={!matchStarted}
-                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
                     matchStarted ? "bg-[#1e3a8a] text-white hover:bg-[#162e6a]" : "bg-slate-200 text-slate-600"
                   }`}
+                  aria-label="Additional time options"
+                  title="Additional time options"
                 >
-                  Additional time options
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-5 w-5"
+                    aria-hidden="true"
+                  >
+                    <path d="M10 2h4" />
+                    <path d="M12 14v-4" />
+                    <path d="M15.5 4.5 17 3" />
+                    <circle cx="12" cy="14" r="8" />
+                  </svg>
                 </button>
                 <button
                   type="button"
@@ -867,49 +922,59 @@ export default function ScoreKeeperView() {
           </div>
         </div>
 
-            {rostersError && (
-              <p className="rounded-3xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {rostersError}
-              </p>
-            )}
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-2 rounded-3xl border border-[#0f5132]/30 bg-white p-1.5">
-                <h3 className="text-center text-lg font-semibold text-[#0f5132]">
-                  {safeTeamAName} Players
-                </h3>
-                <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2 text-sm text-[#0f5132]">
-                  {rostersLoading ? (
-                    <p className="text-center text-xs">Loading roster...</p>
-                  ) : sortedRosters.teamA.length === 0 ? (
-                    <p className="text-center text-xs text-slate-500">No players assigned.</p>
-                  ) : (
-                    sortedRosters.teamA.map((player) => (
-                      <p key={player.id} className="border-b border-white/40 pb-1 last:border-b-0">
-                        {formatPlayerSelectLabel(player)}
-                      </p>
-                    ))
-                  )}
+            <details className="group rounded-3xl border border-[#0f5132]/30 bg-white p-2 text-[#0f5132]">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-2 py-1 text-sm font-semibold marker:hidden">
+                <span>Team rosters</span>
+                <span className="text-lg leading-none transition group-open:rotate-180" aria-hidden="true">
+                  v
+                </span>
+              </summary>
+              <div className="mt-2 space-y-2">
+                {rostersError && (
+                  <p className="rounded-3xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {rostersError}
+                  </p>
+                )}
+                <div className="grid gap-4 border-t border-[#0f5132]/20 pt-3 text-center md:grid-cols-2 md:gap-6">
+                  <div className="mx-auto w-full max-w-sm space-y-2">
+                    <h3 className="text-base font-semibold text-[#0f5132]">
+                      {safeTeamAName} Players
+                    </h3>
+                    <div className="space-y-1.5 text-sm text-[#0f5132]">
+                      {rostersLoading ? (
+                        <p className="text-xs">Loading roster...</p>
+                      ) : sortedRosters.teamA.length === 0 ? (
+                        <p className="text-xs text-slate-500">No players assigned.</p>
+                      ) : (
+                        sortedRosters.teamA.map((player) => (
+                          <p key={player.id} className="border-b border-[#0f5132]/10 pb-1 last:border-b-0">
+                            {formatPlayerSelectLabel(player)}
+                          </p>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                  <div className="mx-auto w-full max-w-sm space-y-2">
+                    <h3 className="text-base font-semibold text-[#0f5132]">
+                      {safeTeamBName} Players
+                    </h3>
+                    <div className="space-y-1.5 text-sm text-[#0f5132]">
+                      {rostersLoading ? (
+                        <p className="text-xs">Loading roster...</p>
+                      ) : sortedRosters.teamB.length === 0 ? (
+                        <p className="text-xs text-slate-500">No players assigned.</p>
+                      ) : (
+                        sortedRosters.teamB.map((player) => (
+                          <p key={player.id} className="border-b border-[#0f5132]/10 pb-1 last:border-b-0">
+                            {formatPlayerSelectLabel(player)}
+                          </p>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="space-y-2 rounded-3xl border border-[#0f5132]/30 bg-white p-1.5">
-                <h3 className="text-center text-lg font-semibold text-[#0f5132]">
-                  {safeTeamBName} Players
-                </h3>
-                <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2 text-sm text-[#0f5132]">
-                  {rostersLoading ? (
-                    <p className="text-center text-xs">Loading roster...</p>
-                  ) : sortedRosters.teamB.length === 0 ? (
-                    <p className="text-center text-xs text-slate-500">No players assigned.</p>
-                  ) : (
-                    sortedRosters.teamB.map((player) => (
-                      <p key={player.id} className="border-b border-white/40 pb-1 last:border-b-0">
-                        {formatPlayerSelectLabel(player)}
-                      </p>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
+            </details>
 
           </section>
         ) : (
@@ -929,57 +994,22 @@ export default function ScoreKeeperView() {
             {endMatchSuccessMessage && (
               <p className="text-sm text-emerald-700">{endMatchSuccessMessage}</p>
             )}
+            <ResumeSessionSection
+              candidate={resumeCandidate}
+              handled={resumeHandled}
+              busy={resumeBusy}
+              error={resumeError}
+              onResume={async () => {
+                const resumed = await handleResumeSession();
+                if (resumed !== false) {
+                  setSetupModalOpen(false);
+                }
+              }}
+              onDiscard={handleDiscardResume}
+            />
       </section>
       )}
     </main>
-
-      {resumeCandidate && !resumeHandled && (
-        <ActionModal title="Resume previous session?" onClose={handleDiscardResume}>
-          <div className="space-y-3 text-sm text-[#0f5132]">
-            <p>
-              A previous session for this match was saved{" "}
-              {resumeCandidate.updatedAt
-                ? new Date(resumeCandidate.updatedAt).toLocaleString()
-                : "recently"}.
-            </p>
-            {resumeError && (
-              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                {resumeError}
-              </p>
-            )}
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={handleResumeSession}
-                disabled={resumeBusy}
-                className="inline-flex w-full items-center justify-center rounded-full bg-[#0f5132] px-4 py-2 text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {resumeBusy ? "Loading..." : "Resume session"}
-              </button>
-              <div className="rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-3 text-xs">
-                <p className="font-semibold uppercase tracking-wide text-[#0f5132]/70">
-                  Snapshot
-                </p>
-                <p>
-                  Score: {resumeCandidate?.score?.a ?? 0} - {resumeCandidate?.score?.b ?? 0}
-                </p>
-                <p>
-                  Game clock: {formatClock(resumeCandidate?.timer?.seconds ?? 0)}
-                  {resumeCandidate?.timer?.running ? " (running)" : ""}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleDiscardResume}
-                disabled={resumeBusy}
-                className="inline-flex w-full items-center justify-center rounded-full border border-[#0f5132]/40 px-4 py-2 font-semibold text-[#0f5132] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Start new
-              </button>
-            </div>
-          </div>
-        </ActionModal>
-      )}
 
       {setupModalOpen && (
         <ActionModal title="5v5 match setup" onClose={() => setSetupModalOpen(false)} alignTop scrollable wide>
@@ -1128,21 +1158,6 @@ export default function ScoreKeeperView() {
                     />
                   </label>
                   <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                    <span className="shrink-0">Discussion duration (sec)</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={rules.discussionSeconds}
-                      onChange={(event) =>
-                        handleRuleChange(
-                          "discussionSeconds",
-                          Math.max(0, Number(event.target.value) || 0)
-                        )
-                      }
-                      className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                    />
-                  </label>
-                  <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                     <span className="shrink-0">Pulling team</span>
                     <select
                       value={setupForm.startingTeamId || ""}
@@ -1196,14 +1211,6 @@ export default function ScoreKeeperView() {
                         <span className="font-semibold">{formatDisplayValue(rules.gamePointTarget)}</span>
                       </div>
                       <div className="flex items-center justify-between gap-2">
-                        <span>Time cap end mode</span>
-                        <span className="font-semibold">{formatDisplayValue(rules.gameHardCapEndMode, "afterPoint")}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span>Time cap target mode</span>
-                        <span className="font-semibold">{formatDisplayValue(rules.gameTimeCapTargetMode)}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
                         <span>Soft cap (min)</span>
                         <span className="font-semibold">{formatDisplayValue(rules.gameSoftCapMinutes)}</span>
                       </div>
@@ -1222,30 +1229,6 @@ export default function ScoreKeeperView() {
                       <div className="flex items-center justify-between gap-2">
                         <span>Halftime point target</span>
                         <span className="font-semibold">{formatDisplayValue(rules.halftimeScoreThreshold)}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span>Halftime cap end mode</span>
-                        <span className="font-semibold">{formatDisplayValue(rules.halftimeCapEndMode, "afterPoint")}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span>Halftime cap target mode</span>
-                        <span className="font-semibold">{formatDisplayValue(rules.halftimeCapTargetMode)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-2 py-1.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
-                      Timeouts
-                    </p>
-                    <div className="mt-1 space-y-1 border-t border-[#0f5132]/10 pt-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span>Timeout duration (sec)</span>
-                        <span className="font-semibold">{formatDisplayValue(rules.timeoutSeconds)}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span>Timeouts per half</span>
-                        <span className="font-semibold">{formatDisplayValue(rules.timeoutsPerHalf)}</span>
                       </div>
                     </div>
                   </div>
@@ -1272,18 +1255,6 @@ export default function ScoreKeeperView() {
 
                   <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-2 py-1.5">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
-                      Discussions
-                    </p>
-                    <div className="mt-1 space-y-1 border-t border-[#0f5132]/10 pt-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span>Discussion max (sec)</span>
-                        <span className="font-semibold">{formatDisplayValue(rules.discussionSeconds)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-[#0f5132]/10 bg-[#f1fbf5] px-2 py-1.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/70">
                       Clock
                     </p>
                     <div className="mt-1 space-y-1 border-t border-[#0f5132]/10 pt-1.5">
@@ -1297,6 +1268,19 @@ export default function ScoreKeeperView() {
               </div>
 
             </div>
+            <ResumeSessionSection
+              candidate={resumeCandidate}
+              handled={resumeHandled}
+              busy={resumeBusy}
+              error={resumeError}
+              onResume={async () => {
+                const resumed = await handleResumeSession();
+                if (resumed !== false) {
+                  setSetupModalOpen(false);
+                }
+              }}
+              onDiscard={handleDiscardResume}
+            />
             <button
               type="submit"
               disabled={initialising || !selectedMatch || !isStartMatchReady}

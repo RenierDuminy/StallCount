@@ -4,7 +4,6 @@ import {
   Card,
   Chip,
   Field,
-  Input,
   Panel,
   SectionHeader,
   SectionShell,
@@ -24,17 +23,6 @@ import {
 import usePersistentState from "../hooks/usePersistentState";
 
 const SIGNUP_SELECTED_EVENT_KEY = "stallcount:signup-management:selected-event:v1";
-const SIGNUP_CSV_URL_KEY = "stallcount:signup-management:csv-url:v1";
-const SIGNUP_EXTERNAL_ROWS_KEY = "stallcount:signup-management:external-rows:v1";
-const SIGNUP_EXTERNAL_HEADERS_KEY = "stallcount:signup-management:external-headers:v1";
-const SIGNUP_NAME_COLUMN_KEY = "stallcount:signup-management:name-column:v1";
-const SIGNUP_SURNAME_COLUMN_KEY = "stallcount:signup-management:surname-column:v1";
-const SIGNUP_DOB_COLUMN_KEY = "stallcount:signup-management:dob-column:v1";
-const SIGNUP_DOB_MODE_KEY = "stallcount:signup-management:dob-mode:v1";
-
-const LIST_NAME_COLUMN_CANDIDATES = ["name"];
-const LIST_SURNAME_COLUMN_CANDIDATES = ["surname", "last name", "last_name"];
-const LIST_DOB_COLUMN_CANDIDATES = ["date of birth", "dob"];
 
 function formatEventRange(startDate, endDate) {
   const start = startDate ? new Date(startDate).toLocaleDateString() : null;
@@ -43,214 +31,58 @@ function formatEventRange(startDate, endDate) {
   return start || end || "Dates TBD";
 }
 
-function normalizeHeaderName(value) {
-  return String(value || "")
+function slugifyFilename(value) {
+  const slug = String(value || "")
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "event-rosters";
 }
 
-function normalizePersonName(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+function escapeCsvCell(value) {
+  const raw = String(value ?? "");
+  if (/[",\r\n]/.test(raw)) {
+    return `"${raw.replace(/"/g, '""')}"`;
+  }
+  return raw;
 }
 
-function toIsoDate(value, slashDateMode = "auto") {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-
-  const directIso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (directIso) {
-    const year = Number(directIso[1]);
-    const month = Number(directIso[2]);
-    const day = Number(directIso[3]);
-    if (isValidDate(year, month, day)) {
-      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    }
+function buildRosterCsv(groupedTeams) {
+  if (!groupedTeams.length) {
+    return "";
   }
 
-  const dottedOrSlashed = raw.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
-  if (dottedOrSlashed) {
-    const first = Number(dottedOrSlashed[1]);
-    const second = Number(dottedOrSlashed[2]);
-    const year = Number(dottedOrSlashed[3]);
-    let mode = slashDateMode;
-    if (mode === "auto") {
-      if (first > 12 && second <= 12) {
-        mode = "dmy";
-      } else if (second > 12 && first <= 12) {
-        mode = "mdy";
-      } else {
-        mode = "dmy";
-      }
-    }
-
-    let month = mode === "dmy" ? second : first;
-    let day = mode === "dmy" ? first : second;
-
-    if (isValidDate(year, month, day)) {
-      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    }
-  }
-
-  const parsedDate = new Date(raw);
-  if (!Number.isNaN(parsedDate.getTime())) {
-    return parsedDate.toISOString().slice(0, 10);
-  }
-
-  return "";
-}
-
-function levenshteinDistance(leftInput, rightInput) {
-  const left = String(leftInput || "");
-  const right = String(rightInput || "");
-  const leftLength = left.length;
-  const rightLength = right.length;
-
-  if (leftLength === 0) return rightLength;
-  if (rightLength === 0) return leftLength;
-
-  const matrix = Array.from({ length: leftLength + 1 }, () =>
-    new Array(rightLength + 1).fill(0)
+  const maxPlayers = groupedTeams.reduce(
+    (max, team) => Math.max(max, team.players.length),
+    0,
   );
+  const rows = [
+    groupedTeams.map((team) => escapeCsvCell(team.name)),
+    ...Array.from({ length: maxPlayers }, (_, rowIndex) =>
+      groupedTeams.map((team) => escapeCsvCell(team.players[rowIndex]?.name || "")),
+    ),
+  ];
 
-  for (let i = 0; i <= leftLength; i += 1) {
-    matrix[i][0] = i;
-  }
-  for (let j = 0; j <= rightLength; j += 1) {
-    matrix[0][j] = j;
-  }
-
-  for (let i = 1; i <= leftLength; i += 1) {
-    for (let j = 1; j <= rightLength; j += 1) {
-      const cost = left[i - 1] === right[j - 1] ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1,
-        matrix[i][j - 1] + 1,
-        matrix[i - 1][j - 1] + cost
-      );
-    }
-  }
-
-  return matrix[leftLength][rightLength];
+  return rows.map((row) => row.join(",")).join("\r\n");
 }
 
-function isValidDate(year, month, day) {
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return false;
-  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
-  const test = new Date(Date.UTC(year, month - 1, day));
-  return (
-    test.getUTCFullYear() === year &&
-    test.getUTCMonth() === month - 1 &&
-    test.getUTCDate() === day
-  );
+function downloadTextFile(filename, text, mimeType) {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
-function createUniqueHeaders(rawHeaders) {
-  const seen = new Map();
-  return rawHeaders.map((header, index) => {
-    const base =
-      String(header || "")
-        .trim()
-        .replace(/\s+/g, " ") || `column_${index + 1}`;
-    const count = (seen.get(base) || 0) + 1;
-    seen.set(base, count);
-    return count === 1 ? base : `${base}_${count}`;
-  });
-}
-
-function parseDelimitedRows(text, delimiter) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-
-    if (inQuotes) {
-      if (char === "\"") {
-        if (text[index + 1] === "\"") {
-          field += "\"";
-          index += 1;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += char;
-      }
-      continue;
-    }
-
-    if (char === "\"") {
-      inQuotes = true;
-      continue;
-    }
-    if (char === delimiter) {
-      row.push(field);
-      field = "";
-      continue;
-    }
-    if (char === "\n") {
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = "";
-      continue;
-    }
-    if (char === "\r") {
-      continue;
-    }
-    field += char;
-  }
-
-  row.push(field);
-  if (row.length > 1 || row.some((cell) => String(cell || "").trim() !== "")) {
-    rows.push(row);
-  }
-
-  return rows;
-}
-
-function parseCsvText(rawText) {
-  const text = String(rawText || "").replace(/^\uFEFF/, "");
-  const commaRows = parseDelimitedRows(text, ",");
-  const semicolonRows =
-    commaRows.length > 0 &&
-    commaRows[0].length <= 1 &&
-    text.includes(";")
-      ? parseDelimitedRows(text, ";")
-      : [];
-
-  const rows = semicolonRows.length > commaRows.length ? semicolonRows : commaRows;
-  if (!rows.length) {
-    return { headers: [], rows: [] };
-  }
-
-  const headers = createUniqueHeaders(rows[0]);
-  const dataRows = rows
-    .slice(1)
-    .filter((values) => values.some((value) => String(value || "").trim() !== ""));
-  const mappedRows = dataRows.map((values) => {
-    const entry = {};
-    headers.forEach((header, index) => {
-      entry[header] = String(values[index] || "").trim();
-    });
-    return entry;
-  });
-
-  return { headers, rows: mappedRows };
-}
-
-function detectColumn(headers, candidates) {
-  const normalizedCandidates = new Set(candidates.map((value) => normalizeHeaderName(value)));
-  return (
-    headers.find((header) => normalizedCandidates.has(normalizeHeaderName(header))) ||
-    ""
-  );
+function getPlayerRoleRank(player) {
+  if (player.isCaptain) return 0;
+  if (player.isSpiritCaptain) return 1;
+  return 2;
 }
 
 export default function SignupManagementPage() {
@@ -336,22 +168,6 @@ export default function SignupManagementPage() {
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState("");
 
-  const [csvUrl, setCsvUrl] = usePersistentState(SIGNUP_CSV_URL_KEY, "");
-  const [csvImporting, setCsvImporting] = useState(false);
-  const [csvError, setCsvError] = useState("");
-  const [externalRows, setExternalRows] = usePersistentState(SIGNUP_EXTERNAL_ROWS_KEY, []);
-  const [externalHeaders, setExternalHeaders] = usePersistentState(
-    SIGNUP_EXTERNAL_HEADERS_KEY,
-    [],
-  );
-  const [listNameColumn, setListNameColumn] = usePersistentState(SIGNUP_NAME_COLUMN_KEY, "");
-  const [listSurnameColumn, setListSurnameColumn] = usePersistentState(
-    SIGNUP_SURNAME_COLUMN_KEY,
-    "",
-  );
-  const [listDobColumn, setListDobColumn] = usePersistentState(SIGNUP_DOB_COLUMN_KEY, "");
-  const [dobInputMode, setDobInputMode] = usePersistentState(SIGNUP_DOB_MODE_KEY, "auto");
-
   useEffect(() => {
     if (!userId) {
       setEventOptions([]);
@@ -431,7 +247,7 @@ export default function SignupManagementPage() {
       } catch (error) {
         if (ignore) return;
         setEventsError(
-          error instanceof Error ? error.message : "Unable to load tournament director event scope."
+          error instanceof Error ? error.message : "Unable to load tournament director event scope.",
         );
         setEventOptions([]);
       } finally {
@@ -489,199 +305,63 @@ export default function SignupManagementPage() {
 
   const selectedEvent = useMemo(
     () => eventOptions.find((event) => event.id === selectedEventId) || null,
-    [eventOptions, selectedEventId]
+    [eventOptions, selectedEventId],
   );
 
-  const rosterPlayers = useMemo(
-    () =>
-      rosterRows
-        .map((entry) => ({
-          rosterId: entry.id,
-          teamName: entry.team?.name || "Team",
-          playerName: entry.player?.name || "",
-          playerBirthday: toIsoDate(entry.player?.birthday),
-        }))
-        .filter((entry) => Boolean(entry.playerName)),
-    [rosterRows]
-  );
-
-  const inferredDobMode = useMemo(() => {
-    if (!listDobColumn) return "dmy";
-    let dmyEvidence = 0;
-    let mdyEvidence = 0;
-    externalRows.forEach((row) => {
-      const raw = String(row[listDobColumn] || "").trim();
-      const match = raw.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
-      if (!match) return;
-      const first = Number(match[1]);
-      const second = Number(match[2]);
-      if (first > 12 && second <= 12) {
-        dmyEvidence += 1;
-      } else if (second > 12 && first <= 12) {
-        mdyEvidence += 1;
-      }
-    });
-    if (mdyEvidence > dmyEvidence) return "mdy";
-    return "dmy";
-  }, [externalRows, listDobColumn]);
-
-  const resolvedDobMode = dobInputMode === "auto" ? inferredDobMode : dobInputMode;
-
-  const externalRecords = useMemo(() => {
-    if (!listNameColumn || !listSurnameColumn || !listDobColumn) return [];
-
-    const resolveName = (row) => {
-      const first = String(row[listNameColumn] || "").trim();
-      const last = String(row[listSurnameColumn] || "").trim();
-      return [first, last].filter(Boolean).join(" ").trim();
-    };
-
-    return externalRows.map((row) => ({
-      name: resolveName(row),
-      birthday: toIsoDate(row[listDobColumn] || "", resolvedDobMode),
-      key: `${normalizePersonName(resolveName(row))}::${toIsoDate(
-        row[listDobColumn] || "",
-        resolvedDobMode
-      )}`,
-    }));
-  }, [
-    externalRows,
-    listDobColumn,
-    listNameColumn,
-    listSurnameColumn,
-    resolvedDobMode,
-  ]);
-
-  const externalKeySet = useMemo(() => {
-    const set = new Set();
-    externalRecords.forEach((record) => {
-      const [namePart, dobPart] = String(record.key || "").split("::");
-      if (!namePart || !dobPart) return;
-      set.add(record.key);
-    });
-    return set;
-  }, [externalRecords]);
-
-  const externalRecordsByDob = useMemo(() => {
+  const groupedTeams = useMemo(() => {
     const map = new Map();
-    externalRecords.forEach((record) => {
-      const dob = record.birthday;
-      if (!dob) return;
-      if (!map.has(dob)) {
-        map.set(dob, []);
+    rosterRows.forEach((entry) => {
+      const teamId = entry.team?.id || entry.team_id;
+      if (!teamId) return;
+      if (!map.has(teamId)) {
+        map.set(teamId, {
+          teamId,
+          name: entry.team?.name || "Team",
+          shortName: entry.team?.short_name || "",
+          players: [],
+        });
       }
-      map.get(dob).push(record);
-    });
-    return map;
-  }, [externalRecords]);
-
-  const comparedPlayers = useMemo(() => {
-    return rosterPlayers
-      .map((player) => {
-        const namePart = normalizePersonName(player.playerName);
-        const dobPart = toIsoDate(player.playerBirthday);
-        const key = `${namePart}::${dobPart}`;
-        const isMatch = Boolean(namePart && dobPart && externalKeySet.has(key));
-        const sameDobCandidates = dobPart ? externalRecordsByDob.get(dobPart) || [] : [];
-        const closestOptions = sameDobCandidates
-          .map((candidate) => ({
-            name: candidate.name,
-            normalizedName: normalizePersonName(candidate.name),
-          }))
-          .filter((candidate) => candidate.normalizedName)
-          .map((candidate) => ({
-            ...candidate,
-            distance: levenshteinDistance(namePart, candidate.normalizedName),
-          }))
-          .sort((left, right) => {
-            if (left.distance !== right.distance) return left.distance - right.distance;
-            return left.name.localeCompare(right.name);
-          })
-          .slice(0, 3)
-          .map((candidate) => candidate.name);
-        return {
-          ...player,
-          isMatch,
-          closestOptions,
-          reason: !dobPart
-            ? "Missing DOB in roster"
-            : sameDobCandidates.length > 0
-              ? "Name mismatch (DOB exists in external list)"
-              : "DOB not found in external list",
-        };
-      })
-      .sort((left, right) => {
-        const teamDiff = left.teamName.localeCompare(right.teamName);
-        if (teamDiff !== 0) return teamDiff;
-        return left.playerName.localeCompare(right.playerName);
+      map.get(teamId).players.push({
+        id: entry.player?.id || entry.id,
+        name: entry.player?.name || "Player",
+        jersey: entry.player?.jersey_number ?? null,
+        isCaptain: Boolean(entry.is_captain),
+        isSpiritCaptain: Boolean(entry.is_spirit_captain),
       });
-  }, [rosterPlayers, externalKeySet, externalRecordsByDob]);
+    });
 
-  const missingPlayers = useMemo(() => {
-    return comparedPlayers
-      .filter((player) => !player.isMatch)
-      .map((player) => ({ ...player }));
-  }, [comparedPlayers]);
+    const teams = Array.from(map.values()).sort((left, right) =>
+      left.name.localeCompare(right.name),
+    );
+    teams.forEach((team) => {
+      team.players.sort((left, right) => {
+        const roleDiff = getPlayerRoleRank(left) - getPlayerRoleRank(right);
+        if (roleDiff !== 0) return roleDiff;
+        const jerseyLeft = Number.isFinite(Number(left.jersey)) ? Number(left.jersey) : null;
+        const jerseyRight = Number.isFinite(Number(right.jersey)) ? Number(right.jersey) : null;
+        if (jerseyLeft !== null && jerseyRight !== null && jerseyLeft !== jerseyRight) {
+          return jerseyLeft - jerseyRight;
+        }
+        return left.name.localeCompare(right.name);
+      });
+    });
+    return teams;
+  }, [rosterRows]);
 
-  const matchedPlayers = useMemo(() => {
-    return comparedPlayers
-      .filter((player) => player.isMatch)
-      .map((player) => ({ ...player }));
-  }, [comparedPlayers]);
+  const rosterPlayerCount = useMemo(
+    () => groupedTeams.reduce((total, team) => total + team.players.length, 0),
+    [groupedTeams],
+  );
+  const maxPlayers = useMemo(
+    () => groupedTeams.reduce((max, team) => Math.max(max, team.players.length), 0),
+    [groupedTeams],
+  );
 
-  const handleImportCsv = async (event) => {
-    event.preventDefault();
-    const url = csvUrl.trim();
-    if (!url) {
-      setCsvError("Provide a CSV URL first.");
-      return;
-    }
-
-    setCsvImporting(true);
-    setCsvError("");
-    try {
-      const response = await fetch(url, { method: "GET" });
-      if (!response.ok) {
-        throw new Error(`Unable to fetch CSV (${response.status}).`);
-      }
-      const text = await response.text();
-      const parsed = parseCsvText(text);
-      if (!parsed.headers.length) {
-        throw new Error("CSV appears to be empty.");
-      }
-      if (!parsed.rows.length) {
-        throw new Error("CSV has no data rows.");
-      }
-      setExternalHeaders(parsed.headers);
-      setExternalRows(parsed.rows);
-
-      const detectedName = detectColumn(parsed.headers, LIST_NAME_COLUMN_CANDIDATES);
-      const detectedSurname = detectColumn(parsed.headers, LIST_SURNAME_COLUMN_CANDIDATES);
-      const detectedDob = detectColumn(parsed.headers, LIST_DOB_COLUMN_CANDIDATES);
-
-      setListNameColumn(detectedName || parsed.headers[0] || "");
-      setListSurnameColumn(
-        detectedSurname ||
-          parsed.headers.find((header) => header !== (detectedName || parsed.headers[0] || "")) ||
-          parsed.headers[0] ||
-          ""
-      );
-      setListDobColumn(detectedDob || parsed.headers[0] || "");
-    } catch (error) {
-      setCsvError(
-        error instanceof Error
-          ? error.message
-          : "Unable to import CSV. Confirm URL access and CORS settings."
-      );
-      setExternalHeaders([]);
-      setExternalRows([]);
-      setListNameColumn("");
-      setListSurnameColumn("");
-      setListDobColumn("");
-      setDobInputMode("auto");
-    } finally {
-      setCsvImporting(false);
-    }
+  const handleDownloadRosterCsv = () => {
+    if (!groupedTeams.length) return;
+    const csvText = buildRosterCsv(groupedTeams);
+    const filename = `${slugifyFilename(selectedEvent?.name)}-rosters.csv`;
+    downloadTextFile(filename, csvText, "text/csv;charset=utf-8");
   };
 
   if (rolesLoading || roleCatalogLoading) {
@@ -711,7 +391,7 @@ export default function SignupManagementPage() {
           <SectionHeader
             eyebrow="Admin"
             title="Signup management"
-            description="Compare event roster players against an external signup CSV by name and date of birth."
+            description="Download event roster players from the database as a CSV with one column per team."
             action={
               <Link to="/admin" className="sc-button">
                 Admin hub
@@ -723,16 +403,10 @@ export default function SignupManagementPage() {
               Scoped events: {eventOptions.length}
             </Chip>
             <Chip variant="ghost" className="text-xs text-ink-muted">
-              Roster players: {rosterPlayers.length}
+              Teams: {groupedTeams.length}
             </Chip>
             <Chip variant="ghost" className="text-xs text-ink-muted">
-              External rows: {externalRows.length}
-            </Chip>
-            <Chip variant="ghost" className="text-xs text-ink-muted">
-              Missing: {missingPlayers.length}
-            </Chip>
-            <Chip variant="ghost" className="text-xs text-ink-muted">
-              Matched: {matchedPlayers.length}
+              Roster players: {rosterPlayerCount}
             </Chip>
           </div>
         </Card>
@@ -747,6 +421,16 @@ export default function SignupManagementPage() {
               hasAdminAccess
                 ? "Admin access is global. You can select any event."
                 : "Only events where you hold event-scoped roster or player permissions are available."
+            }
+            action={
+              <button
+                type="button"
+                className="sc-button"
+                onClick={handleDownloadRosterCsv}
+                disabled={!selectedEventId || rosterLoading || groupedTeams.length === 0}
+              >
+                Download CSV
+              </button>
             }
           />
           <div className="grid gap-4 md:grid-cols-2">
@@ -767,7 +451,9 @@ export default function SignupManagementPage() {
               </Select>
             </Field>
             <Panel className="flex flex-col justify-center p-4 text-xs">
-              <span className="font-semibold uppercase tracking-wide text-ink-muted">Current scope</span>
+              <span className="font-semibold uppercase tracking-wide text-ink-muted">
+                Current scope
+              </span>
               {selectedEvent ? (
                 <span className="text-sm text-ink">
                   {selectedEvent.name} ({formatEventRange(selectedEvent.startDate, selectedEvent.endDate)})
@@ -796,179 +482,65 @@ export default function SignupManagementPage() {
 
         <Card className="space-y-4 p-5">
           <SectionHeader
-            eyebrow="External CSV"
-            title="Import signup source"
-            description="Compare database player name + birthday against list Name + surname + Date of Birth."
-          />
-          <form className="grid gap-4 md:grid-cols-[1fr_auto]" onSubmit={handleImportCsv}>
-            <Field label="CSV URL" hint="The URL must allow browser access (CORS).">
-              <Input
-                type="url"
-                value={csvUrl}
-                onChange={(event) => setCsvUrl(event.target.value)}
-                placeholder="https://example.com/signup-list.csv"
-              />
-            </Field>
-            <div className="flex items-end">
-              <button
-                type="submit"
-                className="sc-button w-full md:w-auto"
-                disabled={csvImporting}
-              >
-                {csvImporting ? "Importing..." : "Import CSV"}
-              </button>
-            </div>
-          </form>
-
-          {externalHeaders.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Name column">
-                <Select
-                  value={listNameColumn}
-                  onChange={(event) => setListNameColumn(event.target.value)}
-                >
-                  {externalHeaders.map((header) => (
-                    <option key={header} value={header}>
-                      {header}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Surname column">
-                <Select
-                  value={listSurnameColumn}
-                  onChange={(event) => setListSurnameColumn(event.target.value)}
-                >
-                  {externalHeaders.map((header) => (
-                    <option key={header} value={header}>
-                      {header}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Date of Birth column">
-                <Select
-                  value={listDobColumn}
-                  onChange={(event) => setListDobColumn(event.target.value)}
-                >
-                  {externalHeaders.map((header) => (
-                    <option key={header} value={header}>
-                      {header}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="DOB format">
-                <Select
-                  value={dobInputMode}
-                  onChange={(event) => setDobInputMode(event.target.value)}
-                >
-                  <option value="auto">
-                    Auto ({inferredDobMode === "mdy" ? "MM/DD/YYYY" : "DD/MM/YYYY"})
-                  </option>
-                  <option value="dmy">DD/MM/YYYY</option>
-                  <option value="mdy">MM/DD/YYYY</option>
-                </Select>
-              </Field>
-            </div>
-          ) : null}
-
-          {csvError ? (
-            <Panel className="border border-rose-300/40 bg-rose-50 p-3 text-sm text-rose-700">
-              {csvError}
-            </Panel>
-          ) : null}
-        </Card>
-
-        <Card className="space-y-4 p-5">
-          <SectionHeader
-            eyebrow="Results"
-            title="Players missing from external signup list"
-            description="Only roster players not found in the imported CSV (name + DOB match) are listed."
+            eyebrow="Roster CSV"
+            title="Export preview"
+            description="The downloaded CSV uses team names as column headers and lists each linked player underneath."
           />
 
           {selectedEventId === "" ? (
             <Panel variant="muted" className="p-4 text-sm text-ink-muted">
               No scoped event is available for this account.
             </Panel>
-          ) : externalRows.length === 0 ? (
+          ) : rosterLoading ? (
             <Panel variant="muted" className="p-4 text-sm text-ink-muted">
-              Import a CSV to start the comparison.
+              Loading roster...
             </Panel>
-          ) : missingPlayers.length === 0 ? (
+          ) : groupedTeams.length === 0 ? (
             <Panel variant="muted" className="p-4 text-sm text-ink-muted">
-              Every roster player appears in the external list.
+              No roster entries were found for this event.
             </Panel>
           ) : (
-            <div className="space-y-5">
-              <div className="overflow-x-auto">
-                <table className="min-w-full border border-border text-left text-sm">
-                  <thead>
-                    <tr className="bg-surface-muted text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                      <th className="border-b border-border px-3 py-2">Team</th>
-                      <th className="border-b border-border px-3 py-2">Player</th>
-                      <th className="border-b border-border px-3 py-2">Date of birth</th>
-                      <th className="border-b border-border px-3 py-2">Reason</th>
-                      <th className="border-b border-border px-3 py-2">Closest options (same DOB)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {missingPlayers.map((player) => (
-                      <tr key={player.rosterId} className="border-b border-border/70">
-                        <td className="px-3 py-2">{player.teamName}</td>
-                        <td className="px-3 py-2">{player.playerName}</td>
-                        <td className="px-3 py-2">
-                          {player.playerBirthday
-                            ? new Date(player.playerBirthday).toLocaleDateString()
-                            : "Unknown"}
-                        </td>
-                        <td className="px-3 py-2 text-ink-muted">{player.reason}</td>
-                        <td className="px-3 py-2 text-ink-muted">
-                          {player.closestOptions?.length > 0
-                            ? player.closestOptions.join(", ")
-                            : "None"}
-                        </td>
-                      </tr>
+            <div className="overflow-x-auto">
+              <table className="table-auto border border-border text-left text-sm text-ink">
+                <thead>
+                  <tr className="bg-surface-muted text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    {groupedTeams.map((team) => (
+                      <th
+                        key={team.teamId}
+                        className="border-b border-border px-3 py-2 text-center whitespace-nowrap"
+                      >
+                        <div className="text-sm font-semibold text-ink">{team.name}</div>
+                        {team.shortName ? (
+                          <div className="text-[11px] uppercase tracking-wide text-ink-muted">
+                            {team.shortName}
+                          </div>
+                        ) : null}
+                      </th>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-ink">
-                  Players appearing on both lists
-                </h3>
-                {matchedPlayers.length === 0 ? (
-                  <Panel variant="muted" className="p-3 text-sm text-ink-muted">
-                    No players currently match on both name and date of birth.
-                  </Panel>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full border border-border text-left text-sm">
-                      <thead>
-                        <tr className="bg-surface-muted text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                          <th className="border-b border-border px-3 py-2">Team</th>
-                          <th className="border-b border-border px-3 py-2">Player</th>
-                          <th className="border-b border-border px-3 py-2">Date of birth</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {matchedPlayers.map((player) => (
-                          <tr key={`matched-${player.rosterId}`} className="border-b border-border/70">
-                            <td className="px-3 py-2">{player.teamName}</td>
-                            <td className="px-3 py-2">{player.playerName}</td>
-                            <td className="px-3 py-2">
-                              {player.playerBirthday
-                                ? new Date(player.playerBirthday).toLocaleDateString()
-                                : "Unknown"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: maxPlayers }).map((_, rowIndex) => (
+                    <tr key={rowIndex}>
+                      {groupedTeams.map((team) => {
+                        const player = team.players[rowIndex];
+                        return (
+                          <td
+                            key={`${team.teamId}-${rowIndex}`}
+                            className="border-x border-border px-3 py-1.5 align-top whitespace-nowrap"
+                          >
+                            {player ? (
+                              <span className="text-sm text-ink">{player.name}</span>
+                            ) : (
+                              <span className="text-xs text-ink-muted"></span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </Card>

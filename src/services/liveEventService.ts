@@ -8,6 +8,9 @@ export type LiveEventRow = {
   match_id: string;
   event_type: string;
   data: Record<string, unknown> | null;
+  team_id?: string | null;
+  player_id?: string | null;
+  secondary_player_id?: string | null;
   created_at: string;
 };
 
@@ -17,7 +20,7 @@ export async function getRecentLiveEvents(limit = 50): Promise<LiveEventRow[]> {
     async () => {
       const { data, error } = await supabase
         .from("live_events")
-        .select("id, match_id, event_type, data, created_at")
+        .select("id, match_id, event_type, data, team_id, player_id, secondary_player_id, created_at")
         .order("created_at", { ascending: false })
         .limit(limit);
 

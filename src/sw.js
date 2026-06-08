@@ -1,7 +1,17 @@
-import { precacheAndRoute, cleanupOutdatedCaches } from "workbox-precaching";
+import {
+  cleanupOutdatedCaches,
+  createHandlerBoundToURL,
+  precacheAndRoute,
+} from "workbox-precaching";
+import { NavigationRoute, registerRoute } from "workbox-routing";
 
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST || []);
+registerRoute(
+  new NavigationRoute(createHandlerBoundToURL("index.html"), {
+    denylist: [/^\/rules\//, /^\/.*\.[^/]+$/],
+  }),
+);
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -22,8 +32,8 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "StallCount";
   const options = {
     body: payload.body || "Tap to open StallCount.",
-    icon: payload.icon || "/StallCount logo_192_v1.png",
-    badge: payload.badge || "/StallCount logo_192_v1.png",
+    icon: payload.icon || "/icon-192.png",
+    badge: payload.badge || "/icon-192.png",
     tag: payload.tag || "stallcount-updates",
     data: { url: payload.url || "/", ...payload.data },
     renotify: Boolean(payload.renotify),

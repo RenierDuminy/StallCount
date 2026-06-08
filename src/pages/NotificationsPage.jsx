@@ -112,10 +112,16 @@ function eventMatchesSubscription(event, subscription) {
       matches = equalsTarget(event.match_id);
       break;
     case "team":
-      matches = equalsTarget(getEventDataValue(data, "team_id", "teamId", "team"));
+      matches =
+        equalsTarget(event.team_id) ||
+        equalsTarget(getEventDataValue(data, "team_id", "teamId", "team"));
       break;
     case "player":
-      matches = equalsTarget(getEventDataValue(data, "player_id", "playerId", "player"));
+      matches =
+        equalsTarget(event.player_id) ||
+        equalsTarget(event.secondary_player_id) ||
+        equalsTarget(getEventDataValue(data, "player_id", "playerId", "player")) ||
+        equalsTarget(getEventDataValue(data, "secondary_player_id", "secondaryPlayerId", "secondaryPlayer"));
       break;
     case "event":
       matches = equalsTarget(getEventDataValue(data, "event_id", "eventId"));
@@ -248,7 +254,7 @@ export default function NotificationsPage() {
         : "StallCount update";
     const options = {
       body: payload.body || "New activity detected.",
-      icon: payload.icon || "/StallCount logo_192_v1.png",
+      icon: payload.icon || "/icon-192.png",
       data: payload.data || { url: "/" },
       vibrate: payload.vibrate || [100, 50, 100],
       requireInteraction: Boolean(payload.requireInteraction),

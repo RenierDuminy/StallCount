@@ -10,6 +10,69 @@ const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([
   MATCH_LOG_EVENT_CODES.STOPPAGE_END,
 ]);
 
+export function ResumeSessionSection({
+  candidate,
+  handled,
+  busy,
+  error,
+  onResume,
+  onDiscard,
+  className = "",
+}) {
+  if (!candidate || handled) return null;
+
+  return (
+    <section
+      className={`rounded-2xl border border-[#0f5132]/20 bg-white/80 p-3 text-left text-sm text-[#0f5132] ${className}`}
+    >
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Resume previous session
+      </p>
+      <p className="mt-2">
+        Saved{" "}
+        {candidate.updatedAt
+          ? new Date(candidate.updatedAt).toLocaleString()
+          : "recently"}.
+      </p>
+      {error && (
+        <p className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          {error}
+        </p>
+      )}
+      <div className="mt-3 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-3 text-xs">
+        <p className="font-semibold uppercase tracking-wide text-[#0f5132]/70">
+          Snapshot
+        </p>
+        <p>
+          Score: {candidate?.score?.a ?? 0} - {candidate?.score?.b ?? 0}
+        </p>
+        <p>
+          Game clock: {formatClock(candidate?.timer?.seconds ?? 0)}
+          {candidate?.timer?.running ? " (running)" : ""}
+        </p>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={onResume}
+          disabled={busy}
+          className="inline-flex w-full items-center justify-center rounded-full bg-[#0f5132] px-4 py-2 text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {busy ? "Loading..." : "Resume session"}
+        </button>
+        <button
+          type="button"
+          onClick={onDiscard}
+          disabled={busy}
+          className="inline-flex w-full items-center justify-center rounded-full border border-[#0f5132]/40 px-4 py-2 font-semibold text-[#0f5132] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Start new
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function ScorekeeperPopups({
   resume = {},
   setup = {},
@@ -51,6 +114,7 @@ export function ScorekeeperPopups({
     isStartMatchReady,
     error: setupError,
   } = setup;
+  const isFiveVFiveSetup = `${setupTitle}`.toLowerCase().includes("5v5");
   const {
     open: possessionOpen,
     onClose: onPossessionClose,
@@ -126,54 +190,6 @@ export function ScorekeeperPopups({
 
   return (
     <Fragment>
-      {candidate && !handled && (
-        <ActionModal title="Resume previous session?" onClose={onDiscard}>
-          <div className="space-y-3 text-sm text-[#0f5132]">
-            <p>
-              A previous session for this match was saved{" "}
-              {candidate.updatedAt
-                ? new Date(candidate.updatedAt).toLocaleString()
-                : "recently"}.
-            </p>
-            {error && (
-              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                {error}
-              </p>
-            )}
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={onResume}
-                disabled={busy}
-                className="inline-flex w-full items-center justify-center rounded-full bg-[#0f5132] px-4 py-2 text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {busy ? "Loading..." : "Resume session"}
-              </button>
-              <div className="rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-3 text-xs">
-                <p className="font-semibold uppercase tracking-wide text-[#0f5132]/70">
-                  Snapshot
-                </p>
-                <p>
-                  Score: {candidate?.score?.a ?? 0} - {candidate?.score?.b ?? 0}
-                </p>
-                <p>
-                  Game clock: {formatClock(candidate?.timer?.seconds ?? 0)}
-                  {candidate?.timer?.running ? " (running)" : ""}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={onDiscard}
-                disabled={busy}
-                className="inline-flex w-full items-center justify-center rounded-full border border-[#0f5132]/40 px-4 py-2 font-semibold text-[#0f5132] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Start new
-              </button>
-            </div>
-          </div>
-        </ActionModal>
-      )}
-
       {setupOpen && (
         <ActionModal title={setupTitle} onClose={onSetupClose} alignTop scrollable wide>
           <form className="space-y-2" onSubmit={onSetupSubmit}>
@@ -283,40 +299,44 @@ export function ScorekeeperPopups({
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Time cap end mode</span>
-                <select
-                  value={rules.gameHardCapEndMode || "afterPoint"}
-                  onChange={(event) => {
-                    if (!setRules) return;
-                    setRules((prev) => ({
-                      ...prev,
-                      gameHardCapEndMode: event.target.value,
-                    }));
-                  }}
-                  className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="afterPoint">After point</option>
-                  <option value="immediate">Immediate</option>
-                </select>
-              </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Time cap target</span>
-                <select
-                  value={rules.gameTimeCapTargetMode || "none"}
-                  onChange={(event) => {
-                    if (!setRules) return;
-                    setRules((prev) => ({
-                      ...prev,
-                      gameTimeCapTargetMode: event.target.value,
-                    }));
-                  }}
-                  className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="none">None</option>
-                  <option value="addOneToHighest">Highest + 1</option>
-                </select>
-              </label>
+              {!isFiveVFiveSetup && (
+                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                  <span className="shrink-0">Time cap end mode</span>
+                  <select
+                    value={rules.gameHardCapEndMode || "afterPoint"}
+                    onChange={(event) => {
+                      if (!setRules) return;
+                      setRules((prev) => ({
+                        ...prev,
+                        gameHardCapEndMode: event.target.value,
+                      }));
+                    }}
+                    className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="afterPoint">After point</option>
+                    <option value="immediate">Immediate</option>
+                  </select>
+                </label>
+              )}
+              {!isFiveVFiveSetup && (
+                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                  <span className="shrink-0">Time cap target</span>
+                  <select
+                    value={rules.gameTimeCapTargetMode || "none"}
+                    onChange={(event) => {
+                      if (!setRules) return;
+                      setRules((prev) => ({
+                        ...prev,
+                        gameTimeCapTargetMode: event.target.value,
+                      }));
+                    }}
+                    className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="none">None</option>
+                    <option value="addOneToHighest">Highest + 1</option>
+                  </select>
+                </label>
+              )}
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                 <span className="shrink-0">Halftime cap (min)</span>
                 <input
@@ -333,40 +353,44 @@ export function ScorekeeperPopups({
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Halftime cap end mode</span>
-                <select
-                  value={rules.halftimeCapEndMode || "afterPoint"}
-                  onChange={(event) => {
-                    if (!setRules) return;
-                    setRules((prev) => ({
-                      ...prev,
-                      halftimeCapEndMode: event.target.value,
-                    }));
-                  }}
-                  className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="afterPoint">After point</option>
-                  <option value="immediate">Immediate</option>
-                </select>
-              </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Halftime cap target</span>
-                <select
-                  value={rules.halftimeCapTargetMode || "none"}
-                  onChange={(event) => {
-                    if (!setRules) return;
-                    setRules((prev) => ({
-                      ...prev,
-                      halftimeCapTargetMode: event.target.value,
-                    }));
-                  }}
-                  className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="none">None</option>
-                  <option value="addOneToHighest">Highest + 1</option>
-                </select>
-              </label>
+              {!isFiveVFiveSetup && (
+                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                  <span className="shrink-0">Halftime cap end mode</span>
+                  <select
+                    value={rules.halftimeCapEndMode || "afterPoint"}
+                    onChange={(event) => {
+                      if (!setRules) return;
+                      setRules((prev) => ({
+                        ...prev,
+                        halftimeCapEndMode: event.target.value,
+                      }));
+                    }}
+                    className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="afterPoint">After point</option>
+                    <option value="immediate">Immediate</option>
+                  </select>
+                </label>
+              )}
+              {!isFiveVFiveSetup && (
+                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                  <span className="shrink-0">Halftime cap target</span>
+                  <select
+                    value={rules.halftimeCapTargetMode || "none"}
+                    onChange={(event) => {
+                      if (!setRules) return;
+                      setRules((prev) => ({
+                        ...prev,
+                        halftimeCapTargetMode: event.target.value,
+                      }));
+                    }}
+                    className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="none">None</option>
+                    <option value="addOneToHighest">Highest + 1</option>
+                  </select>
+                </label>
+              )}
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                 <span className="shrink-0">Halftime break (min)</span>
                 <input
@@ -383,38 +407,42 @@ export function ScorekeeperPopups({
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Timeout duration (sec)</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={rules.timeoutSeconds}
-                  onChange={(event) => {
-                    if (!setRules) return;
-                    setRules((prev) => ({
-                      ...prev,
-                      timeoutSeconds: Number(event.target.value) || 0,
-                    }));
-                  }}
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Discussion duration (sec)</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={rules.discussionSeconds}
-                  onChange={(event) => {
-                    if (!setRules) return;
-                    setRules((prev) => ({
-                      ...prev,
-                      discussionSeconds: Number(event.target.value) || 0,
-                    }));
-                  }}
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
+              {!isFiveVFiveSetup && (
+                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                  <span className="shrink-0">Timeout duration (sec)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={rules.timeoutSeconds}
+                    onChange={(event) => {
+                      if (!setRules) return;
+                      setRules((prev) => ({
+                        ...prev,
+                        timeoutSeconds: Number(event.target.value) || 0,
+                      }));
+                    }}
+                    className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </label>
+              )}
+              {!isFiveVFiveSetup && (
+                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                  <span className="shrink-0">Discussion duration (sec)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={rules.discussionSeconds}
+                    onChange={(event) => {
+                      if (!setRules) return;
+                      setRules((prev) => ({
+                        ...prev,
+                        discussionSeconds: Number(event.target.value) || 0,
+                      }));
+                    }}
+                    className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </label>
+              )}
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                 <span className="shrink-0">Timeouts total</span>
                 <input
@@ -431,22 +459,24 @@ export function ScorekeeperPopups({
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Timeouts per half</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={rules.timeoutsPerHalf}
-                  onChange={(event) => {
-                    if (!setRules) return;
-                    setRules((prev) => ({
-                      ...prev,
-                      timeoutsPerHalf: Number(event.target.value) || 0,
-                    }));
-                  }}
-                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </label>
+              {!isFiveVFiveSetup && (
+                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                  <span className="shrink-0">Timeouts per half</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={rules.timeoutsPerHalf}
+                    onChange={(event) => {
+                      if (!setRules) return;
+                      setRules((prev) => ({
+                        ...prev,
+                        timeoutsPerHalf: Number(event.target.value) || 0,
+                      }));
+                    }}
+                    className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </label>
+              )}
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                 <span className="shrink-0">Pulling team</span>
                 <select
@@ -486,6 +516,19 @@ export function ScorekeeperPopups({
                 </label>
               )}
             </div>
+            <ResumeSessionSection
+              candidate={candidate}
+              handled={handled}
+              busy={busy}
+              error={error}
+              onResume={async () => {
+                const resumed = await onResume?.();
+                if (resumed !== false) {
+                  onSetupClose?.();
+                }
+              }}
+              onDiscard={onDiscard}
+            />
             <button
               type="submit"
               disabled={initialising || !selectedMatch || !isStartMatchReady}

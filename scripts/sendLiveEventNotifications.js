@@ -4,16 +4,29 @@ import { createClient } from "@supabase/supabase-js";
 
 const config = {
   supabaseUrl: process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL,
-  serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  serviceRoleKey:
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    resolveDefaultSupabaseSecretKey(process.env.SUPABASE_SECRET_KEYS),
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? process.env.VITE_VAPID_PUBLIC_KEY,
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY,
   vapidSubject: process.env.VAPID_SUBJECT ?? "mailto:ops@stallcount.app",
   batchSize: Number(process.env.NOTIFICATION_BATCH_SIZE || 50),
 };
 
+function resolveDefaultSupabaseSecretKey(rawSecretKeys) {
+  if (!rawSecretKeys) return undefined;
+  try {
+    const parsed = JSON.parse(rawSecretKeys);
+    if (!parsed || typeof parsed !== "object") return undefined;
+    return parsed.default || Object.values(parsed).find((value) => typeof value === "string");
+  } catch {
+    return undefined;
+  }
+}
+
 const missing = Object.entries({
   SUPABASE_URL: config.supabaseUrl,
-  SUPABASE_SERVICE_ROLE_KEY: config.serviceRoleKey,
+  "SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEYS": config.serviceRoleKey,
   VAPID_PUBLIC_KEY: config.vapidPublicKey,
   VAPID_PRIVATE_KEY: config.vapidPrivateKey,
 }).filter(([, value]) => !value);
@@ -25,6 +38,10 @@ if (missing.length) {
 
 const supabase = createClient(config.supabaseUrl, config.serviceRoleKey);
 webpush.setVapidDetails(config.vapidSubject, config.vapidPublicKey, config.vapidPrivateKey);
+
+const TOPIC_EVENT_ALIASES = {
+  turnover: ["turnover", "block"],
+};
 
 function buildEventTargets(event) {
   const targets = new Map();
@@ -38,6 +55,9 @@ function buildEventTargets(event) {
   };
 
   addTarget("match", event.match_id);
+  addTarget("team", event.team_id);
+  addTarget("player", event.player_id);
+  addTarget("player", event.secondary_player_id);
   const data = event.data || {};
   addTarget("team", data.team_id || data.teamId || data.team);
   addTarget("player", data.player_id || data.playerId || data.player);
@@ -59,7 +79,12 @@ function filterByTopics(subscriptions, eventType) {
   const normalizedType = (eventType || "").toLowerCase();
   return subscriptions.filter((sub) => {
     if (!Array.isArray(sub.topics) || sub.topics.length === 0) return true;
-    return sub.topics.some((topic) => topic?.toLowerCase() === normalizedType);
+    return sub.topics.some((topic) => {
+      const normalizedTopic = topic?.toLowerCase();
+      if (!normalizedTopic) return false;
+      if (normalizedTopic === normalizedType) return true;
+      return TOPIC_EVENT_ALIASES[normalizedTopic]?.includes(normalizedType) || false;
+    });
   });
 }
 
@@ -184,7 +209,7 @@ async function processEvent(event) {
 async function fetchPendingEvents(limit) {
   const { data, error } = await supabase
     .from("live_events")
-    .select("id, match_id, event_type, data, created_at")
+    .select("id, match_id, event_type, data, team_id, player_id, secondary_player_id, created_at")
     .eq("sent", false)
     .order("created_at", { ascending: true })
     .limit(limit);

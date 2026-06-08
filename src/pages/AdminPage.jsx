@@ -32,13 +32,6 @@ const ADMIN_MODULES = [
     accent: "border border-live-border bg-live-bg text-live-ink",
   },
   {
-    label: "Scoreboard debug",
-    description:
-      "Temporary sandbox to enter device data, preview the board, and inspect payloads.",
-    to: "/admin/scoreboard-debug",
-    accent: "border border-admin-border bg-admin-bg text-admin-ink",
-  },
-  {
     label: "Captain",
     description:
       "Manage rosters, submit spirit scores, and coordinate pre-game logistics.",

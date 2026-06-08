@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import webpush from "https://deno.land/x/webpush@v1.4.3/mod.ts";
+import webpush from "npm:web-push@3.6.7";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 type PushSubscriptionRow = {
@@ -14,19 +14,37 @@ type LiveEventRow = {
   match_id: string;
   event_type: string;
   data?: Record<string, unknown> | null;
+  team_id?: string | null;
+  player_id?: string | null;
+  secondary_player_id?: string | null;
   created_at: string;
 };
 
 const REQUIRED_ENV = [
   "SUPABASE_URL",
-  "SUPABASE_SERVICE_ROLE_KEY",
   "VAPID_PUBLIC_KEY",
   "VAPID_PRIVATE_KEY",
 ] as const;
 
+function resolveDefaultSupabaseSecretKey(rawSecretKeys?: string | null) {
+  if (!rawSecretKeys) return undefined;
+  try {
+    const parsed = JSON.parse(rawSecretKeys) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object") return undefined;
+    const defaultKey = parsed.default;
+    if (typeof defaultKey === "string" && defaultKey) return defaultKey;
+    const firstKey = Object.values(parsed).find((value) => typeof value === "string" && value);
+    return typeof firstKey === "string" ? firstKey : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const config = {
   supabaseUrl: Deno.env.get("SUPABASE_URL"),
-  serviceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+  serviceRoleKey:
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+    resolveDefaultSupabaseSecretKey(Deno.env.get("SUPABASE_SECRET_KEYS")),
   vapidPublicKey: Deno.env.get("VAPID_PUBLIC_KEY"),
   vapidPrivateKey: Deno.env.get("VAPID_PRIVATE_KEY"),
   batchSize: 50,
@@ -37,6 +55,9 @@ for (const key of REQUIRED_ENV) {
     throw new Error(`Missing environment variable: ${key}`);
   }
 }
+if (!config.serviceRoleKey) {
+  throw new Error("Missing environment variable: SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEYS");
+}
 
 const supabase = createClient(config.supabaseUrl!, config.serviceRoleKey!);
 webpush.setVapidDetails(
@@ -44,6 +65,10 @@ webpush.setVapidDetails(
   config.vapidPublicKey!,
   config.vapidPrivateKey!,
 );
+
+const TOPIC_EVENT_ALIASES: Record<string, string[]> = {
+  turnover: ["turnover", "block"],
+};
 
 type TargetMap = Map<string, Set<string>>;
 
@@ -58,6 +83,9 @@ function buildTargetMap(event: LiveEventRow): TargetMap {
   };
 
   add("match", event.match_id);
+  add("team", event.team_id);
+  add("player", event.player_id);
+  add("player", event.secondary_player_id);
   const data = (event.data ?? {}) as Record<string, unknown>;
   add("team", data.team_id ?? data.teamId ?? data.team);
   add("player", data.player_id ?? data.playerId ?? data.player);
@@ -100,7 +128,11 @@ async function fetchMatchingSubscriptions(targets: TargetMap, eventType: string)
   const normalizedEvent = (eventType ?? "").toLowerCase();
   return matches.filter((sub) => {
     if (!Array.isArray(sub.topics) || sub.topics.length === 0) return true;
-    return sub.topics.map(normalizeTopic).includes(normalizedEvent);
+    return sub.topics.map(normalizeTopic).some((topic) => {
+      if (!topic) return false;
+      if (topic === normalizedEvent) return true;
+      return TOPIC_EVENT_ALIASES[topic]?.includes(normalizedEvent) ?? false;
+    });
   });
 }
 
@@ -127,7 +159,7 @@ function buildPayload(event: LiveEventRow) {
 
   const decorate = (value: string | undefined, fallback: string) => {
     if (value && fallbackName && !value.toLowerCase().includes(fallbackName.toLowerCase())) {
-      return `${value} · ${fallback}`;
+      return `${value} - ${fallback}`;
     }
     return value ?? fallback;
   };
@@ -213,7 +245,7 @@ async function processEvent(event: LiveEventRow) {
 async function fetchPendingEvents(limit: number) {
   const { data, error } = await supabase
     .from("live_events")
-    .select("id, match_id, event_type, data, created_at")
+    .select("id, match_id, event_type, data, team_id, player_id, secondary_player_id, created_at")
     .eq("sent", false)
     .order("created_at", { ascending: true })
     .limit(limit);
