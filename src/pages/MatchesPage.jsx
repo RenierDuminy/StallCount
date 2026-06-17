@@ -213,12 +213,15 @@ export default function MatchesPage() {
     let isActive = true;
     let refreshTimeout = null;
 
+    let isFetching = false;
     const scheduleRefresh = () => {
       if (!isActive) return;
       if (refreshTimeout) {
         clearTimeout(refreshTimeout);
       }
       refreshTimeout = setTimeout(async () => {
+        if (isFetching) return;
+        isFetching = true;
         try {
           const [match, logs] = await Promise.all([
             getMatchById(selectedMatchId),
@@ -230,8 +233,10 @@ export default function MatchesPage() {
         } catch (err) {
           if (!isActive) return;
           console.error("[MatchesPage] Failed to refresh live match data", err);
+        } finally {
+          isFetching = false;
         }
-      }, 250);
+      }, 1000);
     };
 
     const channel = supabase

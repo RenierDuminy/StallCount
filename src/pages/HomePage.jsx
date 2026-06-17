@@ -51,7 +51,7 @@ const MOBILE_HOME_LIMITS = {
   upcomingMatches: 6,
 };
 const HOME_LAZY_SECTION_ROOT_MARGIN = "700px 0px";
-const DATE_FORMATTER = new Intl.DateTimeFormat(undefined);
+const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
 const MATCH_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
   minute: "2-digit",
@@ -768,7 +768,7 @@ export default function HomePage() {
     const trackerHref = buildMatchLink(match.id);
     const notificationHref = `/notifications?targetType=match&targetId=${match.id}`;
     const liveMetaParts = live
-      ? [liveClockLabel || "Waiting for next score update", lastEvent ? `Last event: ${lastEvent}` : "No logs yet"]
+      ? [liveClockLabel, lastEvent].filter(Boolean)
       : [];
 
     return (
@@ -781,7 +781,7 @@ export default function HomePage() {
         }`}
         eyebrow={pointStatus && live ? `${pointStatus} point` : live ? "Live now" : "Next up"}
         title={formatMatchup(match)}
-        meta={liveMetaParts.join(" | ")}
+        meta={liveMetaParts.join(" · ")}
         score={live ? formatLiveScore(match) : null}
         status={live ? "Live" : formatMatchStatus(match.status) || "Scheduled"}
         actions={
@@ -874,71 +874,66 @@ export default function HomePage() {
           </div>
         </Card>
       </SectionShell>
-      {isLoggedIn && (
-        <LazyHomeSection
-          onVisible={() => setRenderPersonalized(true)}
-          placeholderHeight={420}
-          rootMargin="220px 0px"
-        >
-          {renderPersonalized && (
-        <SectionShell as="section" className="home-lazy-section__content home-section space-y-3 sm:space-y-5">
-            <SectionHeader
-              title="Your notifications"
-              action={
-                <>
-                  <Link to="/notifications" className="sc-button text-xs">
-                    Notifications
-                  </Link>
+      {/* Two-column layout: main feed (left) + sidebar (right) */}
+      <div className="sc-shell home-two-col pt-2 sm:pt-4">
+
+        {/* DOM order = mobile order. Desktop positions assigned via grid-column + order. */}
+
+        {/* Mobile: 1 — Desktop: R1 */}
+        {isLoggedIn && (
+          <LazyHomeSection
+            className="home-two-col__item--r1"
+            onVisible={() => setRenderPersonalized(true)}
+            placeholderHeight={420}
+            rootMargin="220px 0px"
+          >
+            {renderPersonalized && (
+            <div className="home-section space-y-3 sm:space-y-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Your notifications</p>
+                <div className="flex items-center gap-3">
                   {forYouLoading && (
                     <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Refreshing...</span>
                   )}
-                </>
-              }
-            >
-            </SectionHeader>
-            {personalizedError && (
-              <p
-                className="rounded-xl border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-100 sm:p-4"
-              >
-                {personalizedError}
-              </p>
-            )}
-            {personalizedMessage && (
-              <p className="rounded-xl border border-border/70 bg-[rgba(6,22,18,0.45)] p-3 text-sm text-ink sm:p-4">
-                {personalizedMessage}
-              </p>
-            )}
-            <div className="home-dashboard-grid">
-              <div className="home-dashboard-column">
-                <div className="home-dashboard-column__title">
-                  <h3 className="text-lg font-semibold text-ink">Teams</h3>
+                  <Link to="/notifications" className="sc-button text-xs">
+                    Notifications
+                  </Link>
                 </div>
+              </div>
+              {personalizedError && (
+                <p className="rounded-xl border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-100 sm:p-4">
+                  {personalizedError}
+                </p>
+              )}
+              {personalizedMessage && (
+                <p className="rounded-xl border border-border/70 bg-[rgba(6,22,18,0.45)] p-3 text-sm text-ink sm:p-4">
+                  {personalizedMessage}
+                </p>
+              )}
+              <div className="space-y-3">
                 <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Teams</p>
                   {myTeamsLoading ? (
                     <p className="text-sm text-ink-muted">Loading teams...</p>
                   ) : myTeamInsights.length === 0 ? (
                     <p className="text-sm text-ink-muted">Follow a team to see records and fixtures here.</p>
                   ) : (
-                    <div className="home-mini-list">
+                    <div className="space-y-2">
                       {myTeamInsights.map((team) => (
-                        <div key={team.teamId} className="home-mini-row">
+                        <Panel key={team.teamId} variant="muted" className="p-3 sm:p-4">
                           <p className="text-sm font-semibold text-ink">{team.name}</p>
-                          <div className="mt-1 space-y-1 text-xs text-ink-muted">
-                            {team.record && <p>Record {formatRecord(team.record)}</p>}
-                            {team.nextFixture && <p>Next: {formatFixture(team.nextFixture)}</p>}
-                            {team.lastResult && <p>Last: {formatResult(team.lastResult)}</p>}
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
+                            {team.record && <span>Record <span className="font-semibold text-ink">{formatRecord(team.record)}</span></span>}
+                            {team.nextFixture && <span>Next <span className="font-semibold text-ink">{formatFixture(team.nextFixture)}</span></span>}
+                            {team.lastResult && <span>Last <span className="font-semibold text-ink">{formatResult(team.lastResult)}</span></span>}
                           </div>
-                        </div>
+                        </Panel>
                       ))}
                     </div>
                   )}
                 </div>
-              </div>
-              <div className="home-dashboard-column">
-                <div className="home-dashboard-column__title">
-                  <h3 className="text-lg font-semibold text-ink">Matches</h3>
-                </div>
                 <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Matches</p>
                   {myMatchesLoading ? (
                     <p className="text-sm text-ink-muted">Loading matches...</p>
                   ) : myMatchInsights.length === 0 ? (
@@ -965,61 +960,89 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
-        </SectionShell>
-          )}
-        </LazyHomeSection>
-      )}
+            )}
+          </LazyHomeSection>
+        )}
 
-      <main className="space-y-0">
-        <LazyHomeSection onVisible={() => setRenderEventTimeline(true)} placeholderHeight={520} rootMargin="520px 0px">
+        {/* Mobile: 2 — Desktop: R3 */}
+        <LazyHomeSection className="home-two-col__item--r3" onVisible={() => setRenderEventTimeline(true)} placeholderHeight={520} rootMargin="520px 0px">
           {renderEventTimeline && (
-          <SectionShell as="section" className="home-lazy-section__content home-section home-timeline">
-              {belowFoldError && (
-                <p
-                  className="rounded-xl border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-100 sm:p-4"
-                >
-                  {belowFoldError}
-                </p>
-              )}
-              {homepageEventSections.map((section) => (
-                <div
-                  key={section.key}
-                  className="home-timeline-section"
-                >
-                  <SectionHeader title={section.title} />
-                  {belowFoldLoading && safeEvents.length === 0 ? (
-                    <div className="home-empty-state">
-                      Loading events...
-                    </div>
-                  ) : section.events.length === 0 ? (
-                    <div className="home-empty-state">
-                      {section.emptyMessage}
-                    </div>
-                  ) : (
-                    <div className="home-timeline-list home-timeline-list--grid">
-                      {section.events.slice(0, section.limit).map((event) => (
-                        <HomeEventCard key={event.id} event={event} eventStatusTab={section.key} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-          </SectionShell>
+          <div className="home-section home-timeline">
+            {belowFoldError && (
+              <p className="rounded-xl border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-100 sm:p-4">
+                {belowFoldError}
+              </p>
+            )}
+            {homepageEventSections.map((section) => (
+              <div key={section.key} className="home-timeline-section">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">{section.title}</p>
+                {belowFoldLoading && safeEvents.length === 0 ? (
+                  <div className="home-empty-state">Loading events...</div>
+                ) : section.events.length === 0 ? (
+                  <div className="home-empty-state">{section.emptyMessage}</div>
+                ) : (
+                  <div className="home-timeline-list home-timeline-list--grid">
+                    {section.events.slice(0, section.limit).map((event) => (
+                      <HomeEventCard key={event.id} event={event} eventStatusTab={section.key} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
           )}
         </LazyHomeSection>
 
-        <LazyHomeSection onVisible={() => setRenderStreaming(true)} placeholderHeight={520}>
+        {/* Mobile: 3 — Desktop: L1 */}
+        <LazyHomeSection className="home-two-col__item--l1" onVisible={() => setRenderMatches(true)} placeholderHeight={440}>
+          {renderMatches && (
+          <div className="home-section space-y-3 sm:space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-live-ink">Live &amp; upcoming</p>
+            {loading && liveAndUpcomingMatches.length === 0 ? (
+              <div className="home-empty-state">Loading matches...</div>
+            ) : liveAndUpcomingMatches.length === 0 ? (
+              <div className="home-empty-state">No open matches right now.</div>
+            ) : (
+              <div className="home-agenda-grid">
+                {liveAndUpcomingMatches.map((match) => {
+                  const live = isMatchLive(match.status);
+                  const final = isMatchFinal(match.status);
+                  const showScore = live || final;
+                  const statusLabel = showScore
+                    ? formatMatchStatus(match.status) || (live ? "Live" : "Final")
+                    : formatMatchStatus(match.status) || "Scheduled";
+                  return (
+                    <StandardEventMatchCard
+                      key={match.id}
+                      match={match}
+                      variant="tintedAlt"
+                      className="home-agenda-card"
+                      eyebrow={match.event?.name || "Match"}
+                      title={formatMatchup(match)}
+                      meta={null}
+                      score={showScore ? formatLiveScore(match) : null}
+                      status={statusLabel}
+                      hideEyebrow={false}
+                      compact={false}
+                      hideFinishedVenue={false}
+                      hideVenue
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          )}
+        </LazyHomeSection>
+
+        {/* Mobile: 4 — Desktop: R2 */}
+        <LazyHomeSection className="home-two-col__item--r2" onVisible={() => setRenderStreaming(true)} placeholderHeight={520}>
           {renderStreaming && (
-          <SectionShell as="section" className="home-lazy-section__content home-section space-y-3 sm:space-y-5">
-            <SectionHeader
-              eyebrowVariant="media"
-              title="Featured broadcasts"
-            />
+          <div className="home-section space-y-3 sm:space-y-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-media-ink">Featured broadcasts</p>
             <div className="home-media-grid">
               <div className="home-media-column space-y-3 sm:space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-ink">Next to stream</h3>
-                </div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Next to stream</p>
                 {streamsLoading && upcomingStreamMatches.length === 0 ? (
                   <p className="text-sm text-ink-muted">Loading streams...</p>
                 ) : upcomingStreamMatches.length > 0 ? (
@@ -1032,11 +1055,8 @@ export default function HomePage() {
                   <p className="text-sm text-ink-muted">No upcoming matches with media linked.</p>
                 )}
               </div>
-
               <div className="home-media-column space-y-3 sm:space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-ink">Latest replays</h3>
-                </div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Latest replays</p>
                 {streamsLoading && recentStreamMatches.length === 0 ? (
                   <p className="text-sm text-ink-muted">Loading replays...</p>
                 ) : recentStreamMatches.length > 0 ? (
@@ -1050,98 +1070,43 @@ export default function HomePage() {
                 )}
               </div>
             </div>
-          </SectionShell>
+          </div>
           )}
         </LazyHomeSection>
 
-        <LazyHomeSection onVisible={() => setRenderFinals(true)} placeholderHeight={420}>
+        {/* Mobile: 5 — Desktop: L2 */}
+        <LazyHomeSection className="home-two-col__item--l2" onVisible={() => setRenderFinals(true)} placeholderHeight={420}>
           {renderFinals && (
-          <SectionShell as="section" className="home-lazy-section__content home-section space-y-3 sm:space-y-4">
-              <SectionHeader
-                title="Latest results"
-              />
-              {finalsLoading && latestResults.length === 0 ? (
-                <div className="home-empty-state">
-                  Loading results...
-                </div>
-              ) : latestResults.length === 0 ? (
-                <div className="home-empty-state">
-                  No finals saved yet.
-                </div>
-              ) : (
-                <div className="home-score-grid">
-                  {latestResults.map((match) => (
-                    <StandardEventMatchCard
-                      key={match.id}
-                      match={match}
-                      className="home-score-card"
-                      eyebrow={match.event?.name || "Match"}
-                      title={formatMatchup(match)}
-                      meta={null}
-                      score={formatLiveScore(match)}
-                      status={formatMatchStatus(match.status) || "Final"}
-                      hideEyebrow={false}
-                      compact={false}
-                      scoreAlign="right"
-                      hideVenue
-                    />
-                  ))}
-                </div>
-              )}
-          </SectionShell>
+          <div className="home-section space-y-3 sm:space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Latest results</p>
+            {finalsLoading && latestResults.length === 0 ? (
+              <div className="home-empty-state">Loading results...</div>
+            ) : latestResults.length === 0 ? (
+              <div className="home-empty-state">No finals saved yet.</div>
+            ) : (
+              <div className="home-score-grid">
+                {latestResults.map((match) => (
+                  <StandardEventMatchCard
+                    key={match.id}
+                    match={match}
+                    className="home-score-card"
+                    eyebrow={match.event?.name || "Match"}
+                    title={formatMatchup(match)}
+                    meta={null}
+                    score={formatLiveScore(match)}
+                    status={formatMatchStatus(match.status) || "Final"}
+                    hideEyebrow={false}
+                    compact={false}
+                    scoreAlign="right"
+                    hideVenue
+                  />
+                ))}
+              </div>
+            )}
+          </div>
           )}
         </LazyHomeSection>
-
-        <LazyHomeSection onVisible={() => setRenderMatches(true)} placeholderHeight={440}>
-          {renderMatches && (
-          <SectionShell as="section" className="home-lazy-section__content home-section space-y-3 sm:space-y-4">
-              <SectionHeader
-                eyebrow="Live"
-                eyebrowVariant="live"
-                title="Live & upcoming"
-              />
-              {loading && liveAndUpcomingMatches.length === 0 ? (
-                <div className="home-empty-state">
-                  Loading matches...
-                </div>
-              ) : liveAndUpcomingMatches.length === 0 ? (
-                <div className="home-empty-state">
-                  No open matches right now.
-                </div>
-              ) : (
-                <div className="home-agenda-grid">
-                  {liveAndUpcomingMatches.map((match) => {
-                    const live = isMatchLive(match.status);
-                    const final = isMatchFinal(match.status);
-                    const showScore = live || final;
-                    const statusLabel = showScore
-                      ? formatMatchStatus(match.status) || (live ? "Live" : "Final")
-                      : formatMatchStatus(match.status) || "Scheduled";
-                    return (
-                      <StandardEventMatchCard
-                        key={match.id}
-                        match={match}
-                        variant="tintedAlt"
-                        className="home-agenda-card"
-                        eyebrow={match.event?.name || "Match"}
-                        title={formatMatchup(match)}
-                        meta={null}
-                        score={showScore ? formatLiveScore(match) : null}
-                        status={statusLabel}
-                        hideEyebrow={false}
-                        compact={false}
-                        hideFinishedVenue={false}
-                        hideVenue
-                      />
-                    );
-                  })}
-                </div>
-              )}
-          </SectionShell>
-          )}
-        </LazyHomeSection>
-
-      </main>
+      </div>
     </div>
   );
 }
@@ -1165,15 +1130,13 @@ const HomeEventCard = memo(function HomeEventCard({ event, eventStatusTab }) {
       variant="muted"
       className={cardClassName}
     >
-      <div className="flex flex-col gap-2 sm:gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h3 className="text-base font-semibold leading-snug text-ink">{event.name}</h3>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <p className="home-event-row__date text-left">
-            {formatDateRange(event.start_date, event.end_date)}
-          </p>
-        </div>
+      <div className="flex min-w-0 flex-col items-center gap-1 text-center">
+        <h3 className="w-full overflow-hidden text-ellipsis whitespace-nowrap text-base font-semibold leading-snug text-ink">
+          {event.name}
+        </h3>
+        <p className="w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs font-semibold text-ink-muted">
+          {formatDateRange(event.start_date, event.end_date)}
+        </p>
       </div>
     </Card>
   );
@@ -1376,11 +1339,27 @@ function derivePointStatus(liveEvent) {
   return normalized.charAt(0);
 }
 
+function deriveLiveMinute(liveEvent, match) {
+  const eventTime = liveEvent?.created_at;
+  const startTime = match?.start_time;
+  if (!eventTime || !startTime) return null;
+  const elapsed = new Date(eventTime).getTime() - new Date(startTime).getTime();
+  if (isNaN(elapsed) || elapsed < 0) return null;
+  return Math.floor(elapsed / 60000);
+}
+
+function deriveCapStatus(liveEvent) {
+  if (!liveEvent) return null;
+  const data = liveEvent.data || {};
+  const raw = (data.cap || data.cap_status || data.clock_label || "").toString().trim().toLowerCase();
+  if (raw.includes("hard")) return "Hard cap";
+  if (raw.includes("soft")) return "Soft cap";
+  return null;
+}
+
 function formatLiveEventSummary(liveEvent, match) {
   if (!liveEvent) return null;
   const data = liveEvent.data || {};
-  if (data.title) return data.title;
-  if (data.description) return data.description;
   const teamId = data.team_id || data.teamId;
   const teamName = teamId
     ? match?.team_a?.id === teamId
@@ -1389,7 +1368,15 @@ function formatLiveEventSummary(liveEvent, match) {
         ? match.team_b?.name
         : null
     : null;
-  return teamName ? `${teamName} ${liveEvent.event_type || "event"}` : liveEvent.event_type || "Live event";
+  const description =
+    data.title ||
+    data.description ||
+    (teamName ? `${liveEvent.event_type || "event"} — ${teamName}` : liveEvent.event_type || null);
+  if (!description) return null;
+  const minute = deriveLiveMinute(liveEvent, match);
+  if (minute !== null) return `${minute}' · ${description}`;
+  const cap = deriveCapStatus(liveEvent);
+  return cap ? `${cap} · ${description}` : description;
 }
 
 const EVENT_STATUS_GROUPS = {

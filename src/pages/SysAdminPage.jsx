@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { getErrorLog, clearErrorLog } from "../components/ErrorBoundary";
 import {
   getBaseTableName,
   deleteTableRowByFilters,
@@ -59,6 +60,66 @@ function formatVenueOptionLabel(venue) {
   const parts = [city, location, name].filter(Boolean);
   if (parts.length === 0) return "Unnamed venue";
   return parts.join(" - ");
+}
+
+function BrokenComponentsPanel() {
+  const [log, setLog] = useState(() => getErrorLog());
+
+  const handleClear = () => {
+    clearErrorLog();
+    setLog([]);
+  };
+
+  const handleRefresh = () => setLog([...getErrorLog()]);
+
+  if (log.length === 0) {
+    return (
+      <Panel className="flex items-center gap-3 border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-800">
+        <span className="text-base">✓</span>
+        <span className="font-semibold">No component errors recorded this session.</span>
+        <button type="button" onClick={handleRefresh} className="ml-auto sc-button text-xs">
+          Refresh
+        </button>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel className="space-y-4 border border-rose-200 bg-rose-50 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-rose-800">
+            {log.length} component error{log.length !== 1 ? "s" : ""} this session
+          </p>
+          <p className="text-xs text-rose-600">Errors reset on full page reload.</p>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={handleRefresh} className="sc-button text-xs">
+            Refresh
+          </button>
+          <button type="button" onClick={handleClear} className="sc-button text-xs">
+            Clear log
+          </button>
+        </div>
+      </div>
+      <div className="space-y-3">
+        {log.map((entry, i) => (
+          <div key={i} className="rounded-xl border border-rose-200 bg-white p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <p className="text-sm font-semibold text-rose-800">{entry.name}</p>
+              <span className="text-[11px] text-rose-400">{entry.timestamp}</span>
+            </div>
+            <p className="mt-1 text-xs text-rose-700">{entry.message}</p>
+            {entry.stack && (
+              <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-rose-50 p-2 text-[10px] text-rose-500 whitespace-pre-wrap">
+                {entry.stack.trim()}
+              </pre>
+            )}
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
 }
 
 export default function SysAdminPage() {
@@ -495,6 +556,10 @@ export default function SysAdminPage() {
             </Chip>
           </div>
         </Card>
+      </SectionShell>
+
+      <SectionShell className="py-4">
+        <BrokenComponentsPanel />
       </SectionShell>
 
       <SectionShell as="main" className="pb-16">

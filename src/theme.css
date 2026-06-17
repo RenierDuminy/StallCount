@@ -192,8 +192,15 @@ a:focus-visible {
 
 @media (min-width: 1024px) {
   .sc-shell {
-    padding-left: 2.5rem;
-    padding-right: 2.5rem;
+    padding-left: 4%;
+    padding-right: 4%;
+  }
+}
+
+@media (min-width: 1280px) {
+  .sc-shell {
+    padding-left: 10%;
+    padding-right: 10%;
   }
 }
 
@@ -211,6 +218,30 @@ a:focus-visible {
   contain: layout paint style;
 }
 
+.home-two-col {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .home-two-col {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 2rem;
+  }
+
+  .home-two-col__item--l1 { order: 1; grid-column: 1; }
+  .home-two-col__item--l2 { order: 3; grid-column: 1; }
+  .home-two-col__item--r1 { order: 2; grid-column: 2; }
+  .home-two-col__item--r2 { order: 4; grid-column: 2; }
+  .home-two-col__item--r3 { order: 6; grid-column: 2; }
+}
+
+.home-two-col__sidebar .home-timeline-list--grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+}
+
 .home-page {
   --home-row-bg: rgba(6, 22, 18, 0.34);
   --home-row-bg-strong: rgba(6, 22, 18, 0.54);
@@ -219,6 +250,18 @@ a:focus-visible {
 
 .home-section {
   border-top: 1px solid rgba(232, 244, 237, 0.08);
+}
+
+@media (min-width: 1024px) {
+  .home-two-col .home-section {
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: var(--sc-radius-lg);
+    background: var(--sc-card-muted-bg);
+    box-shadow: var(--sc-card-muted-glow);
+    padding: 1.25rem;
+  }
 }
 
 .home-section + .home-section,
@@ -494,14 +537,7 @@ a:focus-visible {
 }
 
 .sc-live-card.is-live::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 12% 18%, rgba(251, 113, 133, 0.24), transparent 55%),
-    radial-gradient(circle at 85% 0%, rgba(251, 113, 133, 0.18), transparent 45%);
-  animation: sc-live-glow 2.6s ease-in-out infinite;
-  pointer-events: none;
+  display: none;
 }
 
 .sc-live-card.is-live .sc-live-badge {
@@ -520,6 +556,15 @@ a:focus-visible {
 
 .sc-live-card.is-live .sc-button.is-ghost {
   border-color: var(--sc-live-border);
+}
+
+@keyframes sc-live-dot-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.sc-live-dot {
+  animation: sc-live-dot-blink 1s step-start infinite;
 }
 
 @keyframes sc-live-glow {

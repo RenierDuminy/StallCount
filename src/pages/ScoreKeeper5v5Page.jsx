@@ -1,1 +1,1 @@
-export { default } from "./scorekeeper copy/5v5ScoreKeeperView";
+export { default } from "./scorekeeper/5v5ScoreKeeperView";

@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import SeoManager from "./components/SeoManager";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 import AppLayout from "./components/AppLayout";
 import {
@@ -73,28 +74,33 @@ function ScrollToTop() {
   return null;
 }
 
+function Guarded({ name, children }) {
+  return <ErrorBoundary name={name}>{children}</ErrorBoundary>;
+}
+
 export default function AppRoutes() {
   return (
     <BrowserRouter>
       <SeoManager />
       <ScrollToTop />
+      <Suspense fallback={routeFallback}>
       <Routes>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/players" element={<Players />} />
-          <Route path="/players/:playerId" element={<PlayerProfilePage />} />
-          <Route path="/teams" element={<Teams />} />
-          <Route path="/teams/:teamId" element={<TeamProfilePage />} />
-          <Route path="/matches" element={<MatchesPage />} />
-          <Route path="/events" element={<EventsPage />} />
-          <Route path="/community" element={<CommunityPage />} />
-          <Route path="/event-rosters" element={<EventRostersPageLazy />} />
-          <Route path="/event-rules" element={<EventRulesPageLazy />} />
+          <Route path="/" element={<Guarded name="Home"><HomePage /></Guarded>} />
+          <Route path="/login" element={<Guarded name="Login"><LoginPage /></Guarded>} />
+          <Route path="/players" element={<Guarded name="Players"><Players /></Guarded>} />
+          <Route path="/players/:playerId" element={<Guarded name="Player profile"><PlayerProfilePage /></Guarded>} />
+          <Route path="/teams" element={<Guarded name="Teams"><Teams /></Guarded>} />
+          <Route path="/teams/:teamId" element={<Guarded name="Team profile"><TeamProfilePage /></Guarded>} />
+          <Route path="/matches" element={<Guarded name="Matches"><MatchesPage /></Guarded>} />
+          <Route path="/events" element={<Guarded name="Events"><EventsPage /></Guarded>} />
+          <Route path="/community" element={<Guarded name="Community"><CommunityPage /></Guarded>} />
+          <Route path="/event-rosters" element={<Guarded name="Event rosters"><EventRostersPageLazy /></Guarded>} />
+          <Route path="/event-rules" element={<Guarded name="Event rules"><EventRulesPageLazy /></Guarded>} />
           {cptMxLeagueWorkspace ? (
             <Route
               path="/events/ctfda-mx-league"
-              element={<cptMxLeagueWorkspace.Component />}
+              element={<Guarded name="CPT MX League workspace"><cptMxLeagueWorkspace.Component /></Guarded>}
             />
           ) : null}
           {eventWorkspaces
@@ -103,23 +109,23 @@ export default function AppRoutes() {
             <Route
               key={workspace.path}
               path={workspace.path}
-              element={<workspace.Component />}
+              element={<Guarded name={`Event workspace: ${workspace.path}`}><workspace.Component /></Guarded>}
             />
           ))}
           <Route
             path="/notifications"
             element={
               <ProtectedRoute>
-                <NotificationsPage />
+                <Guarded name="Notifications"><NotificationsPage /></Guarded>
               </ProtectedRoute>
             }
           />
-          <Route path="/user" element={<UserPage />} />
+          <Route path="/user" element={<Guarded name="User profile"><UserPage /></Guarded>} />
           <Route
             path="/admin"
             element={
               <ProtectedRoute requireNonViewer>
-                <AdminPage />
+                <Guarded name="Admin hub"><AdminPage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -127,7 +133,7 @@ export default function AppRoutes() {
             path="/admin/access"
             element={
               <ProtectedRoute allowedPermissions={ADMIN_ACCESS_PERMISSIONS}>
-                <AdminAccessPage />
+                <Guarded name="Access control"><AdminAccessPage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -135,7 +141,7 @@ export default function AppRoutes() {
             path="/admin/event-access"
             element={
               <ProtectedRoute allowedPermissions={EVENT_ACCESS_PERMISSIONS}>
-                <EventAccessPage />
+                <Guarded name="Event access control"><EventAccessPage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -143,7 +149,7 @@ export default function AppRoutes() {
             path="/admin/signup-management"
             element={
               <ProtectedRoute allowedPermissions={SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS}>
-                <SignupManagementPage />
+                <Guarded name="Signup management"><SignupManagementPage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -151,7 +157,7 @@ export default function AppRoutes() {
             path="/spirit-scores"
             element={
               <ProtectedRoute allowedPermissions={SPIRIT_SCORES_ACCESS_PERMISSIONS}>
-                <SpiritScoresPage />
+                <Guarded name="Spirit scores"><SpiritScoresPage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -159,7 +165,7 @@ export default function AppRoutes() {
             path="/tournament-director"
             element={
               <ProtectedRoute allowedPermissions={TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS}>
-                <TournamentDirectorPage />
+                <Guarded name="Tournament director"><TournamentDirectorPage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -167,7 +173,7 @@ export default function AppRoutes() {
             path="/admin/playoff-structure"
             element={
               <ProtectedRoute allowedRoles={["admin", "administrator", "sys_admin", "tournament_director"]}>
-                <PlayoffStructurePage />
+                <Guarded name="Playoff structure"><PlayoffStructurePage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -175,7 +181,7 @@ export default function AppRoutes() {
             path="/admin/media"
             element={
               <ProtectedRoute allowedPermissions={MEDIA_ACCESS_PERMISSIONS}>
-                <MediaAdminPage />
+                <Guarded name="Media admin"><MediaAdminPage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -183,7 +189,7 @@ export default function AppRoutes() {
             path="/admin/event-setup"
             element={
               <ProtectedRoute allowedPermissions={EVENT_SETUP_ACCESS_PERMISSIONS}>
-                <EventSetupWizardPage />
+                <Guarded name="Event setup"><EventSetupWizardPage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -191,7 +197,7 @@ export default function AppRoutes() {
             path="/admin/custom-scripts"
             element={
               <ProtectedRoute allowedPermissions={SYS_ADMIN_ACCESS_PERMISSIONS}>
-                <CustomScriptsPage />
+                <Guarded name="Custom scripts"><CustomScriptsPage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -199,7 +205,7 @@ export default function AppRoutes() {
             path="/captain"
             element={
               <ProtectedRoute allowedPermissions={CAPTAIN_ACCESS_PERMISSIONS}>
-                <CaptainPage />
+                <Guarded name="Captain"><CaptainPage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -207,7 +213,7 @@ export default function AppRoutes() {
             path="/sys-admin"
             element={
               <ProtectedRoute allowedPermissions={SYS_ADMIN_ACCESS_PERMISSIONS}>
-                <SysAdminPage />
+                <Guarded name="Sys admin"><SysAdminPage /></Guarded>
               </ProtectedRoute>
             }
           />
@@ -216,9 +222,7 @@ export default function AppRoutes() {
           path="/score-keeper"
           element={
             <ProtectedRoute allowedPermissions={SCOREKEEPER_ACCESS_PERMISSIONS}>
-              <Suspense fallback={routeFallback}>
-                <ScoreKeeperPage />
-              </Suspense>
+              <Guarded name="Score keeper"><ScoreKeeperPage /></Guarded>
             </ProtectedRoute>
           }
         />
@@ -226,21 +230,18 @@ export default function AppRoutes() {
           path="/score-keeper-5v5"
           element={
             <ProtectedRoute allowedPermissions={SCOREKEEPER_ACCESS_PERMISSIONS}>
-              <Suspense fallback={routeFallback}>
-                <ScoreKeeper5v5Page />
-              </Suspense>
+              <Guarded name="Score keeper 5v5"><ScoreKeeper5v5Page /></Guarded>
             </ProtectedRoute>
           }
         />
         <Route
           path="/admin/scrimmage"
           element={
-            <Suspense fallback={routeFallback}>
-              <ScrimmagePage />
-            </Suspense>
+            <Guarded name="Scrimmage"><ScrimmagePage /></Guarded>
           }
         />
       </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

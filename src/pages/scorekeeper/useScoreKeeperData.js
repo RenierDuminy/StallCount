@@ -1541,6 +1541,9 @@ useEffect(() => {
   const startingTeamId = activeMatch?.starting_team_id || setupForm.startingTeamId;
   const matchStartingTeamKey =
     startingTeamId === teamAId ? "A" : startingTeamId === teamBId ? "B" : null;
+  // Team that pulled first now receives in the second half — the opposite team pulls at halftime.
+  const secondHalfReceivingTeamKey =
+    matchStartingTeamKey === "A" ? "B" : matchStartingTeamKey === "B" ? "A" : null;
   const matchDuration = rules.matchDuration || DEFAULT_DURATION;
   const remainingTimeouts = {
     A: Math.max(rules.timeoutsTotal - timeoutUsage.A, 0),
@@ -2241,7 +2244,7 @@ const replaceSecondaryTimer = useCallback(
         const meta = completedNaturally ? await finalizeSecondaryTimerEvent() : null;
         if (meta?.endCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
           setHalftimeBreakActive(false);
-          const nextTeam = matchStartingTeamKey;
+          const nextTeam = secondHalfReceivingTeamKey;
           if (nextTeam) {
             void updatePossession(nextTeam, { logTurnover: false });
           }
@@ -2257,7 +2260,7 @@ const replaceSecondaryTimer = useCallback(
     secondaryRunning,
     finalizeSecondaryTimerEvent,
     startSecondaryTimer,
-    matchStartingTeamKey,
+    secondHalfReceivingTeamKey,
     updatePossession,
   ]);
 
@@ -2267,7 +2270,7 @@ const replaceSecondaryTimer = useCallback(
     void (async () => {
       const meta = await finalizeSecondaryTimerEvent();
       if (meta?.endCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
-        const nextTeam = matchStartingTeamKey;
+        const nextTeam = secondHalfReceivingTeamKey;
         if (nextTeam) {
           void updatePossession(nextTeam, { logTurnover: false });
         }
@@ -2280,7 +2283,7 @@ const replaceSecondaryTimer = useCallback(
   }, [
     consoleReady,
     finalizeSecondaryTimerEvent,
-    matchStartingTeamKey,
+    secondHalfReceivingTeamKey,
     startSecondaryTimer,
     updatePossession,
   ]);
@@ -2301,7 +2304,7 @@ const replaceSecondaryTimer = useCallback(
     commitSecondaryTimerState(0, false);
     setSecondaryTotalSeconds(0);
     setSecondaryLabel(DEFAULT_SECONDARY_LABEL);
-    const nextTeam = matchStartingTeamKey;
+    const nextTeam = secondHalfReceivingTeamKey;
     if (nextTeam) {
       void updatePossession(nextTeam, { logTurnover: false });
     }
@@ -2314,7 +2317,7 @@ const replaceSecondaryTimer = useCallback(
     hasLoggedOrPendingMatchEvent,
     logSimpleEvent,
     commitSecondaryTimerState,
-    matchStartingTeamKey,
+    secondHalfReceivingTeamKey,
     updatePossession,
   ]);
 
@@ -3059,6 +3062,7 @@ const replaceSecondaryTimer = useCallback(
     getAbbaDescriptor,
     startingTeamId,
     matchStartingTeamKey,
+    secondHalfReceivingTeamKey,
     matchDuration,
     remainingTimeouts,
     canEndMatch,

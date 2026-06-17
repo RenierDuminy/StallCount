@@ -1,3 +1,4 @@
+import { useState, useEffect, memo } from "react";
 import { MATCH_LOG_EVENT_CODES } from "../../../services/matchLogService";
 
 const BLOCK_EVENT_TYPE_ID = 19;
@@ -154,16 +155,36 @@ function EditButton({
   );
 }
 
-function OptimisticBadge({ isOptimistic }) {
+const SYNC_FAIL_THRESHOLD_MS = 60_000;
+
+function OptimisticBadge({ isOptimistic, timestamp }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isOptimistic) return;
+    const id = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, [isOptimistic]);
+
   if (!isOptimistic) return null;
+
+  const entryAge = timestamp ? now - new Date(timestamp).getTime() : 0;
+  const isFailed = entryAge > SYNC_FAIL_THRESHOLD_MS;
+
   return (
-    <span className="absolute left-3 top-3 rounded-full border border-slate-200 bg-white/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">
-      syncing
+    <span
+      className={`absolute left-3 top-3 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+        isFailed
+          ? "border-rose-300 bg-rose-50 text-rose-700"
+          : "border-slate-200 bg-white/90 text-slate-700"
+      }`}
+    >
+      {isFailed ? "sync failed" : "syncing"}
     </span>
   );
 }
 
-export function MatchEventCard({
+export const MatchEventCard = memo(function MatchEventCard({
   log,
   chronologicalIndex,
   editIndex,
@@ -233,7 +254,7 @@ export function MatchEventCard({
     <article
       className={`relative rounded-2xl border px-4 py-3 transition ${eventStyles.bg} ${eventStyles.border} ${eventStyles.label} ${alignClass} ${matchStartLayoutClass} ${editSpacingClass}`}
     >
-      <OptimisticBadge isOptimistic={log?.isOptimistic} />
+      <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <div className={`w-full ${alignClass}`}>
         <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide ${eventStyles.label}`}>
           {flags.isMatchStartLog ? "Match start" : log.eventDescription || "Match event"}
@@ -320,9 +341,9 @@ export function MatchEventCard({
       )}
     </article>
   );
-}
+});
 
-export function ScoreEventCard({
+export const ScoreEventCard = memo(function ScoreEventCard({
   log,
   chronologicalIndex,
   editIndex,
@@ -347,7 +368,7 @@ export function ScoreEventCard({
 
   return (
     <article className="relative rounded-2xl border border-[#16a34a]/70 bg-[#e5ffe8] px-4 py-3 text-black pr-12">
-      <OptimisticBadge isOptimistic={log?.isOptimistic} />
+      <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <div className="text-center">
         <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide`}>Score</p>
         <p className={`${TEXT_SIZES.s}`}>{eventTime}</p>
@@ -384,9 +405,9 @@ export function ScoreEventCard({
       />
     </article>
   );
-}
+});
 
-export function CalahanEventCard({
+export const CalahanEventCard = memo(function CalahanEventCard({
   log,
   chronologicalIndex,
   editIndex,
@@ -411,7 +432,7 @@ export function CalahanEventCard({
 
   return (
     <article className="relative rounded-2xl border-4 border-[#facc15] bg-[#e5ffe8] px-4 py-3 text-[#b45309] pr-12">
-      <OptimisticBadge isOptimistic={log?.isOptimistic} />
+      <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <div className="text-center">
         <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide text-[#b45309]`}>Score</p>
         <p className={`${TEXT_SIZES.s} text-[#b45309]`}>{eventTime}</p>
@@ -448,9 +469,9 @@ export function CalahanEventCard({
       />
     </article>
   );
-}
+});
 
-export function BlockEventCard({
+export const BlockEventCard = memo(function BlockEventCard({
   log,
   editIndex,
   displayTeamA,
@@ -473,7 +494,7 @@ export function BlockEventCard({
 
   return (
     <article className="relative rounded-2xl border border-[#06b6d4]/60 bg-[#cffafe] px-4 py-3 text-black">
-      <OptimisticBadge isOptimistic={log?.isOptimistic} />
+      <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <div className="text-center">
         <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide`}>Block</p>
         <p className={`${TEXT_SIZES.s}`}>{eventTime}</p>
@@ -494,9 +515,9 @@ export function BlockEventCard({
       />
     </article>
   );
-}
+});
 
-export function TurnoverEventCard({
+export const TurnoverEventCard = memo(function TurnoverEventCard({
   log,
   editIndex,
   displayTeamA,
@@ -519,7 +540,7 @@ export function TurnoverEventCard({
 
   return (
     <article className="relative rounded-2xl border border-[#06b6d4]/60 bg-[#cffafe] px-4 py-3 text-black">
-      <OptimisticBadge isOptimistic={log?.isOptimistic} />
+      <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <div className="flex flex-col items-center text-center">
         <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide`}>Turnover</p>
         <p className={`${TEXT_SIZES.s}`}>{eventTime}</p>
@@ -540,4 +561,4 @@ export function TurnoverEventCard({
       />
     </article>
   );
-}
+});

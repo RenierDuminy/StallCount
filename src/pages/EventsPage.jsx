@@ -205,10 +205,17 @@ export default function EventsPage() {
     }
     void loadMatches();
 
+    const hasLiveMatches = () =>
+      matches.some((m) => {
+        const s = (m.status || "").toLowerCase();
+        return s === "live" || s === "halftime" || s === "in_progress";
+      });
+
     const refreshMatches = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
         return;
       }
+      if (!hasLiveMatches()) return;
       void loadMatches({ background: true, forceRefresh: true });
     };
 
@@ -334,17 +341,7 @@ export default function EventsPage() {
 
   return (
     <div className="pb-16 text-ink">
-      <SectionShell as="header" className="py-6">
-        <Card className="space-y-4 p-6 sm:p-8">
-          <SectionHeader
-            title="Division control center"
-            description="Select a tournament to view its calendar, venue posture, rule set, and live fixtures."
-          >
-          </SectionHeader>
-        </Card>
-      </SectionShell>
-
-      <SectionShell as="main" className="space-y-4 sm:space-y-6">
+      <SectionShell as="main" className="space-y-4 sm:space-y-6 pt-6">
         {error && <div className="sc-alert is-error">{error}</div>}
 
         <div className="grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
@@ -369,9 +366,7 @@ export default function EventsPage() {
                       </button>
                     ))}
                   </div>
-                  <span className="text-right whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                    {loading ? "Loading..." : `${filteredEvents.length} shown`}
-                  </span>
+
                 </div>
               }
             />
@@ -388,48 +383,39 @@ export default function EventsPage() {
                 {filteredEvents.map((event) => {
                   const isActive = event.id === selectedEventId;
                   const eventWorkspacePath = getEventWorkspacePath(event.id);
-                  const eventCardClassName = `${
+                  const wrapClass = `${
                     isActive ? "sc-button is-square" : "sc-button is-ghost is-square"
                   } flex min-h-[88px] w-full overflow-hidden rounded-[var(--sc-radius-md)] p-0`;
 
-                  if (eventWorkspacePath) {
-                    return (
-                      <Link
-                        key={event.id}
-                        to={eventWorkspacePath}
-                        className={eventCardClassName}
-                        style={{ borderColor: "rgba(255, 255, 255, 0.9)" }}
-                        aria-label={`Open ${event.name} overview`}
-                        title={`Open ${event.name} overview`}
+                  return (
+                    <div
+                      key={event.id}
+                      className={wrapClass}
+                      style={{ borderColor: isActive ? undefined : "rgba(255,255,255,0.9)" }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleSelectEvent(event.id)}
+                        className="flex min-h-[88px] flex-1 items-center justify-start bg-transparent px-4 text-left text-inherit transition hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50"
+                        aria-pressed={isActive}
                       >
-                        <span className="is-option flex min-h-[88px] flex-1 items-center justify-start border-0 bg-transparent px-4 text-left text-inherit shadow-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-inset">
-                          <span className="text-base font-semibold leading-tight">{event.name}</span>
-                        </span>
-                        <span className="flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l border-white/30 bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-inherit">
+                        <span className="text-base font-semibold leading-tight">{event.name}</span>
+                      </button>
+                      {eventWorkspacePath ? (
+                        <Link
+                          to={eventWorkspacePath}
+                          className="flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l border-white/30 bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-inherit transition hover:bg-white/[0.10] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50"
+                          aria-label={`Open ${event.name}`}
+                          title={`Open ${event.name}`}
+                        >
+                          Open
+                        </Link>
+                      ) : (
+                        <span className="flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l border-white/10 px-3 text-sm font-semibold uppercase tracking-[0.18em] text-ink-muted/40 select-none">
                           Open
                         </span>
-                      </Link>
-                    );
-                  }
-
-                  return (
-                    <button
-                      key={event.id}
-                      type="button"
-                      onClick={() => handleSelectEvent(event.id)}
-                      className={eventCardClassName}
-                      style={{ borderColor: "rgba(255, 255, 255, 0.9)" }}
-                    >
-                      <span className="is-option flex min-h-[88px] flex-1 items-center justify-start border-0 bg-transparent px-4 text-left text-inherit shadow-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-inset">
-                        <span className="text-base font-semibold leading-tight">{event.name}</span>
-                      </span>
-                      <span
-                        className="flex min-h-[88px] w-20 shrink-0 items-center justify-center border-l border-white/20 bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-ink-muted"
-                        aria-hidden="true"
-                      >
-                        Open
-                      </span>
-                    </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>

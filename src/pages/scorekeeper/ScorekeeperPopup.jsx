@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { Link } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import { CALAHAN_ASSIST_VALUE, SCORE_NA_PLAYER_VALUE } from "./scorekeeperConstants";
 import { formatClock, formatMatchLabel } from "./scorekeeperUtils";
@@ -497,7 +498,7 @@ export function ScorekeeperPopups({
               </label>
               {isAbbaEnabled && (
                 <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                  <span className="shrink-0">ABBA</span>
+                  <span className="shrink-0">Opening gender line</span>
                   <select
                     value={setupForm.abbaPattern}
                     onChange={(event) => {
@@ -509,9 +510,9 @@ export function ScorekeeperPopups({
                     }}
                     className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <option value="">Select line...</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
+                    <option value="">Select gender line...</option>
+                    <option value="male">Male (men take the field first)</option>
+                    <option value="female">Female (women take the field first)</option>
                   </select>
                 </label>
               )}
@@ -541,6 +542,12 @@ export function ScorekeeperPopups({
                 {setupError}
               </p>
             )}
+            <Link
+              to="/admin"
+              className="block w-full rounded-full border border-[#0f5132]/30 px-5 py-1.5 text-center text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
+            >
+              Back to admin hub
+            </Link>
           </form>
         </ActionModal>
       )}
@@ -776,10 +783,10 @@ export function ScorekeeperPopups({
                 </button>
                 <p className="mt-1 text-xs">
                   Remaining (total): {remainingTimeouts.A}
-                  {remainingTimeouts.A > 0 && (
+                  {remainingTimeouts.A > 0 && halfRemainingLabel && halfRemainingLabel("A") !== "N/A" && (
                     <>
                       <br />
-                      Remaining (half): {halfRemainingLabel ? halfRemainingLabel("A") : 0}
+                      Remaining (half): {halfRemainingLabel("A")}
                     </>
                   )}
                 </p>
@@ -806,10 +813,10 @@ export function ScorekeeperPopups({
                 </button>
                 <p className="mt-1 text-xs">
                   Remaining (total): {remainingTimeouts.B}
-                  {remainingTimeouts.B > 0 && (
+                  {remainingTimeouts.B > 0 && halfRemainingLabel && halfRemainingLabel("B") !== "N/A" && (
                     <>
                       <br />
-                      Remaining (half): {halfRemainingLabel ? halfRemainingLabel("B") : 0}
+                      Remaining (half): {halfRemainingLabel("B")}
                     </>
                   )}
                 </p>

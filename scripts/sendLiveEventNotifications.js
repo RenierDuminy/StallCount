@@ -40,6 +40,7 @@ const supabase = createClient(config.supabaseUrl, config.serviceRoleKey);
 webpush.setVapidDetails(config.vapidSubject, config.vapidPublicKey, config.vapidPrivateKey);
 
 const TOPIC_EVENT_ALIASES = {
+  goal: ["score"],
   turnover: ["turnover", "block"],
 };
 

@@ -256,13 +256,16 @@ export function MatchCard({
       as={Component}
       variant={variant}
       className={cx(
-        "flex flex-col",
+        "relative flex flex-col",
         compact ? "gap-2 p-2.5" : "gap-3 p-4",
         phaseStyle.panelClass,
         className,
       )}
       {...props}
     >
+      {matchPhase === MATCH_CARD_PHASES.live ? (
+        <span className="sc-live-dot absolute right-3 top-3 h-2 w-2 rounded-full bg-live" aria-hidden="true" />
+      ) : null}
       <div className={cx("flex flex-col", compact ? "gap-1.5" : "gap-2")}>
         <div className={cx("flex", compact ? "gap-2" : "gap-3", trailingInHeader ? "items-start justify-between" : "")}>
           <div className="min-w-0">
@@ -316,11 +319,8 @@ export function MatchCard({
               ) : displayScore ? (
                 <p className={cx("max-w-full break-words text-2xl font-semibold", scoreToneClass)}>{displayScore}</p>
               ) : null}
-              {displayStatus ? (
+              {displayStatus && matchPhase !== MATCH_CARD_PHASES.live ? (
                 <p className={cx("text-xs font-semibold uppercase tracking-wide", phaseStyle.statusClass)}>
-                  {matchPhase === MATCH_CARD_PHASES.live ? (
-                    <span className="mr-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-live align-middle" />
-                  ) : null}
                   {displayStatus}
                 </p>
               ) : null}

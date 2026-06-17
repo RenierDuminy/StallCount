@@ -431,7 +431,7 @@ export function useScoreKeeperActions(controller) {
               : log?.assistId,
       });
     } else {
-      controller.setScoreForm({ scorerId: "", assistId: "" });
+      controller.setScoreForm({ scorerId: SCORE_NA_PLAYER_VALUE, assistId: SCORE_NA_PLAYER_VALUE });
     }
   }
 

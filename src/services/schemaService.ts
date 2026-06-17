@@ -1,4 +1,4 @@
-import schemaSql from "../../SQL_structure.txt?raw";
+import schemaSql from "../../docs/SQL_structure.txt?raw";
 
 const TABLE_REGEX = /CREATE\s+TABLE\s+([^\s(]+)\s*\(/gi;
 const TABLE_BLOCK_REGEX = /CREATE\s+TABLE\s+([^\s(]+)\s*\(([\s\S]*?)\);/gi;

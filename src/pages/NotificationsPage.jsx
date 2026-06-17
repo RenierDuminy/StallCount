@@ -25,7 +25,7 @@ const TARGET_OPTIONS = [
 
 const TOPIC_PRESETS = [
   "match_start",
-  "goal",
+  "score",
   "match_final",
   "turnover",
   "timeout_start",
@@ -35,7 +35,8 @@ const TOPIC_PRESETS = [
 
 const TOPIC_LABELS = {
   match_start: "Match start",
-  goal: "Goal",
+  score: "Point scored",
+  goal: "Point scored",
   match_final: "Match end",
   turnover: "Possession (turnover/block)",
   timeout_start: "Timeout",
@@ -44,6 +45,7 @@ const TOPIC_LABELS = {
 };
 
 const TOPIC_EVENT_ALIASES = {
+  goal: ["score"],
   turnover: ["turnover", "block"],
 };
 

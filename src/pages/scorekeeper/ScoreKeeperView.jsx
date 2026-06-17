@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import { saveScorekeeperSession } from "../../services/scorekeeperSessionStore";
 import { formatClock } from "./scorekeeperUtils";
 import { useScoreKeeperData } from "./useScoreKeeperData";
 import { useScoreKeeperActions } from "./useScoreKeeperActions";
-import { useScoreKeeperData as useScoreKeeper5v5Data } from "../scorekeeper copy/5v5useScoreKeeperData";
-import { useScoreKeeperActions as useScoreKeeper5v5Actions } from "../scorekeeper copy/5v5useScoreKeeperActions";
+import { useScoreKeeperData as useScoreKeeper5v5Data } from "./5v5useScoreKeeperData";
+import { useScoreKeeperActions as useScoreKeeper5v5Actions } from "./5v5useScoreKeeperActions";
 import { ResumeSessionSection, ScorekeeperPopups } from "./ScorekeeperPopup";
 import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
 import {
@@ -69,6 +69,8 @@ export default function ScoreKeeperView() {
   const data = useScoreKeeperData();
   const actions = useScoreKeeperActions(data);
   const fiveVFiveData = useScoreKeeper5v5Data();
+  const autoResumeSevenVSevenRef = useRef(null);
+  const autoResumeFiveVFiveRef = useRef(null);
   const {
     consoleReady: fiveVFiveConsoleReady,
     resumeCandidate: fiveVFiveResumeCandidate,
@@ -158,6 +160,7 @@ export default function ScoreKeeperView() {
     secondaryRunning,
     secondaryLabel,
     secondaryTotalSeconds,
+    secondaryTimerAnchorRef,
     timerLabel,
     consoleError,
     rosters,
@@ -297,8 +300,9 @@ export default function ScoreKeeperView() {
   const isStartMatchReady =
     Boolean(setupForm.startingTeamId) &&
     (!isAbbaEnabled || ["male", "female"].includes(setupForm.abbaPattern));
+  const resumeCandidateCount = [resumeCandidate, fiveVFiveResumeCandidate].filter(Boolean).length;
 
-  const handleFiveVFiveResumeAndOpenConsole = async () => {
+  const handleFiveVFiveResumeAndOpenConsole = useCallback(async () => {
     const candidate = fiveVFiveResumeCandidate;
     const resumed = await handleFiveVFiveResumeSession();
     if (resumed === false) return;
@@ -314,7 +318,13 @@ export default function ScoreKeeperView() {
     if (eventId) params.set("eventId", eventId);
     if (matchId) params.set("matchId", matchId);
     navigate(`/score-keeper-5v5?${params.toString()}`);
-  };
+  }, [
+    fiveVFiveResumeCandidate,
+    handleFiveVFiveResumeSession,
+    fiveVFiveData.selectedEventId,
+    fiveVFiveData.selectedMatchId,
+    navigate,
+  ]);
 
   useEffect(() => {
     if (
@@ -337,6 +347,30 @@ export default function ScoreKeeperView() {
   ]);
 
   useEffect(() => {
+    const matchId = resumeCandidate?.matchId || resumeCandidate?.selectedMatchId || null;
+    if (
+      !matchId ||
+      resumeCandidateCount !== 1 ||
+      resumeHandled ||
+      resumeBusy ||
+      consoleReady ||
+      autoResumeSevenVSevenRef.current === matchId
+    ) {
+      return;
+    }
+
+    autoResumeSevenVSevenRef.current = matchId;
+    void handleResumeSession();
+  }, [
+    resumeCandidate,
+    resumeCandidateCount,
+    resumeHandled,
+    resumeBusy,
+    consoleReady,
+    handleResumeSession,
+  ]);
+
+  useEffect(() => {
     if (
       fiveVFiveConsoleReady &&
       fiveVFiveResumeCandidate &&
@@ -355,6 +389,51 @@ export default function ScoreKeeperView() {
     fiveVFiveActiveMatch?.id,
     handleFiveVFiveResumeSession,
   ]);
+
+  useEffect(() => {
+    const matchId =
+      fiveVFiveResumeCandidate?.matchId ||
+      fiveVFiveResumeCandidate?.selectedMatchId ||
+      null;
+    if (
+      !matchId ||
+      resumeCandidateCount !== 1 ||
+      fiveVFiveResumeHandled ||
+      fiveVFiveResumeBusy ||
+      fiveVFiveConsoleReady ||
+      autoResumeFiveVFiveRef.current === matchId
+    ) {
+      return;
+    }
+
+    autoResumeFiveVFiveRef.current = matchId;
+    void handleFiveVFiveResumeAndOpenConsole();
+  }, [
+    fiveVFiveResumeCandidate,
+    resumeCandidateCount,
+    fiveVFiveResumeHandled,
+    fiveVFiveResumeBusy,
+    fiveVFiveConsoleReady,
+    handleFiveVFiveResumeAndOpenConsole,
+  ]);
+
+  const dedupedLogs = useMemo(() => {
+    const seen = new Set();
+    return orderedLogs.filter((log) => {
+      const key = log.optimisticId || log.id;
+      if (key && seen.has(key)) return false;
+      if (key) seen.add(key);
+      return true;
+    });
+  }, [orderedLogs]);
+
+  const logIndexById = useMemo(() => {
+    const map = new Map();
+    orderedLogs.forEach((entry, i) => {
+      if (entry.id) map.set(entry.id, i);
+    });
+    return map;
+  }, [orderedLogs]);
 
   const renderMatchEventCard = (log, options) => {
     const { chronologicalIndex, editIndex } = options;
@@ -527,7 +606,7 @@ export default function ScoreKeeperView() {
     possessionPadRef.current?.setPointerCapture?.(event.pointerId);
   };
 
-  const getRosterOptionsForTeam = (teamKey) => {
+  const rosterOptionsA = useMemo(() => {
     const sortPlayers = (players) =>
       [...players].sort((a, b) => {
         const parsedA = Number(a?.jersey_number);
@@ -541,27 +620,46 @@ export default function ScoreKeeperView() {
         if (numB !== null) return 1;
         return (a.name || "").localeCompare(b.name || "");
       });
+    return sortPlayers(sortedRosters.teamA || [])
+      .filter((player) => player?.id)
+      .map((player) => ({
+        id: player.id,
+        name: player.name || "Unnamed player",
+        jersey_number: player.jersey_number ?? null,
+      }));
+  }, [sortedRosters.teamA]);
 
-    if (teamKey === "A") {
-      return sortPlayers(sortedRosters.teamA || [])
-        .filter((player) => player?.id)
-        .map((player) => ({
-          id: player.id,
-          name: player.name || "Unnamed player",
-          jersey_number: player.jersey_number ?? null,
-        }));
-    }
-    if (teamKey === "B") {
-      return sortPlayers(sortedRosters.teamB || [])
-        .filter((player) => player?.id)
-        .map((player) => ({
-          id: player.id,
-          name: player.name || "Unnamed player",
-          jersey_number: player.jersey_number ?? null,
-        }));
-    }
-    return [];
-  };
+  const rosterOptionsB = useMemo(() => {
+    const sortPlayers = (players) =>
+      [...players].sort((a, b) => {
+        const parsedA = Number(a?.jersey_number);
+        const parsedB = Number(b?.jersey_number);
+        const numA = Number.isFinite(parsedA) ? parsedA : null;
+        const numB = Number.isFinite(parsedB) ? parsedB : null;
+        if (numA !== null && numB !== null) {
+          return numA - numB || (a.name || "").localeCompare(b.name || "");
+        }
+        if (numA !== null) return -1;
+        if (numB !== null) return 1;
+        return (a.name || "").localeCompare(b.name || "");
+      });
+    return sortPlayers(sortedRosters.teamB || [])
+      .filter((player) => player?.id)
+      .map((player) => ({
+        id: player.id,
+        name: player.name || "Unnamed player",
+        jersey_number: player.jersey_number ?? null,
+      }));
+  }, [sortedRosters.teamB]);
+
+  const getRosterOptionsForTeam = useCallback(
+    (teamKey) => {
+      if (teamKey === "A") return rosterOptionsA;
+      if (teamKey === "B") return rosterOptionsB;
+      return [];
+    },
+    [rosterOptionsA, rosterOptionsB]
+  );
 
   const handlePossessionPadPointerMove = (event) => {
     if (possessionPointerIdRef.current !== event.pointerId) return;
@@ -698,7 +796,7 @@ export default function ScoreKeeperView() {
     scoreForm.assistId === scoreForm.scorerId;
   const isScoreFormValid = Boolean(scoreForm.scorerId && scoreForm.assistId && !scorerAssistClash);
 
-  const openSimpleEventModal = (log, index) => {
+  const openSimpleEventModal = useCallback((log, index) => {
     setSimpleEventEditState({
       open: true,
       logIndex: index,
@@ -706,7 +804,7 @@ export default function ScoreKeeperView() {
       eventLabel: log.eventDescription || "Match event",
       eventCode: log.eventCode || "",
     });
-  };
+  }, []);
 
   const isBlockPossessionLog = (log) => {
     if (!log) return false;
@@ -717,19 +815,17 @@ export default function ScoreKeeperView() {
     return desc.includes("block");
   };
 
-  const openPossessionEditModal = (log, index) => {
+  const openPossessionEditModal = useCallback((log, index) => {
     const isBlockLog = isBlockPossessionLog(log);
     const loggedTeam = log?.team || null;
-    const nextTeam = isBlockLog
-      ? loggedTeam
-      : loggedTeam;
+    const nextTeam = isBlockLog ? loggedTeam : loggedTeam;
     setPendingPossessionTeam(nextTeam);
     setPossessionPreviewTeam(nextTeam);
     setPossessionResult(isBlockLog ? "block" : "throwaway");
     setPossessionActorId(log?.scorerId || "");
     setPossessionModalOpen(true);
     setPossessionEditIndex(index);
-  };
+  }, []);
 
   const closeSimpleEventModal = () => {
     setSimpleEventEditState({
@@ -811,48 +907,11 @@ export default function ScoreKeeperView() {
 
   return (
     <ScorekeeperShell>
-      <ScorekeeperCard as="header" className="w-full">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-col leading-tight">
-            <h1 className="text-xl font-semibold text-white">Score keeper</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link to="/admin" className="sc-button is-light text-xs">
-              Back to admin hub
-            </Link>
-            {consoleReady ? (
-              <button
-                type="button"
-                onClick={() => setSetupModalOpen(true)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                aria-label="Open setup"
-                title="Setup"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-5 w-5"
-                  aria-hidden="true"
-                >
-                  <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
-                  <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.03.03a2.16 2.16 0 0 1-3.05 3.05l-.03-.03a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.09 1.65V21a2.16 2.16 0 0 1-4.32 0v-.05a1.8 1.8 0 0 0-1.09-1.65 1.8 1.8 0 0 0-1.98.36l-.03.03a2.16 2.16 0 1 1-3.05-3.05l.03-.03A1.8 1.8 0 0 0 3.6 15a1.8 1.8 0 0 0-1.65-1.09H1.9a2.16 2.16 0 0 1 0-4.32h.05A1.8 1.8 0 0 0 3.6 8.5a1.8 1.8 0 0 0-.36-1.98l-.03-.03a2.16 2.16 0 1 1 3.05-3.05l.03.03a1.8 1.8 0 0 0 1.98.36h.01a1.8 1.8 0 0 0 1.08-1.65V2.16a2.16 2.16 0 0 1 4.32 0v.05a1.8 1.8 0 0 0 1.09 1.65 1.8 1.8 0 0 0 1.98-.36l.03-.03a2.16 2.16 0 1 1 3.05 3.05l-.03.03a1.8 1.8 0 0 0-.36 1.98v.01a1.8 1.8 0 0 0 1.65 1.08h.05a2.16 2.16 0 0 1 0 4.32h-.05A1.8 1.8 0 0 0 19.4 15Z" />
-                </svg>
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </ScorekeeperCard>
-
       <main className="py-2">
         {consoleReady ? (
           <section className="space-y-2">
             <div className="rounded-3xl border border-emerald-900/15 bg-white/90 p-1.5 w-full">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <div>
                   <h2 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-slate-900">
                     <span>{safeTeamAName}</span>
@@ -863,6 +922,28 @@ export default function ScoreKeeperView() {
                     {kickoffLabel} - {venueName || "Venue TBD"} - {statusLabel}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setSetupModalOpen(true)}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100"
+                  aria-label="Open setup"
+                  title="Setup"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-5 w-5"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
+                    <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.03.03a2.16 2.16 0 0 1-3.05 3.05l-.03-.03a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.09 1.65V21a2.16 2.16 0 0 1-4.32 0v-.05a1.8 1.8 0 0 0-1.09-1.65 1.8 1.8 0 0 0-1.98.36l-.03.03a2.16 2.16 0 1 1-3.05-3.05l.03-.03A1.8 1.8 0 0 0 3.6 15a1.8 1.8 0 0 0-1.65-1.09H1.9a2.16 2.16 0 0 1 0-4.32h.05A1.8 1.8 0 0 0 3.6 8.5a1.8 1.8 0 0 0-.36-1.98l-.03-.03a2.16 2.16 0 1 1 3.05-3.05l.03.03a1.8 1.8 0 0 0 1.98.36h.01a1.8 1.8 0 0 0 1.08-1.65V2.16a2.16 2.16 0 0 1 4.32 0v.05a1.8 1.8 0 0 0 1.09 1.65 1.8 1.8 0 0 0 1.98-.36l.03-.03a2.16 2.16 0 1 1 3.05 3.05l-.03.03a1.8 1.8 0 0 0-.36 1.98v.01a1.8 1.8 0 0 0 1.65 1.08h.05a2.16 2.16 0 0 1 0 4.32h-.05A1.8 1.8 0 0 0 19.4 15Z" />
+                  </svg>
+                </button>
               </div>
             </div>
 
@@ -895,6 +976,11 @@ export default function ScoreKeeperView() {
                       totalSeconds={secondaryTotalSeconds}
                     />
                   </div>
+                  <SecondaryTimerProgressBar
+                    anchorRef={secondaryTimerAnchorRef}
+                    totalSeconds={secondaryTotalSeconds}
+                    running={secondaryRunning}
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -936,7 +1022,7 @@ export default function ScoreKeeperView() {
                   onTouchCancel={cancelSecondaryHoldReset}
                   className="rounded-md bg-[#dc2626] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#b91c1c]"
                 >
-                  DISCUSSION-START/STOP
+                  {secondaryRunning && secondaryLabel === "Discussion" ? "Stop discussion" : "Discussion"}
                 </button>
               </div>
             </div>
@@ -954,7 +1040,7 @@ export default function ScoreKeeperView() {
                     ref={possessionPadRef}
                     role="group"
                     aria-label="Select possession team"
-                    className="relative flex w-full items-stretch gap-1 rounded-2xl bg-[#b1b1b1] p-1 text-sm font-semibold text-slate-900"
+                    className="relative flex w-full items-stretch rounded-2xl bg-[#b1b1b1] p-1 text-sm font-semibold"
                     style={{ touchAction: "pan-y" }}
                     onPointerDown={handlePossessionPadPointerDown}
                     onPointerMove={handlePossessionPadPointerMove}
@@ -962,10 +1048,19 @@ export default function ScoreKeeperView() {
                     onPointerLeave={handlePossessionPadPointerLeave}
                     onPointerCancel={handlePossessionPadPointerCancel}
                   >
+                    {currentPossessionTeam && (
+                      <div
+                        className="pointer-events-none absolute inset-1 w-[calc(50%-2px)] rounded-xl bg-[#0f5132] transition-transform duration-300 ease-in-out"
+                        style={{
+                          transform: currentPossessionTeam === "B" ? "translateX(calc(100% + 4px))" : "translateX(0)",
+                        }}
+                        aria-hidden="true"
+                      />
+                    )}
                     <button
                       type="button"
-                      className={`flex-1 rounded-2xl px-3 py-3 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${
-                        possessionTeam === "A" ? "bg-[#0f5132] text-white" : "bg-[#b1b1b1] text-slate-700"
+                      className={`relative z-10 flex-1 rounded-2xl px-3 py-3 text-center transition-colors duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${
+                        currentPossessionTeam === "A" ? "text-white" : "text-slate-700"
                       }`}
                       aria-pressed={possessionTeam === "A"}
                       tabIndex={-1}
@@ -974,8 +1069,8 @@ export default function ScoreKeeperView() {
                     </button>
                     <button
                       type="button"
-                      className={`flex-1 rounded-2xl px-3 py-3 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${
-                        possessionTeam === "B" ? "bg-[#0f5132] text-white" : "bg-[#b1b1b1] text-slate-700"
+                      className={`relative z-10 flex-1 rounded-2xl px-3 py-3 text-center transition-colors duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${
+                        currentPossessionTeam === "B" ? "text-white" : "text-slate-700"
                       }`}
                       aria-pressed={possessionTeam === "B"}
                       tabIndex={-1}
@@ -1078,26 +1173,11 @@ export default function ScoreKeeperView() {
                     No match events captured yet. Use the buttons above to log an event.
                   </div>
                 ) : (
-                  (() => {
-                    const seen = new Set();
-                    return orderedLogs
-                      .filter((log) => {
-                        const key = log.optimisticId || log.id;
-                        if (key && seen.has(key)) {
-                          return false;
-                        }
-                        if (key) {
-                          seen.add(key);
-                        }
-                        return true;
-                      })
-                      .map((log) => {
-                        const chronologicalIndex = logs.findIndex((entry) => entry.id === log.id);
-                        const editIndex =
-                          chronologicalIndex >= 0 ? chronologicalIndex : logs.indexOf(log);
-                        return renderMatchEventCard(log, { chronologicalIndex, editIndex });
-                      });
-                  })()
+                  dedupedLogs.map((log, i) => {
+                    const chronologicalIndex = log.id !== undefined ? (logIndexById.get(log.id) ?? -1) : -1;
+                    const editIndex = chronologicalIndex >= 0 ? chronologicalIndex : i;
+                    return renderMatchEventCard(log, { chronologicalIndex, editIndex });
+                  })
                 )}
                 <button
                   type="button"
@@ -1108,22 +1188,7 @@ export default function ScoreKeeperView() {
                   End match / Enter spirit scores
                 </button>
                 {pendingEntries.length > 0 && (
-                  <div className="rounded-2xl border border-[#0f5132]/30 bg-white/90 p-2 text-sm text-[#0f5132]">
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="text-base font-semibold text-[#0f5132]">
-                        Pending sync ({pendingEntries.length})
-                      </h4>
-                      <span className="rounded-full border border-[#0f5132]/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]">
-                        {online ? "Online" : "Offline"}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-[#0f5132]/80">
-                      Queued updates will send automatically when you're online.
-                    </p>
-                    <pre className="mt-3 max-h-64 overflow-y-auto rounded-xl bg-[#ecfdf3] p-3 text-xs text-[#0f5132]">
-                      {JSON.stringify(pendingEntries, null, 2)}
-                    </pre>
-                  </div>
+                  <PendingSyncPanel pendingEntries={pendingEntries} online={online} />
                 )}
               </div>
             </div>
@@ -1411,6 +1476,85 @@ function getCurrentSecondaryTimerStep(guide, elapsedSeconds) {
     if (step.until !== undefined && elapsed >= step.until) return activeStep;
     return step;
   }, null);
+}
+
+function PendingSyncPanel({ pendingEntries, online }) {
+  const [expanded, setExpanded] = useState(false);
+  const count = pendingEntries.length;
+  const eventCodeCounts = pendingEntries.reduce((acc, entry) => {
+    const code = entry?.payload?.eventCode || entry?.eventCode || "event";
+    acc[code] = (acc[code] || 0) + 1;
+    return acc;
+  }, {});
+  const summary = Object.entries(eventCodeCounts)
+    .map(([code, n]) => `${n} ${code.toLowerCase().replace(/_/g, " ")}`)
+    .join(", ");
+
+  return (
+    <div className="rounded-2xl border border-[#0f5132]/30 bg-white/90 p-2 text-sm text-[#0f5132]">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-base font-semibold text-[#0f5132]">
+          Pending sync ({count})
+        </h4>
+        <span className="rounded-full border border-[#0f5132]/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]">
+          {online ? "Online" : "Offline"}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-[#0f5132]/80">
+        {summary || `${count} event${count !== 1 ? "s" : ""}`} queued — will send automatically when online.
+      </p>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="mt-2 text-[11px] font-semibold text-[#0f5132] underline underline-offset-2 transition hover:text-[#083b24]"
+      >
+        {expanded ? "Hide details" : "Show details"}
+      </button>
+      {expanded && (
+        <pre className="mt-2 max-h-48 overflow-y-auto rounded-xl bg-[#ecfdf3] p-3 text-xs text-[#0f5132]">
+          {JSON.stringify(pendingEntries, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function SecondaryTimerProgressBar({ anchorRef, totalSeconds, running }) {
+  const [pct, setPct] = useState(1);
+  const [remainingEst, setRemainingEst] = useState(totalSeconds);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    if (!running || !totalSeconds || totalSeconds <= 0) return;
+    const tick = () => {
+      const anchor = anchorRef?.current;
+      if (anchor?.anchorTimestamp) {
+        const elapsedMs = Date.now() - anchor.anchorTimestamp;
+        const elapsedSec = elapsedMs / 1000;
+        const remaining = Math.max(0, (anchor.baseSeconds ?? totalSeconds) - elapsedSec);
+        setPct(Math.max(0, Math.min(1, remaining / totalSeconds)));
+        setRemainingEst(remaining);
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [running, totalSeconds, anchorRef]);
+
+  if (!running || !totalSeconds || totalSeconds <= 0) return null;
+
+  const isUrgent = remainingEst <= 15;
+  const isWarning = !isUrgent && remainingEst <= 30;
+  const barColor = isUrgent ? "bg-[#ef4444]" : isWarning ? "bg-[#f59e0b]" : "bg-[#16a34a]";
+
+  return (
+    <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-slate-300 ring-2 ring-slate-500">
+      <div
+        className={`h-full rounded-full ${barColor}`}
+        style={{ width: `${pct * 100}%` }}
+      />
+    </div>
+  );
 }
 
 function SecondaryTimerDescription({ label, running, remainingSeconds, totalSeconds }) {

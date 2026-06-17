@@ -29,6 +29,51 @@ const ACCESS_LEVELS = {
 const NON_ELEVATED_ROLE_SLUGS = new Set(["user"]);
 const ADMIN_ROLE_SLUGS = new Set(["admin", "administrator", "sys_admin"]);
 
+function IconScorekeeper({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </svg>
+  );
+}
+
+function IconCaptain({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+  );
+}
+
+function IconTournamentDirector({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="7" width="6" height="14" rx="1" />
+      <rect x="9" y="3" width="6" height="18" rx="1" />
+      <rect x="16" y="10" width="6" height="11" rx="1" />
+    </svg>
+  );
+}
+
+function IconAdminTools({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
+  );
+}
+
+function IconEventAccess({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
 const QUICK_ACCESS_TOOLS = [
   {
     key: "scorekeeper",
@@ -36,6 +81,7 @@ const QUICK_ACCESS_TOOLS = [
     description: "Open live scoring.",
     to: "/score-keeper",
     roles: SCOREKEEPER_ACCESS_ROLES,
+    Icon: IconScorekeeper,
     accent:
       "border-2 border-live-border bg-[rgba(251,113,133,0.22)] text-live-ink shadow-[0_8px_22px_rgba(251,113,133,0.14)]",
   },
@@ -45,6 +91,7 @@ const QUICK_ACCESS_TOOLS = [
     description: "Manage captain workflows.",
     to: "/captain",
     roles: CAPTAIN_ACCESS_ROLES,
+    Icon: IconCaptain,
     accent:
       "border-2 border-warning-border bg-[rgba(251,191,36,0.22)] text-warning-ink shadow-[0_8px_22px_rgba(251,191,36,0.14)]",
   },
@@ -54,6 +101,7 @@ const QUICK_ACCESS_TOOLS = [
     description: "Manage event operations.",
     to: "/tournament-director",
     roles: TOURNAMENT_DIRECTOR_ACCESS_ROLES,
+    Icon: IconTournamentDirector,
     accent:
       "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-admin-ink shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
   },
@@ -63,6 +111,7 @@ const QUICK_ACCESS_TOOLS = [
     description: "Open operational admin.",
     to: "/admin",
     requireElevated: true,
+    Icon: IconAdminTools,
     accent:
       "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-admin-ink shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
   },
@@ -72,6 +121,7 @@ const QUICK_ACCESS_TOOLS = [
     description: "Manage event-linked access.",
     to: "/admin/event-access",
     permissions: EVENT_ACCESS_PERMISSIONS,
+    Icon: IconEventAccess,
     accent:
       "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-admin-ink shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
   },
@@ -532,28 +582,34 @@ export default function UserPage() {
           {!user ? (
             <p className="text-sm text-ink-muted">You are not signed in. Log in to view your profile information.</p>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2 sm:gap-4">
-              {profileEntries.map((entry) => (
-                <Panel key={entry.label} variant="muted" className="p-3 text-sm sm:p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{entry.label}</p>
-                  {entry.isAccessGroupedList ? (
-                    <div className="mt-1.5 space-y-1.5 sm:mt-2 sm:space-y-2">
-                      {(entry.groups || []).map((group) => (
-                        <div key={`${entry.label}-${group.topic}`} className="space-y-1">
-                          <p className="break-words text-base font-semibold text-ink">{group.topic}</p>
-                          <ul className="list-disc space-y-1 pl-5 text-base font-semibold text-ink">
-                            {(group.roles || []).map((role) => (
-                              <li key={`${entry.label}-${group.topic}-${role}`} className="break-words">
-                                {role}
-                              </li>
-                            ))}
-                          </ul>
+            <div className="space-y-2 sm:space-y-3">
+              {/* Compact key-value rows for simple fields */}
+              <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+                {profileEntries.filter((e) => !e.isAccessGroupedList).map((entry) => (
+                  <div key={entry.label} className="flex items-baseline gap-3 rounded-xl border border-border bg-surface-muted px-4 py-3">
+                    <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-ink-muted">{entry.label}</span>
+                    <span className="min-w-0 truncate text-sm font-semibold text-ink">{entry.value}</span>
+                  </div>
+                ))}
+              </div>
+              {/* Full-width featured panel for access levels */}
+              {profileEntries.filter((e) => e.isAccessGroupedList).map((entry) => (
+                <Panel key={entry.label} variant="muted" className="p-4 text-sm sm:p-5">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">{entry.label}</p>
+                  <div className="space-y-3">
+                    {(entry.groups || []).map((group) => (
+                      <div key={`${entry.label}-${group.topic}`}>
+                        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-accent">{group.topic}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {(group.roles || []).map((role) => (
+                            <Chip key={`${entry.label}-${group.topic}-${role}`} variant="ghost" className="text-xs">
+                              {role}
+                            </Chip>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-1 break-words text-base font-semibold text-ink">{entry.value}</p>
-                  )}
+                      </div>
+                    ))}
+                  </div>
                 </Panel>
               ))}
             </div>
@@ -561,19 +617,23 @@ export default function UserPage() {
         </section>
 
         {quickAccessTools.length > 0 ? (
-          <section className="grid grid-cols-2 gap-2 border-t border-border pt-3 sm:flex sm:flex-wrap sm:items-center sm:pt-5">
-            <p className="col-span-2 text-xs font-semibold uppercase tracking-wide text-ink-muted sm:mr-1">
-              Quick access
-            </p>
-            {quickAccessTools.map((tool) => (
-              <Link
-                key={tool.key}
-                to={tool.to}
-                className={`inline-flex min-h-11 items-center justify-center rounded-full px-2 py-2 text-center text-[10px] font-semibold uppercase leading-tight tracking-wide transition hover:brightness-110 sm:min-h-9 sm:px-3 sm:py-1.5 sm:text-xs ${tool.accent}`}
-              >
-                {tool.label}
-              </Link>
-            ))}
+          <section className="space-y-3 border-t border-border pt-3 sm:space-y-4 sm:pt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Quick access</p>
+            <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+              {quickAccessTools.map((tool) => (
+                <Link
+                  key={tool.key}
+                  to={tool.to}
+                  className={`group flex items-center gap-3 overflow-hidden rounded-2xl border-2 px-4 py-3 transition hover:brightness-110 ${tool.accent}`}
+                >
+                  <tool.Icon className="h-8 w-8 shrink-0 opacity-80" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold leading-snug">{tool.label}</p>
+                    <p className="text-xs font-medium opacity-75">{tool.description}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </section>
         ) : null}
 

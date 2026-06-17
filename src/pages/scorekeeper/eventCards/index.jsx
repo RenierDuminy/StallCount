@@ -1,77 +1,50 @@
+import { memo } from "react";
 import {
   MatchEventCard,
-  ScoreEventCard as ScoreMatchEventCard,
-  CalahanEventCard as CalahanMatchEventCard,
-  BlockEventCard as BlockMatchEventCard,
-  TurnoverEventCard as TurnoverMatchEventCard,
+  ScoreEventCard,
+  CalahanEventCard,
+  BlockEventCard,
+  TurnoverEventCard,
 } from "./MatchEventCard";
 
-export { BlockMatchEventCard as BlockEventCard, TurnoverMatchEventCard as TurnoverEventCard };
+export { ScoreEventCard, CalahanEventCard, BlockEventCard, TurnoverEventCard };
 
-export function ScoreEventCard(props) {
-  return <ScoreMatchEventCard {...props} />;
-}
-
-export function CalahanEventCard(props) {
-  return <CalahanMatchEventCard {...props} />;
-}
-
-export function TimeoutStartEventCard(props) {
+export const TimeoutStartEventCard = memo(function TimeoutStartEventCard(props) {
   return <MatchEventCard {...props} editLocation="bottom-right" />;
-}
+});
 
-export function TimeoutEndEventCard(props) {
+export const TimeoutEndEventCard = memo(function TimeoutEndEventCard(props) {
   return <MatchEventCard {...props} editLocation="bottom-right" />;
-}
+});
 
-export function HalftimeStartEventCard(props) {
-  return (
-    <MatchEventCard
-      {...props}
-      editLocation="middle-right"
-      variantOverrides={{ align: "text-center", bg: "bg-[#0f5132]", border: "border-[#0a3b24]", label: "text-white" }}
-    />
-  );
-}
+const HALFTIME_OVERRIDES = { align: "text-center", bg: "bg-[#0f5132]", border: "border-[#0a3b24]", label: "text-white" };
 
-export function HalftimeEndEventCard(props) {
-  return (
-    <MatchEventCard
-      {...props}
-      editLocation="middle-right"
-      variantOverrides={{ align: "text-center", bg: "bg-[#0f5132]", border: "border-[#0a3b24]", label: "text-white" }}
-    />
-  );
-}
+export const HalftimeStartEventCard = memo(function HalftimeStartEventCard(props) {
+  return <MatchEventCard {...props} editLocation="middle-right" variantOverrides={HALFTIME_OVERRIDES} />;
+});
 
-export function StoppageStartEventCard(props) {
-  return (
-    <MatchEventCard
-      {...props}
-      editLocation="middle-right"
-      variantOverrides={{ align: "text-center", bg: "bg-[#fee2e2]", border: "border-[#ef4444]" }}
-    />
-  );
-}
+export const HalftimeEndEventCard = memo(function HalftimeEndEventCard(props) {
+  return <MatchEventCard {...props} editLocation="middle-right" variantOverrides={HALFTIME_OVERRIDES} />;
+});
 
-export function StoppageEndEventCard(props) {
-  return (
-    <MatchEventCard
-      {...props}
-      editLocation="middle-right"
-      variantOverrides={{ align: "text-center", bg: "bg-[#fee2e2]", border: "border-[#ef4444]" }}
-    />
-  );
-}
+const STOPPAGE_OVERRIDES = { align: "text-center", bg: "bg-[#fee2e2]", border: "border-[#ef4444]" };
 
-export function MatchStartEventCard(props) {
+export const StoppageStartEventCard = memo(function StoppageStartEventCard(props) {
+  return <MatchEventCard {...props} editLocation="middle-right" variantOverrides={STOPPAGE_OVERRIDES} />;
+});
+
+export const StoppageEndEventCard = memo(function StoppageEndEventCard(props) {
+  return <MatchEventCard {...props} editLocation="middle-right" variantOverrides={STOPPAGE_OVERRIDES} />;
+});
+
+export const MatchStartEventCard = memo(function MatchStartEventCard(props) {
   return <MatchEventCard {...props} editLocation="none" />;
-}
+});
 
-export function MatchEndEventCard(props) {
+export const MatchEndEventCard = memo(function MatchEndEventCard(props) {
   return <MatchEventCard {...props} editLocation="none" />;
-}
+});
 
-export function UnknownEventCard(props) {
+export const UnknownEventCard = memo(function UnknownEventCard(props) {
   return <MatchEventCard {...props} editLocation="middle-right" />;
-}
+});

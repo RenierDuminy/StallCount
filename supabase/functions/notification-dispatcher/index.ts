@@ -67,6 +67,7 @@ webpush.setVapidDetails(
 );
 
 const TOPIC_EVENT_ALIASES: Record<string, string[]> = {
+  goal: ["score"],
   turnover: ["turnover", "block"],
 };
 

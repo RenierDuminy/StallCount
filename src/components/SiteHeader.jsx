@@ -113,10 +113,10 @@ export default function SiteHeader() {
                 key={link.to}
                 to={link.to}
                 aria-current={active ? "page" : undefined}
-                className={`rounded-md border border-transparent px-3 py-2 transition ${
+                className={`rounded-md border-b-2 px-3 py-2 transition ${
                   active
-                    ? "border-[var(--sc-border-strong)] bg-white/[0.08] text-[var(--sc-ink)] shadow-[inset_0_-2px_0_var(--sc-accent)]"
-                    : "hover:bg-white/[0.06] hover:text-[var(--sc-ink)]"
+                    ? "border-[var(--sc-accent)] text-[var(--sc-ink)]"
+                    : "border-transparent hover:bg-white/[0.06] hover:text-[var(--sc-ink)]"
                 }`}
               >
                 {link.label}
@@ -156,7 +156,15 @@ export default function SiteHeader() {
           >
             Install app
           </button>
-          {!user && (
+          {user ? (
+            <Link
+              to="/user"
+              aria-current={isLinkActive("/user", location) ? "page" : undefined}
+              className="hidden rounded-md border border-[var(--sc-border)] px-3 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08] lg:inline-flex"
+            >
+              Account
+            </Link>
+          ) : (
             <Link
               to="/login"
               className="hidden rounded-md border border-[var(--sc-border)] px-3 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08] lg:inline-flex"
@@ -231,7 +239,14 @@ export default function SiteHeader() {
               >
                 Install app
               </button>
-              {!user && (
+              {user ? (
+                <Link
+                  to="/user"
+                  className="rounded-md border border-[var(--sc-border)] px-4 py-2 text-center text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08]"
+                >
+                  Account
+                </Link>
+              ) : (
                 <Link
                   to="/login"
                   className="rounded-md border border-[var(--sc-border)] px-4 py-2 text-center text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08]"

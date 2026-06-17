@@ -25,7 +25,7 @@ import {
   DEFAULT_DISCUSSION_SECONDS,
   SCORE_NA_PLAYER_VALUE,
 } from "./5v5scorekeeperConstants";
-import { ResumeSessionSection } from "../scorekeeper/ScorekeeperPopup";
+import { ResumeSessionSection } from "./ScorekeeperPopup";
 
 const BLOCK_EVENT_TYPE_ID = 19;
 const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([

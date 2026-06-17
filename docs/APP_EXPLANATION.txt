@@ -1,0 +1,185 @@
+StallCount application overview
+===============================
+
+Purpose and stack
+-----------------
+StallCount is a Vite + React single-page application that surfaces live
+Supabase data for tournament crews. It uses functional React components,
+Tailwind CSS utility classes, and the `vite-plugin-pwa` plugin to ship an
+installable progressive web app with offline awareness.
+
+Routing, layout, and state
+--------------------------
+- `src/AppRoutes.jsx` wires `BrowserRouter` routes using React lazy/Suspense
+  for code splitting. Each route renders inside `AppLayout`, which applies
+  the global `SiteHeader` and reserves space for page content via <Outlet />.
+  An `ErrorBoundary` wraps every route via the `<Guarded>` helper, and a
+  `<ScrollToTop>` component resets scroll position on navigation.
+- `SiteHeader` centralizes the logo, navigation, login link, and a mobile
+  dropdown menu so the same header appears everywhere.
+- `AuthContext` (`src/context/AuthContext.jsx`) bootstraps Supabase auth,
+  keeps the current session in state, and broadcasts `{ session, loading }`
+  through React context.
+- `ProtectedRoute` (`src/components/ProtectedRoute.jsx`) gates protected
+  routes. It supports three modes: session-only (`requireNonViewer`),
+  permission-based (`allowedPermissions`), and role-based (`allowedRoles`).
+  Permissions are defined in `src/utils/accessControl.js`.
+- `ConnectionBanner` + `useInstallPrompt` detect offline status and the
+  `beforeinstallprompt` event to encourage installing the PWA or warn when
+  the device goes offline.
+- `ErrorBoundary` (`src/components/ErrorBoundary.jsx`) catches render errors
+  per-route and shows a fallback instead of a blank screen.
+
+Authentication workflow
+-----------------------
+1. Environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`,
+   `VITE_SUPABASE_REDIRECT_URL`) are read at build time inside
+   `src/services/supabaseClient.ts`. Missing values throw during startup,
+   so the same variables must exist locally and in production.
+2. `supabaseClient.ts` exports a configured `createClient` instance shared
+   across services and the Auth context.
+3. `LoginPage.jsx` renders Supabase's hosted `<Auth />` component. It passes
+   the redirect URL (env override or current location) and whitelists Google
+   as the provider. After Sign In, Supabase redirects back to `/login`, the
+   Auth context receives the new session, and `<Navigate replace>` sends the
+   user to `/admin`.
+
+Data layer
+----------
+Every data fetch goes through files in `src/services/` and runs against the
+Supabase REST API:
+- `teamService.ts`, `playerService.ts`, `leagueService.ts`, `matchService.js`,
+  `venueService.ts`, `statsService.ts` handle core entity queries.
+- `matchLogService.ts` and `realtimeService.js` provide write helpers for
+  scoring flows (initialising matches, updating point-by-point logs).
+- `liveEventService.ts` manages the live_events table for push notifications.
+- `scorekeeperSessionStore.js` and `scrimmageSessionStore.js` persist
+  in-progress scorekeeper/scrimmage state locally between page reloads.
+- `offlineQueue.ts` queues writes when the device is offline and replays
+  them when connectivity is restored.
+- `schemaService.ts` introspects the Supabase schema at runtime.
+- `homeSummaryService.js` batches the multiple parallel queries for the
+  public landing page.
+- `adminService.ts`, `userService.js`, `subscriptionService.ts`,
+  `pushSubscriptionService.ts`, `spiritScoreService.js`,
+  `tournamentDirectorService.js`, `playoffStructureService.js`,
+  `eventSetupService.js`, `scoreboardAdminService.ts` cover their
+  respective admin and operator workflows.
+
+Pages and routes
+----------------
+Public (no auth required):
+- `/`                    → `HomePage.jsx` — public landing dashboard with
+                           hero messaging, summary stats, recent events,
+                           divisions, matches, and highlighted teams.
+- `/login`               → `LoginPage.jsx` — Supabase auth UI + module listing.
+- `/players`             → `PlayersPage.jsx` — read-only player table.
+- `/players/:playerId`   → `PlayerProfilePage.jsx` — individual player stats.
+- `/teams`               → `Teams.jsx` — read-only team table.
+- `/teams/:teamId`       → `TeamProfile.jsx` — team profile and roster.
+- `/matches`             → `MatchesPage.jsx` — match listing.
+- `/events`              → `EventsPage.jsx` — event listing.
+- `/community`           → `CommunityPage.jsx`
+- `/event-rosters`       → `EventRostersPage.jsx`
+- `/event-rules`         → `EventRulesPage.jsx`
+- `/events/*`            → dynamic event workspace routes loaded from
+                           `src/pages/eventWorkspaces.js` (e.g. CPT MX League,
+                           STB 5v5, Internal Draft League, etc.)
+
+Auth-required:
+- `/user`                → `UserPage.jsx` — user profile (session only)
+- `/notifications`       → `NotificationsPage.jsx` (session required)
+- `/admin`               → `AdminPage.jsx` (non-viewer role required)
+- `/admin/access`        → `AdminAccessPage.jsx`
+- `/admin/event-access`  → `EventAccessPage.jsx`
+- `/admin/signup-management` → `SignupManagementPage.jsx`
+- `/admin/event-setup`   → `EventSetupWizard.jsx`
+- `/admin/playoff-structure` → `PlayoffStructurePage.jsx`
+- `/admin/media`         → `MediaAdminPage.jsx`
+- `/admin/custom-scripts` → `CustomScriptsPage.jsx`
+- `/spirit-scores`       → `SpiritScoresPage.jsx`
+- `/tournament-director` → `TournamentDirectorPage.jsx`
+- `/captain`             → `CaptainPage.jsx`
+- `/sys-admin`           → `SysAdminPage.jsx`
+
+Full-screen (outside AppLayout, no SiteHeader):
+- `/score-keeper`        → `ScoreKeeperPage.jsx` — 7v7 ultimate scorekeeper
+                           console. Internally composed from
+                           `src/pages/scorekeeper/ScoreKeeperView.jsx`,
+                           `useScoreKeeperData.js`, `useScoreKeeperActions.js`,
+                           `scorekeeperConstants.js`, `scorekeeperUtils.js`,
+                           `eventCards/MatchEventCard.jsx`, and
+                           `ScorekeeperPopup.jsx`.
+- `/score-keeper-5v5`    → `ScoreKeeper5v5Page.jsx` — 5v5 variant using its
+                           own parallel module set under `scorekeeper/5v5*`.
+- `/admin/scrimmage`     → `ScrimmagePage.jsx` — scrimmage scoring tool with
+                           its own module set under `src/pages/scrimmage/`.
+
+Scorekeeper module structure
+----------------------------
+Both scorekeepers follow the same pattern:
+- `*Page.jsx`         — entry point, loads match and mounts the view.
+- `*View.jsx`         — full UI render, consumes data + action hooks.
+- `use*Data.js`       — Supabase data fetching and real-time subscriptions.
+- `use*Actions.js`    — all write operations (log events, undo, confirm, etc.)
+- `*Constants.js`     — shared enums and lookup tables.
+- `*Utils.js`         — pure helper functions (score derivation, ABBA logic).
+
+The scrimmage tool mirrors this pattern under `src/pages/scrimmage/` and
+additionally includes `scrimmageRules.js`, `scrimmageReport.js`, and
+`scrimmagePdfReport.js` for post-game reporting.
+
+UI primitives
+-------------
+- `src/components/ui/primitives.jsx` — shared UI building blocks (buttons,
+  cards, inputs, etc.) used across all pages.
+- `src/components/ui/scorekeeperPrimitives.jsx` — scorekeeper-specific UI
+  components (action buttons, score displays, etc.).
+- `src/theme.css` — CSS custom properties for the design system.
+
+Offline + PWA details
+---------------------
+- `vite.config.js` registers the PWA plugin with `registerType: autoUpdate`
+  so Workbox precaches the build output and refreshes automatically.
+- `src/sw.js` is the custom service worker entry point.
+- `src/pwa/pushClient.js` handles Web Push subscription registration.
+- `public/assets/` stores the SVG + PNG logo variants; `favicon.svg` mirrors
+  the SVG so browser tabs show the brand mark.
+- The `ConnectionBanner` shows an "Install StallCount" CTA when the PWA
+  install prompt can fire, and swaps to an offline warning when the browser
+  reports `navigator.onLine === false`.
+- `src/hooks/usePersistentState.js` provides localStorage-backed state for
+  components that need to survive page refreshes.
+
+Build and deployment
+--------------------
+- `npm install` installs dependencies; `npm run dev` starts Vite on port
+  5173; `npm run build` emits a production bundle into `dist/`.
+- `vercel.json` tells Vercel to run the same install/build commands when
+  deploying, with SPA fallback routing configured.
+- For production auth to succeed, the Supabase project must allow the
+  deployed origin in Authentication → URL Configuration, and the Google
+  OAuth client (if used) must list the same origins/redirect URIs.
+- Supabase Edge Functions live in `supabase/functions/` (e.g.
+  `notification-dispatcher`) and are deployed separately via the Supabase CLI.
+
+High-level request lifecycle
+----------------------------
+1. User loads the site, Vite serves `index.html`, and React bootstraps.
+2. `AuthProvider` immediately calls `supabase.auth.getSession()` and starts
+   listening for `onAuthStateChange`.
+3. Pages request their data through the service helpers. Supabase responds
+   with JSON, and the components render cards/tables with loading and error
+   messaging.
+4. When a user navigates to protected routes, `ProtectedRoute` checks the
+   session and the user's permissions/roles. If unauthorised it redirects to
+   `/login`.
+5. Any mutations (init match, log event, update score, etc.) go back through
+   the same Supabase client. Offline writes are queued via `offlineQueue.ts`
+   and replayed on reconnect. Errors bubble up as thrown `Error` objects so
+   pages can notify operators.
+
+That combination of declarative routing, a shared auth context, permission-
+based access control, typed Supabase service helpers, session stores for
+scorekeeper state, and the PWA shell is how StallCount keeps league data,
+scoring, and admin workflows in sync across devices.

@@ -21,7 +21,8 @@ export default function AppLayout() {
         </Suspense>
       </main>
       <footer className="border-t border-[var(--sc-border)]/60 bg-[#03130d] py-4 text-center text-xs font-semibold uppercase tracking-wide text-emerald-200">
-        StallCount is a product of RCFD (Pty) Ltd. For more information contact rcfdltd@gmail.com
+        StallCount is a product of RCFD (Pty) Ltd. For more information contact{" "}
+        <a href="mailto:rcfdltd@gmail.com" className="underline underline-offset-2 hover:text-accent">rcfdltd@gmail.com</a>
       </footer>
     </div>
   );

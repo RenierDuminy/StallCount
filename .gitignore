@@ -23,15 +23,25 @@ dist-ssr
 *.sln
 *.sw?
 .env
-DEMO/styles.css
-DEMO/index.html
-DEMO/scripts.js
+dev-dist
+dev-server.log
+dev-server.err.log
+
+# Supabase schema dumps (not needed at build time)
+docs/Triggers.txt
+docs/functions.txt
+docs/rls policies.txt
+
+# One-off data exports
 match_events_rows.csv
 match_logs_rows.csv
 match_status_rows.csv
 players_rows.csv
-SQL_structure_7-11-2026.txt
-functions.txt
-rls policies.txt
-Triggers.txt
+
+# Hardware / demo artefacts
 scoreboard.ino
+DEMO/styles.css
+DEMO/index.html
+DEMO/scripts.js
+
+supabase/.temp/
