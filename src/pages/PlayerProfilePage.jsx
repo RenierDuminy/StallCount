@@ -115,7 +115,7 @@ export default function PlayerProfilePage() {
       if (Number.isNaN(bTime)) return -1;
       return bTime - aTime;
     });
-    }, [filteredRows]);
+  }, [filteredRows]);
 
   useEffect(() => {
     if (eventFilter === "all") {
@@ -133,32 +133,40 @@ export default function PlayerProfilePage() {
   const backToPlayersHref =
     eventFilter !== "all" ? `/players?eventId=${encodeURIComponent(eventFilter)}` : "/players";
 
+  const displayName = `${profile?.name || identity.name}${
+    (profile?.jersey ?? identity.jersey) != null ? ` (#${profile?.jersey ?? identity.jersey})` : ""
+  }`;
+
   return (
-    <div className="pb-16 text-ink">
-      <SectionShell as="header" className="pt-3 sm:pt-6">
-        <Card className="space-y-3 p-4 sm:space-y-4 sm:p-6">
+    <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
+      <SectionShell className="space-y-3 py-3 sm:space-y-6 sm:py-8">
+        <Card variant="light" className="space-y-3 p-4 shadow-xl shadow-[rgba(8,25,21,0.08)] sm:space-y-5 sm:p-8">
           <SectionHeader
-            eyebrow="Player profile"
-            title={`${profile?.name || identity.name}${(profile?.jersey ?? identity.jersey) ? ` (#${profile?.jersey ?? identity.jersey})` : ""}`}
+            eyebrowVariant="tag"
+            title={displayName}
             action={
-              <Link to={backToPlayersHref} className="sc-button is-ghost">
+              <Link to={backToPlayersHref} className="sc-button is-light text-sm">
                 Back to players
               </Link>
             }
-          >
-          </SectionHeader>
+          />
         </Card>
-      </SectionShell>
 
-      <SectionShell as="main" className="space-y-3 sm:space-y-6">
-        {error && <div className="sc-alert is-error">{error}</div>}
+        {error && (
+          <Card variant="light" className="border border-rose-400/40 bg-rose-950/10 p-4 text-sm font-semibold text-rose-700 shadow-md shadow-[rgba(8,25,21,0.06)]">
+            {error}
+          </Card>
+        )}
 
-        <Card className="space-y-3 p-4 sm:space-y-5 sm:p-6">
+        <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)] sm:space-y-6 sm:p-6">
           <SectionHeader
+            eyebrow="Season snapshot"
+            eyebrowVariant="tag"
             title="Performance summary"
+            description="Stats compiled from recorded matches."
             action={
               eventOptions.length > 0 ? (
-                <Field className="w-full max-w-xs" label="Event filter" htmlFor="player-event-filter">
+                <Field className="w-full max-w-xs" label="Event" htmlFor="player-event-filter">
                   <Select
                     id="player-event-filter"
                     value={eventFilter}
@@ -177,11 +185,17 @@ export default function PlayerProfilePage() {
           />
 
           {loading ? (
-            <Panel variant="muted" className="p-3 text-sm text-ink-muted sm:p-4">
+            <Panel
+              variant="light"
+              className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/70 p-4 text-center text-sm text-[var(--sc-surface-light-ink)]/70 sm:p-6"
+            >
               Loading player stats...
             </Panel>
           ) : !filteredRows.length ? (
-            <Panel variant="muted" className="p-3 text-sm text-ink-muted sm:p-4">
+            <Panel
+              variant="light"
+              className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/70 p-4 text-center text-sm text-[var(--sc-surface-light-ink)]/70 sm:p-6"
+            >
               {eventFilter === "all"
                 ? "No stats recorded for this player yet."
                 : "No stats recorded for this player in the selected event."}
@@ -189,59 +203,52 @@ export default function PlayerProfilePage() {
           ) : (
             <>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 xl:grid-cols-6">
-                <SummaryTile label="Total points" value={profile.totalPoints} helper="Goals + assists" />
-                <SummaryTile label="Goals" value={profile.totals.goals} helper={`${profile.goalsPerGame.toFixed(1)} per game`} />
-                <SummaryTile label="Assists" value={profile.totals.assists} helper={`${profile.assistPerGame.toFixed(1)} per game`} />
-                <SummaryTile label="Blocks" value={profile.totals.blocks} helper="Defensive plays" />
-                <SummaryTile label="Turnovers" value={profile.totals.turnovers} helper="Recorded turnovers" />
-                <SummaryTile label="Games played" value={profile.games} helper="Matches with stats" />
+                <SummaryStat label="Total (G+A)" value={profile.totalPoints} />
+                <SummaryStat label="Goals" value={profile.totals.goals} helper={`${profile.goalsPerGame.toFixed(1)}/game`} />
+                <SummaryStat label="Assists" value={profile.totals.assists} helper={`${profile.assistPerGame.toFixed(1)}/game`} />
+                <SummaryStat label="Blocks" value={profile.totals.blocks} />
+                <SummaryStat label="Turnovers" value={profile.totals.turnovers} />
+                <SummaryStat label="Games played" value={profile.games} />
                 {profile.totals.callahans > 0 && (
-                  <SummaryTile
-                    label="Callahans"
-                    value={profile.totals.callahans}
-                    helper="Defensive scores"
-                    tone="gold"
-                  />
+                  <SummaryStat label="Callahans" value={profile.totals.callahans} tone="gold" />
                 )}
               </div>
 
-              <Panel variant="blank" className="overflow-hidden p-0">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="bg-surface-muted/40 text-[8px] font-semibold uppercase tracking-wide text-ink-muted sm:text-[11px]">
-                      <tr>
-                        <th className="px-3 py-1.5 sm:px-4 sm:py-2">Match</th>
-                        <th className="px-3 py-1.5 text-center sm:px-4 sm:py-2">Goals</th>
-                        <th className="px-3 py-1.5 text-center sm:px-4 sm:py-2">Assists</th>
-                        <th className="px-3 py-1.5 text-center sm:px-4 sm:py-2">Blocks</th>
-                        <th className="px-3 py-1.5 text-center sm:px-4 sm:py-2">Turnovers</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortedRows.map((row) => {
-                        const matchHref = row.match_id
-                          ? `/matches?matchId=${encodeURIComponent(row.match_id)}`
-                          : "/matches";
-                        return (
-                          <tr key={row.match_id} className="border-t border-border/60">
-                            <td className="px-3 py-2 sm:px-4 sm:py-3">
-                              <Link
-                                to={matchHref}
-                                className="font-semibold text-ink transition hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                              >
-                                {buildMatchLabel(row)}
-                              </Link>
-                            </td>
-                            <td className="px-3 py-2 text-center font-semibold sm:px-4 sm:py-3">{row.goals ?? 0}</td>
-                            <td className="px-3 py-2 text-center font-semibold sm:px-4 sm:py-3">{row.assists ?? 0}</td>
-                            <td className="px-3 py-2 text-center font-semibold sm:px-4 sm:py-3">{row.blocks ?? 0}</td>
-                            <td className="px-3 py-2 text-center font-semibold sm:px-4 sm:py-3">{row.turnovers ?? 0}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+              <Panel variant="light" className="overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)]">
+                <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
+                  <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
+                    <tr>
+                      <th className="px-3 py-1.5">Match</th>
+                      <th className="px-3 py-1.5 text-right">G</th>
+                      <th className="px-3 py-1.5 text-right">A</th>
+                      <th className="px-3 py-1.5 text-right">B</th>
+                      <th className="px-3 py-1.5 text-right">TO</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
+                    {sortedRows.map((row) => {
+                      const matchHref = row.match_id
+                        ? `/matches?matchId=${encodeURIComponent(row.match_id)}`
+                        : "/matches";
+                      return (
+                        <tr key={row.match_id} className="hover:bg-white/60">
+                          <td className="px-3 py-1.5">
+                            <Link
+                              to={matchHref}
+                              className="font-semibold text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
+                            >
+                              {buildMatchLabel(row)}
+                            </Link>
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-semibold">{row.goals ?? 0}</td>
+                          <td className="px-3 py-1.5 text-right">{row.assists ?? 0}</td>
+                          <td className="px-3 py-1.5 text-right">{row.blocks ?? 0}</td>
+                          <td className="px-3 py-1.5 text-right">{row.turnovers ?? 0}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </Panel>
             </>
           )}
@@ -251,21 +258,24 @@ export default function PlayerProfilePage() {
   );
 }
 
-function SummaryTile({ label, value, helper, tone = "default" }) {
+function SummaryStat({ label, value, helper, tone = "default" }) {
   const isGold = tone === "gold";
-
   return (
     <Panel
-      variant="tinted"
-      className={`space-y-1 p-3 sm:space-y-1.5 sm:p-4 ${
-        isGold ? "border-amber-400/80 text-amber-200" : ""
-      }`}
+      variant="light"
+      className={`p-3 shadow-sm shadow-[rgba(8,25,21,0.04)] sm:p-4 ${isGold ? "border-amber-400/60" : ""}`}
     >
-      <p className={`text-xs font-semibold uppercase tracking-wide ${isGold ? "text-amber-300" : "text-ink-muted"}`}>
+      <p className={`text-xs font-semibold uppercase tracking-wide ${isGold ? "text-amber-600" : "text-[var(--sc-surface-light-ink)]/60"}`}>
         {label}
       </p>
-      <p className={`text-xl font-semibold sm:text-2xl ${isGold ? "text-amber-200" : "text-ink"}`}>{value ?? 0}</p>
-      {helper ? <p className={`text-xs ${isGold ? "text-amber-200/80" : "text-ink-muted"}`}>{helper}</p> : null}
+      <p className={`mt-0.5 text-xl font-semibold sm:mt-1 sm:text-2xl ${isGold ? "text-amber-700" : "text-[var(--sc-surface-light-ink)]"}`}>
+        {value ?? 0}
+      </p>
+      {helper && (
+        <p className={`mt-0.5 text-xs ${isGold ? "text-amber-600/80" : "text-[var(--sc-surface-light-ink)]/50"}`}>
+          {helper}
+        </p>
+      )}
     </Panel>
   );
 }

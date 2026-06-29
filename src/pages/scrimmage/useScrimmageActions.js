@@ -7,7 +7,6 @@ import {
   SCORE_NA_PLAYER_VALUE,
 } from "./scrimmageConstants";
 import {
-  getRuleHalftimeBreakMinutes,
   getRuleTimeoutSeconds,
   setRuleMatchDurationMinutes,
   setRuleTimeoutSeconds,
@@ -44,7 +43,7 @@ export function useScrimmageActions(controller) {
   function startPrimaryHoldReset() {
     cancelPrimaryHoldReset();
     controller.primaryResetRef.current = setTimeout(() => {
-      controller.commitPrimaryTimerState(0, false);
+      controller.commitPrimaryTimerState(controller.isCountdown ? controller.matchDurationSeconds : 0, false);
       controller.setTimerLabel(DEFAULT_TIMER_LABEL);
     }, 800);
   }
@@ -149,7 +148,10 @@ export function useScrimmageActions(controller) {
 
   function handleStartMatch() {
     if (!controller.consoleReady) return;
-    if (!controller.timerRunning) {
+    if (controller.isCountdown) {
+      // Seed the countdown from the configured match duration, then start it.
+      controller.commitPrimaryTimerState(controller.matchDurationSeconds, true);
+    } else if (!controller.timerRunning) {
       handleToggleTimer();
     }
     controller.setMatchStarted(true);
@@ -201,7 +203,7 @@ export function useScrimmageActions(controller) {
 
   function openScoreModal(teamKey, mode = "add", logIndex = null) {
     if (!teamKey) return;
-    controller.setScoreModalState({ open: true, team: teamKey, mode, logIndex });
+    controller.setScoreModalState({ open: true, team: teamKey, mode, logIndex, openedAt: new Date().toISOString() });
     if (mode === "edit" && Number.isFinite(logIndex)) {
       const existing = controller.logs?.[logIndex] || null;
       if (existing) {
@@ -216,7 +218,7 @@ export function useScrimmageActions(controller) {
   }
 
   function closeScoreModal() {
-    controller.setScoreModalState({ open: false, team: null, mode: "add", logIndex: null });
+    controller.setScoreModalState({ open: false, team: null, mode: "add", logIndex: null, openedAt: null });
     controller.setScoreForm({ scorerId: "", assistId: "" });
   }
 
@@ -277,6 +279,7 @@ export function useScrimmageActions(controller) {
   }
 
   function handleRuleChange(field, value) {
+    controller.markRulesManuallyEdited?.();
     controller.setRules((prev) => {
       if (field === "matchDuration") {
         return setRuleMatchDurationMinutes(prev, 0);
@@ -395,29 +398,7 @@ export function useScrimmageActions(controller) {
   }
 
   function handleHalfTimeTrigger() {
-    const elapsed = controller.getPrimaryRemainingSeconds();
-    controller.commitPrimaryTimerState(elapsed, false);
-
-    const breakSeconds = Math.max(0, getRuleHalftimeBreakMinutes(controller.rules) * 60);
-    if (breakSeconds > 0) {
-      controller.startTrackedSecondaryTimer(breakSeconds, "Halftime", {
-        startCode: MATCH_LOG_EVENT_CODES.HALFTIME_START,
-        startDescription: "Halftime",
-        endCode: MATCH_LOG_EVENT_CODES.HALFTIME_END,
-        endDescription: "Halftime ended",
-      });
-      return;
-    }
-    controller.appendSecondaryEventLog(
-      MATCH_LOG_EVENT_CODES.HALFTIME_START,
-      "Halftime",
-      null
-    );
-    controller.appendSecondaryEventLog(
-      MATCH_LOG_EVENT_CODES.HALFTIME_END,
-      "Halftime ended",
-      null
-    );
+    controller.triggerHalftime();
   }
 
   function handleGameStoppage() {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { getEventPlayerMatchStats } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
-import { Card, SectionHeader, SectionShell, Field, Input, Select } from "../components/ui/primitives";
+import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select } from "../components/ui/primitives";
 
 function getStatRowTeam(row) {
   const statTeam = row.team || null;
@@ -285,11 +285,13 @@ export default function PlayersPage() {
   };
 
   const statHeaders = [
-    { key: "total", label: "Total" },
-    { key: "assists", label: "Assists" },
-    { key: "goals", label: "Goals" },
-    { key: "games", label: "Games" },
-    { key: "callahans", label: "Callahans" },
+    { key: "total", label: "G+A" },
+    { key: "goals", label: "G" },
+    { key: "assists", label: "A" },
+    { key: "blocks", label: "B" },
+    { key: "turnovers", label: "TO" },
+    { key: "games", label: "GP" },
+    { key: "callahans", label: "Cal" },
   ];
   const tableColumnCount = statHeaders.length + 3;
 
@@ -321,27 +323,29 @@ export default function PlayersPage() {
   };
 
   return (
-    <div className="pb-16 text-ink">
-      <SectionShell as="header" className="py-4 sm:py-6">
-        <Card className="space-y-4 p-5 sm:p-7">
+    <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
+      <SectionShell as="header" className="py-4 sm:py-5">
+        <Card variant="light" className="space-y-3 p-4 shadow-xl shadow-[rgba(8,25,21,0.08)] sm:space-y-5 sm:p-8">
           <SectionHeader
             eyebrow="Players"
+            eyebrowVariant="tag"
             title="Player impact across recorded matches"
-            description="Impact across matches."
+            description="Aggregated stats across matches, filtered by event and division."
           />
         </Card>
       </SectionShell>
 
       <SectionShell as="main" className="space-y-4 sm:space-y-6">
         {error && (
-          <Card variant="muted" className="border border-rose-400/40 p-4 text-sm font-semibold text-rose-100">
+          <Card variant="light" className="border border-rose-400/40 bg-rose-950/10 p-4 text-sm font-semibold text-rose-700 shadow-md shadow-[rgba(8,25,21,0.06)]">
             {error}
           </Card>
         )}
 
-        <Card className="space-y-4 px-2 py-4 sm:px-3 sm:py-6">
+        <Card variant="light" className="space-y-4 p-4 shadow-md shadow-[rgba(8,25,21,0.06)] sm:p-6">
           <SectionHeader
             eyebrow="Player stats"
+            eyebrowVariant="tag"
             description={
               eventFilter
                 ? `Showing ${sortedRows.length} of ${aggregatedRows.length} players for the selected event${
@@ -401,96 +405,114 @@ export default function PlayersPage() {
             }
           />
 
-          <div className="overflow-x-auto rounded-2xl border border-border bg-surface">
-            <table className="min-w-full text-left text-sm text-ink">
-              <thead>
-                <tr className="uppercase text-[11px] text-ink-muted">
-                  <th className="px-1 py-2 text-center" aria-label="Rank"></th>
-                  <th className="px-1 py-2">Name</th>
-                  <th className="px-1 py-2">Team</th>
+          <Panel variant="light" className="overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)]">
+            <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
+              <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
+                <tr>
+                  <th className="px-3 py-1.5 text-center" aria-label="Rank">#</th>
+                  <th className="px-3 py-1.5">Player</th>
+                  <th className="px-3 py-1.5">Team</th>
                   {statHeaders.map((col) => (
-                    <th key={col.key} className="px-1 py-2 text-center">
+                    <th key={col.key} className="px-3 py-1.5 text-right">
                       <button
                         type="button"
                         onClick={() => toggleSort(col.key)}
-                        className={`flex w-full items-center justify-center gap-px rounded-md px-0 py-0.5 text-xs font-semibold transition ${
-                          sortBy === col.key ? "bg-surface-muted text-ink" : "text-ink-muted hover:bg-surface"
+                        className={`inline-flex items-center justify-end gap-px text-xs font-semibold transition ${
+                          sortBy === col.key
+                            ? "text-[var(--sc-surface-light-ink)]"
+                            : "text-[var(--sc-surface-light-ink)]/60 hover:text-[var(--sc-surface-light-ink)]"
                         }`}
                       >
                         <span>{col.label}</span>
-                        <span className="text-[10px] leading-none">
-                          {sortBy === col.key ? (sortDirection === "asc" ? "\u2191" : "\u2193") : ""}
-                        </span>
+                        {sortBy === col.key && (
+                          <span className="text-[10px] leading-none">
+                            {sortDirection === "asc" ? "↑" : "↓"}
+                          </span>
+                        )}
                       </button>
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
                 {eventsError ? (
                   <tr>
-                    <td colSpan={tableColumnCount} className="px-1 py-4 text-center text-sm text-ink-muted">
+                    <td colSpan={tableColumnCount} className="px-3 py-4 text-center text-sm text-[var(--sc-surface-light-ink)]/60">
                       {eventsError}
                     </td>
                   </tr>
                 ) : !eventFilter ? (
                   <tr>
-                    <td colSpan={tableColumnCount} className="px-1 py-4 text-center text-sm text-ink-muted">
+                    <td colSpan={tableColumnCount} className="px-3 py-4 text-center text-sm text-[var(--sc-surface-light-ink)]/60">
                       Select an event to load player stats.
                     </td>
                   </tr>
                 ) : loading ? (
                   <tr>
-                    <td colSpan={tableColumnCount} className="px-1 py-4 text-center text-sm text-ink-muted">
+                    <td colSpan={tableColumnCount} className="px-3 py-4 text-center text-sm text-[var(--sc-surface-light-ink)]/60">
                       Loading player stats...
                     </td>
                   </tr>
                 ) : sortedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={tableColumnCount} className="px-1 py-4 text-center text-sm text-ink-muted">
+                    <td colSpan={tableColumnCount} className="px-3 py-4 text-center text-sm text-[var(--sc-surface-light-ink)]/60">
                       No player stats found.
                     </td>
                   </tr>
                 ) : (
                   sortedRows.map((row, index) => (
-                    <tr key={row.playerId} className="border-t border-border hover:bg-surface-muted">
-                      <td className="px-1 py-2 text-center font-semibold text-ink-muted">{index + 1}</td>
-                      <td className="px-1 py-2">
-                        <Link
-                          to={
-                            eventFilter
-                              ? `/players/${row.playerId}?eventId=${encodeURIComponent(eventFilter)}`
-                              : `/players/${row.playerId}`
-                          }
-                          className="font-semibold text-ink hover:text-accent"
-                        >
-                          {row.playerName}
-                        </Link>
+                    <tr key={row.playerId} className="hover:bg-white/60">
+                      <td className="px-3 py-1.5 text-center text-xs font-semibold text-[var(--sc-surface-light-ink)]/50">
+                        {index + 1}
                       </td>
-                      <td className="px-1 py-2">
+                      <td className="px-3 py-1.5">
+                        <div className="flex items-center gap-2">
+                          {row.jerseyNumber != null && (
+                            <span className="w-6 shrink-0 text-right text-xs font-semibold text-[var(--sc-surface-light-ink)]/40">
+                              {row.jerseyNumber}
+                            </span>
+                          )}
+                          <Link
+                            to={
+                              eventFilter
+                                ? `/players/${row.playerId}?eventId=${encodeURIComponent(eventFilter)}`
+                                : `/players/${row.playerId}`
+                            }
+                            className="font-semibold text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
+                          >
+                            {row.playerName}
+                          </Link>
+                        </div>
+                      </td>
+                      <td className="px-3 py-1.5">
                         {row.teamName ? (
                           row.teamId ? (
-                            <Link to={`/teams/${row.teamId}`} className="font-semibold text-ink hover:text-accent">
+                            <Link
+                              to={`/teams/${row.teamId}`}
+                              className="text-[var(--sc-surface-light-ink)]/70 underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]"
+                            >
                               {row.teamName}
                             </Link>
                           ) : (
-                            <span className="font-semibold text-ink">{row.teamName}</span>
+                            <span className="text-[var(--sc-surface-light-ink)]/70">{row.teamName}</span>
                           )
                         ) : (
-                          <span className="text-ink-muted">-</span>
+                          <span className="text-[var(--sc-surface-light-ink)]/40">—</span>
                         )}
                       </td>
-                      <td className="px-1 py-2 text-center font-semibold">{row.total}</td>
-                      <td className="px-1 py-2 text-center font-semibold">{row.assists}</td>
-                      <td className="px-1 py-2 text-center font-semibold">{row.goals}</td>
-                      <td className="px-1 py-2 text-center font-semibold">{row.games}</td>
-                      <td className="px-1 py-2 text-center font-semibold">{row.callahans}</td>
+                      <td className="px-3 py-1.5 text-right font-semibold text-[var(--sc-surface-light-ink)]">{row.total}</td>
+                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.goals}</td>
+                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.assists}</td>
+                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.blocks}</td>
+                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.turnovers}</td>
+                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.games}</td>
+                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.callahans}</td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
-          </div>
+          </Panel>
         </Card>
       </SectionShell>
     </div>

@@ -13,11 +13,24 @@ import {
 import {
   addEventUserRoleAssignment,
   getAccessControlEvents,
-  getAccessControlUsers,
+  getAccessControlUserById,
   getRoleCatalog,
   removeEventUserRoleAssignment,
+  searchAccessControlUsers,
 } from "../services/userService";
 import usePersistentState from "../hooks/usePersistentState";
+
+const PAGE_SIZE = 20;
+
+function userMatchesRoleFilter(user, roleFilter) {
+  if (roleFilter === "all") return true;
+  const assignments = Array.isArray(user.roles) ? user.roles : [];
+  if (roleFilter === "none") return assignments.length === 0;
+  return assignments.some(
+    (assignment) =>
+      assignment.roleId !== null && String(assignment.roleId) === roleFilter,
+  );
+}
 
 const EVENT_ACCESS_SEARCH_KEY = "stallcount:event-access:search:v1";
 const EVENT_ACCESS_ROLE_FILTER_KEY = "stallcount:event-access:role-filter:v1";
@@ -26,24 +39,6 @@ const EVENT_ACCESS_MANAGER_QUERY_KEY = "stallcount:event-access:manager-query:v1
 const EVENT_ACCESS_SELECTED_USER_KEY = "stallcount:event-access:selected-user:v1";
 const EVENT_ACCESS_SELECTED_EVENT_KEY = "stallcount:event-access:selected-event:v1";
 const EVENT_ACCESS_PENDING_ROLE_KEY = "stallcount:event-access:pending-role:v1";
-
-function formatRoleCounts(users) {
-  return users.reduce((acc, user) => {
-    const assignments = Array.isArray(user.roles) ? user.roles : [];
-    if (assignments.length === 0) {
-      acc.set("none", (acc.get("none") || 0) + 1);
-      return acc;
-    }
-    assignments.forEach((assignment) => {
-      if (assignment.roleId === null || assignment.roleId === undefined) {
-        return;
-      }
-      const key = String(assignment.roleId);
-      acc.set(key, (acc.get(key) || 0) + 1);
-    });
-    return acc;
-  }, new Map());
-}
 
 function formatPermissionLabel(permission) {
   if (!permission) return "Permission";
@@ -92,7 +87,7 @@ function formatEventRoleLabel(entry) {
   if (!entry) return "Event role";
   const eventLabel = entry.eventName || entry.eventId || "Event";
   const roleLabel = entry.roleName || entry.roleId || "Role";
-  return `${eventLabel} - ${roleLabel}`;
+  return `${roleLabel} - ${eventLabel}`;
 }
 
 function formatEventOptionLabel(event) {
@@ -103,7 +98,6 @@ function formatEventOptionLabel(event) {
 }
 
 export default function EventAccessPage() {
-  const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,20 +112,28 @@ export default function EventAccessPage() {
   const [roleManagerError, setRoleManagerError] = useState("");
   const [pendingRoleId, setPendingRoleId] = usePersistentState(EVENT_ACCESS_PENDING_ROLE_KEY, "");
 
+  // Directory table: one server-paged slice at a time.
+  const [directoryUsers, setDirectoryUsers] = useState([]);
+  const [directoryTotal, setDirectoryTotal] = useState(0);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+
+  // Role manager: its own search slice + the fully-detailed selected user.
+  const [managerMatches, setManagerMatches] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+
   useEffect(() => {
     loadData();
   }, []);
 
+  // Catalog data (roles + events) loads once; user rows are fetched on demand.
   async function loadData() {
     setLoading(true);
     setError("");
     try {
-      const [userRows, roleRows, eventRows] = await Promise.all([
-        getAccessControlUsers(),
+      const [roleRows, eventRows] = await Promise.all([
         getRoleCatalog(),
         getAccessControlEvents(),
       ]);
-      setUsers(userRows);
       setRoles(roleRows);
       setEvents(eventRows);
       setRoleManagerError("");
@@ -142,11 +144,78 @@ export default function EventAccessPage() {
     }
   }
 
+  // Debounced server-side fetch for the directory table.
   useEffect(() => {
-    if (selectedUserId && !users.some((user) => user.id === selectedUserId)) {
-      setSelectedUserId("");
+    let cancelled = false;
+    setDirectoryLoading(true);
+    const handle = setTimeout(async () => {
+      try {
+        const { users, total } = await searchAccessControlUsers({
+          search,
+          page,
+          pageSize: PAGE_SIZE,
+        });
+        if (cancelled) return;
+        setDirectoryUsers(users);
+        setDirectoryTotal(total);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Unable to load users.");
+      } finally {
+        if (!cancelled) setDirectoryLoading(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [search, page]);
+
+  // Debounced server-side fetch for the role-manager user dropdown.
+  useEffect(() => {
+    if (!selectedEventId) {
+      setManagerMatches([]);
+      return undefined;
     }
-  }, [selectedUserId, setSelectedUserId, users]);
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      try {
+        const { users } = await searchAccessControlUsers({
+          search: roleManagerQuery,
+          page: 1,
+          pageSize: PAGE_SIZE,
+        });
+        if (!cancelled) setManagerMatches(users);
+      } catch {
+        if (!cancelled) setManagerMatches([]);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [roleManagerQuery, selectedEventId]);
+
+  // Load full detail for the selected user (roles update after add/remove).
+  useEffect(() => {
+    if (!selectedUserId) {
+      setSelectedUser(null);
+      return undefined;
+    }
+    let cancelled = false;
+    getAccessControlUserById(selectedUserId)
+      .then((user) => {
+        if (cancelled) return;
+        setSelectedUser(user);
+        if (!user) setSelectedUserId("");
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedUser(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedUserId, setSelectedUserId]);
 
   useEffect(() => {
     if (selectedEventId && !events.some((event) => event.id === selectedEventId)) {
@@ -162,6 +231,21 @@ export default function EventAccessPage() {
       setPendingRoleId("");
     }
   }, [pendingRoleId, roles, setPendingRoleId]);
+
+  // Refresh the current directory page (e.g. after a role change).
+  async function refreshDirectory() {
+    try {
+      const { users, total } = await searchAccessControlUsers({
+        search,
+        page,
+        pageSize: PAGE_SIZE,
+      });
+      setDirectoryUsers(users);
+      setDirectoryTotal(total);
+    } catch {
+      // Non-fatal: the table keeps its last good page.
+    }
+  }
 
   async function handleAddRole(userId) {
     if (!userId) return;
@@ -187,14 +271,13 @@ export default function EventAccessPage() {
     setRoleManagerBusy(true);
     try {
       const assignment = await addEventUserRoleAssignment(userId, pendingRoleId, selectedEventId);
-      setUsers((prev) =>
-        prev.map((user) => {
-          if (user.id !== userId) return user;
-          const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
-          return { ...user, eventRoles: [...eventRoles, assignment] };
-        }),
-      );
+      setSelectedUser((prev) => {
+        if (!prev || prev.id !== userId) return prev;
+        const eventRoles = Array.isArray(prev.eventRoles) ? prev.eventRoles : [];
+        return { ...prev, eventRoles: [...eventRoles, assignment] };
+      });
       setPendingRoleId("");
+      refreshDirectory();
     } catch (err) {
       setRoleManagerError(err instanceof Error ? err.message : "Unable to add role.");
     } finally {
@@ -217,22 +300,21 @@ export default function EventAccessPage() {
         assignment.roleId,
         selectedEventId,
       );
-      setUsers((prev) =>
-        prev.map((user) => {
-          if (user.id !== userId) return user;
-          const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
-          const nextEventRoles = eventRoles.filter((role) => {
-            if (assignment.assignmentId) {
-              return role.assignmentId !== assignment.assignmentId;
-            }
-            if (assignment.eventId) {
-              return role.roleId !== assignment.roleId || role.eventId !== assignment.eventId;
-            }
-            return role.roleId !== assignment.roleId;
-          });
-          return { ...user, eventRoles: nextEventRoles };
-        }),
-      );
+      setSelectedUser((prev) => {
+        if (!prev || prev.id !== userId) return prev;
+        const eventRoles = Array.isArray(prev.eventRoles) ? prev.eventRoles : [];
+        const nextEventRoles = eventRoles.filter((role) => {
+          if (assignment.assignmentId) {
+            return role.assignmentId !== assignment.assignmentId;
+          }
+          if (assignment.eventId) {
+            return role.roleId !== assignment.roleId || role.eventId !== assignment.eventId;
+          }
+          return role.roleId !== assignment.roleId;
+        });
+        return { ...prev, eventRoles: nextEventRoles };
+      });
+      refreshDirectory();
     } catch (err) {
       setRoleManagerError(err instanceof Error ? err.message : "Unable to remove role.");
     } finally {
@@ -240,27 +322,6 @@ export default function EventAccessPage() {
     }
   }
 
-  const filteredUsers = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const roleKey = roleFilter === "all" ? null : roleFilter;
-    return users.filter((user) => {
-      const matchesQuery = query
-        ? [user.fullName, user.email, user.id].some((value) => {
-            if (!value) return false;
-            return String(value).toLowerCase().includes(query);
-          })
-        : true;
-      const assignments = Array.isArray(user.roles) ? user.roles : [];
-      const matchesRole = (() => {
-        if (roleKey === null) return true;
-        if (roleKey === "none") return assignments.length === 0;
-        return assignments.some((assignment) => assignment.roleId !== null && String(assignment.roleId) === roleKey);
-      })();
-      return matchesQuery && matchesRole;
-    });
-  }, [users, search, roleFilter]);
-
-  const roleCounts = useMemo(() => formatRoleCounts(users), [users]);
   const rolesWithPermissions = useMemo(
     () =>
       roles
@@ -272,96 +333,96 @@ export default function EventAccessPage() {
     [roles],
   );
 
+  // Roles overlap but aren't strictly nested. To save space, list roles from
+  // fewest to most permissions and show each role only the permissions not
+  // already shown above; the rest collapse into a muted "+N shared" count.
+  const rolePermissionRows = useMemo(() => {
+    const seen = new Set();
+    return [...rolesWithPermissions]
+      .sort((a, b) => a.permissions.length - b.permissions.length)
+      .map((role) => {
+        const unique = [];
+        let sharedCount = 0;
+        role.permissions.forEach((permission) => {
+          const key = normalizePermissionKey(
+            permission?.key || permission?.name || permission?.value || permission,
+          );
+          if (seen.has(key)) {
+            sharedCount += 1;
+          } else {
+            seen.add(key);
+            unique.push(permission);
+          }
+        });
+        return { role, unique, sharedCount };
+      });
+  }, [rolesWithPermissions]);
+
+  // Search resets to the first page; role filter narrows the loaded page only.
   useEffect(() => {
     setPage(1);
-  }, [search, roleFilter, setPage]);
+  }, [search, setPage]);
 
-  const selectedUser = useMemo(
-    () => users.find((user) => user.id === selectedUserId) || null,
-    [users, selectedUserId],
+  // Role filter is applied to the loaded page (PostgREST cross-join filtering
+  // is impractical here); paging counts remain search-scoped.
+  const pagedUsers = useMemo(
+    () => directoryUsers.filter((user) => userMatchesRoleFilter(user, roleFilter)),
+    [directoryUsers, roleFilter],
   );
 
+  // Ensure the selected user always appears as an option in the dropdown.
   const matchingUsers = useMemo(() => {
-    const query = roleManagerQuery.trim().toLowerCase();
-    if (!selectedEventId) {
-      return selectedUser ? [selectedUser] : [];
+    if (!selectedEventId) return selectedUser ? [selectedUser] : [];
+    if (selectedUser && !managerMatches.some((user) => user.id === selectedUser.id)) {
+      return [selectedUser, ...managerMatches].slice(0, PAGE_SIZE);
     }
-    if (!query) {
-      if (selectedUser) {
-        return [selectedUser];
-      }
-      return [];
-    }
-    const matches = users.filter((user) => {
-      return [user.fullName, user.email, user.id].some((value) => {
-        if (!value) return false;
-        return String(value).toLowerCase().includes(query);
-      });
-    });
-    const trimmed = matches.slice(0, 20);
-    if (selectedUser && !trimmed.some((user) => user.id === selectedUser.id)) {
-      return [selectedUser, ...trimmed].slice(0, 20);
-    }
-    return trimmed;
-  }, [users, roleManagerQuery, selectedEventId, selectedUser]);
+    return managerMatches;
+  }, [managerMatches, selectedEventId, selectedUser]);
 
   const selectedAssignments = Array.isArray(selectedUser?.roles) ? selectedUser.roles : [];
-  const selectedEventRoles = Array.isArray(selectedUser?.eventRoles) ? selectedUser.eventRoles : [];
-  const eventOptions = useMemo(() => {
-    const map = new Map();
-    events.forEach((event) => {
-      if (!event?.id) return;
-      map.set(event.id, {
-        id: event.id,
-        name: event.name || "Event",
-        startDate: event.startDate,
-        endDate: event.endDate,
-      });
-    });
-    users.forEach((user) => {
-      const entries = Array.isArray(user.eventRoles) ? user.eventRoles : [];
-      entries.forEach((entry) => {
-        if (!entry.eventId) return;
-        if (!map.has(entry.eventId)) {
-          map.set(entry.eventId, {
-            id: entry.eventId,
-            name: entry.eventName || "Event",
-            startDate: entry.eventStartDate,
-            endDate: entry.eventEndDate,
-          });
-        }
-      });
-    });
-    return Array.from(map.values());
-  }, [events, users]);
-
-  useEffect(() => {
-    if (!selectedEventId) return;
-    if (!eventOptions.some((event) => event.id === selectedEventId)) {
-      setSelectedEventId("");
-    }
-  }, [selectedEventId, eventOptions, setSelectedEventId]);
-
-  const selectedEventRolesForEvent = selectedEventId
-    ? selectedEventRoles.filter((entry) => entry.eventId === selectedEventId)
-    : [];
-  const assignedRoleIds = new Set(
-    selectedEventRolesForEvent
-      .map((assignment) => assignment.roleId)
-      .filter((value) => value !== null && value !== undefined)
-      .map((value) => String(value)),
-  );
-  const availableRoles = roles.filter(
-    (role) => !assignedRoleIds.has(String(role.id)) && !isAdminPrivilegeRole(role),
+  const selectedEventRoles = useMemo(
+    () => (Array.isArray(selectedUser?.eventRoles) ? selectedUser.eventRoles : []),
+    [selectedUser],
   );
 
-  const pageSize = 20;
-  const totalResults = filteredUsers.length;
-  const pageCount = Math.max(1, Math.ceil(totalResults / pageSize));
+  const eventOptions = useMemo(
+    () =>
+      events
+        .filter((event) => event?.id)
+        .map((event) => ({
+          id: event.id,
+          name: event.name || "Event",
+          startDate: event.startDate,
+          endDate: event.endDate,
+        })),
+    [events],
+  );
+
+  const selectedEventRolesForEvent = useMemo(
+    () =>
+      selectedEventId
+        ? selectedEventRoles.filter((entry) => entry.eventId === selectedEventId)
+        : [],
+    [selectedEventId, selectedEventRoles],
+  );
+
+  const availableRoles = useMemo(() => {
+    const assignedRoleIds = new Set(
+      selectedEventRolesForEvent
+        .map((assignment) => assignment.roleId)
+        .filter((value) => value !== null && value !== undefined)
+        .map((value) => String(value)),
+    );
+    return roles.filter(
+      (role) => !assignedRoleIds.has(String(role.id)) && !isAdminPrivilegeRole(role),
+    );
+  }, [roles, selectedEventRolesForEvent]);
+
+  const totalResults = directoryTotal;
+  const pageCount = Math.max(1, Math.ceil(totalResults / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
-  const pageStart = totalResults === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const pageEnd = Math.min(currentPage * pageSize, totalResults);
-  const pagedUsers = filteredUsers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const pageStart = totalResults === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const pageEnd = Math.min(currentPage * PAGE_SIZE, totalResults);
 
   useEffect(() => {
     if (page !== currentPage) {
@@ -369,54 +430,57 @@ export default function EventAccessPage() {
     }
   }, [page, currentPage, setPage]);
 
-  const isEmpty = !loading && filteredUsers.length === 0;
+  const isEmpty = !directoryLoading && pagedUsers.length === 0;
 
   return (
     <div className="min-h-screen bg-surface text-ink">
       <SectionShell as="header" className="py-6">
         <Card className="space-y-4 p-6 sm:p-8">
           <SectionHeader
-            eyebrow="Admin"
             title="Event access control"
-            description="Review event-linked access alongside global roles for every profile."
             action={
               <div className="flex flex-wrap gap-3">
                 <Link to="/admin" className="sc-button">
                   Admin hub
                 </Link>
-                <button type="button" onClick={loadData} className="sc-button" disabled={loading}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    loadData();
+                    refreshDirectory();
+                  }}
+                  className="sc-button"
+                  disabled={loading}
+                >
                   {loading ? "Refreshing..." : "Refresh data"}
                 </button>
               </div>
             }
           />
-          <div className="flex flex-wrap gap-2">
-            <Chip variant="ghost" className="text-xs text-ink-muted">
-              Users: {users.length}
-            </Chip>
-            <Chip variant="ghost" className="text-xs text-ink-muted">
-              Roles: {roles.length}
-            </Chip>
-            <Chip variant="ghost" className="text-xs text-ink-muted">
-              Unassigned: {roleCounts.get("none") || 0}
-            </Chip>
-          </div>
         </Card>
       </SectionShell>
 
       <SectionShell as="main" className="space-y-5 pb-16">
-        <Card className="space-y-5 p-5">
-          <Panel className="space-y-4 border border-border/70 p-4">
+          <Panel className="space-y-4 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-ink">Event focus</p>
-                <p className="text-xs text-ink-muted">
-                  Pick an event first, then manage event roles for users.
-                </p>
-              </div>
+              <p className="text-sm font-semibold text-ink">Role manager</p>
+              {selectedUser ? (
+                <button
+                  type="button"
+                  className="sc-button is-ghost text-xs"
+                  onClick={() => {
+                    setSelectedUserId("");
+                    setRoleManagerQuery("");
+                    setRoleManagerError("");
+                    setPendingRoleId("");
+                  }}
+                >
+                  Clear selection
+                </button>
+              ) : null}
             </div>
             <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Event" hint="Events with existing role assignments">
+              <Field label="Event">
                 <Select
                   value={selectedEventId}
                   onChange={(event) => {
@@ -436,41 +500,7 @@ export default function EventAccessPage() {
                   ))}
                 </Select>
               </Field>
-              <Panel className="flex flex-col justify-center gap-1 p-4 text-xs md:col-span-2">
-                <span className="font-semibold uppercase tracking-wide text-ink-muted">Event focus</span>
-                <span className="text-ink">
-                  {selectedEventId
-                    ? formatEventOptionLabel(eventOptions.find((event) => event.id === selectedEventId))
-                    : "Select an event to unlock role management"}
-                </span>
-              </Panel>
-            </div>
-          </Panel>
-          <Panel className="space-y-4 border border-border/70 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-ink">Role manager</p>
-                <p className="text-xs text-ink-muted">
-                  Search for a user, review their roles and event roles, then add or remove assignments.
-                </p>
-              </div>
-              {selectedUser ? (
-                <button
-                  type="button"
-                  className="sc-button is-ghost text-xs"
-                  onClick={() => {
-                    setSelectedUserId("");
-                    setRoleManagerQuery("");
-                    setRoleManagerError("");
-                    setPendingRoleId("");
-                  }}
-                >
-                  Clear selection
-                </button>
-              ) : null}
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Search user" hint="Name, email, or UUID">
+              <Field label="Search user">
                 <Input
                   type="search"
                   value={roleManagerQuery}
@@ -479,7 +509,7 @@ export default function EventAccessPage() {
                   disabled={!selectedEventId}
                 />
               </Field>
-              <Field label="Select user" hint="Top 20 matches">
+              <Field label="Select user">
                 <Select
                   value={selectedUserId}
                   onChange={(event) => {
@@ -503,23 +533,11 @@ export default function EventAccessPage() {
                   ))}
                 </Select>
               </Field>
-              <Panel className="flex flex-col justify-center gap-1 p-4 text-xs">
-                <span className="font-semibold uppercase tracking-wide text-ink-muted">Selected</span>
-                <span className="text-ink">
-                  {selectedUser ? selectedUser.fullName || "Unnamed profile" : "No user selected"}
-                </span>
-                {selectedUser ? (
-                  <span className="text-[11px] text-ink-muted">{selectedUser.email || selectedUser.id}</span>
-                ) : null}
-              </Panel>
             </div>
             {selectedUser ? (
-              <div className="space-y-3 rounded-xl border border-border/60 p-3">
+              <div className="space-y-3 border-t border-border/60 pt-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-ink">Global roles</p>
-                    <p className="text-xs text-ink-muted">Read-only roles assigned at the account level.</p>
-                  </div>
+                  <p className="text-sm font-semibold text-ink">Global roles</p>
                   {roleManagerBusy ? (
                     <Chip variant="ghost" className="text-[11px] text-ink-muted">
                       Saving...
@@ -529,9 +547,13 @@ export default function EventAccessPage() {
                 {selectedAssignments.length === 0 ? (
                   <span className="text-xs text-ink-muted">No role assigned</span>
                 ) : (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {selectedAssignments.map((assignment) => (
-                      <Chip key={assignment.assignmentId || assignment.roleId} variant="tag">
+                      <Chip
+                        key={assignment.assignmentId || assignment.roleId}
+                        variant="tag"
+                        className="text-[11px]"
+                      >
                         {assignment.roleName || "Role"}
                       </Chip>
                     ))}
@@ -546,13 +568,15 @@ export default function EventAccessPage() {
                   ) : selectedEventRolesForEvent.length === 0 ? (
                     <span className="text-xs text-ink-muted">No event roles assigned for this event.</span>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-1.5">
                       {selectedEventRolesForEvent.map((entry) => (
                         <div
                           key={entry.assignmentId || `${entry.eventId}-${entry.roleId}`}
                           className="flex items-center gap-1"
                         >
-                          <Chip variant="ghost">{formatEventRoleLabel(entry)}</Chip>
+                          <Chip variant="ghost" className="text-[11px]">
+                            {formatEventRoleLabel(entry)}
+                          </Chip>
                           <button
                             type="button"
                             className="text-[10px] uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
@@ -597,56 +621,64 @@ export default function EventAccessPage() {
                   Admin-capable roles are excluded here. Use Admin access control for global admin assignment.
                 </p>
               </div>
-            ) : (
-              <p className="text-xs text-ink-muted">Search for a user to manage their roles.</p>
-            )}
+            ) : null}
           </Panel>
-          <Panel className="space-y-3 border border-border/70 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-ink">Role permissions</p>
-                <p className="text-xs text-ink-muted">
-                  Each role grants these permissions to users who hold it.
-                </p>
-              </div>
-              <Chip variant="ghost" className="text-xs text-ink-muted">
-                Permissions mapped: {rolesWithPermissions.length}
-              </Chip>
+          <Panel className="space-y-3 p-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-sm font-semibold text-ink">Role permissions</p>
+              <p className="text-[11px] text-ink-muted">
+                Each row adds only what it grants beyond the rows above.
+              </p>
             </div>
-            {rolesWithPermissions.length === 0 ? (
+            {rolePermissionRows.length === 0 ? (
               <p className="text-xs text-ink-muted">No role catalog loaded yet.</p>
             ) : (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {rolesWithPermissions.map((role) => (
-                  <div key={role.id} className="rounded-xl border border-border/60 p-3">
-                    <p className="text-sm font-semibold text-ink">{role.name}</p>
-                    <p className="text-xs text-ink-muted">{role.description || "No description"}</p>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {role.permissions.length === 0 ? (
-                        <Chip variant="ghost" className="text-[11px] text-ink-muted">
-                          No permissions assigned
-                        </Chip>
-                      ) : (
-                        role.permissions.map((permission) => (
-                          <Chip key={permission.key} variant="tag" className="text-[11px]">
-                            {formatPermissionLabel(permission)}
-                          </Chip>
-                        ))
-                      )}
-                    </div>
+              <div className="divide-y divide-border/60">
+                {rolePermissionRows.map(({ role, unique, sharedCount }) => (
+                  <div
+                    key={role.id}
+                    className="flex flex-col gap-1.5 py-2.5 sm:flex-row sm:items-start sm:gap-4"
+                  >
+                    <p className="text-sm font-semibold text-ink sm:w-40 sm:shrink-0">{role.name}</p>
+                    {role.permissions.length === 0 ? (
+                      <span className="text-xs text-ink-muted">No permissions assigned</span>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {sharedCount > 0 ? (
+                          <span className="text-[11px] text-ink-muted">+{sharedCount} shared</span>
+                        ) : null}
+                        {unique.length === 0 ? (
+                          <span className="text-[11px] text-ink-muted">No new permissions</span>
+                        ) : (
+                          unique.map((permission) => (
+                            <Chip
+                              key={
+                                permission.key ||
+                                permission.name ||
+                                permission.value ||
+                                formatPermissionLabel(permission)
+                              }
+                              variant="tag"
+                              className="text-[11px]"
+                            >
+                              {formatPermissionLabel(permission)}
+                            </Chip>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </Panel>
+          <Panel className="space-y-4 p-5">
           <SectionHeader
-            eyebrow="Directory"
             eyebrowVariant="tag"
             title="People and event access"
-            description="Filter by name, role, or email to review event-linked access."
           />
           <div className="grid gap-4 md:grid-cols-3">
-            <Field label="Search" hint="Name, email, or UUID">
+            <Field label="Search">
               <Input
                 type="search"
                 value={search}
@@ -654,7 +686,7 @@ export default function EventAccessPage() {
                 onChange={(event) => setSearch(event.target.value)}
               />
             </Field>
-            <Field label="Filter by role" hint="Limit the grid to a tier">
+            <Field label="Filter by role">
               <Select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
                 <option value="all">All roles</option>
                 <option value="none">No role assigned</option>
@@ -665,42 +697,38 @@ export default function EventAccessPage() {
                 ))}
               </Select>
             </Field>
-            <Panel className="flex flex-col justify-center gap-1 p-4 text-xs">
-              <span className="font-semibold uppercase tracking-wide text-ink-muted">Highlight</span>
+            <div className="flex flex-col justify-end gap-0.5 pb-1 text-xs">
               <span className="text-ink">
                 Showing {pageStart}-{pageEnd} of {totalResults}
               </span>
               <span className="text-ink-muted">
                 Page {currentPage} of {pageCount}
               </span>
-            </Panel>
+            </div>
           </div>
           {error ? (
             <Panel className="border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</Panel>
           ) : null}
-          <Panel className="p-0">
-            {loading ? (
+          <div className="overflow-hidden rounded-xl border border-border/60">
+            {directoryLoading ? (
               <div className="p-6 text-sm text-ink-muted">Loading access records...</div>
             ) : isEmpty ? (
               <div className="p-6 text-sm text-ink-muted">No users match the selected filters.</div>
             ) : (
               <div className="max-h-[65vh] overflow-auto">
-                <table className="min-w-full divide-y divide-border text-xs">
+                <table className="w-full table-fixed divide-y divide-border text-[11px] sm:text-xs">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-ink-muted">
-                        User ID
-                      </th>
-                      <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-ink-muted">
+                      <th className="w-[22%] px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-ink-muted sm:px-3 sm:py-2">
                         Name
                       </th>
-                      <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-ink-muted">
+                      <th className="w-[24%] px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-ink-muted sm:px-3 sm:py-2">
                         Email
                       </th>
-                      <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-ink-muted">
+                      <th className="w-[18%] px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-ink-muted sm:px-3 sm:py-2">
                         Access levels
                       </th>
-                      <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-ink-muted">
+                      <th className="w-[36%] px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-ink-muted sm:px-3 sm:py-2">
                         Event roles
                       </th>
                     </tr>
@@ -711,31 +739,40 @@ export default function EventAccessPage() {
                       const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
                       return (
                         <tr key={user.id} className="hover:bg-surface-muted">
-                          <td className="px-3 py-2 font-mono text-[11px] text-ink-muted">{user.id}</td>
-                          <td className="px-3 py-2 text-sm font-semibold text-ink">
+                          <td className="break-words px-2 py-1.5 align-top text-[13px] font-semibold text-ink sm:px-3 sm:py-2 sm:text-sm">
                             {user.fullName || "Unnamed profile"}
                           </td>
-                          <td className="px-3 py-2 text-[13px] text-ink-muted">{user.email || "-"}</td>
-                          <td className="px-3 py-2">
+                          <td className="break-all px-2 py-1.5 align-top text-[11px] text-ink-muted sm:px-3 sm:py-2 sm:text-[13px]">
+                            {user.email || "-"}
+                          </td>
+                          <td className="px-2 py-1.5 align-top sm:px-3 sm:py-2">
                             {assignments.length === 0 ? (
                               <span className="text-xs text-ink-muted">No role assigned</span>
                             ) : (
-                              <div className="flex flex-wrap gap-1">
+                              <div className="flex flex-wrap gap-0.5 sm:gap-1">
                                 {assignments.map((assignment) => (
-                                  <Chip key={assignment.assignmentId || assignment.roleId} variant="tag">
+                                  <Chip
+                                    key={assignment.assignmentId || assignment.roleId}
+                                    variant="tag"
+                                    className="text-[11px]"
+                                  >
                                     {assignment.roleName || "Role"}
                                   </Chip>
                                 ))}
                               </div>
                             )}
                           </td>
-                          <td className="px-3 py-2">
+                          <td className="px-2 py-1.5 align-top sm:px-3 sm:py-2">
                             {eventRoles.length === 0 ? (
                               <span className="text-xs text-ink-muted">No event roles</span>
                             ) : (
-                              <div className="flex flex-wrap gap-1">
+                              <div className="flex flex-wrap gap-0.5 sm:gap-1">
                                 {eventRoles.map((entry) => (
-                                  <Chip key={entry.assignmentId || `${entry.eventId}-${entry.roleId}`} variant="ghost">
+                                  <Chip
+                                    key={entry.assignmentId || `${entry.eventId}-${entry.roleId}`}
+                                    variant="ghost"
+                                    className="text-[11px]"
+                                  >
                                     {formatEventRoleLabel(entry)}
                                   </Chip>
                                 ))}
@@ -749,7 +786,7 @@ export default function EventAccessPage() {
                 </table>
               </div>
             )}
-          </Panel>
+          </div>
           {totalResults > 0 ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs text-ink-muted">
@@ -775,7 +812,7 @@ export default function EventAccessPage() {
               </div>
             </div>
           ) : null}
-        </Card>
+          </Panel>
       </SectionShell>
     </div>
   );

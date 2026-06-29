@@ -511,8 +511,8 @@ export function ScorekeeperPopups({
                     className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">Select gender line...</option>
-                    <option value="male">Male (men take the field first)</option>
-                    <option value="female">Female (women take the field first)</option>
+                    <option value="male">Male matching</option>
+                    <option value="female">Female matching</option>
                   </select>
                 </label>
               )}

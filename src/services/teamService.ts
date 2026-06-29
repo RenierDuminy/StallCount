@@ -40,8 +40,10 @@ export async function getAllTeams(limit?: number): Promise<TeamRow[]> {
   );
 }
 
+export type TeamListRow = Pick<TeamRow, "id" | "name" | "short_name">;
+
 export type TeamPageResult = {
-  rows: TeamRow[];
+  rows: TeamListRow[];
   total: number;
   page: number;
   pageSize: number;
@@ -64,7 +66,7 @@ export async function getTeamsPage(options: {
     async () => {
       let query = supabase
         .from("teams")
-        .select("id, name, short_name, created_at, attributes", { count: "exact" })
+        .select("id, name, short_name", { count: "exact" })
         .order("name", { ascending: true })
         .range(from, to);
 
@@ -80,7 +82,7 @@ export async function getTeamsPage(options: {
       }
 
       return {
-        rows: (data ?? []) as TeamRow[],
+        rows: (data ?? []) as TeamListRow[],
         total: count ?? 0,
         page,
         pageSize,
@@ -281,67 +283,73 @@ export async function getTeamDetails(teamId: string): Promise<TeamDetailsRow | n
     return null;
   }
 
-  const { data, error } = await supabase
-    .from("teams")
-    .select(
-      `
-        id,
-        name,
-        short_name,
-        created_at,
-        attributes,
-        division_links:division_teams(
-          division:divisions(
+  return getCachedQuery(
+    `teams:details:${teamId}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("teams")
+        .select(
+          `
             id,
             name,
-            level,
-            event:events(id, name, location)
-          )
+            short_name,
+            created_at,
+            attributes,
+            division_links:division_teams(
+              division:divisions(
+                id,
+                name,
+                level,
+                event:events(id, name, location)
+              )
+            )
+          `
         )
-      `
-    )
-    .eq("id", teamId)
-    .maybeSingle();
+        .eq("id", teamId)
+        .maybeSingle();
 
-  if (error) {
-    throw new Error(error.message || "Failed to load team details");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load team details");
+      }
 
-  if (!data) {
-    return null;
-  }
+      if (!data) {
+        return null;
+      }
 
-  const firstDivision = Array.isArray((data as any).division_links)
-    ? (data as any).division_links[0]
-    : null;
+      const firstDivision = Array.isArray((data as any).division_links)
+        ? (data as any).division_links[0]
+        : null;
 
-  const division =
-    firstDivision?.division && firstDivision.division.id
-      ? {
-          id: firstDivision.division.id as string,
-          name: firstDivision.division.name as string,
-          level: (firstDivision.division.level as string | null) ?? null,
-          event: firstDivision.division.event
-            ? {
-                id: firstDivision.division.event.id as string,
-                name: firstDivision.division.event.name as string,
-                location: (firstDivision.division.event.location as string | null) ?? null,
-              }
+      const division =
+        firstDivision?.division && firstDivision.division.id
+          ? {
+              id: firstDivision.division.id as string,
+              name: firstDivision.division.name as string,
+              level: (firstDivision.division.level as string | null) ?? null,
+              event: firstDivision.division.event
+                ? {
+                    id: firstDivision.division.event.id as string,
+                    name: firstDivision.division.event.name as string,
+                    location: (firstDivision.division.event.location as string | null) ?? null,
+                  }
+                : null,
+            }
+          : null;
+
+      return {
+        id: data.id,
+        name: data.name,
+        short_name: data.short_name ?? null,
+        created_at: data.created_at,
+        attributes:
+          data.attributes && typeof data.attributes === "object"
+            ? (data.attributes as Record<string, unknown>)
             : null,
-        }
-      : null;
-
-  return {
-    id: data.id,
-    name: data.name,
-    short_name: data.short_name ?? null,
-    created_at: data.created_at,
-    attributes:
-      data.attributes && typeof data.attributes === "object"
-        ? (data.attributes as Record<string, unknown>)
-        : null,
-    division,
-  };
+        division,
+      };
+    },
+    { ttlMs: TEAMS_CACHE_TTL_MS },
+  );
 }
 
 type LinkedTeam = {
@@ -562,80 +570,86 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
     return [];
   }
 
-  const { data, error } = await supabase
-    .from("player_match_stats")
-    .select(
-      `
-        match_id,
-        player_id,
-        goals,
-        assists,
-        blocks,
-        turnovers,
-        player:player(id, name, jersey_number)
-      `
-    )
-    .eq("team_id", teamId);
+  return getCachedQuery(
+    `teams:player-stats:${teamId}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("player_match_stats")
+        .select(
+          `
+            match_id,
+            player_id,
+            goals,
+            assists,
+            blocks,
+            turnovers,
+            player:player(id, name, jersey_number)
+          `
+        )
+        .eq("team_id", teamId);
 
-  if (error) {
-    throw new Error(error.message || "Failed to load player stats");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load player stats");
+      }
 
-  const rows = (data ?? []) as PlayerStatQueryRow[];
-  const statsMap = new Map<
-    string,
-    PlayerStatRow & {
-      matchIds: Set<string>;
-    }
-  >();
+      const rows = (data ?? []) as PlayerStatQueryRow[];
+      const statsMap = new Map<
+        string,
+        PlayerStatRow & {
+          matchIds: Set<string>;
+        }
+      >();
 
-  for (const row of rows) {
-    const playerId = row.player_id;
-    if (!playerId) continue;
+      for (const row of rows) {
+        const playerId = row.player_id;
+        if (!playerId) continue;
 
-    if (!statsMap.has(playerId)) {
-      statsMap.set(playerId, {
-        playerId,
-        playerName: row.player?.name || "Player",
-        jerseyNumber: row.player?.jersey_number ?? null,
-        goals: 0,
-        assists: 0,
-        blocks: 0,
-        turnovers: 0,
-        games: 0,
-        matchIds: new Set<string>(),
+        if (!statsMap.has(playerId)) {
+          statsMap.set(playerId, {
+            playerId,
+            playerName: row.player?.name || "Player",
+            jerseyNumber: row.player?.jersey_number ?? null,
+            goals: 0,
+            assists: 0,
+            blocks: 0,
+            turnovers: 0,
+            games: 0,
+            matchIds: new Set<string>(),
+          });
+        }
+
+        const entry = statsMap.get(playerId);
+        if (!entry) continue;
+
+        entry.goals += row.goals ?? 0;
+        entry.assists += row.assists ?? 0;
+        entry.blocks += row.blocks ?? 0;
+        entry.turnovers += row.turnovers ?? 0;
+        entry.matchIds.add(row.match_id);
+      }
+
+      const results: PlayerStatRow[] = Array.from(statsMap.values()).map((entry) => ({
+        playerId: entry.playerId,
+        playerName: entry.playerName,
+        jerseyNumber: entry.jerseyNumber,
+        goals: entry.goals,
+        assists: entry.assists,
+        blocks: entry.blocks,
+        turnovers: entry.turnovers,
+        games: entry.matchIds.size,
+        matchIds: Array.from(entry.matchIds),
+      }));
+
+      return results.sort((a, b) => {
+        const aTotal = a.goals + a.assists;
+        const bTotal = b.goals + b.assists;
+        if (bTotal !== aTotal) return bTotal - aTotal;
+        if (b.goals !== a.goals) return b.goals - a.goals;
+        return a.playerName.localeCompare(b.playerName);
       });
-    }
-
-    const entry = statsMap.get(playerId);
-    if (!entry) continue;
-
-    entry.goals += row.goals ?? 0;
-    entry.assists += row.assists ?? 0;
-    entry.blocks += row.blocks ?? 0;
-    entry.turnovers += row.turnovers ?? 0;
-    entry.matchIds.add(row.match_id);
-  }
-
-  const results: PlayerStatRow[] = Array.from(statsMap.values()).map((entry) => ({
-    playerId: entry.playerId,
-    playerName: entry.playerName,
-    jerseyNumber: entry.jerseyNumber,
-    goals: entry.goals,
-    assists: entry.assists,
-    blocks: entry.blocks,
-    turnovers: entry.turnovers,
-    games: entry.matchIds.size,
-    matchIds: Array.from(entry.matchIds),
-  }));
-
-  return results.sort((a, b) => {
-    const aTotal = a.goals + a.assists;
-    const bTotal = b.goals + b.assists;
-    if (bTotal !== aTotal) return bTotal - aTotal;
-    if (b.goals !== a.goals) return b.goals - a.goals;
-    return a.playerName.localeCompare(b.playerName);
-  });
+    },
+    { ttlMs: TEAM_MATCHES_CACHE_TTL_MS },
+  );
 }
 
 export async function getEventPlayerMatchStats(eventId: string): Promise<PlayerMatchStatRow[]> {

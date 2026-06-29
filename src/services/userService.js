@@ -204,32 +204,43 @@ export async function getUserAccessRoleAssignments(userId) {
   return combined;
 }
 
+const ACCESS_CONTROL_USER_SELECT = `
+  id,
+  email,
+  full_name,
+  created_at,
+  assignments:user_roles!user_roles_user_id_fkey(
+    id,
+    role_id,
+    created_at,
+    role:roles(id, name, description, scope)
+  ),
+  event_roles:event_user_roles!event_user_roles_user_id_fkey(
+    id,
+    role_id,
+    event_id,
+    created_at,
+    granted_by,
+    role:roles(id, name, description, scope),
+    event:events(id, name, start_date, end_date)
+  )
+`;
+
+function mapAccessControlUserRow(row) {
+  return {
+    id: row.id,
+    email: row.email || "",
+    fullName: row.full_name || "",
+    createdAt: row.created_at || null,
+    roles: mapRoleAssignments(row.assignments),
+    eventRoles: mapEventRoleAssignments(row.event_roles),
+  };
+}
+
 export async function getAccessControlUsers(limit = 500) {
   let query = supabase
     .from("profiles")
-    .select(
-      `
-        id,
-        email,
-        full_name,
-        created_at,
-        assignments:user_roles!user_roles_user_id_fkey(
-          id,
-          role_id,
-          created_at,
-          role:roles(id, name, description, scope)
-        ),
-        event_roles:event_user_roles!event_user_roles_user_id_fkey(
-          id,
-          role_id,
-          event_id,
-          created_at,
-          granted_by,
-          role:roles(id, name, description, scope),
-          event:events(id, name, start_date, end_date)
-        )
-      `,
-    )
+    .select(ACCESS_CONTROL_USER_SELECT)
     .order("created_at", { ascending: true });
 
   if (typeof limit === "number") {
@@ -242,19 +253,82 @@ export async function getAccessControlUsers(limit = 500) {
     throw new Error(error.message || "Failed to load users");
   }
 
-  return (data ?? []).map((row) => {
-    const roles = mapRoleAssignments(row.assignments);
-    const eventRoles = mapEventRoleAssignments(row.event_roles);
+  return (data ?? []).map(mapAccessControlUserRow);
+}
 
-    return {
-      id: row.id,
-      email: row.email || "",
-      fullName: row.full_name || "",
-      createdAt: row.created_at || null,
-      roles,
-      eventRoles,
-    };
-  });
+// Escape PostgREST `or` filter special characters so a search term containing
+// commas/parens can't break out of the filter expression.
+function escapeOrPattern(value) {
+  return String(value).replace(/([%,()\\])/g, "\\$1");
+}
+
+/**
+ * Server-side searched + paginated access-control users.
+ * Returns { users, total } where total is the full match count (for paging).
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.search]   Name / email / id substring.
+ * @param {number} [opts.page]     1-based page number.
+ * @param {number} [opts.pageSize] Rows per page.
+ */
+export async function searchAccessControlUsers({
+  search = "",
+  page = 1,
+  pageSize = 20,
+} = {}) {
+  const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  const safeSize = Number.isFinite(pageSize) && pageSize > 0 ? Math.floor(pageSize) : 20;
+  const from = (safePage - 1) * safeSize;
+  const to = from + safeSize - 1;
+
+  let query = supabase
+    .from("profiles")
+    .select(ACCESS_CONTROL_USER_SELECT, { count: "exact" })
+    .order("created_at", { ascending: true })
+    .range(from, to);
+
+  const term = search.trim();
+  if (term) {
+    const pattern = `%${escapeOrPattern(term)}%`;
+    // `id` is a uuid; PostgREST's or() can't cast it to text for ilike, so we
+    // only add an exact id match when the term is a full UUID.
+    const filters = [`full_name.ilike.${pattern}`, `email.ilike.${pattern}`];
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(term)) {
+      filters.push(`id.eq.${term}`);
+    }
+    query = query.or(filters.join(","));
+  }
+
+  const { data, error, count } = await query;
+
+  if (error) {
+    throw new Error(error.message || "Failed to load users");
+  }
+
+  return {
+    users: (data ?? []).map(mapAccessControlUserRow),
+    total: typeof count === "number" ? count : (data?.length ?? 0),
+  };
+}
+
+/**
+ * Fetch a single access-control user by id, with full role detail.
+ * Used by the role manager once a user is selected from search results.
+ */
+export async function getAccessControlUserById(userId) {
+  if (!userId) return null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(ACCESS_CONTROL_USER_SELECT)
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to load user");
+  }
+
+  return data ? mapAccessControlUserRow(data) : null;
 }
 
 export async function getEventLinkedUsers(eventId) {

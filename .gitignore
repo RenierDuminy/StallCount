@@ -45,3 +45,6 @@ DEMO/index.html
 DEMO/scripts.js
 
 supabase/.temp/
+
+# Documentation export (not part of source)
+CLAUDE.md

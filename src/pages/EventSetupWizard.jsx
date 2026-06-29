@@ -391,6 +391,66 @@ const TextField = ({ label, className = "", inputClassName = "", ...props }) => 
   </label>
 );
 
+const TrashIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M3 6h18" />
+    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6M14 11v6" />
+  </svg>
+);
+
+const DeleteIconButton = ({ label = "Delete", className = "", ...props }) => (
+  <button
+    type="button"
+    className={mergeClassNames("wizard-icon-button is-destructive", className)}
+    aria-label={label}
+    title={label}
+    {...props}
+  >
+    <TrashIcon />
+  </button>
+);
+
+const PencilIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </svg>
+);
+
+const EditIconButton = ({ label = "Edit", className = "", ...props }) => (
+  <button
+    type="button"
+    className={mergeClassNames("wizard-icon-button", className)}
+    aria-label={label}
+    title={label}
+    {...props}
+  >
+    <PencilIcon />
+  </button>
+);
+
 export default function EventSetupWizardPage() {
   const persistedDraftRef = useRef(null);
   if (persistedDraftRef.current === null) {
@@ -650,36 +710,42 @@ export default function EventSetupWizardPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") {
-      return;
+      return undefined;
     }
-    const draft = {
-      updatedAt: Date.now(),
-      step,
-      originalHierarchy: originalHierarchyRef.current,
-      event,
-      divisions,
-      eventVenues,
-      venueForm,
-      venueMode,
-      selectedExistingVenueId,
-      divisionForm,
-      divisionTeamForm,
-      createTeamForm,
-      poolForm,
-      teamForm,
-      matchForm,
-      rules,
-      eventMode,
-      selectedEventId,
-    };
-    try {
-      window.localStorage.setItem(
-        WIZARD_DRAFT_STORAGE_KEY,
-        JSON.stringify(draft),
-      );
-    } catch {
-      // Ignore storage errors and keep the in-memory draft working.
-    }
+    // Debounce: serializing the full nested draft and writing to localStorage
+    // is expensive, so don't do it on every keystroke. Persist once typing
+    // settles (or on unmount via the cleanup running before the next effect).
+    const handle = setTimeout(() => {
+      const draft = {
+        updatedAt: Date.now(),
+        step,
+        originalHierarchy: originalHierarchyRef.current,
+        event,
+        divisions,
+        eventVenues,
+        venueForm,
+        venueMode,
+        selectedExistingVenueId,
+        divisionForm,
+        divisionTeamForm,
+        createTeamForm,
+        poolForm,
+        teamForm,
+        matchForm,
+        rules,
+        eventMode,
+        selectedEventId,
+      };
+      try {
+        window.localStorage.setItem(
+          WIZARD_DRAFT_STORAGE_KEY,
+          JSON.stringify(draft),
+        );
+      } catch {
+        // Ignore storage errors and keep the in-memory draft working.
+      }
+    }, 400);
+    return () => clearTimeout(handle);
   }, [
     createTeamForm,
     divisionForm,
@@ -1776,9 +1842,9 @@ export default function EventSetupWizardPage() {
     const isRulesLocked = rules.format === "wfdfChampionship";
     const isMixedDivision = rules.division === "mixed";
     return (
-      <div className="wizard-stack-lg">
+      <div className="wizard-stack-xl">
       <Panel variant="tinted" className="wizard-stack-md wizard-pad-md">
-        <SectionHeader eyebrow="Mode" title="Create or edit" />
+        <SectionHeader title="Create or edit" />
         <div className="wizard-grid wizard-gap-md wizard-grid-cols-2-md">
           {[
             {
@@ -1899,7 +1965,6 @@ export default function EventSetupWizardPage() {
       </Panel>
       <Panel variant="muted" className="wizard-stack-lg wizard-pad-md">
         <SectionHeader
-          eyebrow="Venues"
           title="Event venues"
           description="Define the locations this event will use."
         />
@@ -2071,7 +2136,7 @@ export default function EventSetupWizardPage() {
             </div>
           </form>
         )}
-        <div className="wizard-stack-sm">
+        <div className="wizard-divider-top wizard-stack-sm">
           <div className="wizard-toolbar">
             <span className="wizard-text-strong">Defined venues</span>
             <Chip>{eventVenues.length}</Chip>
@@ -2081,49 +2146,35 @@ export default function EventSetupWizardPage() {
               Add at least one venue to capture playing locations.
             </p>
           ) : (
-            <div className="wizard-grid wizard-gap-md wizard-grid-cols-2-md">
+            <div className="wizard-venue-list">
               {eventVenues.map((venue) => (
-                <div
-                  key={venue.id}
-                  className="wizard-box"
-                >
-                  <div className="wizard-flex wizard-items-center wizard-justify-between wizard-gap-sm">
-                    <p className="wizard-text-strong">
-                      {formatVenueOptionLabel(venue)}
-                    </p>
-                    {venue.venueId && (
-                      <span className="wizard-tag">
-                        Existing
-                      </span>
-                    )}
-                  </div>
-                  <div className="wizard-mt-sm wizard-stack-xs wizard-text-muted-xs">
-                    {(venue.latitude || venue.longitude) && (
-                      <p>
-                        Coords: {venue.latitude || "?"},{" "}
-                        {venue.longitude || "?"}
-                      </p>
-                    )}
-                    {venue.notes && <p className="wizard-clamp-3">{venue.notes}</p>}
-                  </div>
-                  <div className="wizard-mt-md wizard-flex wizard-gap-sm">
-                    <button
-                      type="button"
-                      className="sc-button is-ghost"
+                <div key={venue.id} className="wizard-venue-row">
+                  <div className="wizard-venue-row__actions">
+                    <EditIconButton
+                      label="Edit venue"
                       onClick={() => handleVenueEdit(venue.id)}
                       disabled={eventFieldsDisabled}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="sc-button is-destructive"
+                    />
+                    <DeleteIconButton
+                      label="Remove venue"
                       onClick={() => handleVenueRemove(venue.id)}
                       disabled={eventFieldsDisabled}
-                    >
-                      Remove
-                    </button>
+                    />
                   </div>
+                  <p className="wizard-text-strong">
+                    {formatVenueOptionLabel(venue)}
+                    {venue.venueId && (
+                      <span className="wizard-tag wizard-ml-sm">Existing</span>
+                    )}
+                  </p>
+                  {(venue.latitude || venue.longitude) && (
+                    <p className="wizard-text-muted-xs">
+                      {venue.latitude || "?"}, {venue.longitude || "?"}
+                    </p>
+                  )}
+                  {venue.notes && (
+                    <p className="wizard-text-muted-xs wizard-clamp-3">{venue.notes}</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -2131,7 +2182,7 @@ export default function EventSetupWizardPage() {
         </div>
       </Panel>
       <Panel variant="muted" className="wizard-stack-lg wizard-pad-md">
-        <SectionHeader eyebrow="Rules" title="Game configuration" />
+        <SectionHeader title="Game configuration" />
         <div className="wizard-grid wizard-gap-md wizard-grid-cols-123">
           <label className="sc-fieldset">
             <span className="sc-field-label">
@@ -2897,7 +2948,7 @@ export default function EventSetupWizardPage() {
     return (
     <div className="wizard-grid wizard-gap-xl wizard-grid-cols-sidebar-md">
       <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
-        <SectionHeader eyebrow="Divisions" title="Add or edit" />
+        <SectionHeader title="Add or edit" />
         <form className="wizard-stack-md" onSubmit={handleDivisionSubmit}>
           <TextField
             label="Name"
@@ -2942,9 +2993,8 @@ export default function EventSetupWizardPage() {
                 </p>
               </div>
               <div className="wizard-flex wizard-gap-sm">
-                <button
-                  type="button"
-                  className="sc-button is-ghost"
+                <EditIconButton
+                  label="Edit division"
                   onClick={() =>
                     setDivisionForm({
                       id: division.id,
@@ -2952,20 +3002,15 @@ export default function EventSetupWizardPage() {
                       level: division.level || "",
                     })
                   }
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="sc-button is-destructive"
+                />
+                <DeleteIconButton
+                  label="Delete division"
                   onClick={() =>
                     setDivisions((prev) =>
                       prev.filter((entry) => entry.id !== division.id),
                     )
                   }
-                >
-                  Delete
-                </button>
+                />
               </div>
             </Panel>
           ))
@@ -2973,7 +3018,7 @@ export default function EventSetupWizardPage() {
         {divisions.length > 0 && (
           <>
             <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
-              <SectionHeader eyebrow="Division teams" title="Assign rosters" />
+              <SectionHeader title="Assign rosters" />
               <form className="wizard-stack-md" onSubmit={handleDivisionTeamSubmit}>
                 <label className="sc-fieldset">
                   <span className="sc-field-label">
@@ -3025,9 +3070,8 @@ export default function EventSetupWizardPage() {
                       className="wizard-flex wizard-items-center wizard-justify-between wizard-box-compact"
                     >
                       <span>{team.displayLabel || team.name}</span>
-                      <button
-                        type="button"
-                        className="sc-button is-destructive"
+                      <DeleteIconButton
+                        label="Remove team"
                         onClick={() =>
                           removeDivisionTeam(
                             manageDivision.id,
@@ -3035,16 +3079,14 @@ export default function EventSetupWizardPage() {
                             team.teamId,
                           )
                         }
-                      >
-                        Remove
-                      </button>
+                      />
                     </div>
                   ))}
                 </div>
               )}
             </Panel>
             <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
-              <SectionHeader eyebrow="Teams" title="Create new team" />
+              <SectionHeader title="Create new team" />
               <form className="wizard-stack-md" onSubmit={handleCreateTeamSubmit}>
                 <label className="sc-fieldset">
                   <span className="sc-field-label">
@@ -3115,7 +3157,7 @@ export default function EventSetupWizardPage() {
   const renderPoolsStep = () => (
     <div className="wizard-grid wizard-gap-xl wizard-grid-cols-sidebar-md">
       <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
-        <SectionHeader eyebrow="Pools" title="Within division" />
+        <SectionHeader title="Within division" />
         <form className="wizard-stack-md" onSubmit={handlePoolSubmit}>
           <label className="sc-fieldset">
             <span className="sc-field-label">
@@ -3171,9 +3213,8 @@ export default function EventSetupWizardPage() {
                 </p>
               </div>
               <div className="wizard-flex wizard-gap-sm">
-                <button
-                  type="button"
-                  className="sc-button is-ghost"
+                <EditIconButton
+                  label="Edit pool"
                   onClick={() =>
                     setPoolForm({
                       id: pool.id,
@@ -3181,16 +3222,11 @@ export default function EventSetupWizardPage() {
                       name: pool.name,
                     })
                   }
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="sc-button is-destructive"
+                />
+                <DeleteIconButton
+                  label="Delete pool"
                   onClick={() => removePool(pool.id)}
-                >
-                  Delete
-                </button>
+                />
               </div>
             </Panel>
           ))
@@ -3254,7 +3290,7 @@ export default function EventSetupWizardPage() {
       }));
     };
     return (
-    <div className="wizard-stack-lg">
+    <div className="wizard-stack-xl">
       {teamOptionsLoading && (
         <div className="sc-field-label">
           Loading team directory...
@@ -3266,7 +3302,6 @@ export default function EventSetupWizardPage() {
       <div className="wizard-grid wizard-gap-lg wizard-grid-cols-2-lg">
         <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
           <SectionHeader
-            eyebrow="Teams"
             title={
               activePool
                 ? `Pool ${activePool.name}${
@@ -3366,9 +3401,8 @@ export default function EventSetupWizardPage() {
                     {team.displayLabel || team.name} - Seed {team.seed || "--"}
                   </span>
                   <div className="wizard-flex wizard-gap-sm">
-                    <button
-                      type="button"
-                      className="sc-button is-ghost"
+                    <EditIconButton
+                      label="Edit team"
                       onClick={() =>
                         setTeamForm({
                           id: team.id,
@@ -3378,12 +3412,9 @@ export default function EventSetupWizardPage() {
                           seed: team.seed || "",
                         })
                       }
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="sc-button is-destructive"
+                    />
+                    <DeleteIconButton
+                      label="Delete team"
                       onClick={() =>
                         upsertPoolEntity(activePool.id, (pool) => ({
                           ...pool,
@@ -3392,9 +3423,7 @@ export default function EventSetupWizardPage() {
                           ),
                         }))
                       }
-                    >
-                      Delete
-                    </button>
+                    />
                   </div>
                 </div>
               ))
@@ -3402,7 +3431,7 @@ export default function EventSetupWizardPage() {
           </div>
         </Panel>
         <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
-          <SectionHeader eyebrow="Matches" title="Round planning" />
+          <SectionHeader title="Round planning" />
           <label className="sc-fieldset">
             <span className="sc-field-label">
               Pool
@@ -3577,9 +3606,8 @@ export default function EventSetupWizardPage() {
                               Venue: {match.venueLabel || "Not assigned"}
                             </p>
                             <div className="wizard-mt-xs wizard-flex wizard-gap-sm">
-                              <button
-                                type="button"
-                                className="sc-button is-ghost"
+                              <EditIconButton
+                                label="Edit match"
                                 onClick={() =>
                                   setMatchForm({
                                     id: match.id,
@@ -3594,12 +3622,9 @@ export default function EventSetupWizardPage() {
                                     venueRefId: match.venueRefId || "",
                                   })
                                 }
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                className="sc-button is-destructive"
+                              />
+                              <DeleteIconButton
+                                label="Delete match"
                                 onClick={() => {
                                   if (
                                     typeof window !== "undefined" &&
@@ -3614,9 +3639,7 @@ export default function EventSetupWizardPage() {
                                     ),
                                   }));
                                 }}
-                              >
-                                Delete
-                              </button>
+                              />
                             </div>
                           </div>
                         ))}
@@ -3634,10 +3657,9 @@ export default function EventSetupWizardPage() {
 };
 
   const renderReviewStep = () => (
-    <div className="wizard-stack-lg">
+    <div className="wizard-stack-xl">
       <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader
-          eyebrow="Event"
           title={event.name || "Untitled event"}
           description="Verify the baseline metadata."
         />
@@ -3687,7 +3709,6 @@ export default function EventSetupWizardPage() {
 
       <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader
-          eyebrow="Venues"
           title="Event venues"
           description="Confirm the locations tied to this event."
         />
@@ -3721,18 +3742,15 @@ export default function EventSetupWizardPage() {
       </Panel>
 
       <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
-        <SectionHeader eyebrow="Structure" title="Divisions & pools" />
+        <SectionHeader title="Divisions & pools" />
         {divisions.length === 0 ? (
           <p className="wizard-text-muted">
             Add at least one division to review the structure.
           </p>
         ) : (
-          <div className="wizard-stack-md">
+          <div className="wizard-review-divisions">
             {divisions.map((division) => (
-              <div
-                key={division.id}
-                className="wizard-box"
-              >
+              <div key={division.id} className="wizard-stack-sm">
                 <div className="wizard-flex wizard-flex-wrap wizard-items-center wizard-justify-between wizard-gap-sm">
                   <div>
                     <p className="wizard-text-strong">{division.name}</p>
@@ -3743,16 +3761,13 @@ export default function EventSetupWizardPage() {
                   <Chip>{division.pools?.length || 0} pools</Chip>
                 </div>
                 {(division.pools || []).length === 0 ? (
-                  <p className="wizard-mt-sm wizard-text-muted-xs">
+                  <p className="wizard-text-muted-xs">
                     No pools have been assigned yet.
                   </p>
                 ) : (
-                  <div className="wizard-mt-sm wizard-stack-sm">
+                  <div className="wizard-blueprint-pools wizard-stack-sm">
                     {(division.pools || []).map((pool) => (
-                      <div
-                        key={pool.id}
-                        className="wizard-box wizard-box-dashed wizard-box-xs"
-                      >
+                      <div key={pool.id}>
                         <div className="wizard-flex wizard-flex-wrap wizard-items-center wizard-justify-between">
                           <p className="wizard-text-strong">{pool.name}</p>
                           <span className="wizard-text-muted">
@@ -3784,9 +3799,9 @@ export default function EventSetupWizardPage() {
   const renderConfirmStep = () => {
     const submissionSucceeded = submissionState.status === "success";
     return (
-      <div className="wizard-stack-lg">
+      <div className="wizard-stack-xl">
         <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
-          <SectionHeader eyebrow="Checklist" title="Ready to publish-" />
+          <SectionHeader title="Ready to publish-" />
           <div className="wizard-grid wizard-gap-md wizard-grid-cols-2-md">
             <div className="wizard-box">
               <p className="sc-field-label">
@@ -3833,7 +3848,6 @@ export default function EventSetupWizardPage() {
 
       <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader
-          eyebrow="Confirmation"
           title="Outstanding checklist"
           description="Clear each required item before submitting the event hierarchy."
         />
@@ -3991,9 +4005,7 @@ export default function EventSetupWizardPage() {
       <SectionShell as="header" className="wizard-pad-y-lg">
         <Card className="wizard-stack-lg wizard-pad-responsive">
           <SectionHeader
-            eyebrow="Admin"
             title="Event setup wizard"
-            description="Walk through event creation from high level to granular pools."
             action={
               selectedEventId ? (
                 <button
@@ -4020,9 +4032,7 @@ export default function EventSetupWizardPage() {
       </SectionShell>
 
       <SectionShell as="main" className="wizard-stack-xl">
-        <Card className="wizard-stack-xl wizard-pad-responsive">
           <SectionHeader
-            eyebrow={`Step ${step + 1} of ${STEPS.length}`}
             title={STEPS[step].title}
             description={STEPS[step].description}
           />
@@ -4076,45 +4086,40 @@ export default function EventSetupWizardPage() {
               </button>
             </div>
           </div>
-        </Card>
 
-        <Card className="wizard-stack-md wizard-pad-lg">
+        <Panel variant="muted" className="wizard-stack-md wizard-pad-lg">
           <SectionHeader
-            eyebrow="Blueprint"
             title={event.name || "Untitled event"}
             description="Share this outline with the tournament crew."
           />
           {divisions.length === 0 ? (
-            <Panel variant="muted" className="wizard-pad-md wizard-text-muted">
-              Add divisions to build the blueprint.
-            </Panel>
+            <p className="wizard-text-muted">Add divisions to build the blueprint.</p>
           ) : (
-            divisions.map((division) => (
-              <Panel
-                key={division.id}
-                variant="tinted"
-                className="wizard-stack-sm wizard-pad-md"
-              >
-                <div className="wizard-flex wizard-items-center wizard-justify-between">
-                  <p className="wizard-text-strong">{division.name}</p>
-                  <Chip>{division.pools?.length || 0} pools</Chip>
-                </div>
-                {(division.pools || []).map((pool) => (
-                  <div
-                    key={pool.id}
-                    className="wizard-box"
-                  >
-                    <p className="wizard-text-strong">{pool.name}</p>
-                    <p className="wizard-text-muted-xs">
-                      Teams {pool.teams?.length || 0} / Matches{" "}
-                      {pool.matches?.length || 0}
-                    </p>
+            <div className="wizard-stack-md">
+              {divisions.map((division) => (
+                <div key={division.id} className="wizard-stack-sm">
+                  <div className="wizard-flex wizard-items-center wizard-justify-between">
+                    <p className="wizard-text-strong">{division.name}</p>
+                    <Chip>{division.pools?.length || 0} pools</Chip>
                   </div>
-                ))}
-              </Panel>
-            ))
+                  {(division.pools || []).length > 0 && (
+                    <div className="wizard-blueprint-pools">
+                      {(division.pools || []).map((pool) => (
+                        <div key={pool.id} className="wizard-flex wizard-justify-between">
+                          <span className="wizard-text-strong">{pool.name}</span>
+                          <span className="wizard-text-muted-xs">
+                            Teams {pool.teams?.length || 0} / Matches{" "}
+                            {pool.matches?.length || 0}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
-        </Card>
+        </Panel>
       </SectionShell>
       <datalist id="team-options-list">
         {teamOptions.map((team) => (

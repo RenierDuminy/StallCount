@@ -18,6 +18,8 @@ import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import {
   cloneScrimmageRules,
   getRuleAbbaPattern,
+  getRuleHalftimeBreakMinutes,
+  getRuleHalftimeCapMinutes,
   getRuleMatchDurationMinutes,
   getRuleTimeoutSeconds,
   getRuleTimeoutsPerHalf,
@@ -25,6 +27,9 @@ import {
   normalizeScrimmageRules,
 } from "./scrimmageRules";
 
+const SOFT_CAP_TIMER_LABEL = "Soft Cap";
+const TIME_CAP_TARGET_LABEL = "Time cap reached, new match target set.";
+const OVERTIME_TIMER_LABEL = "Over time (highest + 1)";
 const SCRIMMAGE_MATCH_ID = "scrimmage-local";
 const TEAM_A = { id: "scrimmage-light", name: "Light" };
 const TEAM_B = { id: "scrimmage-dark", name: "Dark" };
@@ -33,14 +38,10 @@ const DEFAULT_RULES = cloneScrimmageRules();
 const DEFAULT_SETUP_FORM = { startTime: "", startingTeamId: "" };
 const DEFAULT_TIMEOUT_USAGE = { A: 0, B: 0 };
 
-function buildDummyRosters() {
-  const demoPlayers = [
-    { id: "demo-1", name: "Demo Player 1", jersey_number: 1 },
-    { id: "demo-2", name: "Demo Player 2", jersey_number: 2 },
-  ];
+function buildDefaultRosters() {
   return {
-    teamA: demoPlayers,
-    teamB: demoPlayers,
+    teamA: [{ id: "demo-a", name: "Demo Player", jersey_number: 1 }],
+    teamB: [{ id: "demo-b", name: "Demo Player", jersey_number: 1 }],
   };
 }
 
@@ -66,9 +67,6 @@ function normalizeSnapshotRosters(rawRosters) {
 
   const teamA = normalizeTeam(rawRosters?.teamA);
   const teamB = normalizeTeam(rawRosters?.teamB);
-  if (!teamA.length && !teamB.length) {
-    return buildDummyRosters();
-  }
   return { teamA, teamB };
 }
 
@@ -131,8 +129,11 @@ function normalizeSecondaryEventMeta(meta) {
   };
 }
 
-function normalizePrimaryTimerState(seconds, running) {
-  const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds)) : 0;
+function normalizePrimaryTimerState(seconds, running, isCountdown = false) {
+  const rounded = Number.isFinite(seconds) ? Math.round(seconds) : 0;
+  // Count-up timers stay at/above zero and stop at the max. Countdown timers may
+  // go negative (overtime) and keep running, like the normal scorekeeper.
+  const safeSeconds = isCountdown ? rounded : Math.max(0, rounded);
   const clampedSeconds = Math.min(safeSeconds, MAX_SCRIMMAGE_TIMER_SECONDS);
   return {
     seconds: clampedSeconds,
@@ -161,6 +162,7 @@ export function useScrimmageData() {
     startingTeamId: TEAM_A.id,
   }));
   const [rules, setRules] = useState(() => cloneScrimmageRules());
+  const [rulesManuallyEdited, setRulesManuallyEdited] = useState(false);
 
   const [score, setScore] = useState({ a: 0, b: 0 });
   const [logs, setLogs] = useState([]);
@@ -178,10 +180,16 @@ export function useScrimmageData() {
   );
   const [secondaryFlashActive, setSecondaryFlashActive] = useState(false);
   const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
+  const [secondaryFlashRateMs, setSecondaryFlashRateMs] = useState(450);
+  const [scoreTarget, setScoreTarget] = useState(null);
+  const [softCapApplied, setSoftCapApplied] = useState(false);
+  const [hardCapReached, setHardCapReached] = useState(false);
+  const [timeCapTargetApplied, setTimeCapTargetApplied] = useState(false);
+  const [halftimeAutoTriggered, setHalftimeAutoTriggered] = useState(false);
   const [timerLabel, setTimerLabel] = useState(DEFAULT_TIMER_LABEL);
   const [consoleError, setConsoleError] = useState(null);
 
-  const [rosters, setRosters] = useState(() => buildDummyRosters());
+  const [rosters, setRosters] = useState(() => buildDefaultRosters());
   const [rostersLoading] = useState(false);
   const [rostersError] = useState(null);
   const [timeModalOpen, setTimeModalOpen] = useState(false);
@@ -191,6 +199,7 @@ export function useScrimmageData() {
     team: null,
     mode: "add",
     logIndex: null,
+    openedAt: null,
   });
   const [scoreForm, setScoreForm] = useState({ scorerId: "", assistId: "" });
   const [timeoutUsage, setTimeoutUsage] = useState({ ...DEFAULT_TIMEOUT_USAGE });
@@ -216,6 +225,15 @@ export function useScrimmageData() {
 
   const abbaPattern = useMemo(() => getRuleAbbaPattern(rules), [rules]);
 
+  // When a match duration is supplied the primary timer counts DOWN (and may go
+  // negative for overtime), mirroring the normal scorekeeper. With no duration it
+  // counts UP from zero. `isCountdown` switches every timer calculation below.
+  const matchDurationSeconds = useMemo(() => {
+    const minutes = getRuleMatchDurationMinutes(rules);
+    return Number.isFinite(minutes) && minutes > 0 ? minutes * 60 : 0;
+  }, [rules]);
+  const isCountdown = matchDurationSeconds > 0;
+
   const selectedMatch = useMemo(
     () => ({
       id: SCRIMMAGE_MATCH_ID,
@@ -240,11 +258,18 @@ export function useScrimmageData() {
     const anchor = primaryTimerAnchorRef.current;
     const base = Number.isFinite(anchor?.baseSeconds) ? anchor.baseSeconds : timerSeconds;
     if (!timerRunning || !anchor?.anchorTimestamp) {
+      if (isCountdown) {
+        return Math.min(MAX_SCRIMMAGE_TIMER_SECONDS, Math.round(base));
+      }
       return Math.min(MAX_SCRIMMAGE_TIMER_SECONDS, Math.max(0, Math.round(base)));
     }
     const elapsed = Math.floor((Date.now() - anchor.anchorTimestamp) / 1000);
+    if (isCountdown) {
+      // Count down; allow negative seconds for overtime (highest + 1).
+      return Math.min(MAX_SCRIMMAGE_TIMER_SECONDS, Math.round(base - elapsed));
+    }
     return Math.min(MAX_SCRIMMAGE_TIMER_SECONDS, Math.max(0, Math.round(base + elapsed)));
-  }, [timerRunning, timerSeconds]);
+  }, [timerRunning, timerSeconds, isCountdown]);
 
   const getSecondaryRemainingSeconds = useCallback(() => {
     const anchor = secondaryTimerAnchorRef.current;
@@ -257,7 +282,7 @@ export function useScrimmageData() {
   }, [secondaryRunning, secondarySeconds]);
 
   const commitPrimaryTimerState = useCallback((seconds, running) => {
-    const nextState = normalizePrimaryTimerState(seconds, running);
+    const nextState = normalizePrimaryTimerState(seconds, running, isCountdown);
     setTimerSeconds(nextState.seconds);
     setTimerRunning(nextState.running);
     if (nextState.running) {
@@ -271,7 +296,7 @@ export function useScrimmageData() {
         anchorTimestamp: null,
       };
     }
-  }, []);
+  }, [isCountdown]);
 
   const commitSecondaryTimerState = useCallback((seconds, running) => {
     const baseSeconds = Number.isFinite(seconds) ? seconds : 0;
@@ -359,6 +384,33 @@ export function useScrimmageData() {
       setSecondaryFlashPulse,
     ]
   );
+
+  // Pause the primary clock and run the halftime break (or log a zero-length
+  // break when no halftime duration is configured). Shared by the manual
+  // "Half Time" button and the automatic halftime trigger.
+  const triggerHalftime = useCallback(() => {
+    const elapsed = getPrimaryRemainingSeconds();
+    commitPrimaryTimerState(elapsed, false);
+
+    const breakSeconds = Math.max(0, getRuleHalftimeBreakMinutes(rules) * 60);
+    if (breakSeconds > 0) {
+      startTrackedSecondaryTimer(breakSeconds, "Halftime", {
+        startCode: MATCH_LOG_EVENT_CODES.HALFTIME_START,
+        startDescription: "Halftime",
+        endCode: MATCH_LOG_EVENT_CODES.HALFTIME_END,
+        endDescription: "Halftime ended",
+      });
+      return;
+    }
+    appendSecondaryEventLog(MATCH_LOG_EVENT_CODES.HALFTIME_START, "Halftime", null);
+    appendSecondaryEventLog(MATCH_LOG_EVENT_CODES.HALFTIME_END, "Halftime ended", null);
+  }, [
+    rules,
+    getPrimaryRemainingSeconds,
+    commitPrimaryTimerState,
+    startTrackedSecondaryTimer,
+    appendSecondaryEventLog,
+  ]);
 
   const resolveRosterName = useCallback(
     (playerId) => {
@@ -471,6 +523,143 @@ export function useScrimmageData() {
     previousSecondaryRunningRef.current = secondaryRunning;
   }, [secondaryRunning, finalizeSecondaryTimerEvent]);
 
+  // Secondary timer flash rate — accelerates in the last 15s, mirrors scorekeeper behaviour
+  useEffect(() => {
+    if (!secondaryRunning) {
+      setSecondaryFlashActive(false);
+      setSecondaryFlashPulse(false);
+      return;
+    }
+    const normalizedLabel = (secondaryLabel || "").toLowerCase();
+    const isDiscussion = normalizedLabel === "discussion";
+    if (secondarySeconds <= 30) {
+      const fastThreshold = isDiscussion ? 15 : 15;
+      const nextRate = secondarySeconds <= fastThreshold ? 175 : 450;
+      setSecondaryFlashRateMs(nextRate);
+      setSecondaryFlashActive(true);
+      setSecondaryFlashPulse(false);
+    } else {
+      setSecondaryFlashActive(false);
+      setSecondaryFlashPulse(false);
+      setSecondaryFlashRateMs(450);
+    }
+  }, [secondaryRunning, secondarySeconds, secondaryLabel]);
+
+  useEffect(() => {
+    if (!secondaryFlashActive) return undefined;
+    const interval = setInterval(() => {
+      setSecondaryFlashPulse((prev) => !prev);
+    }, secondaryFlashRateMs);
+    return () => clearInterval(interval);
+  }, [secondaryFlashActive, secondaryFlashRateMs]);
+
+  // Reset cap state when match hasn't started
+  useEffect(() => {
+    if (!matchStarted) {
+      setSoftCapApplied(false);
+      setHardCapReached(false);
+      setTimeCapTargetApplied(false);
+      setHalftimeAutoTriggered(false);
+      setScoreTarget(rules.game?.pointTarget ?? null);
+    }
+  }, [matchStarted, rules.game?.pointTarget]);
+
+  // Automatic halftime — when a "Halftime (min)" elapsed time is configured,
+  // trigger halftime once the match clock reaches it. When it is left blank/zero
+  // halftime stays manual-only (the "Half Time" button in the time menu).
+  useEffect(() => {
+    if (!matchStarted || halftimeAutoTriggered) return;
+    const halftimeCapMinutes = getRuleHalftimeCapMinutes(rules);
+    if (!halftimeCapMinutes || halftimeCapMinutes <= 0) return;
+    const elapsedSeconds = isCountdown ? matchDurationSeconds - timerSeconds : timerSeconds;
+    if (elapsedSeconds < halftimeCapMinutes * 60) return;
+    setHalftimeAutoTriggered(true);
+    triggerHalftime();
+  }, [
+    matchStarted,
+    halftimeAutoTriggered,
+    rules,
+    isCountdown,
+    matchDurationSeconds,
+    timerSeconds,
+    triggerHalftime,
+  ]);
+
+  // Soft cap detection — count-up fires at timerSeconds >= softCapMinutes*60;
+  // countdown fires at timerSeconds <= (matchDuration - softCapMinutes)*60.
+  useEffect(() => {
+    if (!matchStarted || softCapApplied) return;
+    const softCapMinutes = Number.isFinite(rules.game?.softCapMinutes) ? rules.game.softCapMinutes : null;
+    if (!softCapMinutes || softCapMinutes <= 0) return;
+    if (isCountdown) {
+      const thresholdSeconds = Math.max(0, matchDurationSeconds - softCapMinutes * 60);
+      if (timerSeconds > thresholdSeconds) return;
+    } else if (timerSeconds < softCapMinutes * 60) {
+      return;
+    }
+
+    const mode = rules.game?.softCapMode || "none";
+    if (mode === "none") {
+      setSoftCapApplied(true);
+      return;
+    }
+    const highest = Math.max(score.a, score.b);
+    const increment = mode === "addTwoToHighest" ? 2 : 1;
+    const nextTarget = Math.max(highest + increment, (rules.game?.pointTarget || 0) + increment);
+    setScoreTarget(nextTarget);
+    setTimerLabel(SOFT_CAP_TIMER_LABEL);
+    setSoftCapApplied(true);
+  }, [matchStarted, softCapApplied, rules.game?.softCapMinutes, rules.game?.softCapMode, rules.game?.pointTarget, timerSeconds, score.a, score.b, isCountdown, matchDurationSeconds]);
+
+  // Hard cap detection — count-up fires when timer reaches timeCapMinutes*60;
+  // countdown fires when the timer hits zero, like the normal scorekeeper.
+  useEffect(() => {
+    if (!matchStarted || hardCapReached) return;
+    const capMinutes = getRuleMatchDurationMinutes(rules);
+    if (!capMinutes || capMinutes <= 0) return;
+    if (isCountdown) {
+      if (timerSeconds > 0) return;
+    } else if (timerSeconds < capMinutes * 60) {
+      return;
+    }
+
+    setHardCapReached(true);
+    const timeCapTargetMode = rules.game?.timeCapTargetMode;
+    if (timeCapTargetMode === "addOneToHighest" && !timeCapTargetApplied) {
+      const nextTarget = Math.max(score.a, score.b) + 1;
+      setScoreTarget(nextTarget);
+      setTimeCapTargetApplied(true);
+      setTimerLabel(TIME_CAP_TARGET_LABEL);
+    }
+    if (rules.game?.timeCapEndMode === "immediate") {
+      if (timeCapTargetMode !== "addOneToHighest") setTimerLabel(TIME_CAP_TARGET_LABEL);
+      commitPrimaryTimerState(isCountdown ? 0 : capMinutes * 60, false);
+    }
+  }, [matchStarted, hardCapReached, timerSeconds, rules, score.a, score.b, timeCapTargetApplied, commitPrimaryTimerState, isCountdown]);
+
+  // Timer label management
+  useEffect(() => {
+    if (!matchStarted) {
+      if (timerLabel !== DEFAULT_TIMER_LABEL) setTimerLabel(DEFAULT_TIMER_LABEL);
+      return;
+    }
+    const hasScoreCapWinner = Boolean(scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget));
+    const softCapMode = rules.game?.softCapMode || "none";
+    if (softCapApplied && softCapMode !== "none" && !hasScoreCapWinner) {
+      if (timerLabel !== SOFT_CAP_TIMER_LABEL) setTimerLabel(SOFT_CAP_TIMER_LABEL);
+      return;
+    }
+    if (hardCapReached) return;
+    const overtimeActive = isCountdown && timerSeconds < 0 && !hasScoreCapWinner;
+    if (overtimeActive) {
+      if (timerLabel !== OVERTIME_TIMER_LABEL) setTimerLabel(OVERTIME_TIMER_LABEL);
+      return;
+    }
+    if (timerLabel !== DEFAULT_TIMER_LABEL && timerLabel !== TIME_CAP_TARGET_LABEL) {
+      setTimerLabel(DEFAULT_TIMER_LABEL);
+    }
+  }, [matchStarted, hardCapReached, softCapApplied, scoreTarget, score.a, score.b, timerLabel, rules.game?.softCapMode, isCountdown, timerSeconds]);
+
   useEffect(() => {
     if (!sessionKey) return;
     const stored = loadScrimmageSession(sessionKey);
@@ -481,7 +670,7 @@ export function useScrimmageData() {
       setResumeError(null);
       setResumeBusy(false);
     } else {
-      setRosters(buildDummyRosters());
+      setRosters(buildDefaultRosters());
       setResumeCandidate(null);
       setResumeHandled(true);
       setResumeError(null);
@@ -513,15 +702,26 @@ export function useScrimmageData() {
       setPossessionTeam(resumeCandidate.possessionTeam || null);
       setMatchStarted(Boolean(resumeCandidate.matchStarted));
       setStoppageActive(Boolean(resumeCandidate.stoppageActive));
+      setSoftCapApplied(Boolean(resumeCandidate.softCapApplied));
+      setHardCapReached(Boolean(resumeCandidate.hardCapReached));
+      setTimeCapTargetApplied(Boolean(resumeCandidate.timeCapTargetApplied));
+      setHalftimeAutoTriggered(Boolean(resumeCandidate.halftimeAutoTriggered));
+      setScoreTarget(resumeCandidate.scoreTarget ?? null);
 
-      const primaryTimer = deriveElapsedTimerSnapshot(
-        resumeCandidate.timer,
-        0,
-        DEFAULT_TIMER_LABEL
-      );
+      const resumeMatchDurationMinutes = getRuleMatchDurationMinutes(snapshotRules);
+      const resumeIsCountdown =
+        Number.isFinite(resumeMatchDurationMinutes) && resumeMatchDurationMinutes > 0;
+      const primaryTimer = resumeIsCountdown
+        ? deriveCountdownTimerSnapshot(
+            resumeCandidate.timer,
+            resumeMatchDurationMinutes * 60,
+            DEFAULT_TIMER_LABEL
+          )
+        : deriveElapsedTimerSnapshot(resumeCandidate.timer, 0, DEFAULT_TIMER_LABEL);
       const resumedPrimaryTimer = normalizePrimaryTimerState(
         primaryTimer.seconds,
-        primaryTimer.running
+        primaryTimer.running,
+        resumeIsCountdown
       );
       setTimerSeconds(resumedPrimaryTimer.seconds);
       setTimerRunning(resumedPrimaryTimer.running);
@@ -599,6 +799,12 @@ export function useScrimmageData() {
     setScoreModalState({ open: false, team: null, mode: "add", logIndex: null });
     setScoreForm({ scorerId: "", assistId: "" });
     setRules(cloneScrimmageRules());
+    setRulesManuallyEdited(false);
+    setSoftCapApplied(false);
+    setHardCapReached(false);
+    setTimeCapTargetApplied(false);
+    setHalftimeAutoTriggered(false);
+    setScoreTarget(null);
     setSetupForm({
       ...DEFAULT_SETUP_FORM,
       startTime: toDateTimeLocal(),
@@ -621,6 +827,12 @@ export function useScrimmageData() {
     setResumeBusy(false);
     clearLocalMatchState();
   }, [clearLocalMatchState]);
+
+  // Auto-resume: when a saved session is found, restore it immediately without prompting.
+  useEffect(() => {
+    if (resumeHandled || !resumeCandidate) return;
+    handleResumeSession();
+  }, [resumeHandled, resumeCandidate, handleResumeSession]);
 
   const buildSessionSnapshot = useCallback(() => {
     if (!sessionKey) return null;
@@ -657,6 +869,11 @@ export function useScrimmageData() {
       timeoutUsage: { ...timeoutUsage },
       possessionTeam,
       stoppageActive,
+      scoreTarget,
+      softCapApplied,
+      hardCapReached,
+      timeCapTargetApplied,
+      halftimeAutoTriggered,
     };
   }, [
     sessionKey,
@@ -676,6 +893,11 @@ export function useScrimmageData() {
     timeoutUsage,
     possessionTeam,
     stoppageActive,
+    scoreTarget,
+    softCapApplied,
+    hardCapReached,
+    timeCapTargetApplied,
+    halftimeAutoTriggered,
   ]);
 
   useEffect(() => {
@@ -686,6 +908,30 @@ export function useScrimmageData() {
       saveScrimmageSession(sessionKey, snapshot);
     }, SESSION_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(handle);
+  }, [sessionKey, resumeHandled, buildSessionSnapshot]);
+
+  // Page-lifecycle flush — persist immediately on tab hide / page unload
+  useEffect(() => {
+    if (!sessionKey || !resumeHandled) return undefined;
+    if (typeof window === "undefined" || typeof document === "undefined") return undefined;
+
+    const persistNow = () => {
+      const snapshot = buildSessionSnapshot();
+      if (snapshot) saveScrimmageSession(sessionKey, snapshot);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") persistNow();
+    };
+
+    window.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("pagehide", persistNow);
+    window.addEventListener("beforeunload", persistNow);
+    return () => {
+      window.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("pagehide", persistNow);
+      window.removeEventListener("beforeunload", persistNow);
+    };
   }, [sessionKey, resumeHandled, buildSessionSnapshot]);
 
   const displayTeamA = TEAM_A.name;
@@ -764,12 +1010,43 @@ export function useScrimmageData() {
     [getAbbaDescriptor, scoreEventCount]
   );
 
-  const primaryTimerBg = "bg-[#dff7e5]";
-  const secondaryTimerBg = secondaryFlashActive
-    ? secondaryFlashPulse
-      ? "bg-[#fecdd3]"
-      : "bg-[#ffe4e6]"
-    : "bg-[#dff7e5]";
+  const primaryTimerBg =
+    timerSeconds <= 0 && matchStarted ? "bg-[#fee2e2]" : timerRunning ? "bg-[#dff7e5]" : "bg-[#e2e8f0]";
+
+  const normalizedSecondaryLabel = typeof secondaryLabel === "string" ? secondaryLabel.toLowerCase() : "";
+  const isDiscussionTimer = normalizedSecondaryLabel === "discussion";
+  const secondaryTimerBg = (() => {
+    if (secondaryRunning) {
+      if (isDiscussionTimer) {
+        if (secondarySeconds <= 15) {
+          return secondaryFlashActive
+            ? secondaryFlashPulse ? "bg-[#fcd34d]" : "bg-[#fef08a]"
+            : "bg-[#fef08a]";
+        }
+        if (secondarySeconds <= 45) return "bg-[#fef08a]";
+        return "bg-[#dff7e5]";
+      }
+      if (secondarySeconds <= 15) {
+        return secondaryFlashActive
+          ? secondaryFlashPulse ? "bg-[#fb923c]" : "bg-[#fed7aa]"
+          : "bg-[#fed7aa]";
+      }
+      if (secondarySeconds <= 30) {
+        return secondaryFlashActive
+          ? secondaryFlashPulse ? "bg-[#fcd34d]" : "bg-[#fef3c7]"
+          : "bg-[#fef3c7]";
+      }
+      return "bg-[#dff7e5]";
+    }
+    if (secondarySeconds === 0) return "bg-[#f8cad6]";
+    if (isDiscussionTimer) {
+      if (secondarySeconds > 45) return "bg-[#c9ead6]";
+      if (secondarySeconds > 15) return "bg-[#ffe2a1]";
+    }
+    return "bg-[#f8f1ff]";
+  })();
+
+  const reachedPointTarget = scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget);
 
   const loadMatches = useCallback(() => Promise.resolve([]), []);
 
@@ -814,6 +1091,7 @@ export function useScrimmageData() {
     setSecondaryFlashActive,
     secondaryFlashPulse,
     setSecondaryFlashPulse,
+    secondaryFlashRateMs,
     timerLabel,
     setTimerLabel,
     consoleError,
@@ -858,6 +1136,8 @@ export function useScrimmageData() {
     startingTeamId,
     matchStartingTeamKey,
     matchDuration,
+    matchDurationSeconds,
+    isCountdown,
     remainingTimeouts,
     canEndMatch,
     possessionValue,
@@ -871,6 +1151,12 @@ export function useScrimmageData() {
     nextAbbaDescriptor,
     primaryTimerBg,
     secondaryTimerBg,
+    reachedPointTarget,
+    scoreTarget,
+    softCapApplied,
+    hardCapReached,
+    rulesManuallyEdited,
+    markRulesManuallyEdited: () => setRulesManuallyEdited(true),
     getPrimaryRemainingSeconds,
     getSecondaryRemainingSeconds,
     commitPrimaryTimerState,
@@ -880,6 +1166,7 @@ export function useScrimmageData() {
     buildSessionSnapshot,
     appendLocalLog,
     appendSecondaryEventLog,
+    triggerHalftime,
     updatePossession,
     loadMatches,
     handleResumeSession,

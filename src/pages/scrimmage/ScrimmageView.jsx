@@ -6,7 +6,8 @@ import { useScrimmageData } from "./useScrimmageData";
 import { useScrimmageActions } from "./useScrimmageActions";
 import { deriveScrimmageReport } from "./scrimmageReport";
 import { downloadScrimmageReportPdf } from "./scrimmagePdfReport";
-import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
+import { downloadScrimmageReportCsv } from "./scrimmageCsvReport";
+import { ScorekeeperShell } from "../../components/ui/scorekeeperPrimitives";
 import {
   BlockEventCard,
   CalahanEventCard,
@@ -38,6 +39,7 @@ import {
   setRuleAbbaPattern,
   setRuleHalftimeBreakMinutes,
   setRuleHalftimeCapMinutes,
+  setRuleMatchDurationMinutes,
   setRuleTimeoutSeconds,
   setRuleTimeoutsPerHalf,
   setRuleTimeoutsTotal,
@@ -50,16 +52,6 @@ const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([
   MATCH_LOG_EVENT_CODES.STOPPAGE_START,
   MATCH_LOG_EVENT_CODES.STOPPAGE_END,
 ]);
-const REPORT_SERIES_COLORS = {
-  teamA: "#1d4ed8",
-  teamB: "#b91c1c",
-};
-const REPORT_BAND_COLORS = {
-  timeout: "rgba(59, 130, 246, 0.1)",
-  stoppage: "rgba(128, 0, 0, 0.18)",
-  halftime: "rgba(16, 185, 129, 0.18)",
-};
-
 export default function ScrimmageView() {
   const data = useScrimmageData();
   const actions = useScrimmageActions(data);
@@ -93,10 +85,6 @@ export default function ScrimmageView() {
     setScoreForm,
     timeoutUsage,
     possessionTeam,
-    resumeCandidate,
-    resumeHandled,
-    resumeBusy,
-    resumeError,
     stoppageActive,
     matchStarted,
     consoleReady,
@@ -123,6 +111,11 @@ export default function ScrimmageView() {
     nextAbbaDescriptor,
     primaryTimerBg,
     secondaryTimerBg,
+    secondaryTimerAnchorRef,
+    secondaryTotalSeconds,
+    softCapApplied,
+    hardCapReached,
+    scoreTarget,
     secondaryResetTriggeredRef,
     commitSecondaryTimerState,
     finalizeSecondaryTimerEvent,
@@ -131,12 +124,20 @@ export default function ScrimmageView() {
     setSecondaryFlashActive,
     setSecondaryFlashPulse,
     updatePossession,
-    handleResumeSession,
     handleDiscardResume
   } = data;
 
   const safeTeamAName = displayTeamA || "Team A";
   const safeTeamBName = displayTeamB || "Team B";
+  const attentionBannerMessage = (() => {
+    if (!matchStarted) return null;
+    const softCapMode = rules.game?.softCapMode || "none";
+    if (hardCapReached) return "Time cap reached, new match target set.";
+    if (softCapApplied && softCapMode !== "none" && Number.isFinite(scoreTarget)) {
+      return `Soft cap reached, new match target of ${scoreTarget}.`;
+    }
+    return null;
+  })();
   const discussionSeconds = getRuleDiscussionSeconds(rules);
   const timeoutSeconds = getRuleTimeoutSeconds(rules);
   const matchDurationMinutes = getRuleMatchDurationMinutes(rules);
@@ -182,6 +183,106 @@ export default function ScrimmageView() {
     jersey: "",
     assignment: "A",
   });
+  const [rosterUpload, setRosterUpload] = useState({
+    A: { text: "", error: "", notice: "" },
+    B: { text: "", error: "", notice: "" },
+  });
+  const rosterUploadFileRefs = useRef({ A: null, B: null });
+
+  // Parse pasted/uploaded roster text.
+  // Line 1 = team name (informational only — scrimmage teams are fixed Light/Dark).
+  // Each subsequent non-empty line = one player, with an optional leading jersey
+  // number (max 3 digits) followed by the player name.
+  const parseRosterUpload = (rawText) => {
+    const lines = `${rawText ?? ""}`.replace(/\r\n?/g, "\n").split("\n");
+    let teamName = null;
+    const players = [];
+    let started = false;
+    lines.forEach((rawLine) => {
+      const line = rawLine.trim();
+      if (!started) {
+        // Skip leading blank lines, then treat the first content line as the team name.
+        if (!line) return;
+        teamName = line;
+        started = true;
+        return;
+      }
+      if (!line) return;
+      const match = line.match(/^(\d{1,3})\s+(.+)$/);
+      if (match) {
+        players.push({ jersey: Number(match[1]), name: match[2].trim() });
+      } else {
+        players.push({ jersey: undefined, name: line });
+      }
+    });
+    return { teamName, players };
+  };
+
+  const applyRosterUpload = (teamKey) => {
+    const text = rosterUpload[teamKey]?.text || "";
+    const { teamName, players } = parseRosterUpload(text);
+    if (players.length === 0) {
+      setRosterUpload((prev) => ({
+        ...prev,
+        [teamKey]: {
+          ...prev[teamKey],
+          error: "Add a team name on line 1 and at least one player on the lines below.",
+          notice: "",
+        },
+      }));
+      return;
+    }
+
+    const teamProp = teamKey === "B" ? "teamB" : "teamA";
+    setRosters((prev) => {
+      const existing = prev?.[teamProp] || [];
+      const appended = players.map((player) => ({
+        id: createRosterPlayerId(),
+        name: player.name,
+        jersey_number: player.jersey,
+      }));
+      return {
+        ...prev,
+        [teamProp]: [...existing, ...appended],
+      };
+    });
+
+    setRosterUpload((prev) => ({
+      ...prev,
+      [teamKey]: {
+        text: "",
+        error: "",
+        notice: `Added ${players.length} player${players.length === 1 ? "" : "s"}${
+          teamName ? ` from "${teamName}"` : ""
+        }.`,
+      },
+    }));
+  };
+
+  const handleRosterUploadFile = (teamKey, file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setRosterUpload((prev) => ({
+        ...prev,
+        [teamKey]: { text: `${reader.result ?? ""}`, error: "", notice: "" },
+      }));
+    };
+    reader.onerror = () => {
+      setRosterUpload((prev) => ({
+        ...prev,
+        [teamKey]: { ...prev[teamKey], error: "Could not read that file." },
+      }));
+    };
+    reader.readAsText(file);
+  };
+
+  const createRosterPlayerId = () => {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return `player-${crypto.randomUUID()}`;
+    }
+    return `player-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  };
 
   const normalizeRosterAssignment = (assignment) => {
     if (assignment === "both") return "both";
@@ -206,6 +307,10 @@ export default function ScrimmageView() {
   const closeRosterEditor = () => {
     setRosterEditorOpen(false);
     resetPlayerEditorForm();
+    setRosterUpload({
+      A: { text: "", error: "", notice: "" },
+      B: { text: "", error: "", notice: "" },
+    });
   };
 
   const upsertRosterPlayer = ({ id, name, jersey, assignment }) => {
@@ -686,12 +791,7 @@ export default function ScrimmageView() {
     resetPossessionModalState();
   };
 
-  const handleStartNewMatch = () => {
-    handleDiscardResume();
-    setSetupModalOpen(true);
-  };
-
-  const handleStartDiscussionTimer = () => {
+const handleStartDiscussionTimer = () => {
     cancelSecondaryHoldReset();
     if (secondaryResetTriggeredRef?.current) {
       secondaryResetTriggeredRef.current = false;
@@ -730,17 +830,6 @@ export default function ScrimmageView() {
       }),
     [logs, displayTeamA, displayTeamB, matchStartingTeamKey, setupForm.startTime]
   );
-  const scrimmageReportMatch = useMemo(
-    () => ({
-      team_a: { name: safeTeamAName },
-      team_b: { name: safeTeamBName },
-      score_a: score.a,
-      score_b: score.b,
-      start_time: setupForm.startTime,
-    }),
-    [safeTeamAName, safeTeamBName, score.a, score.b, setupForm.startTime]
-  );
-
   const handleDownloadPdf = () => {
     downloadScrimmageReportPdf({
       report: scrimmageReport,
@@ -751,401 +840,388 @@ export default function ScrimmageView() {
     });
   };
 
+  const handleDownloadCsv = () => {
+    downloadScrimmageReportCsv({
+      logs,
+      teamAName: safeTeamAName,
+      teamBName: safeTeamBName,
+    });
+  };
+
   const handleOpenMatchReport = () => {
     setEndScrimmageConfirmed(false);
     setEndScrimmageModalOpen(false);
     setMatchReportOpen(true);
   };
 
+  const dedupedLogs = useMemo(() => {
+    const seen = new Set();
+    return orderedLogs.filter((log) => {
+      const key = log.optimisticId || log.id;
+      if (key && seen.has(key)) return false;
+      if (key) seen.add(key);
+      return true;
+    });
+  }, [orderedLogs]);
+
+  const logIndexById = useMemo(() => {
+    const map = new Map();
+    orderedLogs.forEach((entry, i) => {
+      if (entry.id) map.set(entry.id, i);
+    });
+    return map;
+  }, [orderedLogs]);
+
   return (
     <ScorekeeperShell>
-      <ScorekeeperCard as="header" className="w-full">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-col leading-tight">
-            <h1 className="text-xl font-semibold text-white">Scrimmage console</h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <ScorekeeperButton as={Link} to="/" variant="compactGhost" className="text-xs">
-              Back to home
-            </ScorekeeperButton>
-          </div>
-        </div>
-      </ScorekeeperCard>
-
       <main className="py-2">
         {consoleReady ? (
           <section className="space-y-2">
+
+            {/* Match header */}
             <div className="rounded-3xl border border-emerald-900/15 bg-white/90 p-1.5 w-full">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <div>
                   <h2 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-slate-900">
                     <span>{safeTeamAName}</span>
                     <span className="text-base text-slate-400">vs</span>
                     <span>{safeTeamBName}</span>
                   </h2>
-                  <p className="text-sm text-slate-600">
-                    {kickoffLabel} - {venueName || "Venue TBD"} - {statusLabel}
-                  </p>
                 </div>
-                <div className="flex flex-col gap-2 sm:items-end">
+                <div className="flex items-center gap-2">
+                  <Link
+                    to="/"
+                    className="inline-flex h-9 items-center justify-center rounded-full border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
+                  >
+                    Home
+                  </Link>
                   <button
                     type="button"
                     onClick={() => setSetupModalOpen(true)}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-emerald-400 hover:text-emerald-800"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-100"
+                    aria-label="Open setup"
+                    title="Setup"
                   >
-                    Adjust setup
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+                      <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
+                      <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.03.03a2.16 2.16 0 0 1-3.05 3.05l-.03-.03a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.09 1.65V21a2.16 2.16 0 0 1-4.32 0v-.05a1.8 1.8 0 0 0-1.09-1.65 1.8 1.8 0 0 0-1.98.36l-.03.03a2.16 2.16 0 1 1-3.05-3.05l.03-.03A1.8 1.8 0 0 0 3.6 15a1.8 1.8 0 0 0-1.65-1.09H1.9a2.16 2.16 0 0 1 0-4.32h.05A1.8 1.8 0 0 0 3.6 8.5a1.8 1.8 0 0 0-.36-1.98l-.03-.03a2.16 2.16 0 1 1 3.05-3.05l.03.03a1.8 1.8 0 0 0 1.98.36h.01a1.8 1.8 0 0 0 1.08-1.65V2.16a2.16 2.16 0 0 1 4.32 0v.05a1.8 1.8 0 0 0 1.09 1.65 1.8 1.8 0 0 0 1.98-.36l.03-.03a2.16 2.16 0 1 1 3.05 3.05l-.03.03a1.8 1.8 0 0 0-.36 1.98v.01a1.8 1.8 0 0 0 1.65 1.08h.05a2.16 2.16 0 0 1 0 4.32h-.05A1.8 1.8 0 0 0 19.4 15Z" />
+                    </svg>
                   </button>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800">
-                  <p className="text-[clamp(3rem,12vw,5.5rem)] font-semibold leading-none text-slate-900">
-                    {formattedPrimaryClock}
-                  </p>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    {timerLabel || "Game time"}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800">
-                  <p className="text-[clamp(2.6rem,11vw,4.5rem)] font-semibold leading-none text-slate-900">
-                    {formattedSecondaryClock}
-                  </p>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-                    {secondaryLabel || "Inter point"}
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-2">
-                <button
-                  type="button"
-                  onClick={handleStartDiscussionTimer}
-                  onMouseDown={startSecondaryHoldReset}
-                  onMouseUp={cancelSecondaryHoldReset}
-                  onMouseLeave={cancelSecondaryHoldReset}
-                  onTouchStart={startSecondaryHoldReset}
-                  onTouchEnd={cancelSecondaryHoldReset}
-                  onTouchCancel={cancelSecondaryHoldReset}
-                  className="rounded-md bg-[#dc2626] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#b91c1c]"
-                >
-                  DISCUSSION-START/STOP (1min)
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-center text-sm font-semibold text-slate-800">
-                <div className="flex items-center justify-center rounded border border-slate-400 bg-white px-2 py-1">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Timeout length:
-                  </span>
-                </div>
-                <div className="rounded border border-slate-400 bg-white px-2 py-1">
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={timeoutSeconds}
-                    onChange={(event) =>
-                      handleRuleChange("timeoutSeconds", Math.max(0, Number(event.target.value) || 0))
-                    }
-                    aria-label="Timeout duration (seconds)"
-                    inputMode="numeric"
-                    className="w-full border-none bg-transparent text-center text-sm font-semibold text-slate-800 focus:outline-none focus:ring-0"
-                  />
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTimeModalOpen(true)}
-                disabled={!matchStarted}
-                className={`w-full rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  matchStarted ? "bg-[#1e3a8a] text-white hover:bg-[#162e6a]" : "bg-slate-200 text-slate-600"
-                }`}
-              >
-                Additional time options
-              </button>
-            </div>
+            {/* Two-column layout on xl */}
+            <div className="grid gap-2 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
 
-            {matchStarted && (
-              <div className="rounded-3xl border border-slate-200 bg-white p-2 w-full">
-                <div className="mt-3 space-y-2">
-                  <div
-                    ref={possessionPadRef}
-                    role="group"
-                    aria-label="Select possession team"
-                    className="relative flex w-full items-stretch gap-1 rounded-2xl bg-[#b1b1b1] p-1 text-sm font-semibold text-slate-900"
-                    style={{ touchAction: "pan-y" }}
-                    onPointerDown={handlePossessionPadPointerDown}
-                    onPointerMove={handlePossessionPadPointerMove}
-                    onPointerUp={handlePossessionPadPointerUp}
-                    onPointerLeave={handlePossessionPadPointerLeave}
-                    onPointerCancel={handlePossessionPadPointerCancel}
-                  >
-                    <button
-                      type="button"
-                      className={`flex-1 rounded-2xl px-3 py-3 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${
-                        possessionTeam === "A" ? "bg-[#0f5132] text-white" : "bg-[#b1b1b1] text-slate-700"
-                      }`}
-                      aria-pressed={possessionTeam === "A"}
-                      tabIndex={-1}
-                    >
-                      {displayTeamA}
-                    </button>
-                    <button
-                      type="button"
-                      className={`flex-1 rounded-2xl px-3 py-3 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${
-                        possessionTeam === "B" ? "bg-[#0f5132] text-white" : "bg-[#b1b1b1] text-slate-700"
-                      }`}
-                      aria-pressed={possessionTeam === "B"}
-                      tabIndex={-1}
-                    >
-                      {displayTeamB}
-                    </button>
-                  </div>
-                  <div className="flex flex-col gap-1 text-slate-800 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="flex items-center gap-1 text-sm font-semibold text-slate-600">
-                      <span className="text-base font-semibold text-slate-900">Possession</span>
-                      <span>:</span>
-                      <span className="text-base text-slate-900">
-                        {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
-                      </span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
+              {/* Left column: timers + possession + scoring */}
+              <div className="space-y-2">
 
-            <div className="space-y-2 rounded-3xl border border-[#0f5132]/40 bg-white p-1.5">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                </div>
-                {matchEventsError && (
-                  <p className="text-xs text-rose-600">{matchEventsError}</p>
-                )}
-                <div className="space-y-2">
-                  {!matchStarted ? (
+                {/* Timer block */}
+                <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={handleStartMatch}
-                      className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                      onClick={handleToggleTimer}
+                      disabled={!consoleReady}
+                      onMouseDown={startPrimaryHoldReset}
+                      onMouseUp={cancelPrimaryHoldReset}
+                      onMouseLeave={cancelPrimaryHoldReset}
+                      onTouchStart={startPrimaryHoldReset}
+                      onTouchEnd={cancelPrimaryHoldReset}
+                      onTouchCancel={cancelPrimaryHoldReset}
+                      className={`min-w-0 rounded-xl border border-slate-200 p-3 text-center text-slate-800 transition [container-type:inline-size] ${primaryTimerBg}`}
                     >
-                      Start match ({matchStartingTeamKey === "B" ? displayTeamB : displayTeamA} pulls)
+                      <p className="overflow-hidden whitespace-nowrap text-[min(5.5rem,32cqw)] font-semibold leading-none tabular-nums text-slate-900">
+                        {formattedPrimaryClock}
+                      </p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                        {timerLabel || "Game time"}
+                      </p>
                     </button>
-                  ) : (
-                    <div className="space-y-1.5">
-                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openScoreModal("A")}
-                        className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-                        >
-                          Add score - {displayTeamA}
-                        </button>
-                        <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
-                          <p>{nextAbbaDescriptor ? `ABBA: ${nextAbbaDescriptor}` : "ABBA disabled"}</p>
-                          <p className="text-lg font-semibold text-[#0f5132]">
-                            {score.a} - {score.b}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => openScoreModal("B")}
-                        className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-                        >
-                          Add score - {displayTeamB}
-                        </button>
+                    <div className={`min-w-0 rounded-xl border border-slate-200 p-3 text-center text-slate-800 transition [container-type:inline-size] ${secondaryTimerBg}`}>
+                      <p className="overflow-hidden whitespace-nowrap text-[min(4.5rem,30cqw)] font-semibold leading-none tabular-nums text-slate-900">
+                        {formattedSecondaryClock}
+                      </p>
+                      <div className="mt-1 flex items-center justify-center text-slate-700">
+                        <SecondaryTimerDescription
+                          label={secondaryLabel}
+                          running={secondaryRunning}
+                          remainingSeconds={data.secondarySeconds}
+                          totalSeconds={secondaryTotalSeconds}
+                        />
                       </div>
+                      <SecondaryTimerProgressBar
+                        anchorRef={secondaryTimerAnchorRef}
+                        totalSeconds={secondaryTotalSeconds}
+                        running={secondaryRunning}
+                      />
                     </div>
-                  )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTimeModalOpen(true)}
+                      disabled={!matchStarted}
+                      className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        matchStarted ? "bg-[#1e3a8a] text-white hover:bg-[#162e6a]" : "bg-slate-200 text-slate-600"
+                      }`}
+                      aria-label="Additional time options"
+                      title="Additional time options"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+                        <path d="M10 2h4" /><path d="M12 14v-4" /><path d="M15.5 4.5 17 3" /><circle cx="12" cy="14" r="8" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleStartDiscussionTimer}
+                      onMouseDown={startSecondaryHoldReset}
+                      onMouseUp={cancelSecondaryHoldReset}
+                      onMouseLeave={cancelSecondaryHoldReset}
+                      onTouchStart={startSecondaryHoldReset}
+                      onTouchEnd={cancelSecondaryHoldReset}
+                      onTouchCancel={cancelSecondaryHoldReset}
+                      className="rounded-md bg-[#dc2626] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#b91c1c]"
+                    >
+                      {secondaryRunning && (secondaryLabel || "").toLowerCase() === "discussion" ? "Stop discussion" : "Discussion"}
+                    </button>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  {logsLoading ? (
-                    <div className="rounded-2xl border border-dashed border-[#0f5132]/30 px-3 py-2 text-center text-xs text-slate-500">
-                      Syncing logs...
+
+                {/* Cap banner */}
+                {attentionBannerMessage && (
+                  <p className="rounded-2xl border border-red-500 bg-red-200 px-3 py-2 text-sm font-bold text-red-900 shadow-[0_0_0_1px_rgba(239,68,68,0.15)]">
+                    {attentionBannerMessage}
+                  </p>
+                )}
+
+                {/* Possession pad */}
+                {matchStarted && (
+                  <div className="rounded-3xl border border-slate-200 bg-white p-2 w-full">
+                    <div className="mt-3 space-y-2">
+                      <div
+                        ref={possessionPadRef}
+                        role="group"
+                        aria-label="Select possession team"
+                        className="relative flex w-full items-stretch rounded-2xl bg-[#b1b1b1] p-1 text-sm font-semibold"
+                        style={{ touchAction: "pan-y" }}
+                        onPointerDown={handlePossessionPadPointerDown}
+                        onPointerMove={handlePossessionPadPointerMove}
+                        onPointerUp={handlePossessionPadPointerUp}
+                        onPointerLeave={handlePossessionPadPointerLeave}
+                        onPointerCancel={handlePossessionPadPointerCancel}
+                      >
+                        {currentPossessionTeam && (
+                          <div
+                            className="pointer-events-none absolute inset-1 w-[calc(50%-2px)] rounded-xl bg-[#0f5132] transition-transform duration-300 ease-in-out"
+                            style={{ transform: currentPossessionTeam === "B" ? "translateX(calc(100% + 4px))" : "translateX(0)" }}
+                            aria-hidden="true"
+                          />
+                        )}
+                        <button type="button" className={`relative z-10 flex-1 rounded-2xl px-3 py-3 text-center transition-colors duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${currentPossessionTeam === "A" ? "text-white" : "text-slate-700"}`} aria-pressed={possessionTeam === "A"} tabIndex={-1}>{displayTeamAShort}</button>
+                        <button type="button" className={`relative z-10 flex-1 rounded-2xl px-3 py-3 text-center transition-colors duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563eb] ${currentPossessionTeam === "B" ? "text-white" : "text-slate-700"}`} aria-pressed={possessionTeam === "B"} tabIndex={-1}>{displayTeamBShort}</button>
+                      </div>
+                      <p className="flex items-center gap-1 text-sm font-semibold text-slate-600">
+                        <span className="text-base font-semibold text-slate-900">Possession</span>
+                        <span>:</span>
+                        <span className="text-base text-slate-900">
+                          {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
+                        </span>
+                      </p>
                     </div>
-                  ) : logs.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-[#0f5132]/30 px-3 py-2 text-center text-xs text-slate-500">
-                      No match events captured yet. Use the buttons above to log an event.
-                    </div>
-                  ) : (
-                    (() => {
-                      const seen = new Set();
-                      return orderedLogs
-                        .filter((log) => {
-                          const key = log.optimisticId || log.id;
-                          if (key && seen.has(key)) {
-                            return false;
-                          }
-                          if (key) {
-                            seen.add(key);
-                          }
-                          return true;
-                        })
-                        .map((log) => {
-                          const chronologicalIndex = logs.findIndex((entry) => entry.id === log.id);
-                          const editIndex =
-                            chronologicalIndex >= 0 ? chronologicalIndex : logs.indexOf(log);
-                          return (
-                            <MatchLogCard
-                              key={log.id}
-                              log={log}
-                              chronologicalIndex={chronologicalIndex}
-                              editIndex={editIndex}
-                              displayTeamA={displayTeamA}
-                              displayTeamB={displayTeamB}
-                              displayTeamAShort={displayTeamAShort}
-                              displayTeamBShort={displayTeamBShort}
-                              getAbbaDescriptor={getAbbaDescriptor}
-                              openScoreModal={openScoreModal}
-                              openSimpleEventModal={openSimpleEventModal}
-                              openPossessionEditModal={openPossessionEditModal}
-                            />
-                          );
-                        });
-                    })()
-                  )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEndScrimmageConfirmed(false);
-                    setEndScrimmageModalOpen(true);
-                  }}
-                  disabled={!canEndMatch}
-                  className="block w-full rounded-full bg-rose-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  End scrimmage
-                </button>
-                {pendingEntries.length > 0 && (
-                  <div className="rounded-2xl border border-[#0f5132]/30 bg-white/90 p-2 text-sm text-[#0f5132]">
-                    <h4 className="text-base font-semibold text-[#0f5132]">
-                      Pending database payloads
-                    </h4>
-                    <pre className="mt-3 max-h-64 overflow-y-auto rounded-xl bg-[#ecfdf3] p-3 text-xs text-[#0f5132]">
-                      {JSON.stringify(pendingEntries, null, 2)}
-                    </pre>
                   </div>
                 )}
-              </div>
-            </div>
 
-            {rostersError && (
-              <p className="rounded-3xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {rostersError}
-              </p>
-            )}
-            <div className="space-y-2 rounded-3xl border border-[#0f5132]/30 bg-white p-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-center text-lg font-semibold text-[#0f5132]">
-                  Player roster
-                </h3>
-                <button
-                  type="button"
-                  onClick={openRosterEditor}
-                  aria-label="Edit roster"
-                  title="Edit roster"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#0f5132]/40 text-[#0f5132] transition hover:bg-[#ecfdf3]"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                  </svg>
-                </button>
-              </div>
-              <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2 text-sm text-[#0f5132]">
-                {rostersLoading ? (
-                  <p className="text-center text-xs">Loading roster...</p>
-                ) : allRosterPlayers.length === 0 ? (
-                  <p className="text-center text-xs text-slate-500">No players assigned.</p>
-                ) : (
-                  allRosterPlayers.map((player) => (
-                    <div
-                      key={player.id}
-                      className="flex items-center gap-2 border-b border-white/40 pb-1 last:border-b-0"
-                    >
-                      <PlayerSideIcon side={player.side} />
-                      <p>{formatPlayerSelectLabel(player)}</p>
-                    </div>
-                  ))
+                {/* Console error */}
+                {consoleError && (
+                  <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {consoleError}
+                  </p>
                 )}
-              </div>
-            </div>
 
-            {consoleError && (
-              <p className="text-center text-sm text-rose-600">{consoleError}</p>
-            )}
+                {/* Score controls */}
+                <div className="space-y-2 rounded-3xl border border-[#0f5132]/40 bg-white p-1.5">
+                  <div className="space-y-2">
+                    {!matchStarted ? (
+                      <button
+                        type="button"
+                        onClick={handleStartMatch}
+                        className="w-full rounded-full bg-[#0f5132] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                      >
+                        Start match ({matchStartingTeamKey === "B" ? displayTeamB : displayTeamA} pulls)
+                      </button>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-1.5">
+                          <button type="button" onClick={() => openScoreModal("A")} className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]">
+                            Add score — {displayTeamAShort}
+                          </button>
+                          <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
+                            {nextAbbaDescriptor ? (
+                              <div className="flex justify-center">
+                                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#0f5132] text-base font-extrabold text-white">
+                                  {nextAbbaDescriptor}
+                                </span>
+                              </div>
+                            ) : null}
+                            <p className="text-lg font-semibold text-[#0f5132]">{score.a} – {score.b}</p>
+                          </div>
+                          <button type="button" onClick={() => openScoreModal("B")} className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]">
+                            Add score — {displayTeamBShort}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>{/* end left column */}
+
+              {/* Right column: event log + roster */}
+              <div className="space-y-2">
+
+                {/* Event log */}
+                <div className="space-y-2 rounded-3xl border border-[#0f5132]/40 bg-white p-1.5">
+                  {matchEventsError && (
+                    <p className="text-xs text-rose-600">{matchEventsError}</p>
+                  )}
+                  <div className="space-y-2">
+                    {logsLoading ? (
+                      <div className="rounded-2xl border border-dashed border-[#0f5132]/30 px-3 py-2 text-center text-xs text-slate-500">
+                        Syncing logs...
+                      </div>
+                    ) : logs.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-[#0f5132]/30 px-3 py-2 text-center text-xs text-slate-500">
+                        No match events yet. Use the buttons above to log an event.
+                      </div>
+                    ) : (
+                      dedupedLogs.map((log, i) => {
+                        const chronologicalIndex = log.id !== undefined ? (logIndexById.get(log.id) ?? -1) : -1;
+                        const editIndex = chronologicalIndex >= 0 ? chronologicalIndex : i;
+                        return (
+                          <MatchLogCard
+                            key={log.id}
+                            log={log}
+                            chronologicalIndex={chronologicalIndex}
+                            editIndex={editIndex}
+                            displayTeamA={displayTeamA}
+                            displayTeamB={displayTeamB}
+                            displayTeamAShort={displayTeamAShort}
+                            displayTeamBShort={displayTeamBShort}
+                            getAbbaDescriptor={getAbbaDescriptor}
+                            openScoreModal={openScoreModal}
+                            openSimpleEventModal={openSimpleEventModal}
+                            openPossessionEditModal={openPossessionEditModal}
+                          />
+                        );
+                      })
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => { setEndScrimmageConfirmed(false); setEndScrimmageModalOpen(true); }}
+                      disabled={!canEndMatch}
+                      className="block w-full rounded-full bg-rose-600 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      End scrimmage
+                    </button>
+                  </div>
+                </div>
+
+                {/* Roster */}
+                <details className="group overflow-hidden rounded-2xl border border-[#0f5132]/20 bg-white">
+                  <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-2.5 marker:hidden">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 shrink-0 text-[#0f5132]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                      <span className="text-sm font-semibold text-[#0f5132]">Player roster</span>
+                      <span className="rounded-full bg-[#ecfdf3] px-1.5 py-0.5 text-[10px] font-semibold text-[#0f5132]">
+                        {(sortedRosters.teamA?.length ?? 0) + (sortedRosters.teamB?.length ?? 0)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); openRosterEditor(); }}
+                      aria-label="Edit roster"
+                      title="Edit roster"
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#0f5132]/30 text-[#0f5132] transition hover:bg-[#ecfdf3]"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                      </svg>
+                    </button>
+                    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 shrink-0 text-[#0f5132]/50 transition-transform duration-200 group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </summary>
+
+                  <div className="border-t border-[#0f5132]/10 px-3 pb-3 pt-2">
+                    {rostersError && (
+                      <p className="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{rostersError}</p>
+                    )}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {[
+                        { label: safeTeamAName, players: sortedRosters.teamA ?? [], accent: "#0f5132", bg: "#ecfdf3", border: "#0f5132" },
+                        { label: safeTeamBName, players: sortedRosters.teamB ?? [], accent: "#1e3a8a", bg: "#eff6ff", border: "#1e3a8a" },
+                      ].map(({ label, players, accent, bg, border }) => (
+                        <div key={label} className="overflow-hidden rounded-xl border" style={{ borderColor: `${border}30` }}>
+                          <div className="flex items-center justify-between px-2.5 py-1.5" style={{ background: bg }}>
+                            <span className="text-xs font-semibold" style={{ color: accent }}>{label}</span>
+                            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ background: `${accent}18`, color: accent }}>
+                              {players.length}
+                            </span>
+                          </div>
+                          <div className="p-2">
+                            {rostersLoading ? (
+                              <p className="px-0.5 py-1 text-xs text-slate-400">Loading…</p>
+                            ) : players.length === 0 ? (
+                              <p className="px-0.5 py-1 text-xs text-slate-400">No players assigned.</p>
+                            ) : (
+                              <div className="grid grid-cols-3 gap-2">
+                                {players.map((player) => (
+                                  <div
+                                    key={player.id}
+                                    className="rounded-xl border px-2 py-2 text-xs font-semibold"
+                                    style={{ borderColor: `${accent}30`, color: accent }}
+                                  >
+                                    {renderPlayerGridLabel(player)}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+
+              </div>{/* end right column */}
+
+            </div>{/* end grid */}
+
           </section>
         ) : (
-          <section className="space-y-2 rounded-3xl border border-slate-200 bg-white p-2 text-center">
+          <section
+            className="space-y-[var(--setup-button-size)] rounded-3xl border border-slate-200 bg-white p-2 text-center"
+            style={{ "--setup-button-size": "4.5rem" }}
+          >
             <button
               type="button"
               onClick={() => setSetupModalOpen(true)}
               disabled={initialising}
-              className="inline-flex w-full items-center justify-center rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
               {initialising ? "Initialising..." : "Match setup"}
             </button>
             {consoleError && (
               <p className="text-sm text-rose-600">{consoleError}</p>
             )}
-      </section>
-      )}
-    </main>
+          </section>
+        )}
+      </main>
 
-      {resumeCandidate && !resumeHandled && (
-        <ActionModal title="Resume previous session?" onClose={handleDiscardResume}>
-          <div className="space-y-3 text-sm text-[#0f5132]">
-            <p>
-              A previous session for this match was saved{" "}
-              {resumeCandidate.updatedAt
-                ? new Date(resumeCandidate.updatedAt).toLocaleString()
-                : "recently"}.
-            </p>
-            <div className="rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-3 text-xs">
-              <button
-                type="button"
-                onClick={handleResumeSession}
-                disabled={resumeBusy}
-                className="mb-3 inline-flex w-full items-center justify-center rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {resumeBusy ? "Loading..." : "Resume session"}
-              </button>
-              <p className="font-semibold uppercase tracking-wide text-[#0f5132]/70">
-                Snapshot
-              </p>
-              <p>
-                Score: {resumeCandidate?.score?.a ?? 0} - {resumeCandidate?.score?.b ?? 0}
-              </p>
-              <p>
-                Game clock: {formatClock(resumeCandidate?.timer?.seconds ?? 0)}
-                {resumeCandidate?.timer?.running ? " (running)" : ""}
-              </p>
-            </div>
-            {resumeError && (
-              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                {resumeError}
-              </p>
-            )}
-            <div className="grid gap-2">
-              <button
-                type="button"
-                onClick={handleStartNewMatch}
-                disabled={resumeBusy}
-                className="inline-flex items-center justify-center rounded-full border border-[#0f5132]/40 px-4 py-2 font-semibold text-[#0f5132] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Start new
-              </button>
-            </div>
-          </div>
-        </ActionModal>
-      )}
 
       {setupModalOpen && (
         <ActionModal title="Match setup" onClose={() => setSetupModalOpen(false)}>
@@ -1161,13 +1237,17 @@ export default function ScrimmageView() {
 
             <div className="grid gap-2 md:grid-cols-2">
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                <span className="shrink-0">Match duration</span>
+                <span className="shrink-0">Match duration (min)</span>
                 <input
                   type="number"
-                  min="1"
+                  min="0"
                   value={matchDurationMinutes || ""}
-                  placeholder="No limit"
-                  disabled
+                  placeholder="None (count up)"
+                  onChange={(event) =>
+                    setRules((prev) =>
+                      setRuleMatchDurationMinutes(prev, Number(event.target.value) || 0)
+                    )
+                  }
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
@@ -1268,8 +1348,8 @@ export default function ScrimmageView() {
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="none">None</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
+                  <option value="male">Male matching</option>
+                  <option value="female">Female matching</option>
                 </select>
               </label>
             </div>
@@ -1673,138 +1753,229 @@ export default function ScrimmageView() {
 
       {rosterEditorOpen && (
         <ActionModal
-          title="Edit player roster"
+          title="Player roster"
           onClose={closeRosterEditor}
           alignTop
           fitViewport
         >
-          <div className="space-y-3 text-sm text-[#0f5132]">
-            <form className="space-y-3" onSubmit={handleRosterPlayerSubmit}>
-              <label className="block text-sm font-semibold text-[#0f5132]">
-                Name
-                <input
-                  type="text"
-                  value={playerEditorForm.name}
-                  onChange={(event) =>
-                    setPlayerEditorForm((prev) => ({ ...prev, name: event.target.value }))
-                  }
-                  required
-                  className="mt-2 w-full rounded-xl border border-[#0f5132]/30 bg-white px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30"
-                />
-              </label>
-              <label className="block text-sm font-semibold text-[#0f5132]">
-                Jersey number (optional)
-                <input
-                  type="number"
-                  min="0"
-                  value={playerEditorForm.jersey}
-                  onChange={(event) =>
-                    setPlayerEditorForm((prev) => ({ ...prev, jersey: event.target.value }))
-                  }
-                  className="mt-2 w-full rounded-xl border border-[#0f5132]/30 bg-white px-3 py-2 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30"
-                />
-              </label>
-              <div className="block text-sm font-semibold text-[#0f5132]">
-                Team
-                <div className="mt-2 rounded-full border border-[#0f5132]/30 bg-white p-1">
-                  <div className="grid grid-cols-3 gap-1">
-                    {[
-                      { value: "A", label: "Light" },
-                      { value: "both", label: "Both" },
-                      { value: "B", label: "Dark" },
-                    ].map((option) => {
-                      const active = playerEditorForm.assignment === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() =>
-                            setPlayerEditorForm((prev) => ({ ...prev, assignment: option.value }))
-                          }
-                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                            active
-                              ? "bg-[#0f5132] text-white"
-                              : "text-[#0f5132] hover:bg-[#ecfdf3]"
-                          }`}
-                          aria-pressed={active}
-                        >
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <button
-                  type="submit"
-                  className="w-full rounded-full bg-[#0f5132] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-                >
-                  {playerEditorForm.id ? "Update player" : "Add player"}
-                </button>
-                {playerEditorForm.id ? (
-                  <button
-                    type="button"
-                    onClick={handleDeleteCurrentPlayer}
-                    className="w-full rounded-full bg-[#22a06b] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#1f7a5a]"
-                  >
-                    Delete player
-                  </button>
-                ) : null}
-              </div>
-              {playerEditorForm.id && (
-                <button
-                  type="button"
-                  onClick={resetPlayerEditorForm}
-                  className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#0f5132] transition hover:bg-white"
-                >
-                  Add another player
-                </button>
-              )}
-            </form>
+          <div className="flex min-h-0 flex-1 flex-col">
 
-            <div className="rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
-                Current players
+            {/* Scrollable content */}
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+
+            {/* Add / edit form */}
+            <div className="rounded-xl border border-[#0f5132]/20 bg-[#f0fdf4] p-2">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/60">
+                {playerEditorForm.id ? "Edit player" : "Add player"}
               </p>
-              {allRosterPlayers.length === 0 ? (
-                <p className="mt-2 text-xs text-slate-500">No players yet.</p>
-              ) : (
-                <div className="mt-2 max-h-[38vh] space-y-1.5 overflow-y-auto pr-1">
-                  {allRosterPlayers.map((player) => (
+              <form className="space-y-2" onSubmit={handleRosterPlayerSubmit}>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={playerEditorForm.name}
+                    onChange={(event) =>
+                      setPlayerEditorForm((prev) => ({ ...prev, name: event.target.value }))
+                    }
+                    required
+                    placeholder="Player name"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#0f5132]/20"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    value={playerEditorForm.jersey}
+                    onChange={(event) =>
+                      setPlayerEditorForm((prev) => ({ ...prev, jersey: event.target.value }))
+                    }
+                    placeholder="#"
+                    aria-label="Jersey number"
+                    className="w-16 shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#0f5132]/20"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-200 bg-white p-1">
+                  {[
+                    { value: "A", label: safeTeamAName, activeClass: "bg-[#0f5132] text-white" },
+                    { value: "both", label: "Both", activeClass: "bg-slate-700 text-white" },
+                    { value: "B", label: safeTeamBName, activeClass: "bg-[#1e3a8a] text-white" },
+                  ].map((option) => {
+                    const active = playerEditorForm.assignment === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() =>
+                          setPlayerEditorForm((prev) => ({ ...prev, assignment: option.value }))
+                        }
+                        className={`truncate rounded-md px-2 py-1 text-xs font-semibold transition ${
+                          active ? option.activeClass : "text-slate-600 hover:bg-slate-100"
+                        }`}
+                        aria-pressed={active}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="submit"
+                    className="flex-1 rounded-full bg-[#0f5132] px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                  >
+                    {playerEditorForm.id ? "Save changes" : "Add player"}
+                  </button>
+                  {playerEditorForm.id ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={resetPlayerEditorForm}
+                        className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                      >
+                        New
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteCurrentPlayer}
+                        className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </form>
+            </div>
+
+            {/* Bulk upload — one section per team */}
+            <div className="rounded-xl border border-[#0f5132]/20 bg-white p-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/60">
+                Upload players
+              </p>
+              <p className="mb-2 text-[11px] leading-tight text-slate-500">
+                Line 1 = team name, then one player per line (optional 3-digit number first,
+                e.g. <span className="font-mono">7 Sam Jones</span>).
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  { key: "A", label: safeTeamAName, accent: "#0f5132" },
+                  { key: "B", label: safeTeamBName, accent: "#1e3a8a" },
+                ].map(({ key, label, accent }) => {
+                  const state = rosterUpload[key] || { text: "", error: "", notice: "" };
+                  return (
                     <div
-                      key={`edit-${player.id}`}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-white/60 bg-white px-2 py-1.5"
+                      key={key}
+                      className="flex flex-col rounded-lg border p-2"
+                      style={{ borderColor: `${accent}30` }}
                     >
-                      <div className="flex items-center gap-2">
-                        <PlayerSideIcon side={player.side} />
-                        <p>{formatPlayerSelectLabel(player)}</p>
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span className="text-xs font-semibold" style={{ color: accent }}>
+                          {label}
+                        </span>
+                        <label
+                          className="cursor-pointer rounded-full border px-2 py-0.5 text-[11px] font-semibold transition hover:opacity-80"
+                          style={{ borderColor: `${accent}40`, color: accent }}
+                        >
+                          File
+                          <input
+                            ref={(node) => {
+                              rosterUploadFileRefs.current[key] = node;
+                            }}
+                            type="file"
+                            accept=".txt,.csv,text/plain"
+                            className="hidden"
+                            onChange={(event) => {
+                              handleRosterUploadFile(key, event.target.files?.[0]);
+                              event.target.value = "";
+                            }}
+                          />
+                        </label>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <textarea
+                        rows={3}
+                        value={state.text}
+                        onChange={(event) =>
+                          setRosterUpload((prev) => ({
+                            ...prev,
+                            [key]: { text: event.target.value, error: "", notice: "" },
+                          }))
+                        }
+                        placeholder={`${label}\n7 Sam Jones\nJordan Patel`}
+                        className="w-full resize-y rounded-md border border-slate-200 bg-white px-2 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-300 focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#0f5132]/20"
+                      />
+                      {state.error && (
+                        <p className="mt-1 text-[11px] font-medium text-rose-600">{state.error}</p>
+                      )}
+                      {state.notice && (
+                        <p className="mt-1 text-[11px] font-medium text-[#0f5132]">{state.notice}</p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => applyRosterUpload(key)}
+                        disabled={!state.text.trim()}
+                        className="mt-1.5 rounded-full px-3 py-1 text-xs font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+                        style={{ background: accent }}
+                      >
+                        Add to {label}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Current players list */}
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-2.5 py-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current players</p>
+                <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                  {allRosterPlayers.length}
+                </span>
+              </div>
+              {allRosterPlayers.length === 0 ? (
+                <p className="px-3 py-3 text-center text-xs text-slate-400">No players yet — add one above.</p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {allRosterPlayers.map((player) => {
+                    const isEditing = playerEditorForm.id === player.id;
+                    return (
+                      <div
+                        key={`edit-${player.id}`}
+                        className={`flex items-center gap-2 px-2.5 py-1.5 transition ${isEditing ? "bg-[#ecfdf3]" : "hover:bg-slate-50"}`}
+                      >
+                        <PlayerSideIcon side={player.side} />
+                        {player.jersey_number != null && (
+                          <span className="w-5 shrink-0 text-right text-xs font-bold tabular-nums text-slate-400">
+                            {player.jersey_number}
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-sm text-slate-800">
+                          {player.name || "—"}
+                        </span>
                         <button
                           type="button"
                           onClick={() => startEditRosterPlayer(player)}
-                          className="rounded-full border border-[#0f5132]/30 px-2 py-0.5 text-[11px] font-semibold text-[#0f5132] transition hover:bg-[#dcfce7]"
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold transition ${
+                            isEditing
+                              ? "bg-[#0f5132] text-white"
+                              : "border border-[#0f5132]/30 text-[#0f5132] hover:bg-[#ecfdf3]"
+                          }`}
                         >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteRosterPlayer(player.id)}
-                          className="rounded-full border border-rose-300 px-2 py-0.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-50"
-                        >
-                          Delete
+                          {isEditing ? "Editing" : "Edit"}
                         </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
+
+            </div>{/* end scrollable content */}
+
             <button
               type="button"
               onClick={closeRosterEditor}
-              className="w-full rounded-full border border-[#0f5132]/40 px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
+              className="mt-2 w-full shrink-0 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
             >
               Done
             </button>
@@ -1873,8 +2044,15 @@ export default function ScrimmageView() {
           onClose={() => setMatchReportOpen(false)}
           maxWidthClass="max-w-6xl"
         >
-          <div className="max-h-[75vh] space-y-3 overflow-y-auto pr-1 text-ink">
-            <div className="flex items-center justify-end">
+          <div className="max-h-[75vh] space-y-4 overflow-y-auto pr-1 text-slate-800">
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadCsv}
+                className="rounded-full border border-[#0f5132] bg-white px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
+              >
+                Download data (CSV)
+              </button>
               <button
                 type="button"
                 onClick={handleDownloadPdf}
@@ -1883,46 +2061,155 @@ export default function ScrimmageView() {
                 Download PDF
               </button>
             </div>
-            <section className="sc-card-base space-y-3 p-4 sm:p-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="sc-chip">Match analytics</span>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-2">
-                <InsightTable title="Match insight" rows={scrimmageReport?.insights?.match} />
-                <InsightTable title="Tempo insight" rows={scrimmageReport?.insights?.tempo} />
-              </div>
-            </section>
 
-            <section className="sc-card-base space-y-2 p-4 sm:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="sc-chip">Score progression</span>
-              </div>
-              <TimelineChart
-                match={scrimmageReportMatch}
-                timeline={scrimmageReport?.timeline}
-                possessionTimeline={scrimmageReport?.possessionTimeline}
+            {/* Scoreline header */}
+            <div className="flex items-center justify-center gap-4 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] px-4 py-3 text-center">
+              <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-[#0f5132] sm:text-base">
+                {displayTeamA}
+              </span>
+              <span className="shrink-0 text-2xl font-bold tabular-nums text-[#0f5132] sm:text-3xl">
+                {score.a} <span className="text-[#0f5132]/40">–</span> {score.b}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-[#0f5132] sm:text-base">
+                {displayTeamB}
+              </span>
+            </div>
+
+            {/* Insights */}
+            <div className="grid gap-3 lg:grid-cols-2">
+              <ReportTable title="Match insights" rows={scrimmageReport?.insights?.match} />
+              <ReportTable title="Tempo insights" rows={scrimmageReport?.insights?.tempo} />
+            </div>
+
+            {/* Team overviews */}
+            <div className="grid gap-3 lg:grid-cols-2">
+              <ReportTeamCard
+                title={`${displayTeamA} overview`}
+                accent="#0f5132"
+                stats={scrimmageReport?.summaries?.teamA}
               />
-            </section>
-
-            <section className="sc-card-base space-y-3 p-4 sm:p-6">
-              <div className="flex items-center gap-2">
-                <span className="sc-chip">Team production</span>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-2">
-                <TeamOverviewCard
-                  title={`${displayTeamA} overview`}
-                  stats={scrimmageReport?.summaries?.teamA}
-                />
-                <TeamOverviewCard
-                  title={`${displayTeamB} overview`}
-                  stats={scrimmageReport?.summaries?.teamB}
-                />
-              </div>
-            </section>
+              <ReportTeamCard
+                title={`${displayTeamB} overview`}
+                accent="#1e3a8a"
+                stats={scrimmageReport?.summaries?.teamB}
+              />
+            </div>
           </div>
         </ActionModal>
       )}
     </ScorekeeperShell>
+  );
+}
+
+const SECONDARY_TIMER_GUIDES = {
+  interPoint: {
+    title: "Inter-point timer",
+    steps: [
+      { from: 45, text: "Set offence on the line" },
+      { from: 60, text: "Signal offence ready" },
+    ],
+  },
+  betweenPointsTimeout: {
+    title: "Time-out (between points)",
+    steps: [
+      { from: 0, until: 75, text: "Timeout" },
+      { from: 75, text: "Extend inter-point window" },
+      { from: 76, text: "Inter-point" },
+    ],
+  },
+  liveTimeout: {
+    title: "Timeout (during a point)",
+    steps: [
+      { from: 0, until: 75, text: "Timeout" },
+      { from: 75, until: 90, text: "Confirm offence ready" },
+      { from: 90, text: "Check disc in" },
+    ],
+  },
+  discussion: {
+    title: "Discussion",
+    steps: [
+      { from: 15, text: "Involve captains" },
+      { from: 45, text: "Declare contested" },
+    ],
+  },
+};
+
+function getSecondaryTimerGuide(label) {
+  const normalized = `${label || ""}`.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.includes("discussion")) return SECONDARY_TIMER_GUIDES.discussion;
+  if (normalized === "inter point") return SECONDARY_TIMER_GUIDES.interPoint;
+  if (normalized.includes("inter point timeout") || normalized.includes("pre-pull timeout")) {
+    return SECONDARY_TIMER_GUIDES.betweenPointsTimeout;
+  }
+  if (normalized.includes("timeout")) return SECONDARY_TIMER_GUIDES.liveTimeout;
+  return null;
+}
+
+function getCurrentSecondaryTimerStep(guide, elapsedSeconds) {
+  if (!guide || !Number.isFinite(elapsedSeconds)) return null;
+  const elapsed = Math.max(0, Math.floor(elapsedSeconds));
+  return guide.steps.reduce((activeStep, step) => {
+    if (elapsed < step.from) return activeStep;
+    if (step.until !== undefined && elapsed >= step.until) return activeStep;
+    return step;
+  }, null);
+}
+
+function SecondaryTimerDescription({ label, running, remainingSeconds, totalSeconds }) {
+  const guide = running ? getSecondaryTimerGuide(label) : null;
+  const elapsedSeconds =
+    Number.isFinite(totalSeconds) && Number.isFinite(remainingSeconds)
+      ? totalSeconds - remainingSeconds
+      : null;
+  const activeStep = guide ? getCurrentSecondaryTimerStep(guide, elapsedSeconds) : null;
+  if (!guide) {
+    return (
+      <span className="text-xs font-semibold uppercase tracking-wide">
+        {label || "Inter point"}
+      </span>
+    );
+  }
+  return (
+    <div className="w-full text-center text-[10px] font-semibold leading-tight">
+      <p className="text-center text-slate-900">{guide.title}</p>
+      {activeStep && <p>{activeStep.text}</p>}
+    </div>
+  );
+}
+
+function SecondaryTimerProgressBar({ anchorRef, totalSeconds, running }) {
+  const [pct, setPct] = useState(1);
+  const [remainingEst, setRemainingEst] = useState(totalSeconds);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    if (!running || !totalSeconds || totalSeconds <= 0) return undefined;
+    const tick = () => {
+      const anchor = anchorRef?.current;
+      if (anchor?.anchorTimestamp) {
+        const elapsedMs = Date.now() - anchor.anchorTimestamp;
+        const elapsedSec = elapsedMs / 1000;
+        const remaining = Math.max(0, (anchor.baseSeconds ?? totalSeconds) - elapsedSec);
+        setPct(Math.max(0, Math.min(1, remaining / totalSeconds)));
+        setRemainingEst(remaining);
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [running, totalSeconds, anchorRef]);
+
+  if (!running || !totalSeconds || totalSeconds <= 0) return null;
+
+  const isUrgent = remainingEst <= 15;
+  const isWarning = !isUrgent && remainingEst <= 30;
+  const barColor = isUrgent ? "bg-[#ef4444]" : isWarning ? "bg-[#f59e0b]" : "bg-[#16a34a]";
+
+  return (
+    <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-slate-300 ring-2 ring-slate-500">
+      <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct * 100}%` }} />
+    </div>
   );
 }
 
@@ -1965,7 +2252,17 @@ function ActionModal({
             X
           </button>
         </div>
-        <div className={scrollable ? "max-h-[80vh] overflow-y-auto pr-1" : ""}>{children}</div>
+        <div
+          className={
+            fitViewport
+              ? "flex max-h-[calc(92vh-3.5rem)] flex-col overflow-hidden"
+              : scrollable
+                ? "max-h-[80vh] overflow-y-auto pr-1"
+                : ""
+          }
+        >
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -2039,11 +2336,11 @@ function PlayerSideIcon({ side }) {
   if (side === "A") {
     return (
       <span
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-400 bg-white text-[9px] font-bold leading-none text-slate-800"
-        title="Light"
-        aria-label="Light"
+        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#0f5132] text-[8px] font-bold leading-none text-white"
+        title="Team A"
+        aria-label="Team A"
       >
-        L
+        A
       </span>
     );
   }
@@ -2051,388 +2348,114 @@ function PlayerSideIcon({ side }) {
   if (side === "B") {
     return (
       <span
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-800 bg-slate-900 text-[9px] font-bold leading-none text-slate-100"
-        title="Dark"
-        aria-label="Dark"
+        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#1e3a8a] text-[8px] font-bold leading-none text-white"
+        title="Team B"
+        aria-label="Team B"
       >
-        D
+        B
       </span>
     );
   }
 
   return (
     <span
-      className="inline-flex items-center gap-1"
-      title="Light and Dark"
-      aria-label="Light and Dark"
+      className="inline-flex shrink-0 items-center gap-0.5"
+      title="Both teams"
+      aria-label="Both teams"
     >
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-500 bg-white text-[8px] font-bold leading-none text-slate-800">
-        L
-      </span>
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-800 bg-slate-900 text-[8px] font-bold leading-none text-slate-100">
-        D
-      </span>
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#0f5132] text-[8px] font-bold leading-none text-white">A</span>
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#1e3a8a] text-[8px] font-bold leading-none text-white">B</span>
     </span>
   );
 }
 
-function LegendSwatch({ color, label }) {
+function ReportTable({ title, rows }) {
   return (
-    <span className="inline-flex items-center gap-1 text-xs sm:gap-1.5">
-      <span
-        className="inline-block h-4 w-6 rounded-sm border border-black/60"
-        style={{ backgroundColor: color }}
-      />
-      {label}
-    </span>
-  );
-}
-
-function TimelineChart({ match, timeline, possessionTimeline }) {
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (typeof window === "undefined") return;
-      setIsMobile(window.innerWidth <= 640);
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  if (!match || !timeline) {
-    return (
-      <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">
-        Timeline data unavailable.
+    <div className="overflow-hidden rounded-2xl border border-[#0f5132]/20 bg-white">
+      <div className="border-b border-[#0f5132]/15 bg-[#ecfdf3] px-4 py-2.5">
+        <h3 className="text-sm font-semibold text-[#0f5132]">{title}</h3>
       </div>
-    );
-  }
-
-  const width = 900;
-  const baseHeight = 300;
-  const possessionSegments = possessionTimeline?.segments || [];
-  const possessionBandHeight = possessionSegments.length ? (isMobile ? 18 : 14) : 0;
-  const possessionBandGap = possessionSegments.length ? 24 : 0;
-  const chartCanvasHeight = isMobile ? baseHeight * 1.35 : baseHeight;
-  const height = chartCanvasHeight + possessionBandHeight + possessionBandGap;
-  const padding = { top: 26, right: 44, bottom: 52, left: 50 };
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = chartCanvasHeight - padding.top - padding.bottom;
-  const yMax = Math.max(10, timeline.maxScore);
-  const legendY = height - 35;
-  const minutesLabelY = legendY - 8;
-
-  const getX = (time) => {
-    const ratio = (time - timeline.minTime) / (timeline.maxTime - timeline.minTime || 1);
-    return padding.left + ratio * chartWidth;
-  };
-
-  const getY = (value) => padding.top + (1 - value / (yMax || 1)) * chartHeight;
-
-  const renderLinePath = (points, color) => {
-    if (!points.length) return null;
-    const sorted = [...points].sort((a, b) => a.time - b.time);
-    let path = `M${getX(sorted[0].time)},${getY(sorted[0].score)}`;
-    for (let index = 1; index < sorted.length; index += 1) {
-      const point = sorted[index];
-      path += ` L${getX(point.time)},${getY(point.score)}`;
-    }
-    return <path d={path} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" />;
-  };
-
-  const teamAName = match?.team_a?.name || "Team A";
-  const teamBName = match?.team_b?.name || "Team B";
-  const finalScoreA =
-    timeline.series?.teamA?.[timeline.series.teamA.length - 1]?.score ?? match?.score_a ?? 0;
-  const finalScoreB =
-    timeline.series?.teamB?.[timeline.series.teamB.length - 1]?.score ?? match?.score_b ?? 0;
-  const chartTitle = `${teamAName} ${finalScoreA} - ${finalScoreB} ${teamBName}`;
-
-  return (
-    <div className="relative mx-auto w-full pb-14">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" preserveAspectRatio="xMidYMid meet">
-        <rect x="0" y="0" width={width} height={height} fill="white" rx="18" />
-
-        {(timeline.bands || []).map((band) => (
-          <rect
-            key={`${band.type}-${band.start}`}
-            x={getX(band.start)}
-            y={padding.top}
-            width={Math.max(2, getX(band.end) - getX(band.start))}
-            height={chartHeight}
-            fill={REPORT_BAND_COLORS[band.type] || "rgba(125,125,125,0.15)"}
-          />
-        ))}
-
-        <line
-          x1={padding.left}
-          y1={padding.top + chartHeight}
-          x2={padding.left + chartWidth}
-          y2={padding.top + chartHeight}
-          stroke="#cbd5f5"
-          strokeWidth="1"
-        />
-        <line
-          x1={padding.left}
-          y1={padding.top}
-          x2={padding.left}
-          y2={padding.top + chartHeight}
-          stroke="#cbd5f5"
-          strokeWidth="1"
-        />
-
-        {Array.from({ length: yMax + 1 }).map((_, index) => {
-          const y = getY(index);
-          return (
-            <g key={index}>
-              <line
-                x1={padding.left}
-                x2={padding.left + chartWidth}
-                y1={y}
-                y2={y}
-                stroke="#cbd5f5"
-                strokeDasharray="4 6"
-                strokeWidth="0.5"
-              />
-              <text x={padding.left - 10} y={y + 4} fontSize="9.35" textAnchor="end" fill="#000">
-                {index}
-              </text>
-            </g>
-          );
-        })}
-
-        {(timeline.scoringPoints || []).map((point) => {
-          const cx = getX(point.time);
-          const cy = getY(point.score);
-          const baselineY = padding.top + chartHeight;
-          return (
-            <g key={`${point.team}-${point.time}`}>
-              <line x1={cx} x2={cx} y1={cy} y2={baselineY} stroke="#cbd5f5" strokeWidth="0.8" />
-              <circle
-                cx={cx}
-                cy={cy}
-                r={4}
-                fill={REPORT_SERIES_COLORS[point.team]}
-                stroke="white"
-                strokeWidth="1.5"
-              />
-            </g>
-          );
-        })}
-
-        {renderLinePath(timeline.series?.teamA || [], REPORT_SERIES_COLORS.teamA)}
-        {renderLinePath(timeline.series?.teamB || [], REPORT_SERIES_COLORS.teamB)}
-
-        <text x={width / 2} y={20} textAnchor="middle" fontSize="13.6" fontWeight="600" fill="#0f172a">
-          {chartTitle}
-        </text>
-
-        {possessionSegments.length > 0 && (
-          <g>
-            <rect
-              x={padding.left}
-              y={padding.top + chartHeight}
-              width={chartWidth}
-              height={possessionBandHeight}
-              fill="#f8fafc"
-              rx="4"
-            />
-            {(timeline.timeTicks || []).map((tick) => {
-              const x = getX(tick.value);
-              const labelY = padding.top + chartHeight + possessionBandHeight + 12;
-              return (
-                <text
-                  key={`possession-tick-${tick.value}`}
-                  fontSize="9.35"
-                  fill="#475569"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  x={x}
-                  y={labelY}
-                >
-                  {tick.label}
-                </text>
-              );
-            })}
-            {possessionSegments.map((segment, index) => {
-              const xStart = getX(segment.start);
-              const xEnd = getX(segment.end);
-              const fill =
-                segment.team === "teamA"
-                  ? REPORT_SERIES_COLORS.teamA
-                  : segment.team === "teamB"
-                    ? REPORT_SERIES_COLORS.teamB
-                    : segment.team === "band"
-                      ? "rgba(148, 163, 184, 0.9)"
-                      : "rgba(226, 232, 240, 0.9)";
-              return (
-                <rect
-                  key={`${segment.team || "unknown"}-${segment.start}-${index}`}
-                  x={xStart}
-                  y={padding.top + chartHeight}
-                  width={Math.max(2, xEnd - xStart)}
-                  height={possessionBandHeight}
-                  fill={fill}
-                  opacity="0.9"
-                />
-              );
-            })}
-          </g>
-        )}
-
-        <text x={width / 2} y={minutesLabelY} textAnchor="middle" fontSize="10.2" fill="#000">
-          Minutes
-        </text>
-        <text
-          x="14"
-          y={height / 2}
-          textAnchor="middle"
-          fontSize="10.2"
-          transform={`rotate(-90 14 ${height / 2})`}
-          fill="#000"
-        >
-          Score
-        </text>
-
-        <foreignObject x={width * 0.15} y={legendY} width={width * 0.7} height="40">
-          <div
-            xmlns="http://www.w3.org/1999/xhtml"
-            className="flex flex-wrap items-center justify-center gap-4 text-xs"
-          >
-            <span className="flex flex-wrap items-center gap-3 text-sm font-semibold text-black">
-              <LegendSwatch color={REPORT_SERIES_COLORS.teamA} label={teamAName} />
-              <LegendSwatch color={REPORT_SERIES_COLORS.teamB} label={teamBName} />
-            </span>
-            <span className="flex flex-wrap items-center gap-2 text-xs text-black">
-              <LegendSwatch color={REPORT_BAND_COLORS.timeout} label="Timeout" />
-              <LegendSwatch color={REPORT_BAND_COLORS.stoppage} label="Stoppage" />
-              <LegendSwatch color={REPORT_BAND_COLORS.halftime} label="Halftime" />
-            </span>
-          </div>
-        </foreignObject>
-      </svg>
-    </div>
-  );
-}
-
-function InsightTable({ title, rows }) {
-  if (!rows?.length) {
-    return (
-      <div className="sc-card-muted p-4 text-sm text-ink-muted">
-        No {title.toLowerCase()} available.
-      </div>
-    );
-  }
-  return (
-    <div className="sc-card-base">
-      <div className="border-b border-border px-4 py-3">
-        <h3 className="text-sm font-semibold text-ink">{title}</h3>
-      </div>
-      <table className="w-full text-sm text-ink">
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.label} className="border-t border-border text-sm">
-              <td className="px-4 py-2 font-medium text-ink-muted">{row.label}</td>
-              <td className="px-4 py-2 text-right font-semibold text-ink">{row.value}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function TeamOverviewCard({ title, stats }) {
-  const goals = stats?.goals || [];
-  const assists = stats?.assists || [];
-  const turnovers = stats?.turnovers || [];
-  const connections = stats?.connections || [];
-  const production = stats?.production;
-  const summaryStats = [
-    { key: "holds", label: "Holds", value: production?.holds },
-    { key: "clean", label: "Clean holds", value: production?.cleanHolds },
-    { key: "turnovers", label: "Total turnovers", value: production?.totalTurnovers },
-    { key: "breaks", label: "Breaks", value: production?.breaks },
-    { key: "breakChances", label: "Break chances", value: production?.breakChances },
-  ];
-  const formatStatValue = (value) => (Number.isFinite(value) ? value : value === 0 ? 0 : "--");
-
-  const renderList = (label, rows, valueLabel) => (
-    <div className="sc-card-muted p-3">
-      {rows.length ? (
-        <table className="w-full text-left text-sm text-ink">
-          <thead>
-            <tr className="text-xs uppercase tracking-wide text-ink-muted">
-              <th className="py-0.5 pr-2">{valueLabel}</th>
-              <th className="py-0.5 text-right"></th>
-            </tr>
-          </thead>
+      {rows?.length ? (
+        <table className="w-full text-sm">
           <tbody>
-            {rows.slice(0, 8).map((row) => (
-              <tr key={`${label}-${row.player}`} className="border-t border-border text-sm">
-                <td className="py-1 pr-2">{row.player}</td>
-                <td className="py-1 text-right font-semibold">{row.count}</td>
+            {rows.map((row) => (
+              <tr key={row.label} className="border-t border-slate-100">
+                <td className="px-4 py-2 font-medium text-slate-500">{row.label}</td>
+                <td className="px-4 py-2 text-right font-semibold text-slate-800">{row.value}</td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : (
-        <p className="mt-0.5 text-xs text-ink-muted sm:mt-1.5">No {label.toLowerCase()} recorded.</p>
+        <p className="px-4 py-3 text-sm text-slate-400">No data available.</p>
       )}
     </div>
   );
+}
 
+function ReportStatList({ title, valueLabel, rows, accent }) {
   return (
-    <div className="sc-card-base p-3 sm:p-5">
-      <h3 className="mb-1.5 text-lg font-semibold text-ink sm:mb-2.5">{title}</h3>
-      {production && (
-        <div className="mb-2 grid grid-cols-2 gap-2 text-center sm:mb-3 sm:grid-cols-5 sm:gap-3">
-          {summaryStats.map((item) => (
-            <div
-              key={item.key}
-              className="rounded-xl border border-border bg-surface px-2 py-3"
-            >
-              <p className="text-lg font-semibold text-ink sm:text-xl">
-                {formatStatValue(item.value)}
-              </p>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted sm:text-[11px]">
-                {item.label}
-              </p>
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-1.5">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{valueLabel}</span>
+      </div>
+      {rows?.length ? (
+        <div className="divide-y divide-slate-100">
+          {rows.slice(0, 8).map((row) => (
+            <div key={row.player} className="flex items-center justify-between px-3 py-1.5">
+              <span className="min-w-0 truncate text-sm text-slate-800">{row.player}</span>
+              <span className="shrink-0 text-sm font-bold tabular-nums" style={{ color: accent }}>
+                {row.count}
+              </span>
             </div>
           ))}
         </div>
+      ) : (
+        <p className="px-3 py-2 text-xs text-slate-400">None recorded.</p>
       )}
-      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 sm:gap-3">
-        {renderList("Goals", goals, "Goal")}
-        {renderList("Assists", assists, "Assist")}
-        {renderList("Turnovers", turnovers, "Turnover")}
+    </div>
+  );
+}
+
+function ReportTeamCard({ title, stats, accent }) {
+  const goals = stats?.goals || [];
+  const assists = stats?.assists || [];
+  const connections = stats?.connections || [];
+
+  return (
+    <div className="space-y-2 rounded-2xl border border-[#0f5132]/20 bg-white p-3">
+      <h3 className="text-base font-semibold" style={{ color: accent }}>
+        {title}
+      </h3>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <ReportStatList title="Goals" valueLabel="G" rows={goals} accent={accent} />
+        <ReportStatList title="Assists" valueLabel="A" rows={assists} accent={accent} />
       </div>
-      <div className="mt-1.5 sc-card-muted p-3 sm:mt-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Top connections</p>
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 bg-slate-50 px-3 py-1.5">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Top connections
+          </span>
+        </div>
         {connections.length ? (
-          <table className="mt-1 w-full text-left text-sm text-ink sm:mt-1.5">
-            <thead>
-              <tr className="text-xs uppercase tracking-wide text-ink-muted">
-                <th className="py-0.5 pr-2">Assist</th>
-                <th className="py-0.5" />
-                <th className="py-0.5 pr-2">Scorer</th>
-                <th className="py-0.5 text-right">Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              {connections.slice(0, 6).map((row) => (
-                <tr key={`${row.assist}-${row.scorer}`} className="border-t border-border text-sm">
-                  <td className="py-1 pr-2">{row.assist}</td>
-                  <td className="py-1 text-center text-sm font-bold text-ink-muted">-&gt;</td>
-                  <td className="py-1 pr-2">{row.scorer}</td>
-                  <td className="py-1 text-right font-semibold">{row.count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="divide-y divide-slate-100">
+            {connections.slice(0, 6).map((row) => (
+              <div
+                key={`${row.assist}-${row.scorer}`}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm"
+              >
+                <span className="min-w-0 flex-1 truncate text-slate-800">{row.assist}</span>
+                <span className="shrink-0 text-slate-400">→</span>
+                <span className="min-w-0 flex-1 truncate text-slate-800">{row.scorer}</span>
+                <span className="shrink-0 font-bold tabular-nums" style={{ color: accent }}>
+                  {row.count}
+                </span>
+              </div>
+            ))}
+          </div>
         ) : (
-          <p className="mt-1 text-xs text-ink-muted sm:mt-1.5">No assisted goals recorded.</p>
+          <p className="px-3 py-2 text-xs text-slate-400">No assisted goals recorded.</p>
         )}
       </div>
     </div>

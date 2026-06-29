@@ -584,14 +584,13 @@ function PlayersTable({ stats, rosterCount }) {
         <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
           <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
             <tr>
-              <th className="px-3 py-2 sm:px-4 sm:py-3">{renderSortLabel("Number", "jerseyNumber")}</th>
-              <th className="px-3 py-2 sm:px-4 sm:py-3">{renderSortLabel("Player", "playerName")}</th>
-              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Goals", "goals")}</th>
-              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Assists", "assists")}</th>
-              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Blocks", "blocks")}</th>
-              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Turnovers", "turnovers")}</th>
-              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Games", "games")}</th>
-              <th className="px-3 py-2 text-right sm:px-4 sm:py-3">{renderSortLabel("Total (G+A)", "total")}</th>
+              <th className="px-3 py-1.5">{renderSortLabel("Player", "playerName")}</th>
+              <th className="px-3 py-1.5 text-right">{renderSortLabel("G", "goals")}</th>
+              <th className="px-3 py-1.5 text-right">{renderSortLabel("A", "assists")}</th>
+              <th className="px-3 py-1.5 text-right">{renderSortLabel("B", "blocks")}</th>
+              <th className="px-3 py-1.5 text-right">{renderSortLabel("TO", "turnovers")}</th>
+              <th className="px-3 py-1.5 text-right">{renderSortLabel("GP", "games")}</th>
+              <th className="px-3 py-1.5 text-right">{renderSortLabel("G+A", "total")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
@@ -599,27 +598,27 @@ function PlayersTable({ stats, rosterCount }) {
               const total = stat.goals + stat.assists;
               return (
                 <tr key={stat.playerId}>
-                  <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)] sm:px-4 sm:py-3">
-                    {stat.jerseyNumber ?? "--"}
-                  </td>
-                  <td className="px-3 py-2 sm:px-4 sm:py-3">
-                    <div className="font-semibold text-[var(--sc-surface-light-ink)]">
+                  <td className="px-3 py-1.5">
+                    <div className="flex items-center gap-2">
+                      {stat.jerseyNumber != null && (
+                        <span className="w-6 shrink-0 text-right text-xs font-semibold text-[var(--sc-surface-light-ink)]/50">
+                          {stat.jerseyNumber}
+                        </span>
+                      )}
                       <Link
                         to={`/players/${stat.playerId}`}
-                        className="text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
+                        className="font-semibold text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
                       >
                         {stat.playerName}
                       </Link>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right font-semibold text-[var(--sc-surface-light-ink)] sm:px-4 sm:py-3">
-                    {stat.goals}
-                  </td>
-                  <td className="px-3 py-2 text-right sm:px-4 sm:py-3">{stat.assists}</td>
-                  <td className="px-3 py-2 text-right sm:px-4 sm:py-3">{stat.blocks}</td>
-                  <td className="px-3 py-2 text-right sm:px-4 sm:py-3">{stat.turnovers}</td>
-                  <td className="px-3 py-2 text-right sm:px-4 sm:py-3">{stat.games || 0}</td>
-                  <td className="px-3 py-2 text-right sm:px-4 sm:py-3">{formatPerGame(total, stat.games)}</td>
+                  <td className="px-3 py-1.5 text-right font-semibold text-[var(--sc-surface-light-ink)]">{stat.goals}</td>
+                  <td className="px-3 py-1.5 text-right">{stat.assists}</td>
+                  <td className="px-3 py-1.5 text-right">{stat.blocks}</td>
+                  <td className="px-3 py-1.5 text-right">{stat.turnovers}</td>
+                  <td className="px-3 py-1.5 text-right">{stat.games || 0}</td>
+                  <td className="px-3 py-1.5 text-right">{formatPerGame(total, stat.games)}</td>
                 </tr>
               );
             })}

@@ -1502,6 +1502,10 @@ textarea.sc-input {
   color: var(--sc-ink-muted);
 }
 
+.wizard-ml-sm {
+  margin-left: 0.5rem;
+}
+
 .wizard-option {
   cursor: pointer;
   border: 1px solid var(--sc-border);
@@ -1514,6 +1518,100 @@ textarea.sc-input {
 .wizard-option.is-selected {
   border-color: var(--sc-accent);
   background: rgba(198, 255, 98, 0.12);
+}
+
+.wizard-venue-list {
+  display: grid;
+  gap: 0;
+  border-radius: var(--sc-radius-md);
+  border: 1px solid var(--sc-border);
+  background: var(--sc-surface);
+  overflow: hidden;
+}
+
+.wizard-venue-row {
+  position: relative;
+  display: grid;
+  gap: 0.15rem;
+  /* Leave room on the right for the two top-right icon buttons. */
+  padding: 0.625rem 4rem 0.625rem 0.75rem;
+  min-width: 0;
+}
+
+.wizard-venue-row + .wizard-venue-row {
+  border-top: 1px solid var(--sc-border);
+}
+
+.wizard-venue-row__actions {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.wizard-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--sc-radius-md);
+  border: 1px solid var(--sc-border);
+  background: var(--sc-surface);
+  color: #ffffff;
+  cursor: pointer;
+  transition: color var(--sc-transition-fast), border var(--sc-transition-fast),
+    background var(--sc-transition-fast);
+}
+
+.wizard-icon-button:hover {
+  border-color: var(--sc-ink-muted);
+}
+
+.wizard-icon-button.is-destructive {
+  color: var(--sc-danger, #dc2626);
+}
+
+.wizard-icon-button.is-destructive:hover {
+  color: var(--sc-danger, #dc2626);
+  border-color: var(--sc-danger, #dc2626);
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.wizard-icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wizard-icon-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Mobile: enlarge the icon buttons 50% and add a bit more space between them. */
+@media (max-width: 639px) {
+  .wizard-icon-button {
+    width: 2.625rem;
+    height: 2.625rem;
+  }
+
+  .wizard-icon-button svg {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .wizard-icon-button + .wizard-icon-button {
+    margin-left: 0.25rem;
+  }
+
+  .wizard-venue-row__actions {
+    gap: 0.5rem;
+  }
+
+  .wizard-venue-row {
+    padding-right: 6.25rem;
+  }
 }
 
 .wizard-divider {
@@ -1546,6 +1644,24 @@ textarea.sc-input {
 
 .wizard-box-dashed {
   border-style: dashed;
+}
+
+.wizard-blueprint-pools {
+  display: grid;
+  gap: 0.25rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--sc-border);
+  font-size: 0.85rem;
+}
+
+.wizard-review-divisions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wizard-review-divisions > * + * {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--sc-border);
 }
 
 .wizard-confirm-checklist {
@@ -1659,7 +1775,7 @@ textarea.sc-input {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding-top: 1rem;
+  padding-top: 0.75rem;
   border-top: 1px solid var(--sc-border);
   font-size: 0.7rem;
   text-transform: uppercase;

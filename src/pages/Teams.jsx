@@ -1,27 +1,39 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getTeamsPage } from "../services/teamService";
 import { Card, Panel, SectionHeader, SectionShell, Field, Input } from "../components/ui/primitives";
 
 const TEAMS_PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
 
 export default function TeamsPage() {
   const [teams, setTeams] = useState([]);
   const [totalTeams, setTotalTeams] = useState(0);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCache, setPageCache] = useState({});
+  const pageCacheRef = useRef(pageCache);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
-  const normalizedQuery = query.trim().toLowerCase();
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const normalizedQuery = debouncedQuery.trim().toLowerCase();
   const pageCacheKey = `${normalizedQuery || "all"}:${pageIndex}`;
+
+  useEffect(() => {
+    pageCacheRef.current = pageCache;
+  }, [pageCache]);
 
   useEffect(() => {
     let ignore = false;
 
     async function loadTeams() {
-      const cachedPage = pageCache[pageCacheKey];
+      const cachedPage = pageCacheRef.current[pageCacheKey];
       if (cachedPage) {
         setTeams(cachedPage.rows);
         setTotalTeams(cachedPage.total);
@@ -62,7 +74,7 @@ export default function TeamsPage() {
     return () => {
       ignore = true;
     };
-  }, [normalizedQuery, pageCache, pageCacheKey, pageIndex]);
+  }, [normalizedQuery, pageCacheKey, pageIndex]);
 
   const pageCount = useMemo(
     () => Math.max(1, Math.ceil(totalTeams / TEAMS_PAGE_SIZE)),
