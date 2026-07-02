@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import { saveScorekeeperSession } from "../../services/scorekeeperSessionStore";
+import { setLiveActivity } from "../../services/liveActivity";
 import { formatClock } from "./scorekeeperUtils";
 import { useScoreKeeperData } from "./useScoreKeeperData";
 import { useScoreKeeperActions } from "./useScoreKeeperActions";
@@ -325,6 +326,13 @@ export default function ScoreKeeperView() {
     fiveVFiveData.selectedMatchId,
     navigate,
   ]);
+
+  // Defer automatic PWA reloads while a match is actively being scored.
+  const scoringLive = matchStarted || fiveVFiveData.matchStarted;
+  useEffect(() => {
+    setLiveActivity("scorekeeper", scoringLive);
+    return () => setLiveActivity("scorekeeper", false);
+  }, [scoringLive]);
 
   useEffect(() => {
     if (

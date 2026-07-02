@@ -26,6 +26,7 @@ import {
   SCORE_NA_PLAYER_VALUE,
 } from "./5v5scorekeeperConstants";
 import { ResumeSessionSection } from "./ScorekeeperPopup";
+import { setLiveActivity } from "../../services/liveActivity";
 
 const BLOCK_EVENT_TYPE_ID = 19;
 const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([
@@ -181,6 +182,12 @@ export default function ScoreKeeperView() {
   const isStartMatchReady =
     Boolean(setupForm.startingTeamId) &&
     (!isAbbaEnabled || ["male", "female"].includes(setupForm.abbaPattern));
+
+  // Defer automatic PWA reloads while a match is actively being scored.
+  useEffect(() => {
+    setLiveActivity("scorekeeper-5v5", matchStarted);
+    return () => setLiveActivity("scorekeeper-5v5", false);
+  }, [matchStarted]);
 
   useEffect(() => {
     if (

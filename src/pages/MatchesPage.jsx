@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES, getMatchLogs } from "../services/matchLogService";
 import { getMatchById, getMatchesByEvent } from "../services/matchService";
 import { getEventsList } from "../services/leagueService";
 import { getSpiritScoresForMatches } from "../services/teamService";
 import { MatchMediaButton } from "../components/MatchMediaButton";
 import { getMatchMediaDetails } from "../utils/matchMedia";
-import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabaseClient";
 
 const SERIES_COLORS = {
@@ -37,7 +36,6 @@ const SPIRIT_MAX_SCORE = 4;
 const isMatchLive = (status) => LIVE_MATCH_STATUSES.has((status || "").toLowerCase());
 
 export default function MatchesPage() {
-  const { session } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -278,8 +276,6 @@ export default function MatchesPage() {
     () => buildSpiritReport(spiritScores, selectedMatch),
     [spiritScores, selectedMatch],
   );
-  const showLoginBanner = !session && selectedMatchId && !logsLoading && !derived?.timeline;
-
   return (
     <div className="pb-16 text-ink">
       <header className="sc-shell py-4 sm:py-6">
@@ -394,7 +390,7 @@ export default function MatchesPage() {
                       {selectedMatch.team_a?.name} vs {selectedMatch.team_b?.name}
                     </p>
                     <p className="text-xs text-ink-muted">
-                      Kickoff {formatKickoff(selectedMatch.start_time)} | Status {selectedMatch.status}
+                      {formatKickoff(selectedMatch.start_time)} | Status {selectedMatch.status}
                     </p>
                   </div>
                   {matchMediaDetails ? <MatchMediaButton media={matchMediaDetails} /> : null}
@@ -406,27 +402,6 @@ export default function MatchesPage() {
       </header>
 
       <main className="sc-shell matches-compact-shell space-y-3 py-2 sm:space-y-6 sm:py-4">
-        {showLoginBanner && (
-          <div
-            role="alert"
-            className="sc-card-base border border-amber-300/60 bg-amber-50/90 text-amber-900 shadow-lg"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold">Match data hidden</p>
-                <p className="text-xs text-amber-800">
-                  Detailed score progression and logs are visible only after signing in.
-                </p>
-              </div>
-              <Link
-                to="/login"
-                className="rounded-full bg-amber-500 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-amber-600"
-              >
-                Sign in to view
-              </Link>
-            </div>
-          </div>
-        )}
         {logsError && (
           <p className="sc-card-muted border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
             {logsError}
@@ -448,9 +423,7 @@ export default function MatchesPage() {
           <>
             {derived.insights && (
               <section className="sc-card-base space-y-3 p-4 sm:p-6">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="sc-chip">Match analytics</span>
-                </div>
+                <h2 className="text-lg font-semibold text-ink">Match analytics</h2>
                 <div className="grid gap-3 lg:grid-cols-2">
                   <InsightTable title="Match insight" rows={derived.insights.match} />
                   <InsightTable title="Tempo insight" rows={derived.insights.tempo} />
@@ -459,41 +432,38 @@ export default function MatchesPage() {
             )}
 
             <section className="sc-card-base space-y-2 p-4 sm:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="sc-chip">Score progression</span>
-              </div>
+              <h2 className="text-lg font-semibold text-ink">Score progression</h2>
               <TimelineChart match={selectedMatch} timeline={derived.timeline} possessionTimeline={derived.possessionTimeline} />
             </section>
 
             {derived.summaries && (
-              <section className="sc-card-base space-y-3 p-4 sm:p-6">
-                <div className="flex items-center gap-2">
-                  <span className="sc-chip">Team production</span>
-                </div>
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <TeamOverviewCard
-                    title={`${selectedMatch?.team_a?.name || "Team A"} overview`}
-                    stats={derived.summaries.teamA}
-                  />
-                  <TeamOverviewCard
-                    title={`${selectedMatch?.team_b?.name || "Team B"} overview`}
-                    stats={derived.summaries.teamB}
-                  />
-                </div>
-              </section>
+              <>
+                <section className="sc-card-base space-y-3 p-4 sm:p-6">
+                  <h2 className="text-lg font-semibold text-ink">
+                    {`${selectedMatch?.team_a?.name || "Team A"} overview`}
+                  </h2>
+                  <TeamOverviewCard stats={derived.summaries.teamA} />
+                </section>
+                <section className="sc-card-base space-y-3 p-4 sm:p-6">
+                  <h2 className="text-lg font-semibold text-ink">
+                    {`${selectedMatch?.team_b?.name || "Team B"} overview`}
+                  </h2>
+                  <TeamOverviewCard stats={derived.summaries.teamB} />
+                </section>
+              </>
             )}
 
             {spiritReport?.entries?.length ? (
-              <section className="sc-card-base space-y-3 p-4 sm:p-6">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="sc-chip">Spirit score report</span>
+              <section className="sc-card-base space-y-2 px-4 py-2 sm:px-6">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <h2 className="text-lg font-semibold text-ink">Spirit score report</h2>
                   {spiritReport.totalLabel && (
                     <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                       {spiritReport.totalLabel}
                     </span>
                   )}
                 </div>
-                <div className="grid gap-3 lg:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {spiritReport.entries.map((entry) => (
                     <SpiritRadarCard
                       key={entry.teamId}
@@ -506,18 +476,14 @@ export default function MatchesPage() {
               </section>
             ) : spiritLoading ? (
               <section className="sc-card-base space-y-2 p-4 sm:p-6">
-                <div className="flex items-center gap-2">
-                  <span className="sc-chip">Spirit score report</span>
-                </div>
+                <h2 className="text-lg font-semibold text-ink">Spirit score report</h2>
                 <div className="sc-card-muted p-4 text-center text-sm text-ink-muted">
                   Loading spirit scores...
                 </div>
               </section>
             ) : spiritError ? (
               <section className="sc-card-base space-y-2 p-4 sm:p-6">
-                <div className="flex items-center gap-2">
-                  <span className="sc-chip">Spirit score report</span>
-                </div>
+                <h2 className="text-lg font-semibold text-ink">Spirit score report</h2>
                 <div className="sc-card-muted p-4 text-center text-sm text-rose-600">
                   {spiritError}
                 </div>
@@ -525,9 +491,7 @@ export default function MatchesPage() {
             ) : null}
 
             <section className="sc-card-base space-y-3 p-4 sm:p-6">
-              <div className="flex items-center gap-2">
-                <span className="sc-chip">Point-by-point log</span>
-              </div>
+              <h2 className="text-lg font-semibold text-ink">Point-by-point log</h2>
               <PointLogTable rows={derived.logRows} teamAName={selectedMatch?.team_a?.name} teamBName={selectedMatch?.team_b?.name} />
             </section>
           </>
@@ -556,16 +520,16 @@ function InsightTable({ title, rows }) {
     );
   }
   return (
-    <div className="sc-card-base">
-      <div className="border-b border-border px-4 py-3">
+    <div>
+      <div className="border-b border-border px-1 py-2">
         <h3 className="text-sm font-semibold text-ink">{title}</h3>
       </div>
       <table className="w-full text-sm text-ink">
         <tbody>
           {rows.map((row) => (
             <tr key={row.label} className="border-t border-border text-sm">
-              <td className="px-4 py-2 font-medium text-ink-muted">{row.label}</td>
-              <td className="px-4 py-2 text-right font-semibold text-ink">{row.value}</td>
+              <td className="px-1 py-1.5 font-medium text-ink-muted">{row.label}</td>
+              <td className="px-1 py-1.5 text-right font-semibold text-ink">{row.value}</td>
             </tr>
           ))}
         </tbody>
@@ -637,7 +601,7 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
   const chartTitle = `${teamAName} ${finalScoreA} - ${finalScoreB} ${teamBName}`;
 
   return (
-    <div className={`${graphClassName} relative pb-14`}>
+    <div className={`${graphClassName} relative`}>
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full" preserveAspectRatio="xMidYMid meet">
         <rect x="0" y="0" width={width} height={height} fill="white" rx="18" />
 
@@ -896,7 +860,7 @@ function PossessionTimeline({ timeline, teamAName, teamBName }) {
   );
 }
 
-function TeamOverviewCard({ title, stats }) {
+function TeamOverviewCard({ stats }) {
   const goals = stats?.goals || [];
   const assists = stats?.assists || [];
   const turnovers = stats?.turnovers || [];
@@ -911,17 +875,14 @@ function TeamOverviewCard({ title, stats }) {
   ];
   const formatStatValue = (value) => (Number.isFinite(value) ? value : value === 0 ? 0 : "--");
 
-  const renderList = (label, rows, valueLabel) => {
+  const renderList = (label, rows) => {
     return (
-      <div className="sc-card-muted p-3">
+      <div className="py-1">
+        <p className="mb-1.5 border-b-2 border-accent/60 pb-1 text-xs font-semibold uppercase tracking-wide text-ink">
+          {label}
+        </p>
         {rows.length ? (
           <table className="w-full text-left text-sm text-ink">
-            <thead>
-              <tr className="text-xs uppercase tracking-wide text-ink-muted">
-                <th className="py-0.5 pr-2">{valueLabel}</th>
-                <th className="py-0.5 text-right"></th>
-              </tr>
-            </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={`${label}-${row.player}`} className="border-t border-border text-sm">
@@ -939,10 +900,9 @@ function TeamOverviewCard({ title, stats }) {
   };
 
   return (
-    <div className="sc-card-base p-3 sm:p-5">
-      <h3 className="mb-1.5 text-lg font-semibold text-ink sm:mb-2.5">{title}</h3>
+    <div>
       {production && (
-        <div className="mb-2 grid grid-cols-2 gap-2 text-center sm:mb-3 sm:grid-cols-5 sm:gap-3">
+        <div className="mb-2 grid gap-2 text-center sm:mb-3 sm:gap-3 [grid-template-columns:repeat(auto-fit,minmax(5rem,1fr))]">
           {summaryStats.map((item) => (
             <div
               key={item.key}
@@ -959,11 +919,11 @@ function TeamOverviewCard({ title, stats }) {
         </div>
       )}
       <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 sm:gap-3">
-        {renderList("Goals", goals, "Goal")}
-        {renderList("Assists", assists, "Assist")}
-        {renderList("Turnovers", turnovers, "Turnover")}
+        {renderList("Goals", goals)}
+        {renderList("Assists", assists)}
+        {renderList("Turnovers", turnovers)}
       </div>
-      <div className="mt-1.5 sc-card-muted p-3 sm:mt-3">
+      <div className="mt-1.5 border-t border-border/50 pt-3 sm:mt-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Top connections</p>
         {connections.length ? (
           <table className="mt-1 w-full text-left text-sm text-ink sm:mt-1.5">
@@ -1067,7 +1027,7 @@ function buildSpiritReport(scores, match) {
 
   return {
     entries,
-    totalLabel: `Scores recieved`,
+    totalLabel: `Spirit scores recieved`,
   };
 }
 
@@ -1079,15 +1039,13 @@ function SpiritRadarCard({ title, data, tone }) {
       : "--";
 
   return (
-    <div className="sc-card-base border border-border bg-white px-4 py-2">
+    <div className="rounded-2xl bg-white px-2 py-1">
       <div className="mt-0">
-        <div className="rounded-2xl border border-border bg-white p-1">
-          <SpiritRadarChart values={data.values} tone={tone} title={title} totalLabel={totalLabel} />
-        </div>
+        <SpiritRadarChart values={data.values} tone={tone} title={title} totalLabel={totalLabel} />
         {data?.notes?.length ? (
-          <div className="mt-3 rounded-2xl border border-border bg-surface-muted px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Notes</p>
-            <div className="mt-2 space-y-2 text-sm text-ink">
+          <div className="mt-2 border-t border-slate-200 px-1 py-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notes</p>
+            <div className="mt-2 space-y-2 text-sm text-slate-800">
               {data.notes.map((note, index) => (
                 <p key={`${title}-note-${index}`} className="leading-relaxed">
                   {note}
@@ -1103,9 +1061,9 @@ function SpiritRadarCard({ title, data, tone }) {
 
 function SpiritRadarChart({ values, tone, title, totalLabel }) {
   const width = 330;
-  const height = 280;
+  const height = 235;
   const centerX = width / 2;
-  const centerY = height / 2 + 8;
+  const centerY = height / 2 + 12;
   const radius = 86;
   const levels = 4;
   const count = SPIRIT_DIMENSIONS.length;
@@ -1365,7 +1323,7 @@ function PointLogTable({ rows, teamAName, teamBName }) {
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Time</th>
             <th className="px-1 py-0.5 text-center sm:px-2 sm:py-1.5">Event</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Team</th>
-            <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Assist → Score</th>
+            <th className="px-1 py-0.5 text-center sm:px-2 sm:py-1.5">Assist → Score</th>
             <th className="px-1 py-0.5 text-right sm:px-2 sm:py-1.5">Gap</th>
           </tr>
         </thead>
@@ -1383,13 +1341,11 @@ function PointLogTable({ rows, teamAName, teamBName }) {
                 : row.variant === "callahan"
                   ? "bg-[#facc15]"
                 : row.variant === "goalA"
-                  ? "bg-[#6591ff]"
+                  ? "bg-[#3b82f6]"
                 : row.variant === "goalB"
-                  ? "bg-[#ffc892]"
-                : row.variant === "turnoverA"
-                  ? "bg-[#e0f2fe]"
-                : row.variant === "turnoverB"
-                  ? "bg-[#e0f2fe]"
+                  ? "bg-[#fb923c]"
+                : row.variant === "turnoverA" || row.variant === "turnoverB"
+                  ? "bg-[#eceff3]"
                   : ""
               }`}
             >
@@ -1400,7 +1356,7 @@ function PointLogTable({ rows, teamAName, teamBName }) {
                 </span>
               </td>
               <td className="px-1 py-0.5 font-semibold text-black sm:px-2 sm:py-1.5">{row.teamLabel}</td>
-              <td className="px-1 py-0.5 sm:px-2 sm:py-1.5">
+              <td className="px-1 py-0.5 text-center sm:px-2 sm:py-1.5">
                 {row.description === "Timeout" ||
                 row.description === "Halftime" ||
                 row.description === "Match start" ||
@@ -1418,7 +1374,7 @@ function PointLogTable({ rows, teamAName, teamBName }) {
                   <div className="grid auto-rows-min items-center gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-1.5">
                     <span className="text-black text-[11px] sm:text-sm sm:text-right">{row.assist || "-"}</span>
                     <span className="text-[10px] font-semibold text-black text-center sm:text-xs">→</span>
-                    <span className="font-semibold text-black">{row.scorer || "-"}</span>
+                    <span className="font-semibold text-black sm:text-left">{row.scorer || "-"}</span>
                   </div>
                 )}
               </td>
@@ -1439,6 +1395,13 @@ function deriveMatchInsights(match, logs) {
   const teamBId = match.team_b?.id || null;
   const teamAName = match.team_a?.name || "Team A";
   const teamBName = match.team_b?.name || "Team B";
+  const teamAShort = match.team_a?.short_name || teamAName;
+  const teamBShort = match.team_b?.short_name || teamBName;
+  const getTeamShortLabel = (teamId) => {
+    if (teamId === teamAId) return teamAShort;
+    if (teamId === teamBId) return teamBShort;
+    return null;
+  };
   const createStats = () => ({
     goalCounts: new Map(),
     assistCounts: new Map(),
@@ -1578,13 +1541,14 @@ function deriveMatchInsights(match, logs) {
         if (!matchStartLogged) {
           const pullingTeamId = match.starting_team_id || log.team_id || null;
           const pullingTeamLabel = getTeamLabel(pullingTeamId) || "Unassigned";
+          const pullingTeamShort = getTeamShortLabel(pullingTeamId) || "Unassigned";
           logRows.unshift({
             label: "Start",
             index: 0,
             timestamp,
             formattedTime,
             eventTypeId: typeId,
-            teamLabel: pullingTeamLabel,
+            teamLabel: pullingTeamShort,
             scorer: "-",
             assist: "-",
             description: "Match start",
@@ -1628,7 +1592,7 @@ function deriveMatchInsights(match, logs) {
     }
 
     if (code === MATCH_LOG_EVENT_CODES.SCORE || code === MATCH_LOG_EVENT_CODES.CALAHAN) {
-      const teamLabel = log.team_id === teamAId ? teamAName : teamBName;
+      const teamLabel = log.team_id === teamAId ? teamAShort : teamBShort;
       const teamKey = toTeamKey(log.team_id);
       if (teamKey) {
         if (teamKey === pointStartingOffense) {
@@ -1749,7 +1713,12 @@ function deriveMatchInsights(match, logs) {
         timestamp,
         formattedTime,
         eventTypeId: typeId,
-        teamLabel: gainingTeamLabel,
+        teamLabel:
+          gainingTeamKey === "teamA"
+            ? teamAShort
+            : gainingTeamKey === "teamB"
+              ? teamBShort
+              : "-",
         scorer: "-",
         assist: "-",
         description: eventLabel || (isBlockEvent ? "Block" : "Turnover"),
@@ -1770,7 +1739,7 @@ function deriveMatchInsights(match, logs) {
         timestamp,
         formattedTime,
         eventTypeId: typeId,
-        teamLabel: log.team_id === teamAId ? teamAName : teamBName,
+        teamLabel: log.team_id === teamAId ? teamAShort : teamBShort,
         scorer: "-",
         assist: "-",
         description: "Timeout",

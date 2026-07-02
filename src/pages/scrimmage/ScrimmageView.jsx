@@ -8,6 +8,7 @@ import { deriveScrimmageReport } from "./scrimmageReport";
 import { downloadScrimmageReportPdf } from "./scrimmagePdfReport";
 import { downloadScrimmageReportCsv } from "./scrimmageCsvReport";
 import { ScorekeeperShell } from "../../components/ui/scorekeeperPrimitives";
+import { setLiveActivity } from "../../services/liveActivity";
 import {
   BlockEventCard,
   CalahanEventCard,
@@ -126,6 +127,12 @@ export default function ScrimmageView() {
     updatePossession,
     handleDiscardResume
   } = data;
+
+  // Defer automatic PWA reloads while a scrimmage is actively being scored.
+  useEffect(() => {
+    setLiveActivity("scrimmage", matchStarted);
+    return () => setLiveActivity("scrimmage", false);
+  }, [matchStarted]);
 
   const safeTeamAName = displayTeamA || "Team A";
   const safeTeamBName = displayTeamB || "Team B";

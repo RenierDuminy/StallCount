@@ -13,8 +13,12 @@ registerRoute(
   }),
 );
 
-self.addEventListener("install", () => {
-  self.skipWaiting();
+// Activate the new service worker only when the app asks (via updateSW in
+// appUpdater.js) so the page can control when it reloads onto the new build.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("activate", (event) => {

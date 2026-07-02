@@ -3,22 +3,9 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import "./theme.css";
 import App from "./App.jsx";
+import { registerAutoUpdate } from "./services/appUpdater";
 
-async function initPwa() {
-  if ("serviceWorker" in navigator) {
-    const registerSW = (await import("virtual:pwa-register")).registerSW;
-    registerSW({
-      immediate: true,
-      onRegistered(registration) {
-        if (registration && registration.update) {
-          registration.update();
-        }
-      },
-    });
-  }
-}
-
-void initPwa();
+void registerAutoUpdate();
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

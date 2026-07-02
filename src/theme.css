@@ -5,8 +5,8 @@
   --sc-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   --sc-header-height: 84px;
 
-  --sc-bg: #01500a;
-  --sc-bg-accent: #0b1f0c;
+  --sc-bg: #0f8a1e;
+  --sc-bg-accent: #17421f;
   --sc-surface: #0f251f;
   --sc-surface-muted: #112c24;
   --sc-surface-plain: #0a1916;
@@ -60,9 +60,9 @@
 
   /* Component tokens */
   --sc-card-bg: linear-gradient(160deg, rgba(20, 42, 34, 0.9), rgba(10, 25, 21, 0.95));
-  --sc-card-border: rgba(99, 255, 160, 0.1);
+  --sc-card-border: rgba(255, 255, 255, 0.45);
   --sc-card-muted-bg: linear-gradient(160deg, rgba(21, 52, 43, 0.9), rgba(12, 29, 24, 0.96));
-  --sc-card-muted-border: rgba(99, 255, 160, 0.18);
+  --sc-card-muted-border: rgba(255, 255, 255, 0.5);
   --sc-card-muted-glow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 
   --sc-button-bg: linear-gradient(120deg, var(--sc-accent), var(--sc-accent-strong));
@@ -113,8 +113,8 @@
 
   --sc-frosted-bg: rgba(11, 26, 20, 0.55);
   --sc-frosted-border: rgba(99, 255, 160, 0.22);
-  --sc-panel-border: rgba(99, 255, 160, 0.6);
-  --sc-panel-border-strong: rgba(99, 255, 160, 0.8);
+  --sc-panel-border: rgba(255, 255, 255, 0.45);
+  --sc-panel-border-strong: rgba(255, 255, 255, 0.55);
   --sc-panel-bg: rgba(10, 29, 24, 0.8);
   --sc-panel-bg-alt: rgba(6, 22, 18, 0.8);
   --sc-feature-panel-bg: radial-gradient(circle at 12% 20%, rgba(99, 255, 160, 0.12), transparent 50%),
