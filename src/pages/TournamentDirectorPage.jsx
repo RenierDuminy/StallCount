@@ -61,6 +61,13 @@ const EDITABLE_TABLE_SET = new Set(EDITABLE_TABLES);
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
 
+function formatVenueLabel(venue) {
+  const parts = [venue?.city, venue?.location, venue?.name]
+    .map((part) => (typeof part === "string" ? part.trim() : ""))
+    .filter(Boolean);
+  return parts.length ? parts.join(", ") : "Unnamed venue";
+}
+
 function buildTemplate(tableName) {
   const columns = listTableColumns(tableName);
   if (!columns.length) return "{\n  \n}";
@@ -552,7 +559,7 @@ export default function TournamentDirectorPage() {
                     <option value="">Select venue (optional)</option>
                     {venues.map((venue) => (
                       <option key={venue.id} value={venue.id}>
-                        {venue.name || "Unnamed venue"}
+                        {formatVenueLabel(venue)}
                       </option>
                     ))}
                   </select>

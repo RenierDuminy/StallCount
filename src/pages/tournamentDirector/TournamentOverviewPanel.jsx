@@ -140,6 +140,13 @@ function createEmptyMatchCreateForm() {
   return { ...EMPTY_MATCH_CREATE_FORM };
 }
 
+function formatVenueLabel(venue) {
+  const parts = [venue?.city, venue?.location, venue?.name]
+    .map((part) => (typeof part === "string" ? part.trim() : ""))
+    .filter(Boolean);
+  return parts.length ? parts.join(", ") : "Unnamed venue";
+}
+
 function formatDateParts(timestamp) {
   if (!timestamp) {
     return { date: "TBD", time: "TBD" };
@@ -472,8 +479,13 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
       return [];
     }
 
+    const sortByName = (events) =>
+      [...events].sort((a, b) =>
+        (a?.name || "").localeCompare(b?.name || "", undefined, { sensitivity: "base" }),
+      );
+
     if (roleAssignmentsIncludeAdmin(roles)) {
-      return eventsList;
+      return sortByName(eventsList);
     }
 
     const allowedEventIds = new Set(
@@ -486,7 +498,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
       return [];
     }
 
-    return eventsList.filter((event) => allowedEventIds.has(event.id));
+    return sortByName(eventsList.filter((event) => allowedEventIds.has(event.id)));
   }, [eventsList, roles]);
 
   useEffect(() => {
@@ -720,10 +732,20 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
     });
     (overview.matches || []).forEach((match) => {
       if (match?.venue?.id && !lookup.has(match.venue.id)) {
-        lookup.set(match.venue.id, { id: match.venue.id, name: match.venue.name || "Venue" });
+        lookup.set(match.venue.id, {
+          id: match.venue.id,
+          name: match.venue.name || "Venue",
+          city: match.venue.city || null,
+          location: match.venue.location || null,
+        });
       }
     });
-    return Array.from(lookup.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const compare = (a, b) =>
+      (a || "").localeCompare(b || "", undefined, { sensitivity: "base" });
+    return Array.from(lookup.values()).sort(
+      (a, b) =>
+        compare(a.city, b.city) || compare(a.location, b.location) || compare(a.name, b.name),
+    );
   }, [eventSummary, overview.matches]);
   const statusOptions = useMemo(() => {
     if (!normalizedEditForm.status || MATCH_STATUS_OPTIONS.includes(normalizedEditForm.status)) {
@@ -1484,7 +1506,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
                   <option value="">Unassigned</option>
                   {venueOptions.map((venue) => (
                     <option key={venue.id} value={venue.id}>
-                      {venue.name || "Unnamed venue"}
+                      {formatVenueLabel(venue)}
                     </option>
                   ))}
                 </select>
@@ -1831,7 +1853,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
                   <option value="">Unassigned</option>
                   {venueOptions.map((venue) => (
                     <option key={venue.id} value={venue.id}>
-                      {venue.name || "Unnamed venue"}
+                      {formatVenueLabel(venue)}
                     </option>
                   ))}
                 </select>

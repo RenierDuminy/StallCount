@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Chip,
   Field,
@@ -23,6 +23,8 @@ import {
   updateBracket,
   updateBracketNode,
 } from "../services/playoffStructureService";
+import { instantiateTemplate } from "../services/bracketTemplateService";
+import { defaultSeedMap, getTemplateById, listTemplates } from "../data/bracketTemplates";
 
 const PLAYOFF_STRUCTURE_EVENT_KEY = "stallcount.playoffStructure.eventId";
 const MATCH_LIMIT = 400;
@@ -449,6 +451,24 @@ function toPositiveInteger(value, fallback = 1) {
   return parsed;
 }
 
+// Readable label for an abstract template source (used only in the template
+// preview, before instantiation — no real ids yet).
+function formatTemplateSource(source) {
+  if (!source || typeof source !== "object") {
+    return "?";
+  }
+  if (source.kind === "seed") {
+    return `Seed ${source.seed}`;
+  }
+  if (source.kind === "winner") {
+    return `Winner of ${source.node}`;
+  }
+  if (source.kind === "loser") {
+    return `Loser of ${source.node}`;
+  }
+  return "?";
+}
+
 function formatSourceLabel(source, lookups = {}) {
   if (!source || typeof source !== "object") {
     return "Source missing";
@@ -491,6 +511,51 @@ function formatSourceLabel(source, lookups = {}) {
   }
 
   return `Unsupported source: ${source.type || "unknown"}`;
+}
+
+// Resolve where a node's winner / loser advances to, as a display string.
+// Uses the cross-bracket nodeById lookup so targets in other brackets resolve.
+function formatAdvancementTarget(nodeId, side, lookups = {}) {
+  if (!nodeId) return "";
+  const target = lookups.nodeById?.get(nodeId) || null;
+  const name = target ? getNodeDisplayName(target) : "node";
+  const sideLabel = side ? ` (${String(side).toUpperCase()})` : "";
+  return `${name}${sideLabel}`;
+}
+
+// Group a bracket's nodes into ordered round columns for the wide-screen view.
+// Rounds sort ascending; nodes within a round sort by position then name.
+function groupNodesByRound(nodes = []) {
+  const byRound = new Map();
+  for (const node of nodes) {
+    const round = Number.isFinite(node?.round) ? node.round : 0;
+    if (!byRound.has(round)) {
+      byRound.set(round, []);
+    }
+    byRound.get(round).push(node);
+  }
+  return Array.from(byRound.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([round, roundNodes]) => ({
+      round,
+      nodes: roundNodes
+        .slice()
+        .sort(
+          (a, b) =>
+            (a.position ?? 0) - (b.position ?? 0) ||
+            getNodeDisplayName(a).localeCompare(getNodeDisplayName(b)),
+        ),
+    }));
+}
+
+function roundColumnLabel(round, totalRounds, index) {
+  // Best-effort human label for a round column, keyed off distance from the
+  // final round (which is typically the last column).
+  const fromEnd = totalRounds - 1 - index;
+  if (fromEnd === 0) return "Final";
+  if (fromEnd === 1) return "Semifinals";
+  if (fromEnd === 2) return "Quarterfinals";
+  return `Round ${round}`;
 }
 
 function buildSourcePayload(sourceForm, lookups, label) {
@@ -793,7 +858,65 @@ function EditorSection({
     </section>
   );
 }
+
+// Shared body for a summary node: sources, linked match, advancement. Used by
+// both the wide columnar card and the narrow collapsible stack.
+function BracketSummaryNodeBody({ node, lookups }) {
+  const winnerTarget = formatAdvancementTarget(
+    node.advance_to_winner,
+    node.advance_to_winner_side,
+    lookups,
+  );
+  const loserTarget = formatAdvancementTarget(
+    node.advance_to_loser,
+    node.advance_to_loser_side,
+    lookups,
+  );
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-ink-muted">
+        <span className="text-ink">A:</span>{" "}
+        {formatSourceLabel(node.source_a, lookups)}
+      </p>
+      <p className="text-xs text-ink-muted">
+        <span className="text-ink">B:</span>{" "}
+        {formatSourceLabel(node.source_b, lookups)}
+      </p>
+      <p className="text-xs text-ink-muted">
+        Linked match:{" "}
+        {node.match ? (
+          <>
+            {formatMatchup(node.match)} · {formatMatchStatus(node.match.status)}
+          </>
+        ) : (
+          "None"
+        )}
+      </p>
+      {winnerTarget ? (
+        <p className="text-xs text-ink-muted">Winner → {winnerTarget}</p>
+      ) : null}
+      {loserTarget ? (
+        <p className="text-xs text-ink-muted">Loser → {loserTarget}</p>
+      ) : null}
+    </div>
+  );
+}
+
+// A single node rendered as an always-expanded card for the wide bracket view.
+function BracketSummaryNodeCard({ node, lookups }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface/70 px-3 py-2">
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <span className="text-sm font-medium text-ink">{getNodeDisplayName(node)}</span>
+        <span className="text-[0.65rem] text-ink-muted">Pos {node.position ?? "--"}</span>
+      </div>
+      <BracketSummaryNodeBody node={node} lookups={lookups} />
+    </div>
+  );
+}
+
 export default function PlayoffStructurePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [selectedEventId, setSelectedEventId] = usePersistentState(PLAYOFF_STRUCTURE_EVENT_KEY, "");
@@ -815,6 +938,26 @@ export default function PlayoffStructurePage() {
   const [clearBusy, setClearBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  // "Start from template" panel state.
+  const [showTemplatePanel, setShowTemplatePanel] = useState(false);
+  const [templateId, setTemplateId] = useState("");
+  const [templateBracketName, setTemplateBracketName] = useState("");
+  const [templateSeedRows, setTemplateSeedRows] = useState([]);
+  const [applyTemplateBusy, setApplyTemplateBusy] = useState(false);
+
+  // Deep link from the Event Setup wizard ("Open Playoff Structure"): preselect
+  // the requested event, then drop the query param so it doesn't fight the
+  // persisted last-selected-event on later navigations.
+  useEffect(() => {
+    const requestedEventId = searchParams.get("eventId");
+    if (!requestedEventId) {
+      return;
+    }
+    setSelectedEventId(requestedEventId);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("eventId");
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams, setSelectedEventId]);
 
   useEffect(() => {
     let active = true;
@@ -1051,6 +1194,26 @@ export default function PlayoffStructurePage() {
     [divisionById, nodeById, poolById, teamById],
   );
 
+  // The bottom summary spans every bracket, so winner/loser-of-node sources may
+  // point at nodes in other brackets. Build a lookup across all brackets' nodes.
+  const allNodesById = useMemo(
+    () =>
+      new Map(
+        brackets.flatMap((bracket) => (bracket.nodes || []).map((node) => [node.id, node])),
+      ),
+    [brackets],
+  );
+
+  const summarySourceLookups = useMemo(
+    () => ({
+      divisionById,
+      poolById,
+      teamById,
+      nodeById: allNodesById,
+    }),
+    [allNodesById, divisionById, poolById, teamById],
+  );
+
   const createMatchPoolOptions = useMemo(() => {
     if (!createMatchForm.divisionId) {
       return poolOptions;
@@ -1071,6 +1234,119 @@ export default function PlayoffStructurePage() {
       linkedMatchCount,
     };
   }, [brackets]);
+
+  const templates = useMemo(() => listTemplates(), []);
+  const selectedTemplate = useMemo(() => getTemplateById(templateId), [templateId]);
+
+  // Build the default seed -> pool/rank rows for a template using cross-pool
+  // seeding over the event's actual pools.
+  const buildSeedRows = useCallback(
+    (template) => {
+      if (!template) return [];
+      const map = defaultSeedMap(template.seedCount, poolOptions);
+      return Array.from({ length: template.seedCount }, (_, index) => {
+        const seedNumber = index + 1;
+        const preset = map[seedNumber] || { poolIndex: 0, rank: seedNumber };
+        const pool = poolOptions[preset.poolIndex] || null;
+        return {
+          seed: seedNumber,
+          poolId: pool?.id || "",
+          rank: String(preset.rank || 1),
+        };
+      });
+    },
+    [poolOptions],
+  );
+
+  const handleSelectTemplate = useCallback(
+    (id) => {
+      setTemplateId(id);
+      const template = getTemplateById(id);
+      setTemplateBracketName(template?.label || "");
+      setTemplateSeedRows(buildSeedRows(template));
+    },
+    [buildSeedRows],
+  );
+
+  const handleOpenTemplatePanel = useCallback(() => {
+    setError("");
+    setMessage("");
+    setShowTemplatePanel(true);
+    const first = templates[0];
+    if (first) {
+      handleSelectTemplate(first.id);
+    }
+  }, [handleSelectTemplate, templates]);
+
+  const handleApplyTemplate = useCallback(async () => {
+    if (!selectedEventId) {
+      setError("Choose an event before applying a template.");
+      return;
+    }
+    const template = getTemplateById(templateId);
+    if (!template) {
+      setError("Choose a template.");
+      return;
+    }
+
+    // Turn each seed row into a concrete pool_rank source payload, matching the
+    // shape buildSourcePayload produces for hand-authored pool_rank sources.
+    const seedMap = {};
+    for (const row of templateSeedRows) {
+      const pool = poolById.get(row.poolId) || null;
+      const rank = toPositiveInteger(row.rank, 0);
+      if (!pool) {
+        setError(`Seed ${row.seed}: choose a pool.`);
+        return;
+      }
+      if (!rank) {
+        setError(`Seed ${row.seed}: rank must be 1 or higher.`);
+        return;
+      }
+      seedMap[row.seed] = {
+        type: "pool_rank",
+        rank,
+        poolId: pool.id,
+        poolName: pool.name,
+        divisionId: pool.divisionId || undefined,
+        divisionName: pool.divisionName || undefined,
+      };
+    }
+
+    setApplyTemplateBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await instantiateTemplate({
+        eventId: selectedEventId,
+        template,
+        bracketName: templateBracketName,
+        bracketType: template.bracketType,
+        seedMap,
+      });
+      await loadSelectedEventData();
+      if (result?.bracket?.id) {
+        setSelectedBracketId(result.bracket.id);
+      }
+      setSelectedNodeId("");
+      setShowTemplatePanel(false);
+      setMessage(
+        `Applied template "${template.label}": created ${result?.nodeCount || 0} nodes.`,
+      );
+    } catch (applyError) {
+      setError(applyError?.message || "Failed to apply template.");
+    } finally {
+      setApplyTemplateBusy(false);
+    }
+  }, [
+    loadSelectedEventData,
+    poolById,
+    selectedEventId,
+    templateBracketName,
+    templateId,
+    templateSeedRows,
+  ]);
+
   const handleRefresh = useCallback(async () => {
     setMessage("");
     await loadSelectedEventData();
@@ -1471,6 +1747,14 @@ export default function PlayoffStructurePage() {
                 </button>
                 <button
                   type="button"
+                  onClick={handleOpenTemplatePanel}
+                  className="sc-button is-ghost"
+                  disabled={loading || !selectedEventId}
+                >
+                  Start from template
+                </button>
+                <button
+                  type="button"
                   onClick={handleClearPlayoffAssignments}
                   className="sc-button is-ghost"
                   disabled={clearBusy || loading || !selectedEventId}
@@ -1547,6 +1831,132 @@ export default function PlayoffStructurePage() {
         </Panel>
       </SectionShell>
       <SectionShell as="main" className="space-y-6 py-6">
+        {showTemplatePanel ? (
+          <Panel variant="default" className="space-y-5 p-5">
+            <SectionHeader
+              title="Start from a template"
+              description="Pick a standard structure, map each seed to a pool, and apply. Creates the bracket and all nodes wired together. Link matches to each game afterward, then use Resolve playoffs."
+              action={
+                <button
+                  type="button"
+                  onClick={() => setShowTemplatePanel(false)}
+                  className="sc-button is-ghost text-xs"
+                  disabled={applyTemplateBusy}
+                >
+                  Cancel
+                </button>
+              }
+            />
+
+            <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))]">
+              <Field label="Template">
+                <Select
+                  value={templateId}
+                  onChange={(event) => handleSelectTemplate(event.target.value)}
+                >
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Bracket name">
+                <Input
+                  value={templateBracketName}
+                  onChange={(event) => setTemplateBracketName(event.target.value)}
+                  placeholder={selectedTemplate?.label || "Bracket name"}
+                />
+              </Field>
+            </div>
+
+            {selectedTemplate ? (
+              <p className="text-sm text-ink-muted">{selectedTemplate.description}</p>
+            ) : null}
+
+            {templateSeedRows.length ? (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Map seeds to pools
+                </p>
+                {!poolOptions.length ? (
+                  <p className="text-sm text-ink-muted">
+                    This event has no pools yet. Add divisions and pools first.
+                  </p>
+                ) : (
+                  <div className="grid gap-2">
+                    {templateSeedRows.map((row, index) => (
+                      <div
+                        key={row.seed}
+                        className="grid items-end gap-2 [grid-template-columns:auto_minmax(0,1fr)_5rem]"
+                      >
+                        <span className="pb-2 text-sm font-semibold text-ink">Seed {row.seed}</span>
+                        <Field label="Pool">
+                          <Select
+                            value={row.poolId}
+                            onChange={(event) =>
+                              setTemplateSeedRows((rows) =>
+                                rows.map((entry, i) =>
+                                  i === index ? { ...entry, poolId: event.target.value } : entry,
+                                ),
+                              )
+                            }
+                          >
+                            <option value="">Select pool</option>
+                            {poolOptions.map((pool) => (
+                              <option key={pool.id} value={pool.id}>
+                                {pool.name} ({pool.divisionName})
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label="Rank">
+                          <Input
+                            type="number"
+                            min="1"
+                            value={row.rank}
+                            onChange={(event) =>
+                              setTemplateSeedRows((rows) =>
+                                rows.map((entry, i) =>
+                                  i === index ? { ...entry, rank: event.target.value } : entry,
+                                ),
+                              )
+                            }
+                          />
+                        </Field>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {selectedTemplate ? (
+              <div className="space-y-1 rounded-2xl border border-border bg-surface/60 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  {selectedTemplate.nodes.length} games
+                </p>
+                {selectedTemplate.nodes.map((node) => (
+                  <p key={node.key} className="text-xs text-ink-muted">
+                    <span className="text-ink">{node.name}:</span>{" "}
+                    {formatTemplateSource(node.sourceA)} vs {formatTemplateSource(node.sourceB)}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={handleApplyTemplate}
+                className="sc-button"
+                disabled={applyTemplateBusy || !selectedEventId || !poolOptions.length}
+              >
+                {applyTemplateBusy ? "Applying..." : "Apply template"}
+              </button>
+            </div>
+          </Panel>
+        ) : null}
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(17rem,19rem)_minmax(0,1fr)]">
           <Panel variant="default" className="space-y-4 p-5">
             <SectionHeader
@@ -2172,6 +2582,109 @@ export default function PlayoffStructurePage() {
             </div>
           </div>
         </div>
+
+        <Panel variant="default" className="space-y-4 p-5">
+          <SectionHeader
+            title="Bracket summary"
+            description="Every bracket and node for this event at a glance. Expand a node for its sources, linked match, and advancement."
+          />
+          {!brackets.length ? (
+            <Panel variant="muted" className="p-4 text-sm text-ink-muted">
+              No brackets for this event yet.
+            </Panel>
+          ) : (
+            <div className="space-y-4">
+              {brackets.map((bracket) => {
+                const bracketNodes = bracket.nodes || [];
+                const rounds = groupNodesByRound(bracketNodes);
+                const totalRounds = rounds.length;
+                return (
+                  <div
+                    key={bracket.id}
+                    className="space-y-3 rounded-2xl border border-border bg-surface/60 p-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-ink">
+                        {bracket.name || "Untitled bracket"}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Chip>{formatBracketType(bracket.type)}</Chip>
+                        {bracket.is_locked ? <Chip>Locked</Chip> : null}
+                        <Chip>
+                          {bracketNodes.length} node{bracketNodes.length === 1 ? "" : "s"}
+                        </Chip>
+                        {totalRounds ? (
+                          <Chip>
+                            {totalRounds} round{totalRounds === 1 ? "" : "s"}
+                          </Chip>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {!bracketNodes.length ? (
+                      <p className="text-xs text-ink-muted">No nodes in this bracket yet.</p>
+                    ) : (
+                      <>
+                        {/* Wide screens: round-by-round columns using the extra width. */}
+                        <div className="hidden overflow-x-auto lg:block">
+                          <div className="flex min-w-full items-stretch gap-4 pb-1">
+                            {rounds.map((column, columnIndex) => (
+                              <div
+                                key={column.round}
+                                className="flex min-w-[15rem] flex-1 flex-col gap-3"
+                              >
+                                <div className="flex items-baseline justify-between gap-2 border-b border-border pb-1">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-ink">
+                                    {roundColumnLabel(column.round, totalRounds, columnIndex)}
+                                  </span>
+                                  <span className="text-[0.65rem] text-ink-muted">
+                                    {column.nodes.length} node
+                                    {column.nodes.length === 1 ? "" : "s"}
+                                  </span>
+                                </div>
+                                <div className="flex flex-1 flex-col justify-around gap-3">
+                                  {column.nodes.map((node) => (
+                                    <BracketSummaryNodeCard
+                                      key={node.id}
+                                      node={node}
+                                      lookups={summarySourceLookups}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Narrow screens: collapsible stack (compact). */}
+                        <div className="space-y-2 lg:hidden">
+                          {bracketNodes.map((node) => (
+                            <details
+                              key={node.id}
+                              className="rounded-xl border border-border bg-surface/70 px-3 py-2"
+                            >
+                              <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2">
+                                <span className="text-sm font-medium text-ink">
+                                  {getNodeDisplayName(node)}
+                                </span>
+                                <span className="text-xs text-ink-muted">
+                                  Round {node.round ?? "--"} · Position {node.position ?? "--"}
+                                </span>
+                              </summary>
+                              <div className="mt-2 border-t border-border pt-2">
+                                <BracketSummaryNodeBody node={node} lookups={summarySourceLookups} />
+                              </div>
+                            </details>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
       </SectionShell>
     </div>
   );

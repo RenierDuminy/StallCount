@@ -1,4 +1,9 @@
 import { supabase } from "./supabaseClient";
+import {
+  getBracketsByEvent,
+  createBracket,
+  createBracketNode,
+} from "./playoffStructureService";
 
 const normalizeText = (value) => {
   if (typeof value !== "string") {
@@ -104,6 +109,28 @@ const parseRulesJson = (rulesValue) => {
     }
   }
   return null;
+};
+
+// Normalizes the wizard's richer per-match fields into their `matches` columns.
+// A starting team that isn't one of the two competing teams is dropped.
+const buildMatchExtras = (match) => {
+  const scoreA = toNullableNumber(match?.scoreA);
+  const scoreB = toNullableNumber(match?.scoreB);
+  const abbaPattern = normalizeText(match?.abbaPattern) || null;
+  const scorekeeper = normalizeText(match?.scorekeeperId) || null;
+  const startingTeamId = normalizeText(match?.startingTeamId);
+  const validStartingTeam =
+    startingTeamId === match?.teamAId || startingTeamId === match?.teamBId
+      ? startingTeamId
+      : null;
+  return {
+    score_a: Number.isInteger(scoreA) && scoreA >= 0 ? scoreA : 0,
+    score_b: Number.isInteger(scoreB) && scoreB >= 0 ? scoreB : 0,
+    captains_confirmed: Boolean(match?.captainsConfirmed),
+    scorekeeper,
+    starting_team_id: validStartingTeam,
+    abba_pattern: abbaPattern,
+  };
 };
 
 const formatTeamDisplayLabel = (team) => {
@@ -351,6 +378,7 @@ const persistMatches = async (
           status: normalizeMatchStatus(match.status),
           start_time: startTime,
           venue_id: mappedVenueId,
+          ...buildMatchExtras(match),
         });
       });
     });
@@ -652,6 +680,7 @@ const buildHierarchyIndex = (hierarchy) => {
           status: normalizeMatchStatus(match?.status),
           start_time: normalizeTimestamp(match?.start),
           venue_id: venueId,
+          ...buildMatchExtras(match),
         };
         index.matchIds.add(matchId);
         index.matchById.set(matchId, indexedMatch);
@@ -663,6 +692,7 @@ const buildHierarchyIndex = (hierarchy) => {
   return index;
 };
 
+// eslint-disable-next-line no-unused-vars -- retained for reference; replace path uses signature diffing
 const deleteExistingHierarchy = async (eventId) => {
   const { error: eventVenueDeleteError } = await supabase
     .from("event_venues")
@@ -1318,6 +1348,7 @@ export async function replaceEventHierarchy(payload) {
           status: normalizeMatchStatus(match.status),
           start_time: startTime,
           venue_id: mappedVenueId,
+          ...buildMatchExtras(match),
         };
         const matchSignature = buildMatchSignature(payload);
         if (desiredMatchSignatures.has(matchSignature)) {
@@ -1343,6 +1374,12 @@ export async function replaceEventHierarchy(payload) {
               "status",
               "start_time",
               "venue_id",
+              "score_a",
+              "score_b",
+              "captains_confirmed",
+              "scorekeeper",
+              "starting_team_id",
+              "abba_pattern",
             ],
           );
           if (!originalMatch || hasOwnKeys(changes)) {
@@ -1433,6 +1470,103 @@ export async function replaceEventHierarchy(payload) {
     matchCount,
     eventVenueCount,
   };
+}
+
+// Seeds the event's brackets from the wizard's sketched structure, but ONLY when
+// the event has no brackets yet. Node sources reference divisions/pools by NAME
+// (resolved here against the freshly persisted hierarchy) so the caller does not
+// have to thread client->DB id maps out of create/replaceEventHierarchy.
+//
+// This is intentionally create-only and NEVER overwrites existing brackets: the
+// standalone Playoff Structure page is the source of truth for real brackets
+// (advancement wiring, linked matches, winner/loser/static sources), and the
+// wizard can only express pool_rank sketches. If we tore brackets down on every
+// wizard save we would silently destroy that richer data. So once any bracket
+// exists for the event, this is a no-op.
+export async function seedEventBracketsIfEmpty(eventId, brackets = []) {
+  const normalizedEventId = normalizeText(eventId);
+  if (!normalizedEventId) {
+    return { bracketCount: 0, nodeCount: 0 };
+  }
+
+  const desired = Array.isArray(brackets)
+    ? brackets.filter((bracket) => normalizeText(bracket?.name))
+    : [];
+
+  if (!desired.length) {
+    return { bracketCount: 0, nodeCount: 0 };
+  }
+
+  // If the event already has brackets (sketched here earlier OR built in the
+  // Playoff Structure page), leave them untouched — never clobber real data.
+  const existing = await getBracketsByEvent(normalizedEventId);
+  if (existing.length) {
+    return { bracketCount: 0, nodeCount: 0 };
+  }
+
+  // Build a name -> id resolver from the freshly persisted hierarchy so node
+  // sources (division name + pool name + rank) map onto real DB ids.
+  const hierarchy = await getEventHierarchy(normalizedEventId);
+  const divisionIdByName = new Map();
+  const poolIdByName = new Map();
+  (hierarchy.divisions || []).forEach((division) => {
+    const divisionKey = normalizeSignaturePart(division.name);
+    if (divisionKey) {
+      divisionIdByName.set(divisionKey, division.id);
+    }
+    (division.pools || []).forEach((pool) => {
+      const poolKey = `${divisionKey}::${normalizeSignaturePart(pool.name)}`;
+      poolIdByName.set(poolKey, pool.id);
+    });
+  });
+
+  const resolveSource = (source) => {
+    if (!source || typeof source !== "object") {
+      return {};
+    }
+    const divisionKey = normalizeSignaturePart(source.divisionName);
+    const poolKey = `${divisionKey}::${normalizeSignaturePart(source.poolName)}`;
+    const rank = toNullableNumber(source.rank);
+    const resolved = {};
+    if (divisionIdByName.has(divisionKey)) {
+      resolved.division_id = divisionIdByName.get(divisionKey);
+    }
+    if (poolIdByName.has(poolKey)) {
+      resolved.pool_id = poolIdByName.get(poolKey);
+    }
+    if (Number.isInteger(rank) && rank >= 1) {
+      resolved.rank = rank;
+    }
+    return resolved;
+  };
+
+  let bracketCount = 0;
+  let nodeCount = 0;
+  for (const bracket of desired) {
+    const created = await createBracket({
+      eventId: normalizedEventId,
+      name: normalizeText(bracket.name),
+      type: normalizeText(bracket.type) || "single_elim",
+    });
+    if (!created?.id) {
+      continue;
+    }
+    bracketCount += 1;
+    const nodes = Array.isArray(bracket.nodes) ? bracket.nodes : [];
+    for (const node of nodes) {
+      await createBracketNode({
+        bracketId: created.id,
+        name: normalizeText(node.name) || null,
+        round: toNullableNumber(node.round),
+        position: toNullableNumber(node.position),
+        sourceA: resolveSource(node.sourceA),
+        sourceB: resolveSource(node.sourceB),
+      });
+      nodeCount += 1;
+    }
+  }
+
+  return { bracketCount, nodeCount };
 }
 
 export async function listEventsForWizard(limit = 50) {
@@ -1578,6 +1712,12 @@ export async function getEventHierarchy(eventId) {
         venue_id,
         status,
         start_time,
+        score_a,
+        score_b,
+        captains_confirmed,
+        scorekeeper,
+        starting_team_id,
+        abba_pattern,
         team_a_meta:teams!matches_team_a_fkey (id, name, short_name),
         team_b_meta:teams!matches_team_b_fkey (id, name, short_name),
         venue:venues!matches_venue_id_fkey (id, name, city, location, notes, latitude, longitude)
@@ -1628,6 +1768,12 @@ export async function getEventHierarchy(eventId) {
       venueCity: row.venue?.city || "",
       venueLocation: row.venue?.location || "",
       venueRefId: row.venue_id || null,
+      scoreA: row.score_a ?? "",
+      scoreB: row.score_b ?? "",
+      captainsConfirmed: Boolean(row.captains_confirmed),
+      scorekeeperId: row.scorekeeper || "",
+      startingTeamId: row.starting_team_id || "",
+      abbaPattern: row.abba_pattern || "",
     });
     matchesByPool.set(row.pool_id, bucket);
   });
@@ -1671,9 +1817,59 @@ export async function getEventHierarchy(eventId) {
     longitude: row.venue?.longitude ?? null,
   }));
 
+  // Brackets are loaded into a wizard-friendly shape whose node sources reference
+  // divisions/pools by NAME, so they survive the clone id-strip and resolve back
+  // to real ids on first seed via seedEventBracketsIfEmpty. NOTE: this shape is
+  // lossy (pool_rank only) — it is a summary for the wizard, not an editable copy
+  // of brackets built in the Playoff Structure page.
+  const divisionNameById = new Map(
+    (divisionRows ?? []).map((division) => [division.id, division.name || ""]),
+  );
+  const poolNameById = new Map(
+    (poolRows ?? []).map((pool) => [
+      pool.id,
+      { name: pool.name || "", divisionId: pool.division_id },
+    ]),
+  );
+  const labelSource = (source) => {
+    if (!source || typeof source !== "object") {
+      return { divisionName: "", poolName: "", rank: "" };
+    }
+    const poolMeta = source.pool_id ? poolNameById.get(source.pool_id) : null;
+    const divisionId = source.division_id || poolMeta?.divisionId || null;
+    return {
+      divisionName: divisionId ? divisionNameById.get(divisionId) || "" : "",
+      poolName: poolMeta?.name || "",
+      rank: source.rank ?? "",
+    };
+  };
+
+  let brackets = [];
+  try {
+    const bracketRows = await getBracketsByEvent(normalizedEventId);
+    brackets = (bracketRows || []).map((bracket) => ({
+      id: bracket.id,
+      name: bracket.name || "",
+      type: bracket.type || "single_elim",
+      nodes: (bracket.nodes || []).map((node) => ({
+        id: node.id,
+        name: node.name || "",
+        round: node.round ?? "",
+        position: node.position ?? "",
+        sourceA: labelSource(node.source_a),
+        sourceB: labelSource(node.source_b),
+      })),
+    }));
+  } catch {
+    // Brackets are optional context for the wizard; a load failure should not
+    // block editing the rest of the hierarchy.
+    brackets = [];
+  }
+
   return {
     event: eventRow,
     divisions,
     eventVenues,
+    brackets,
   };
 }

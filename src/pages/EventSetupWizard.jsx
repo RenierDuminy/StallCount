@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Card,
   Panel,
@@ -13,7 +14,14 @@ import {
   listAvailableVenues,
   listEventsForWizard,
   replaceEventHierarchy,
+  seedEventBracketsIfEmpty,
 } from "../services/eventSetupService";
+import {
+  defaultSeedMap,
+  getTemplateById,
+  isSeedOnlyNode,
+  listTemplates,
+} from "../data/bracketTemplates";
 
 const STEPS = [
   { key: "event", title: "Event", description: "Baseline context" },
@@ -24,8 +32,16 @@ const STEPS = [
     title: "Teams & matches",
     description: "Assignments + fixtures",
   },
-  { key: "review", title: "Review", description: "Revision & validation" },
-  { key: "confirm", title: "Confirm", description: "Push to database" },
+  {
+    key: "playoffs",
+    title: "Playoffs",
+    description: "Optional starter bracket",
+  },
+  {
+    key: "review",
+    title: "Review & publish",
+    description: "Validate & push to database",
+  },
 ];
 
 const INITIAL_EVENT = {
@@ -167,6 +183,11 @@ const INITIAL_VENUE_FORM = {
 
 const matchStatuses = ["scheduled", "ready", "pending", "live", "finished"];
 const WIZARD_DRAFT_STORAGE_KEY = "stallcount:event-setup-wizard:draft:v1";
+// The loaded-from-DB hierarchy snapshot is immutable between loads, so it is
+// persisted under its own key and only re-serialized when it actually changes
+// — not on every keystroke like the live draft below.
+const WIZARD_ORIGINAL_HIERARCHY_STORAGE_KEY =
+  "stallcount:event-setup-wizard:original-hierarchy:v1";
 const WIZARD_STEP_STALE_MS = 1000 * 60 * 60 * 2;
 const createId = () =>
   `tmp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -195,9 +216,47 @@ const createEmptyMatchForm = (overrides = {}) => {
     start: "",
     status: "scheduled",
     venueRefId: "",
+    scoreA: "",
+    scoreB: "",
+    startingTeamId: "",
+    abbaPattern: "",
+    scorekeeperId: "",
+    captainsConfirmed: false,
     ...overrides,
   };
 };
+
+const BRACKET_TYPES = [
+  { value: "single_elim", label: "Single elimination" },
+  { value: "double_elim", label: "Double elimination" },
+  { value: "placement", label: "Placement" },
+  { value: "play_in", label: "Play-in" },
+  { value: "custom", label: "Custom" },
+];
+
+const createEmptyBracketSource = () => ({
+  divisionName: "",
+  poolName: "",
+  rank: "",
+});
+
+const createEmptyBracketNode = (overrides = {}) => ({
+  id: createId(),
+  name: "",
+  round: "",
+  position: "",
+  sourceA: createEmptyBracketSource(),
+  sourceB: createEmptyBracketSource(),
+  ...overrides,
+});
+
+const createEmptyBracket = (overrides = {}) => ({
+  id: createId(),
+  name: "",
+  type: "single_elim",
+  nodes: [],
+  ...overrides,
+});
 
 const formatTeamOptionLabel = (team) => {
   if (!team) return "";
@@ -326,6 +385,24 @@ const readPersistedWizardDraft = () => {
   }
 };
 
+const readPersistedOriginalHierarchy = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(
+      WIZARD_ORIGINAL_HIERARCHY_STORAGE_KEY,
+    );
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 const cloneHierarchySnapshot = (value) => {
   if (!value || typeof value !== "object") {
     return null;
@@ -335,6 +412,45 @@ const cloneHierarchySnapshot = (value) => {
   } catch {
     return null;
   }
+};
+
+// Produce a copy of a fetched hierarchy suitable for seeding a brand-new event:
+// strips the DB primary keys of the event and its structural children so
+// applyEventHierarchy regenerates fresh client IDs and the wizard persists via
+// createEventHierarchy (insert), never replaceEventHierarchy (update).
+// Shared entities are kept by reference: team_id (real teams) and venueId/venue
+// records (shared venue directory) stay intact. The event name/dates are blanked
+// so the operator must rename the copy.
+const stripHierarchyForClone = (payload) => {
+  const source = cloneHierarchySnapshot(payload);
+  if (!source?.event) {
+    return null;
+  }
+  delete source.event.id;
+  source.event.name = "";
+  source.event.start_date = "";
+  source.event.end_date = "";
+  source.divisions = (source.divisions || []).map((division) => {
+    delete division.id;
+    division.divisionTeams = (division.divisionTeams || []).map((team) => {
+      delete team.id;
+      return team;
+    });
+    division.pools = (division.pools || []).map((pool) => {
+      delete pool.id;
+      pool.teams = (pool.teams || []).map((team) => {
+        delete team.id;
+        return team;
+      });
+      pool.matches = (pool.matches || []).map((match) => {
+        delete match.id;
+        return match;
+      });
+      return pool;
+    });
+    return division;
+  });
+  return source;
 };
 
 const resolveInitialWizardStep = (draft) => {
@@ -350,45 +466,114 @@ const resolveInitialWizardStep = (draft) => {
   return Math.min(Math.max(draft.step, 0), STEPS.length - 1);
 };
 
-const Stepper = ({ current, onStepSelect }) => (
-  <ol className="wizard-stepper">
-    {STEPS.map((step, index) => {
-      const isActive = index === current;
-      const isComplete = index < current;
-      return (
-        <li key={step.key}>
-          <button
-            type="button"
-            className={mergeClassNames(
-              "wizard-stepper__pill",
-              isActive && "is-active",
-              isComplete && "is-complete",
-            )}
-            onClick={() => onStepSelect(index)}
-            aria-current={isActive ? "step" : undefined}
-          >
-            <span
+const Stepper = ({ current, onStepSelect }) => {
+  const progressPct =
+    STEPS.length > 1 ? (current / (STEPS.length - 1)) * 100 : 0;
+  const trackRef = useRef(null);
+  const activeStepRef = useRef(null);
+
+  // Keep the active step chip in view when scrolling horizontally on mobile.
+  useEffect(() => {
+    const track = trackRef.current;
+    const active = activeStepRef.current;
+    if (!track || !active) return;
+    if (track.scrollWidth <= track.clientWidth) return;
+    active.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [current]);
+
+  return (
+    <div className="wizard-stepper">
+      {/* Count + progress bar shown on narrow screens. */}
+      <div className="wizard-stepper__compact">
+        <span className="wizard-stepper__compact-count">
+          Step {current + 1} of {STEPS.length}
+        </span>
+        <div
+          className="wizard-stepper__progress"
+          role="progressbar"
+          aria-valuenow={current + 1}
+          aria-valuemin={1}
+          aria-valuemax={STEPS.length}
+        >
+          <span
+            className="wizard-stepper__progress-fill"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      </div>
+      {/* Selectable step chips: scrolling row on mobile, full track on desktop. */}
+      <ol className="wizard-stepper__track" ref={trackRef}>
+        {STEPS.map((step, index) => {
+          const isActive = index === current;
+          const isComplete = index < current;
+          return (
+            <li
+              key={step.key}
+              ref={isActive ? activeStepRef : undefined}
               className={mergeClassNames(
-                "wizard-stepper__badge",
+                "wizard-stepper__step",
                 isActive && "is-active",
-                !isActive && isComplete && "is-complete",
+                isComplete && "is-complete",
               )}
             >
-              {isComplete ? String.fromCharCode(10003) : index + 1}
-            </span>
-            {step.title}
-          </button>
-        </li>
-      );
-    })}
-  </ol>
-);
+              <button
+                type="button"
+                className="wizard-stepper__step-button"
+                onClick={() => onStepSelect(index)}
+                aria-current={isActive ? "step" : undefined}
+              >
+                <span className="wizard-stepper__badge">
+                  {isComplete ? String.fromCharCode(10003) : index + 1}
+                </span>
+                <span className="wizard-stepper__label">{step.title}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+};
 
 const TextField = ({ label, className = "", inputClassName = "", ...props }) => (
   <label className={mergeClassNames("sc-fieldset", className)}>
     <span className="sc-field-label">{label}</span>
     <input className={mergeClassNames("sc-input", inputClassName)} {...props} />
   </label>
+);
+
+const RefreshIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M23 4v6h-6" />
+    <path d="M1 20v-6h6" />
+    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+  </svg>
+);
+
+const RefreshIconButton = ({ label = "Refresh", className = "", ...props }) => (
+  <button
+    type="button"
+    className={mergeClassNames("wizard-icon-button is-destructive", className)}
+    aria-label={label}
+    title={label}
+    {...props}
+  >
+    <RefreshIcon />
+  </button>
 );
 
 const TrashIcon = () => (
@@ -451,6 +636,40 @@ const EditIconButton = ({ label = "Edit", className = "", ...props }) => (
   </button>
 );
 
+const EyeIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const EyeOffIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+    <path d="M1 1l22 22" />
+  </svg>
+);
+
 export default function EventSetupWizardPage() {
   const persistedDraftRef = useRef(null);
   if (persistedDraftRef.current === null) {
@@ -458,9 +677,22 @@ export default function EventSetupWizardPage() {
   }
   const persistedDraft = persistedDraftRef.current;
   const originalHierarchyRef = useRef(
-    cloneHierarchySnapshot(persistedDraft.originalHierarchy),
+    cloneHierarchySnapshot(
+      readPersistedOriginalHierarchy() ?? persistedDraft.originalHierarchy,
+    ),
   );
   const preserveLoadedRulesRef = useRef(false);
+  // Bumped whenever the snapshot ref is reassigned so the persistence effect can
+  // react to a mutable-ref change. Starts at 1 so the effect runs once on mount,
+  // migrating any snapshot seeded from a legacy combined draft into its own key.
+  const [originalHierarchyVersion, setOriginalHierarchyVersion] = useState(1);
+  // Single entry point for changing the snapshot: assigns the ref AND bumps the
+  // version together, so the persistence effect can never miss a change. Always
+  // use this instead of writing originalHierarchyRef.current directly.
+  const setOriginalHierarchy = useCallback((value) => {
+    originalHierarchyRef.current = value;
+    setOriginalHierarchyVersion((prev) => prev + 1);
+  }, []);
 
   const [step, setStep] = useState(() => resolveInitialWizardStep(persistedDraft));
   const [event, setEvent] = useState(() =>
@@ -572,6 +804,23 @@ export default function EventSetupWizardPage() {
   const [rules, setRules] = useState(() =>
     buildRulesFromConfig(persistedDraft.rules),
   );
+  const [brackets, setBrackets] = useState(() =>
+    Array.isArray(persistedDraft.brackets) ? persistedDraft.brackets : [],
+  );
+  // How many brackets the loaded event already had server-side. When > 0 the
+  // playoffs step switches to a read-only summary + handoff to the Playoff
+  // Structure page (the source of truth for real brackets), because the wizard
+  // can only express pool_rank sketches and never overwrites existing brackets.
+  // UI-only / not persisted — a restored draft falls back to the sketch editor,
+  // which is still safe since seedEventBracketsIfEmpty won't clobber on save.
+  const [loadedBracketCount, setLoadedBracketCount] = useState(0);
+  // Visual-only: controls the "Advanced rules" disclosure on the Event step.
+  // Not persisted — the detailed WFDF timing config is collapsed by default to
+  // declutter the step, since it is locked/read-only for the common WFDF format.
+  const [showAdvancedRules, setShowAdvancedRules] = useState(false);
+  // Visual-only: controls the collapsible outline rail (wide screens). Not
+  // persisted — resets to open each session.
+  const [showOutlineRail, setShowOutlineRail] = useState(true);
   const [teamOptions, setTeamOptions] = useState([]);
   const [teamOptionsError, setTeamOptionsError] = useState(null);
   const [teamOptionsLoading, setTeamOptionsLoading] = useState(false);
@@ -598,23 +847,30 @@ export default function EventSetupWizardPage() {
 
   const activeDivisionId =
     poolForm.divisionId || divisionForm.id || divisions[0]?.id || "";
-  const activeDivision =
-    divisions.find((division) => division.id === activeDivisionId) || null;
+  const activeDivision = useMemo(
+    () => divisions.find((division) => division.id === activeDivisionId) || null,
+    [divisions, activeDivisionId],
+  );
   const activePoolId =
     teamForm.poolId ||
     matchForm.matchPoolId ||
     matchForm.poolId ||
     activeDivision?.pools?.[0]?.id ||
     "";
-  const activePool =
-    divisions
-      .flatMap((division) => division.pools || [])
-      .find((pool) => pool.id === activePoolId) || null;
+  const activePool = useMemo(
+    () =>
+      divisions
+        .flatMap((division) => division.pools || [])
+        .find((pool) => pool.id === activePoolId) || null,
+    [divisions, activePoolId],
+  );
 
   const resetWizardState = useCallback(() => {
-    originalHierarchyRef.current = null;
+    setOriginalHierarchy(null);
     setEvent(INITIAL_EVENT);
     setRules(cloneDefaultRules());
+    setBrackets([]);
+    setLoadedBracketCount(0);
     setDivisions([]);
     setEventVenues([]);
     setVenueForm(INITIAL_VENUE_FORM);
@@ -625,7 +881,7 @@ export default function EventSetupWizardPage() {
     setPoolForm({ id: null, divisionId: "", name: "" });
     setTeamForm({ id: null, poolId: "", teamId: "", name: "", seed: "" });
     setMatchForm(createEmptyMatchForm());
-  }, []);
+  }, [setOriginalHierarchy]);
 
   const poolOptions = useMemo(
     () =>
@@ -703,7 +959,11 @@ export default function EventSetupWizardPage() {
   }, []);
 
   useEffect(() => {
-    if (eventMode === "edit" && existingEvents.length === 0 && !existingEventsLoading) {
+    if (
+      (eventMode === "edit" || eventMode === "duplicate") &&
+      existingEvents.length === 0 &&
+      !existingEventsLoading
+    ) {
       loadExistingEvents();
     }
   }, [eventMode, existingEvents.length, existingEventsLoading, loadExistingEvents]);
@@ -719,7 +979,6 @@ export default function EventSetupWizardPage() {
       const draft = {
         updatedAt: Date.now(),
         step,
-        originalHierarchy: originalHierarchyRef.current,
         event,
         divisions,
         eventVenues,
@@ -733,6 +992,7 @@ export default function EventSetupWizardPage() {
         teamForm,
         matchForm,
         rules,
+        brackets,
         eventMode,
         selectedEventId,
       };
@@ -747,6 +1007,7 @@ export default function EventSetupWizardPage() {
     }, 400);
     return () => clearTimeout(handle);
   }, [
+    brackets,
     createTeamForm,
     divisionForm,
     divisionTeamForm,
@@ -765,11 +1026,36 @@ export default function EventSetupWizardPage() {
     venueMode,
   ]);
 
-  const applyEventHierarchy = useCallback((payload) => {
+  // Persist the immutable DB snapshot separately and only when it changes.
+  // Keeping it out of the keystroke-driven draft above avoids re-serializing a
+  // full second copy of the hierarchy on every edit.
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      if (originalHierarchyRef.current) {
+        window.localStorage.setItem(
+          WIZARD_ORIGINAL_HIERARCHY_STORAGE_KEY,
+          JSON.stringify(originalHierarchyRef.current),
+        );
+      } else {
+        window.localStorage.removeItem(WIZARD_ORIGINAL_HIERARCHY_STORAGE_KEY);
+      }
+    } catch {
+      // Ignore storage errors and keep the in-memory snapshot working.
+    }
+  }, [originalHierarchyVersion]);
+
+  const applyEventHierarchy = useCallback((payload, options = {}) => {
     if (!payload?.event) {
       return;
     }
-    originalHierarchyRef.current = cloneHierarchySnapshot(payload);
+    // In clone mode the caller has stripped DB IDs so the hierarchy persists as
+    // a fresh insert; leave the snapshot null so submit routes to
+    // createEventHierarchy (an update-diff against a stripped snapshot would be
+    // meaningless).
+    setOriginalHierarchy(options.asClone ? null : cloneHierarchySnapshot(payload));
     const sourceRules = buildRulesFromConfig(payload.event.rules);
     setEvent({
       name: payload.event.name || "",
@@ -854,12 +1140,55 @@ export default function EventSetupWizardPage() {
             teamBLabel: match.teamBLabel || match.teamB || "",
             venueRefId: resolvedVenue?.id || rawVenueRef || "",
             venueLabel,
+            scoreA:
+              match.scoreA === null || match.scoreA === undefined
+                ? ""
+                : match.scoreA,
+            scoreB:
+              match.scoreB === null || match.scoreB === undefined
+                ? ""
+                : match.scoreB,
+            startingTeamId: match.startingTeamId || "",
+            abbaPattern: match.abbaPattern || "",
+            scorekeeperId: match.scorekeeperId || "",
+            captainsConfirmed: Boolean(match.captainsConfirmed),
           };
         }),
       })),
     }));
     setDivisions(nextDivisions);
     setEventVenues(nextVenues);
+    const nextBrackets = (payload.brackets || []).map((bracket) =>
+      createEmptyBracket({
+        id: bracket.id || createId(),
+        name: bracket.name || "",
+        type: bracket.type || "single_elim",
+        nodes: (bracket.nodes || []).map((node) =>
+          createEmptyBracketNode({
+            id: node.id || createId(),
+            name: node.name || "",
+            round: node.round ?? "",
+            position: node.position ?? "",
+            sourceA: {
+              divisionName: node.sourceA?.divisionName || "",
+              poolName: node.sourceA?.poolName || "",
+              rank: node.sourceA?.rank ?? "",
+            },
+            sourceB: {
+              divisionName: node.sourceB?.divisionName || "",
+              poolName: node.sourceB?.poolName || "",
+              rank: node.sourceB?.rank ?? "",
+            },
+          }),
+        ),
+      }),
+    );
+    setBrackets(nextBrackets);
+    // Only real existing events (not clones, which persist as fresh inserts) own
+    // brackets the wizard must not touch. Track the loaded count so the playoffs
+    // step can hand off to the Playoff Structure page instead of implying it can
+    // edit them.
+    setLoadedBracketCount(options.asClone ? 0 : nextBrackets.length);
     setVenueForm(INITIAL_VENUE_FORM);
     setDivisionForm({ id: null, name: "", level: "" });
     setDivisionTeamForm({
@@ -880,7 +1209,7 @@ export default function EventSetupWizardPage() {
       status: "scheduled",
       venueRefId: "",
     });
-  }, []);
+  }, [setOriginalHierarchy]);
 
   const handleModeChange = useCallback(
     (nextMode) => {
@@ -891,7 +1220,11 @@ export default function EventSetupWizardPage() {
       setSelectedEventId("");
       setPrefillState({ status: "idle", error: null });
       resetWizardState();
-      if (nextMode === "edit" && existingEvents.length === 0 && !existingEventsLoading) {
+      if (
+        (nextMode === "edit" || nextMode === "duplicate") &&
+        existingEvents.length === 0 &&
+        !existingEventsLoading
+      ) {
         loadExistingEvents();
       }
     },
@@ -915,6 +1248,42 @@ export default function EventSetupWizardPage() {
         setFormNotice({
           type: "success",
           message: `Loaded "${hierarchy.event.name}" for editing.`,
+        });
+      } catch (err) {
+        setPrefillState({
+          status: "error",
+          error: err?.message || "Unable to load event hierarchy.",
+        });
+      }
+    },
+    [applyEventHierarchy, resetWizardState],
+  );
+
+  const handleDuplicateEventSelection = useCallback(
+    async (event) => {
+      const value = event.target.value;
+      setSelectedEventId(value);
+      if (!value) {
+        setPrefillState({ status: "idle", error: null });
+        resetWizardState();
+        return;
+      }
+      setPrefillState({ status: "loading", error: null });
+      try {
+        const hierarchy = await getEventHierarchy(value);
+        const sourceName = hierarchy?.event?.name || "event";
+        const cloneable = stripHierarchyForClone(hierarchy);
+        if (!cloneable) {
+          throw new Error("Unable to duplicate this event.");
+        }
+        applyEventHierarchy(cloneable, { asClone: true });
+        // The source event was only a template; clear the selection so the copy
+        // is treated as a brand-new event (and no "refresh from DB" appears).
+        setSelectedEventId("");
+        setPrefillState({ status: "success", error: null });
+        setFormNotice({
+          type: "success",
+          message: `Copied structure from "${sourceName}". Give the new event a name and dates.`,
         });
       } catch (err) {
         setPrefillState({
@@ -955,6 +1324,9 @@ export default function EventSetupWizardPage() {
         window.localStorage.removeItem(WIZARD_DRAFT_STORAGE_KEY);
       }
       persistedDraftRef.current = {};
+      // Wipe the stale snapshot up front so a failed refresh leaves a clean
+      // slate rather than resurrecting the previous event on the next reload.
+      setOriginalHierarchy(null);
       const hierarchy = await getEventHierarchy(selectedEventId);
       applyEventHierarchy(hierarchy);
       setPrefillState({ status: "success", error: null });
@@ -970,7 +1342,7 @@ export default function EventSetupWizardPage() {
       });
       setFormNotice({ type: "error", message });
     }
-  }, [applyEventHierarchy, prefillState.status, selectedEventId]);
+  }, [applyEventHierarchy, prefillState.status, selectedEventId, setOriginalHierarchy]);
 
   const handleVenueFieldChange = (event) => {
     const { name, value } = event.target;
@@ -1515,6 +1887,19 @@ export default function EventSetupWizardPage() {
     }
     const selectedVenue =
       eventVenues.find((venue) => venue.id === matchForm.venueRefId) || null;
+    // Only allow a starting team that is one of the two competing teams.
+    const startingTeamId =
+      matchForm.startingTeamId === teamASelection.id ||
+      matchForm.startingTeamId === teamBSelection.id
+        ? matchForm.startingTeamId
+        : "";
+    const parseScore = (value) => {
+      if (value === "" || value === null || value === undefined) {
+        return "";
+      }
+      const parsed = Number(value);
+      return Number.isInteger(parsed) && parsed >= 0 ? parsed : "";
+    };
     setFormNotice(null);
     upsertPoolEntity(poolId, (pool) => {
       const matches = pool.matches || [];
@@ -1530,6 +1915,12 @@ export default function EventSetupWizardPage() {
         teamBLabel: formatTeamOptionLabel(teamBSelection),
         venueRefId: selectedVenue?.id || "",
         venueLabel: selectedVenue ? formatVenueOptionLabel(selectedVenue) : "",
+        scoreA: parseScore(matchForm.scoreA),
+        scoreB: parseScore(matchForm.scoreB),
+        startingTeamId,
+        abbaPattern: (matchForm.abbaPattern || "").trim(),
+        scorekeeperId: (matchForm.scorekeeperId || "").trim(),
+        captainsConfirmed: Boolean(matchForm.captainsConfirmed),
       };
       if (matchForm.id) {
         return {
@@ -1550,6 +1941,138 @@ export default function EventSetupWizardPage() {
         poolId,
         matchPoolId: poolId,
       }),
+    );
+  };
+
+  const handleAddBracket = () => {
+    setBrackets((prev) => [...prev, createEmptyBracket()]);
+  };
+
+  // Apply a standard template as a wizard sketch. The wizard can only express
+  // pool_rank sources, so seed-round nodes (all sources are seeds) get filled
+  // pool_rank sources via default cross-pool seeding; every other node is
+  // created as an empty placeholder for the TD to finish in Playoff Structure.
+  const handleApplyWizardTemplate = (templateIdValue) => {
+    const template = getTemplateById(templateIdValue);
+    if (!template) return;
+    const seedMap = defaultSeedMap(template.seedCount, poolOptions);
+    const sketchSourceForSeed = (seedNumber) => {
+      const preset = seedMap[seedNumber];
+      const pool = preset ? poolOptions[preset.poolIndex] : null;
+      return {
+        divisionName: pool?.divisionName || "",
+        poolName: pool?.name || "",
+        rank: pool ? String(preset.rank || 1) : "",
+      };
+    };
+    const toSketchSource = (source) =>
+      source?.kind === "seed"
+        ? sketchSourceForSeed(source.seed)
+        : createEmptyBracketSource();
+    const nodes = template.nodes.map((node) =>
+      createEmptyBracketNode({
+        name: node.name || "",
+        round: node.round ? String(node.round) : "",
+        position: node.position ? String(node.position) : "",
+        // Only seed-only nodes are fully expressible; others become empty
+        // placeholders (their winner/loser sources can't be sketched here).
+        sourceA: isSeedOnlyNode(node)
+          ? toSketchSource(node.sourceA)
+          : createEmptyBracketSource(),
+        sourceB: isSeedOnlyNode(node)
+          ? toSketchSource(node.sourceB)
+          : createEmptyBracketSource(),
+      }),
+    );
+    setBrackets((prev) => [
+      ...prev,
+      createEmptyBracket({
+        name: template.label,
+        type: template.bracketType,
+        nodes,
+      }),
+    ]);
+  };
+
+  const handleRemoveBracket = (bracketId) => {
+    setBrackets((prev) => prev.filter((bracket) => bracket.id !== bracketId));
+  };
+
+  const handleBracketFieldChange = (bracketId, field, value) => {
+    setBrackets((prev) =>
+      prev.map((bracket) =>
+        bracket.id === bracketId ? { ...bracket, [field]: value } : bracket,
+      ),
+    );
+  };
+
+  const handleAddBracketNode = (bracketId) => {
+    setBrackets((prev) =>
+      prev.map((bracket) =>
+        bracket.id === bracketId
+          ? { ...bracket, nodes: [...(bracket.nodes || []), createEmptyBracketNode()] }
+          : bracket,
+      ),
+    );
+  };
+
+  const handleRemoveBracketNode = (bracketId, nodeId) => {
+    setBrackets((prev) =>
+      prev.map((bracket) =>
+        bracket.id === bracketId
+          ? {
+              ...bracket,
+              nodes: (bracket.nodes || []).filter((node) => node.id !== nodeId),
+            }
+          : bracket,
+      ),
+    );
+  };
+
+  const handleBracketNodeFieldChange = (bracketId, nodeId, field, value) => {
+    setBrackets((prev) =>
+      prev.map((bracket) =>
+        bracket.id === bracketId
+          ? {
+              ...bracket,
+              nodes: (bracket.nodes || []).map((node) =>
+                node.id === nodeId ? { ...node, [field]: value } : node,
+              ),
+            }
+          : bracket,
+      ),
+    );
+  };
+
+  const handleBracketNodeSourceChange = (
+    bracketId,
+    nodeId,
+    sourceKey,
+    field,
+    value,
+  ) => {
+    setBrackets((prev) =>
+      prev.map((bracket) =>
+        bracket.id === bracketId
+          ? {
+              ...bracket,
+              nodes: (bracket.nodes || []).map((node) =>
+                node.id === nodeId
+                  ? {
+                      ...node,
+                      [sourceKey]: {
+                        ...node[sourceKey],
+                        [field]: value,
+                        // Clearing the division clears its pool to avoid an
+                        // orphaned pool reference.
+                        ...(field === "divisionName" ? { poolName: "" } : {}),
+                      },
+                    }
+                  : node,
+              ),
+            }
+          : bracket,
+      ),
     );
   };
 
@@ -1842,10 +2365,10 @@ export default function EventSetupWizardPage() {
     const isRulesLocked = rules.format === "wfdfChampionship";
     const isMixedDivision = rules.division === "mixed";
     return (
-      <div className="wizard-stack-xl">
+      <div className="wizard-panels-2col">
       <Panel variant="tinted" className="wizard-stack-md wizard-pad-md">
-        <SectionHeader title="Create or edit" />
-        <div className="wizard-grid wizard-gap-md wizard-grid-cols-2-md">
+        <SectionHeader title="Create, edit, or duplicate" />
+        <div className="wizard-grid wizard-gap-md wizard-grid-cols-123">
           {[
             {
               key: "create",
@@ -1856,6 +2379,11 @@ export default function EventSetupWizardPage() {
               key: "edit",
               title: "Edit existing event",
               description: "Load an event to revise structure.",
+            },
+            {
+              key: "duplicate",
+              title: "Duplicate existing event",
+              description: "Copy an event's structure into a new one.",
             },
           ].map((option) => {
             const isSelected = eventMode === option.key;
@@ -1929,14 +2457,66 @@ export default function EventSetupWizardPage() {
             )}
           </div>
         )}
+        {eventMode === "duplicate" && (
+          <div className="wizard-stack-sm">
+            <label className="sc-fieldset">
+              <span className="sc-field-label">
+                Event to duplicate
+              </span>
+              <select
+                className="sc-input"
+                value=""
+                onChange={handleDuplicateEventSelection}
+                disabled={existingEventsLoading}
+              >
+                <option value="">Select a template event</option>
+                {existingEvents.map((existing) => (
+                  <option key={existing.id} value={existing.id}>
+                    {existing.name}{" "}
+                    {existing.start_date
+                      ? `(${existing.start_date})`
+                      : "(No start date)"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="wizard-text-muted-xs">
+              Copies divisions, pools, team assignments, venues, and rules into a
+              new event. Rename it and set new dates below before publishing.
+            </p>
+            {existingEventsLoading && (
+              <p className="wizard-text-muted-xs">Loading events...</p>
+            )}
+            {existingEventsError && (
+              <div className="sc-alert is-error wizard-text-xs">
+                {existingEventsError}
+              </div>
+            )}
+            {prefillState.status === "loading" && (
+              <p className="wizard-text-muted-xs">
+                Copying event structure...
+              </p>
+            )}
+            {prefillState.status === "error" && prefillState.error && (
+              <div className="sc-alert is-error wizard-text-xs">
+                {prefillState.error}
+              </div>
+            )}
+          </div>
+        )}
       </Panel>
       <Panel variant="muted" className="wizard-stack-lg wizard-pad-md">
-        <div className="wizard-grid wizard-gap-lg wizard-grid-cols-2-md">
+        <SectionHeader
+          title="Event details"
+          description="Baseline metadata for this event."
+        />
+        <div className="wizard-grid wizard-gap-lg wizard-grid-cols-123">
         {Object.keys(INITIAL_EVENT)
           .filter((key) => key !== "notes" && key !== "type")
           .map((key) => (
             <TextField
               key={key}
+              className={key === "name" ? "wizard-span-2" : ""}
               label={key.replace(/_/g, " ")}
               name={key}
               type={key.includes("date") ? "date" : "text"}
@@ -2224,6 +2804,19 @@ export default function EventSetupWizardPage() {
           </label>
         </div>
         <div className="wizard-divider" />
+        <div className="wizard-toolbar">
+          <span className="wizard-text-strong">Advanced rules</span>
+          <button
+            type="button"
+            className="sc-button is-ghost"
+            onClick={() => setShowAdvancedRules((prev) => !prev)}
+            aria-expanded={showAdvancedRules}
+          >
+            {showAdvancedRules ? "Hide advanced rules" : "Show advanced rules"}
+          </button>
+        </div>
+        {showAdvancedRules && (
+        <>
         <div>
           <p className="wizard-kicker-strong">
             Mixed ratio
@@ -2935,6 +3528,8 @@ export default function EventSetupWizardPage() {
         </div>
       </div>
       <div className="wizard-divider" />
+        </>
+        )}
       </Panel>
       </div>
     );
@@ -2947,7 +3542,7 @@ export default function EventSetupWizardPage() {
       divisions.find((division) => division.id === manageDivisionId) || null;
     return (
     <div className="wizard-grid wizard-gap-xl wizard-grid-cols-sidebar-md">
-      <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
+      <Panel variant="tinted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader title="Add or edit" />
         <form className="wizard-stack-md" onSubmit={handleDivisionSubmit}>
           <TextField
@@ -3156,7 +3751,7 @@ export default function EventSetupWizardPage() {
 
   const renderPoolsStep = () => (
     <div className="wizard-grid wizard-gap-xl wizard-grid-cols-sidebar-md">
-      <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
+      <Panel variant="tinted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader title="Within division" />
         <form className="wizard-stack-md" onSubmit={handlePoolSubmit}>
           <label className="sc-fieldset">
@@ -3344,7 +3939,7 @@ export default function EventSetupWizardPage() {
                 No teams linked to {currentDivisionForTeams.name || "this division"}.
               </p>
             ) : (
-              <div className="wizard-stack-sm">
+              <div className="wizard-team-grid">
                 {(currentDivisionForTeams.divisionTeams || []).map((team) => (
                   <div key={team.id} className="wizard-box-compact">
                     {team.displayLabel || team.name}
@@ -3609,18 +4204,36 @@ export default function EventSetupWizardPage() {
                               <EditIconButton
                                 label="Edit match"
                                 onClick={() =>
-                                  setMatchForm({
-                                    id: match.id,
-                                    poolId: pool.id,
-                                    matchPoolId: pool.id,
-                                    teamA: match.teamALabel || match.teamA,
-                                    teamAId: match.teamAId || "",
-                                    teamB: match.teamBLabel || match.teamB,
-                                    teamBId: match.teamBId || "",
-                                    start: match.start || "",
-                                    status: match.status,
-                                    venueRefId: match.venueRefId || "",
-                                  })
+                                  setMatchForm(
+                                    createEmptyMatchForm({
+                                      id: match.id,
+                                      poolId: pool.id,
+                                      matchPoolId: pool.id,
+                                      teamA: match.teamALabel || match.teamA,
+                                      teamAId: match.teamAId || "",
+                                      teamB: match.teamBLabel || match.teamB,
+                                      teamBId: match.teamBId || "",
+                                      start: match.start || "",
+                                      status: match.status,
+                                      venueRefId: match.venueRefId || "",
+                                      scoreA:
+                                        match.scoreA === null ||
+                                        match.scoreA === undefined
+                                          ? ""
+                                          : match.scoreA,
+                                      scoreB:
+                                        match.scoreB === null ||
+                                        match.scoreB === undefined
+                                          ? ""
+                                          : match.scoreB,
+                                      startingTeamId: match.startingTeamId || "",
+                                      abbaPattern: match.abbaPattern || "",
+                                      scorekeeperId: match.scorekeeperId || "",
+                                      captainsConfirmed: Boolean(
+                                        match.captainsConfirmed,
+                                      ),
+                                    }),
+                                  )
                                 }
                               />
                               <DeleteIconButton
@@ -3656,8 +4269,457 @@ export default function EventSetupWizardPage() {
   );
 };
 
-  const renderReviewStep = () => (
+  const renderPlayoffsStep = () => {
+    const divisionNames = divisions
+      .map((division) => division.name)
+      .filter(Boolean);
+    const poolsForDivision = (divisionName) => {
+      const division = divisions.find((entry) => entry.name === divisionName);
+      return (division?.pools || []).map((pool) => pool.name).filter(Boolean);
+    };
+    // Human-readable label for a wizard sketch source (pool_rank only). The
+    // wizard stores names directly, so no id lookup is needed.
+    const formatSketchSource = (source) => {
+      if (!source || typeof source !== "object") {
+        return "Not set";
+      }
+      const place = source.poolName || source.divisionName || "";
+      const rank = source.rank ? `#${source.rank}` : "";
+      const label = [place, rank].filter(Boolean).join(" ").trim();
+      return label || "Not set";
+    };
+    const nodeSummaryLabel = (node) => {
+      const name = typeof node?.name === "string" ? node.name.trim() : "";
+      if (name) return name;
+      const round = node?.round ? `Round ${node.round}` : "";
+      const position = node?.position ? `Position ${node.position}` : "";
+      return [round, position].filter(Boolean).join(" · ") || "Untitled node";
+    };
+    const renderSourceEditor = (bracket, node, sourceKey, label) => {
+      const source = node[sourceKey] || createEmptyBracketSource();
+      return (
+        <div className="wizard-stack-xs">
+          <span className="sc-field-label">{label}</span>
+          <div className="wizard-grid wizard-gap-sm wizard-grid-cols-123">
+            <select
+              className="sc-input"
+              value={source.divisionName || ""}
+              onChange={(event) =>
+                handleBracketNodeSourceChange(
+                  bracket.id,
+                  node.id,
+                  sourceKey,
+                  "divisionName",
+                  event.target.value,
+                )
+              }
+            >
+              <option value="">Division…</option>
+              {divisionNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="sc-input"
+              value={source.poolName || ""}
+              onChange={(event) =>
+                handleBracketNodeSourceChange(
+                  bracket.id,
+                  node.id,
+                  sourceKey,
+                  "poolName",
+                  event.target.value,
+                )
+              }
+              disabled={!source.divisionName}
+            >
+              <option value="">Pool…</option>
+              {poolsForDivision(source.divisionName).map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min="1"
+              className="sc-input"
+              placeholder="Seed / rank"
+              value={source.rank ?? ""}
+              onChange={(event) =>
+                handleBracketNodeSourceChange(
+                  bracket.id,
+                  node.id,
+                  sourceKey,
+                  "rank",
+                  event.target.value,
+                )
+              }
+            />
+          </div>
+        </div>
+      );
+    };
+    // Read-only overview of the sketched brackets at the bottom of the step,
+    // mirroring the Bracket summary on the Playoff Structure page. Each node is a
+    // collapsible row so a large sketch stays scannable.
+    const renderPlayoffsSummary = () => {
+      if (!brackets.length) {
+        return null;
+      }
+      return (
+        <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
+          <SectionHeader
+            title="Bracket summary"
+            description="Overview of the brackets sketched here. Expand a node for its sources."
+          />
+          <div className="wizard-stack-md">
+            {brackets.map((bracket) => {
+              const bracketNodes = bracket.nodes || [];
+              return (
+                <div key={bracket.id} className="wizard-stack-sm wizard-box">
+                  <div className="wizard-toolbar">
+                    <span className="wizard-text-strong">
+                      {bracket.name || "Untitled bracket"}
+                    </span>
+                    <span className="wizard-text-muted-xs">
+                      {(BRACKET_TYPES.find((type) => type.value === bracket.type)
+                        ?.label || bracket.type)}{" "}
+                      · {bracketNodes.length} node
+                      {bracketNodes.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  {!bracketNodes.length ? (
+                    <p className="wizard-text-muted-xs">No nodes yet.</p>
+                  ) : (
+                    <div className="wizard-stack-xs">
+                      {bracketNodes.map((node) => (
+                        <details
+                          key={node.id}
+                          className="wizard-box-compact wizard-stack-xs"
+                        >
+                          <summary className="wizard-cursor-pointer wizard-flex wizard-flex-wrap wizard-items-center wizard-justify-between wizard-gap-sm">
+                            <span className="wizard-text-strong">
+                              {nodeSummaryLabel(node)}
+                            </span>
+                            <span className="wizard-text-muted-xs">
+                              Round {node.round || "--"} · Position{" "}
+                              {node.position || "--"}
+                            </span>
+                          </summary>
+                          <p className="wizard-text-muted-xs">
+                            <span className="wizard-text-strong">A:</span>{" "}
+                            {formatSketchSource(node.sourceA)}
+                          </p>
+                          <p className="wizard-text-muted-xs">
+                            <span className="wizard-text-strong">B:</span>{" "}
+                            {formatSketchSource(node.sourceB)}
+                          </p>
+                        </details>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      );
+    };
+    // Collapsible explainer shown on both the sketch and handoff branches so a
+    // TD always has the "how does this work" context on hand without cluttering
+    // the step. Uses a native <details> — no extra state, keyboard-accessible.
+    const playoffsGuidance = (
+      <Panel
+        as="details"
+        variant="muted"
+        className="wizard-stack-sm wizard-pad-md"
+      >
+        <summary className="wizard-text-strong wizard-cursor-pointer">
+          How playoffs work
+        </summary>
+        <p className="wizard-text-muted">
+          Playoffs are built from <span className="wizard-text-strong">brackets</span>.
+          A bracket is a set of <span className="wizard-text-strong">nodes</span> —
+          one node per playoff match (a semifinal, a final, a 3rd-place game).
+          Each node has two slots (Side A / Side B), and each slot is filled by a{" "}
+          <span className="wizard-text-strong">source</span>.
+        </p>
+        <div>
+          <p className="wizard-kicker-strong">A source can be</p>
+          <ul className="wizard-mt-xs wizard-list wizard-text-muted">
+            <li>
+              <span className="wizard-text-strong">Pool / division rank</span> —
+              e.g. “winner of Pool A” (Pool A, rank 1). This is the only source
+              type the wizard can sketch.
+            </li>
+            <li>
+              <span className="wizard-text-strong">Winner / loser of another node</span>{" "}
+              — e.g. “winner of Semifinal 1”. This is how rounds advance.
+            </li>
+            <li>
+              <span className="wizard-text-strong">A specific team</span> — pin a
+              known team into a slot.
+            </li>
+          </ul>
+        </div>
+        <div>
+          <p className="wizard-kicker-strong">Two tools, one job</p>
+          <ul className="wizard-mt-xs wizard-list wizard-text-muted">
+            <li>
+              <span className="wizard-text-strong">This wizard</span> only sketches
+              a <span className="wizard-text-strong">starter</span> bracket with
+              pool/division-rank sources — a quick outline for a brand-new event.
+            </li>
+            <li>
+              The <span className="wizard-text-strong">Playoff Structure tool</span>{" "}
+              (under Admin) is where you add advancement (winner/loser of a node),
+              link each node to a real match, and set seeds. It owns brackets once
+              they exist — re-saving this wizard never changes them.
+            </li>
+          </ul>
+        </div>
+        <div>
+          <p className="wizard-kicker-strong">Typical flow</p>
+          <ol className="wizard-mt-xs wizard-list wizard-text-muted">
+            <li>Sketch a starter bracket here (optional).</li>
+            <li>Publish the event.</li>
+            <li>
+              Open Playoff Structure: link nodes to matches, wire up
+              winner/loser advancement.
+            </li>
+            <li>
+              As pool play finishes, use{" "}
+              <span className="wizard-text-strong">Resolve playoffs</span> there to
+              auto-fill each match with the teams its sources point to.
+            </li>
+          </ol>
+        </div>
+      </Panel>
+    );
+    // This event already has brackets in the DB. The wizard can only express
+    // pool_rank sketches and never overwrites existing brackets, so hand off to
+    // the Playoff Structure page (the source of truth) rather than showing an
+    // editor that can't touch them.
+    if (loadedBracketCount > 0) {
+      const playoffStructureHref = selectedEventId
+        ? `/admin/playoff-structure?eventId=${encodeURIComponent(selectedEventId)}`
+        : "/admin/playoff-structure";
+      return (
+        <div className="wizard-stack-xl">
+          <Panel variant="tinted" className="wizard-stack-md wizard-pad-md">
+            <SectionHeader
+              title="Playoff brackets"
+              description="Managed in the Playoff Structure tool."
+            />
+            <p className="wizard-text">
+              This event has {loadedBracketCount} bracket
+              {loadedBracketCount === 1 ? "" : "s"} built in the Playoff Structure
+              tool. Brackets — including advancement wiring, linked matches, and
+              winner/loser sources — are edited there, not in the wizard. Saving
+              the wizard leaves these brackets untouched.
+            </p>
+            <div>
+              <Link to={playoffStructureHref} className="sc-button">
+                Open Playoff Structure
+              </Link>
+            </div>
+          </Panel>
+          {playoffsGuidance}
+        </div>
+      );
+    }
+    return (
+      <div className="wizard-stack-xl">
+        <Panel variant="tinted" className="wizard-stack-sm wizard-pad-md">
+          <SectionHeader
+            title="Playoff brackets"
+            description="Optional starter sketch. Add advancement, linked matches, and winner/loser sources later in the Playoff Structure tool."
+          />
+          <div className="wizard-toolbar">
+            <span className="wizard-text-muted-xs">
+              {brackets.length} bracket{brackets.length === 1 ? "" : "s"}
+            </span>
+            <div className="wizard-flex wizard-flex-wrap wizard-gap-sm wizard-items-center">
+              <label className="sc-fieldset">
+                <span className="sc-field-label">Start from template</span>
+                <select
+                  className="sc-input"
+                  value=""
+                  onChange={(event) => {
+                    if (event.target.value) {
+                      handleApplyWizardTemplate(event.target.value);
+                    }
+                  }}
+                  disabled={divisions.length === 0}
+                >
+                  <option value="">Choose a template…</option>
+                  {listTemplates().map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="sc-button"
+                onClick={handleAddBracket}
+                disabled={divisions.length === 0}
+              >
+                Add blank bracket
+              </button>
+            </div>
+          </div>
+          {divisions.length === 0 && (
+            <p className="wizard-text-muted-xs">
+              Add divisions and pools before sketching brackets.
+            </p>
+          )}
+          <p className="wizard-text-muted-xs">
+            Templates fill the first round from pool seeds. Later rounds are added
+            as empty placeholders — wire their winner/loser sources and advancement
+            in the Playoff Structure tool after publishing.
+          </p>
+        </Panel>
+        {playoffsGuidance}
+        <div className="wizard-panels-2col">
+        {brackets.map((bracket) => (
+          <Panel
+            key={bracket.id}
+            variant="muted"
+            className="wizard-stack-md wizard-pad-md"
+          >
+            <div className="wizard-grid wizard-gap-md wizard-grid-cols-2-md">
+              <TextField
+                label="Bracket name"
+                value={bracket.name}
+                onChange={(event) =>
+                  handleBracketFieldChange(
+                    bracket.id,
+                    "name",
+                    event.target.value,
+                  )
+                }
+                placeholder="Championship bracket"
+              />
+              <label className="sc-fieldset">
+                <span className="sc-field-label">Type</span>
+                <select
+                  className="sc-input"
+                  value={bracket.type}
+                  onChange={(event) =>
+                    handleBracketFieldChange(
+                      bracket.id,
+                      "type",
+                      event.target.value,
+                    )
+                  }
+                >
+                  {BRACKET_TYPES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="wizard-toolbar">
+              <span className="wizard-text-strong">
+                Nodes ({(bracket.nodes || []).length})
+              </span>
+              <div className="wizard-flex wizard-gap-sm">
+                <button
+                  type="button"
+                  className="sc-button is-ghost"
+                  onClick={() => handleAddBracketNode(bracket.id)}
+                >
+                  Add node
+                </button>
+                <DeleteIconButton
+                  label="Remove bracket"
+                  onClick={() => handleRemoveBracket(bracket.id)}
+                />
+              </div>
+            </div>
+            {(bracket.nodes || []).map((node) => (
+              <details key={node.id} className="wizard-box wizard-stack-sm">
+                <summary className="wizard-cursor-pointer wizard-flex wizard-flex-wrap wizard-items-center wizard-justify-between wizard-gap-sm">
+                  <span className="wizard-text-strong">{nodeSummaryLabel(node)}</span>
+                  <span className="wizard-text-muted-xs">
+                    {formatSketchSource(node.sourceA)} vs {formatSketchSource(node.sourceB)}
+                  </span>
+                </summary>
+                <div className="wizard-grid wizard-gap-sm wizard-grid-cols-123">
+                  <TextField
+                    label="Node name"
+                    value={node.name}
+                    onChange={(event) =>
+                      handleBracketNodeFieldChange(
+                        bracket.id,
+                        node.id,
+                        "name",
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Semifinal 1"
+                  />
+                  <TextField
+                    label="Round"
+                    type="number"
+                    min="1"
+                    value={node.round}
+                    onChange={(event) =>
+                      handleBracketNodeFieldChange(
+                        bracket.id,
+                        node.id,
+                        "round",
+                        event.target.value,
+                      )
+                    }
+                  />
+                  <TextField
+                    label="Position"
+                    type="number"
+                    min="1"
+                    value={node.position}
+                    onChange={(event) =>
+                      handleBracketNodeFieldChange(
+                        bracket.id,
+                        node.id,
+                        "position",
+                        event.target.value,
+                      )
+                    }
+                  />
+                </div>
+                {renderSourceEditor(bracket, node, "sourceA", "Source A")}
+                {renderSourceEditor(bracket, node, "sourceB", "Source B")}
+                <div className="wizard-flex wizard-justify-end">
+                  <DeleteIconButton
+                    label="Remove node"
+                    onClick={() =>
+                      handleRemoveBracketNode(bracket.id, node.id)
+                    }
+                  />
+                </div>
+              </details>
+            ))}
+          </Panel>
+        ))}
+        </div>
+        {renderPlayoffsSummary()}
+      </div>
+    );
+  };
+
+  const renderReviewStep = () => {
+    const submissionSucceeded = submissionState.status === "success";
+    return (
     <div className="wizard-stack-xl">
+      <div className="wizard-panels-2col">
       <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
         <SectionHeader
           title={event.name || "Untitled event"}
@@ -3793,15 +4855,35 @@ export default function EventSetupWizardPage() {
           </div>
         )}
       </Panel>
-    </div>
-  );
 
-  const renderConfirmStep = () => {
-    const submissionSucceeded = submissionState.status === "success";
-    return (
-      <div className="wizard-stack-xl">
+      {brackets.length > 0 && (
         <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
-          <SectionHeader title="Ready to publish-" />
+          <SectionHeader title="Playoff brackets" />
+          <div className="wizard-stack-sm">
+            {brackets.map((bracket) => (
+              <div key={bracket.id} className="wizard-box">
+                <div className="wizard-flex wizard-flex-wrap wizard-items-center wizard-justify-between">
+                  <p className="wizard-text-strong">
+                    {bracket.name || "Untitled bracket"}
+                  </p>
+                  <span className="wizard-text-muted">
+                    {(bracket.nodes || []).length} node
+                    {(bracket.nodes || []).length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <p className="wizard-text-muted-xs">
+                  {BRACKET_TYPES.find((type) => type.value === bracket.type)
+                    ?.label || bracket.type}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+      </div>
+
+        <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
+          <SectionHeader title="Ready to publish" />
           <div className="wizard-grid wizard-gap-md wizard-grid-cols-2-md">
             <div className="wizard-box">
               <p className="sc-field-label">
@@ -3920,10 +5002,10 @@ export default function EventSetupWizardPage() {
         return renderPoolsStep();
       case "teams":
         return renderTeamsStep();
+      case "playoffs":
+        return renderPlayoffsStep();
       case "review":
         return renderReviewStep();
-      case "confirm":
-        return renderConfirmStep();
       default:
         return null;
     }
@@ -3969,6 +5051,11 @@ export default function EventSetupWizardPage() {
           }
         : payloadBase;
       const result = await action(payload);
+      // Seed the sketched brackets after the hierarchy exists (divisions/pools
+      // are needed to resolve node sources by name). Create-only: a no-op once
+      // the event already has brackets, so it never clobbers structures built in
+      // the Playoff Structure page.
+      const bracketResult = await seedEventBracketsIfEmpty(result.eventId, brackets);
       if (isEditingExistingEvent && selectedEventId) {
         const refreshedHierarchy = await getEventHierarchy(selectedEventId);
         applyEventHierarchy(refreshedHierarchy);
@@ -3977,7 +5064,7 @@ export default function EventSetupWizardPage() {
         status: "success",
         error: null,
         eventId: result.eventId,
-        summary: result,
+        summary: { ...result, ...bracketResult },
       });
       setFormNotice({
         type: "success",
@@ -4010,7 +5097,7 @@ export default function EventSetupWizardPage() {
               selectedEventId ? (
                 <button
                   type="button"
-                  className="sc-button sc-button-danger"
+                  className="sc-button sc-button-danger wizard-refresh-button-desktop"
                   onClick={handleRefreshEventFromDatabase}
                   disabled={prefillState.status === "loading"}
                 >
@@ -4022,20 +5109,78 @@ export default function EventSetupWizardPage() {
             }
           />
           {selectedEventId && (
-            <div className="sc-alert is-error wizard-text-xs">
-              Refreshing will wipe all local wizard data saved in this browser
-              for the selected event and load the current database data instead.
+            <div className="sc-alert is-error wizard-text-xs wizard-refresh-alert">
+              <span>
+                Refreshing will wipe all local wizard data saved in this browser
+                for the selected event and load the current database data instead.
+              </span>
+              <RefreshIconButton
+                className="wizard-refresh-button-mobile"
+                label={
+                  prefillState.status === "loading"
+                    ? "Refreshing data..."
+                    : "Refresh data from database"
+                }
+                onClick={handleRefreshEventFromDatabase}
+                disabled={prefillState.status === "loading"}
+              />
             </div>
           )}
           <Stepper current={step} onStepSelect={setStep} />
         </Card>
       </SectionShell>
 
-      <SectionShell as="main" className="wizard-stack-xl">
-          <SectionHeader
-            title={STEPS[step].title}
-            description={STEPS[step].description}
-          />
+      <SectionShell as="main" className="wizard-shell-grid">
+        <div className="wizard-stack-xl wizard-shell-main">
+          <div className="wizard-step-header">
+            <SectionHeader
+              eyebrow={`Step ${step + 1} of ${STEPS.length}`}
+              title={STEPS[step].title}
+              description={STEPS[step].description}
+            />
+            <div className="wizard-nav-bar">
+              <div className="wizard-nav-metrics">
+                <Chip>{`Venues ${summary.eventVenueCount}`}</Chip>
+                <Chip>{`Divisions ${divisions.length}`}</Chip>
+                <Chip>{`Pools ${summary.poolCount}`}</Chip>
+                <Chip>{`Teams ${summary.teamCount}`}</Chip>
+                <Chip>{`Matches ${summary.matchCount}`}</Chip>
+              </div>
+              <div className="wizard-flex wizard-gap-sm">
+                <button
+                  type="button"
+                  className="sc-button is-ghost"
+                  disabled={step === 0}
+                  onClick={() => setStep((prev) => Math.max(0, prev - 1))}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="sc-button"
+                  disabled={
+                    step === STEPS.length - 1
+                      ? submissionState.status === "submitting" ||
+                        !isSubmissionReady
+                      : step === 0 && eventMode === "edit" && !selectedEventId
+                  }
+                  onClick={() => {
+                    if (step === STEPS.length - 1) {
+                      handleSubmitToDatabase();
+                      return;
+                    }
+                    setStep((prev) => Math.min(STEPS.length - 1, prev + 1));
+                  }}
+                >
+                  {step === STEPS.length - 1
+                    ? isEditingExistingEvent
+                      ? "Update"
+                      : "Submit"
+                    : "Next"}
+                </button>
+              </div>
+            </div>
+          </div>
           {formNotice && (
             <div
               className={`sc-alert ${formNotice.type === "error" ? "is-error" : "is-success"}`}
@@ -4044,82 +5189,68 @@ export default function EventSetupWizardPage() {
             </div>
           )}
           {renderStep()}
-          <div className="wizard-summary-bar">
-            <span>
-              Venues {summary.eventVenueCount} - Divisions {divisions.length} -
-              Pools {summary.poolCount} - Teams {summary.teamCount} - Matches{" "}
-              {summary.matchCount}
-            </span>
-            <div className="wizard-flex wizard-gap-sm">
-              <button
-                type="button"
-                className="sc-button is-ghost"
-                disabled={step === 0}
-                onClick={() => setStep((prev) => Math.max(0, prev - 1))}
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                className="sc-button"
-                disabled={
-                  step === STEPS.length - 1
-                    ? submissionState.status === "submitting" ||
-                      !isSubmissionReady
-                    : step === 0 && eventMode === "edit" && !selectedEventId
-                }
-                onClick={() => {
-                  if (step === STEPS.length - 1) {
-                    handleSubmitToDatabase();
-                    return;
-                  }
-                  setStep((prev) => Math.min(STEPS.length - 1, prev + 1));
-                }}
-              >
-                {step === STEPS.length - 1
-                  ? isEditingExistingEvent
-                    ? "Update"
-                    : "Submit"
-                  : step === STEPS.length - 2
-                    ? "Confirm"
-                    : "Next"}
-              </button>
-            </div>
-          </div>
+        </div>
 
-        <Panel variant="muted" className="wizard-stack-md wizard-pad-lg">
-          <SectionHeader
-            title={event.name || "Untitled event"}
-            description="Share this outline with the tournament crew."
-          />
-          {divisions.length === 0 ? (
-            <p className="wizard-text-muted">Add divisions to build the blueprint.</p>
-          ) : (
-            <div className="wizard-stack-md">
-              {divisions.map((division) => (
-                <div key={division.id} className="wizard-stack-sm">
-                  <div className="wizard-flex wizard-items-center wizard-justify-between">
-                    <p className="wizard-text-strong">{division.name}</p>
-                    <Chip>{division.pools?.length || 0} pools</Chip>
-                  </div>
-                  {(division.pools || []).length > 0 && (
-                    <div className="wizard-blueprint-pools">
-                      {(division.pools || []).map((pool) => (
-                        <div key={pool.id} className="wizard-flex wizard-justify-between">
-                          <span className="wizard-text-strong">{pool.name}</span>
-                          <span className="wizard-text-muted-xs">
-                            Teams {pool.teams?.length || 0} / Matches{" "}
-                            {pool.matches?.length || 0}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+        <aside
+          className={mergeClassNames(
+            "wizard-outline-rail",
+            !showOutlineRail && "is-collapsed",
           )}
-        </Panel>
+        >
+          <Panel variant="tinted" className="wizard-stack-md wizard-pad-md wizard-outline-rail__panel">
+            <div className="wizard-toolbar">
+              <span className="wizard-text-strong">
+                {event.name || "Untitled event"}
+              </span>
+              <button
+                type="button"
+                className="wizard-icon-button"
+                onClick={() => setShowOutlineRail((prev) => !prev)}
+                aria-expanded={showOutlineRail}
+                aria-label={showOutlineRail ? "Hide outline" : "Show outline"}
+                title={showOutlineRail ? "Hide outline" : "Show outline"}
+              >
+                {showOutlineRail ? <EyeIcon /> : <EyeOffIcon />}
+              </button>
+            </div>
+            {showOutlineRail && (
+              divisions.length === 0 ? (
+                <p className="wizard-text-muted-xs">
+                  Add divisions to build the outline.
+                </p>
+              ) : (
+                <div className="wizard-stack-md">
+                  {divisions.map((division) => (
+                    <div key={division.id} className="wizard-stack-sm">
+                      <div className="wizard-flex wizard-items-center wizard-justify-between">
+                        <p className="wizard-text-strong">{division.name}</p>
+                        <Chip>{division.pools?.length || 0} pools</Chip>
+                      </div>
+                      {(division.pools || []).length > 0 && (
+                        <div className="wizard-blueprint-pools">
+                          {(division.pools || []).map((pool) => (
+                            <div
+                              key={pool.id}
+                              className="wizard-flex wizard-justify-between"
+                            >
+                              <span className="wizard-text-strong">
+                                {pool.name}
+                              </span>
+                              <span className="wizard-text-muted-xs">
+                                Teams {pool.teams?.length || 0} / Matches{" "}
+                                {pool.matches?.length || 0}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </Panel>
+        </aside>
       </SectionShell>
       <datalist id="team-options-list">
         {teamOptions.map((team) => (

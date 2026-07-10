@@ -68,6 +68,15 @@ export default {
         "sc-md": "var(--sc-radius-md)",
         "sc-lg": "var(--sc-radius-lg)",
         "sc-xl": "var(--sc-radius-xl)",
+        // Reduced global rounding scale (overrides Tailwind defaults).
+        // Pill/circle (`rounded-full`) is intentionally left untouched.
+        sm: "3px",
+        DEFAULT: "4px",
+        md: "5px",
+        lg: "6px",
+        xl: "8px",
+        "2xl": "10px",
+        "3xl": "12px",
       },
       boxShadow: {
         card: "var(--sc-shadow-card)",
