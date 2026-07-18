@@ -425,6 +425,14 @@ export default function MediaAdminPage() {
             title="Match media control"
             action={
               <div className="flex flex-wrap gap-2">
+                <a
+                  href="https://stallcount-overlay.vercel.app/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="sc-button"
+                >
+                  Open overlay system
+                </a>
                 <Link to="/admin" className="sc-button is-ghost">
                   Back to admin hub
                 </Link>

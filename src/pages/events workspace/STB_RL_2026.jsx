@@ -138,8 +138,9 @@ const PHASE_WEEK_GROUPS = [
   },
   {
     id: "phase-3",
-    title: "Seeding Games",
-    description: "MMP seeding games with FMP crossover and seeding fixtures.",
+    title: "Seeding & knockouts begin",
+    description:
+      "MMP seeding stage with FMP crossover and seeding fixtures. The Men's Round of 16 (Week 8) and Round of 8 (Week 9) run alongside catch-up games.",
     weeks: [
       {
         id: "week-7",
@@ -177,203 +178,106 @@ const PHASE_WEEK_GROUPS = [
     ],
   },
 ];
-const SEEDING_PLACEHOLDER_WEEKS = [
-  {
-    id: "week-7-seeding",
-    label: "Week 7",
-    stage: "Initial Seeding",
-    days: [
-      {
-        day: "Monday",
-        items: [{ code: "Men_Seed_13 vs Men_Seed_14", matchup: "" }],
-      },
-      {
-        day: "Tuesday",
-        detail: "Men's MMP Fixtures",
-        items: [
-          { code: "Men_Seed_1 vs Men_Seed_2", matchup: "" },
-          { code: "Men_Seed_3 vs Men_Seed_4", matchup: "" },
-          { code: "Men_Seed_5 vs Men_Seed_6", matchup: "" },
-          { code: "Men_Seed_7 vs Men_Seed_8", matchup: "" },
-          { code: "Men_Seed_9 vs Men_Seed_10", matchup: "" },
-          { code: "Men_Seed_11 vs Men_Seed_12", matchup: "" },
-        ],
-      },
-      {
-        day: "Wednesday",
-        detail: "Women's FMP Fixtures",
-        items: [
-          { code: "Women_E1 vs Women_F1", matchup: "" },
-          { code: "Women_E2 vs Women_F2", matchup: "" },
-          { code: "Women_E3 vs Women_F3", matchup: "" },
-          { code: "Women_E4 vs Women_F4", matchup: "" },
-        ],
-      },
-      {
-        day: "Thursday",
-        items: [{ code: "Men_Seed_15 vs Men_Seed_16", matchup: "" }],
-      },
-    ],
-  },
-  {
-    id: "week-8-seeding",
-    label: "Week 8",
-    stage: "Cross-Seeding",
-    days: [
-      {
-        day: "Monday",
-        items: [{ code: "Men_Seed_1 vs Men_Seed_8", matchup: "" }],
-      },
-      {
-        day: "Tuesday",
-        detail: "Men's MMP Fixtures",
-        items: [
-          { code: "Men_Seed_3 vs Men_Seed_6", matchup: "" },
-          { code: "Men_Seed_4 vs Men_Seed_5", matchup: "" },
-          { code: "Men_Seed_9 vs Men_Seed_16", matchup: "" },
-          { code: "Men_Seed_10 vs Men_Seed_15", matchup: "" },
-          { code: "Men_Seed_11 vs Men_Seed_14", matchup: "" },
-          { code: "Men_Seed_12 vs Men_Seed_13", matchup: "" },
-        ],
-      },
-      {
-        day: "Wednesday",
-        detail: "Women's FMP Fixtures",
-        items: [
-          { code: "Women_E1 vs Women_F2", matchup: "" },
-          { code: "Women_E2 vs Women_F1", matchup: "" },
-          { code: "Women_E3 vs Women_F4", matchup: "" },
-          { code: "Women_E4 vs Women_F3", matchup: "" },
-        ],
-      },
-      {
-        day: "Thursday",
-        items: [{ code: "Men_Seed_2 vs Men_Seed_7", matchup: "" }],
-      },
-    ],
-  },
-  {
-    id: "week-9-seeding",
-    label: "Week 9",
-    stage: "Final Seeding",
-    days: [
-      {
-        day: "Monday",
-        items: [{ code: "Men_Seed_13 vs Men_Seed_14", matchup: "" }],
-      },
-      {
-        day: "Tuesday",
-        detail: "Men's MMP Fixtures",
-        items: [
-          { code: "Men_Seed_1 vs Men_Seed_2", matchup: "" },
-          { code: "Men_Seed_3 vs Men_Seed_4", matchup: "" },
-          { code: "Men_Seed_5 vs Men_Seed_6", matchup: "" },
-          { code: "Men_Seed_7 vs Men_Seed_8", matchup: "" },
-          { code: "Men_Seed_9 vs Men_Seed_10", matchup: "" },
-          { code: "Men_Seed_11 vs Men_Seed_12", matchup: "" },
-        ],
-      },
-      {
-        day: "Wednesday",
-        detail: "Women's FMP Fixtures",
-        items: [
-          { code: "Women_Seed_1 vs Women_Seed_2", matchup: "" },
-          { code: "Women_Seed_3 vs Women_Seed_4", matchup: "" },
-          { code: "Women_Seed_5 vs Women_Seed_6", matchup: "" },
-          { code: "Women_Seed_7 vs Women_Seed_8", matchup: "" },
-        ],
-      },
-      {
-        day: "Thursday",
-        items: [{ code: "Men_Seed_15 vs Men_Seed_16", matchup: "" }],
-      },
-    ],
-  },
-];
 const KNOCKOUT_PLACEHOLDER_WEEKS = [
   {
     id: "week-10-knockouts",
     label: "Week 10",
-    stage: "QF",
+    stage: "Quarterfinal Gauntlet (10 Aug - 13 Aug)",
     days: [
       {
         day: "Monday",
-        items: [{ code: "QF_5", matchup: "Seed 9 v Seed 16" }],
+        detail: "Men's MMP",
+        items: [{ code: "QF7", matchup: "8.3 Loser v 8.7 Loser" }],
       },
       {
         day: "Tuesday",
+        detail: "Men's MMP",
         items: [
-          { code: "QF_1", matchup: "Seed 1 v Seed 8" },
-          { code: "QF_2", matchup: "Seed 2 v Seed 7" },
-          { code: "QF_3", matchup: "Seed 3 v Seed 6" },
-          { code: "QF_4", matchup: "Seed 4 v Seed 5" },
-          { code: "QF_7", matchup: "Seed 11 v Seed 14" },
+          { code: "QF1", matchup: "8.1 Winner v 8.5 Winner" },
+          { code: "QF2", matchup: "8.2 Winner v 8.6 Winner" },
+          { code: "QF3", matchup: "8.3 Winner v 8.7 Winner" },
+          { code: "QF4", matchup: "8.4 Winner v 8.8 Winner" },
+          { code: "QF5", matchup: "8.1 Loser v 8.5 Loser" },
+          { code: "QF6", matchup: "8.2 Loser v 8.6 Loser" },
         ],
       },
       {
         day: "Wednesday",
+        detail: "Women's FMP Knockouts",
         items: [
-          { code: "FMP_QF_1", matchup: "Seed 1 v Seed 8" },
-          { code: "FMP_QF_2", matchup: "Seed 2 v Seed 7" },
-          { code: "FMP_QF_3", matchup: "Seed 3 v Seed 6" },
-          { code: "FMP_QF_4", matchup: "Seed 4 v Seed 5" },
+          { code: "FMP Semifinal", matchup: "Seed 1 v Seed 5" },
+          { code: "FMP Semifinal", matchup: "Seed 2 v Seed 4" },
         ],
       },
       {
         day: "Thursday",
-        items: [
-          { code: "QF_6", matchup: "Seed 10 v Seed 15" },
-          { code: "QF_8", matchup: "Seed 12 v Seed 13" },
-        ],
+        detail: "Men's MMP",
+        items: [{ code: "QF8", matchup: "8.4 Loser v 8.8 Loser" }],
       },
     ],
   },
   {
     id: "week-11-knockouts",
     label: "Week 11",
-    stage: "SF",
+    stage: "Semifinals (17 Aug - 20 Aug)",
     days: [
       {
         day: "Monday",
-        items: [{ code: "SF_5", matchup: "Winner QF_5 v Winner QF_6" }],
+        detail: "Men's MMP",
+        items: [{ code: "SF7", matchup: "QF5 Loser v QF7 Loser" }],
       },
       {
         day: "Tuesday",
+        detail: "Men's MMP",
         items: [
-          { code: "SF_1", matchup: "Winner QF_1 v Winner QF_4" },
-          { code: "SF_2", matchup: "Winner QF_2 v Winner QF_3" },
-          { code: "SF_3", matchup: "Loser QF_1 v Loser QF_4" },
-          { code: "SF_4", matchup: "Loser QF_2 v Loser QF_3" },
-          { code: "SF_7", matchup: "Winner QF_7 v Winner QF_8" },
+          { code: "SF1", matchup: "QF1 Winner v QF3 Winner" },
+          { code: "SF2", matchup: "QF2 Winner v QF4 Winner" },
+          { code: "SF3", matchup: "QF1 Loser v QF5 Winner" },
+          { code: "SF4", matchup: "QF2 Loser v QF6 Winner" },
+          { code: "SF5", matchup: "QF3 Loser v QF7 Winner" },
+          { code: "SF6", matchup: "QF4 Loser v QF8 Winner" },
         ],
       },
       {
         day: "Wednesday",
+        detail: "Women's FMP Knockouts",
         items: [
-          { code: "FMP_SF_1", matchup: "Winner FMP_QF_1 v Winner FMP_QF_4" },
-          { code: "FMP_SF_2", matchup: "Winner FMP_QF_2 v Winner FMP_QF_3" },
-          { code: "FMP_SF_3", matchup: "Loser FMP_QF_1 v Loser FMP_QF_4" },
-          { code: "FMP_SF_4", matchup: "Loser FMP_QF_2 v Loser FMP_QF_3" },
+          { code: "FMP Final", matchup: "Seed 2 v Seed 3" },
+          { code: "FMP Last place playoff", matchup: "Seed 4 v Seed 5" },
         ],
       },
       {
         day: "Thursday",
-        items: [{ code: "SF_6", matchup: "Loser QF_5 v Loser QF_6" }],
+        detail: "Men's MMP",
+        items: [{ code: "SF8", matchup: "QF6 Loser v QF8 Loser" }],
       },
     ],
   },
   {
     id: "week-12-finals",
     label: "Week 12",
-    stage: "Finals",
+    stage: "Finals & placements (25 Aug)",
     days: [
-      { day: "Monday", items: [] },
+      {
+        day: "Monday",
+        detail: "Men's MMP",
+        items: [
+          { code: "13th playoff", matchup: "SF7 Winner v SF8 Winner" },
+          { code: "15th playoff", matchup: "SF7 Loser v SF8 Loser" },
+        ],
+      },
       {
         day: "Tuesday",
+        detail: "MMP & FMP Finals",
         items: [
-          { code: "Final_1", matchup: "Winner SF_1 v Winner SF_2" },
-          { code: "Bronze_1", matchup: "Loser SF_1 v Loser SF_2" },
-          { code: "(MMP and FMP)", matchup: "" },
+          { code: "5th playoff", matchup: "SF3/4/5/6 Winner v SF3/4/5/6 Winner" },
+          { code: "7th playoff", matchup: "SF3/4/5/6 Winner v SF3/4/5/6 Winner" },
+          { code: "9th playoff", matchup: "SF3/4/5/6 Loser v SF3/4/5/6 Loser" },
+          { code: "11th playoff", matchup: "SF3/4/5/6 Loser v SF3/4/5/6 Loser" },
+          { code: "Women's Bronze Final", matchup: "" },
+          { code: "Men's Bronze Final", matchup: "SF1 Loser v SF2 Loser" },
+          { code: "Women's Final", matchup: "" },
+          { code: "Men's Final", matchup: "SF1 Winner v SF2 Winner" },
         ],
       },
       { day: "Wednesday", items: [] },
@@ -1353,18 +1257,14 @@ export default function StellenboschRl2026WorkspacePage() {
                 action={<Chip>{phase.weeks.length} weeks</Chip>}
               />
               <div className="space-y-3">
-                {phase.id === "phase-3"
-                  ? SEEDING_PLACEHOLDER_WEEKS.map((week) => (
-                      <PlaceholderScheduleWeek key={week.id} week={week} />
-                    ))
-                  : phase.weeks.map((week) => (
-                      <WeekScheduleCard
-                        key={week.id}
-                        week={week}
-                        renderMatchCard={renderMatchCard}
-                        loading={loading}
-                      />
-                    ))}
+                {phase.weeks.map((week) => (
+                  <WeekScheduleCard
+                    key={week.id}
+                    week={week}
+                    renderMatchCard={renderMatchCard}
+                    loading={loading}
+                  />
+                ))}
               </div>
             </section>
           ))}
