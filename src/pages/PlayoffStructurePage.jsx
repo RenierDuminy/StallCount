@@ -586,6 +586,77 @@ function getNodeReferenceConflicts(nodeId, nodes) {
   });
 }
 
+// Derive advancement pointers from a node's sources and persist them back onto
+// the upstream nodes. A resolved source payload of { type: "winner"|"loser",
+// nodeId } on side A/B of `savedNodeId` means the referenced upstream node
+// advances its winner/loser into that slot — the inverse of the source link.
+// Also clears any upstream node that used to feed `savedNodeId` but no longer
+// appears in the current sources, so re-pointing a slot doesn't leave a stale
+// connector. Best-effort: advancement only draws the visual bracket and is not
+// read during resolution, so failures here never block the primary save.
+async function syncAdvancementFromSources({ savedNodeId, sourceA, sourceB, nodes = [] }) {
+  if (!savedNodeId) return;
+
+  // desired[upstreamNodeId] = { winner?: "A"|"B", loser?: "A"|"B" }
+  const desired = new Map();
+  const consider = (source, side) => {
+    const type = normalizeText(source?.type);
+    if (type !== "winner" && type !== "loser") return;
+    const upstreamId = source?.nodeId || source?.node_id || "";
+    if (!upstreamId || upstreamId === savedNodeId) return;
+    const entry = desired.get(upstreamId) || {};
+    entry[type] = side;
+    desired.set(upstreamId, entry);
+  };
+  consider(sourceA, "A");
+  consider(sourceB, "B");
+
+  const patches = new Map(); // upstreamId -> partial update payload
+
+  // Apply desired pointers.
+  for (const [upstreamId, sides] of desired.entries()) {
+    const patch = patches.get(upstreamId) || {};
+    if (sides.winner) {
+      patch.advanceToWinner = savedNodeId;
+      patch.advanceToWinnerSide = sides.winner;
+    }
+    if (sides.loser) {
+      patch.advanceToLoser = savedNodeId;
+      patch.advanceToLoserSide = sides.loser;
+    }
+    patches.set(upstreamId, patch);
+  }
+
+  // Clear stale pointers: any node that previously advanced into savedNodeId but
+  // is no longer referenced (or no longer on that winner/loser channel).
+  for (const node of nodes) {
+    if (!node?.id || node.id === savedNodeId) continue;
+    const sides = desired.get(node.id) || {};
+    const patch = patches.get(node.id) || {};
+    if (node.advance_to_winner === savedNodeId && !sides.winner) {
+      patch.advanceToWinner = null;
+      patch.advanceToWinnerSide = null;
+    }
+    if (node.advance_to_loser === savedNodeId && !sides.loser) {
+      patch.advanceToLoser = null;
+      patch.advanceToLoserSide = null;
+    }
+    if (Object.keys(patch).length) {
+      patches.set(node.id, patch);
+    }
+  }
+
+  for (const [upstreamId, patch] of patches.entries()) {
+    if (!Object.keys(patch).length) continue;
+    try {
+      await updateBracketNode(upstreamId, patch);
+    } catch {
+      // Swallow — advancement is cosmetic (visual connectors only); the node's
+      // own save already succeeded and resolution reads sources, not these.
+    }
+  }
+}
+
 function SourceEditor({
   label,
   value,
@@ -1623,24 +1694,42 @@ export default function PlayoffStructurePage() {
         advanceToLoserSide: nodeForm.advanceToLoser ? nodeForm.advanceToLoserSide || null : null,
       };
 
+      let savedNodeId = selectedNodeId;
       if (selectedNodeId) {
         await updateBracketNode(selectedNodeId, payload);
-        await loadSelectedEventData();
-        setMessage(`Updated node ${name || formatNodeFallbackLabel({ round, position })}.`);
       } else {
         const created = await createBracketNode(payload);
-        await loadSelectedEventData();
-        if (created?.id) {
-          setSelectedNodeId(created.id);
-        }
-        setMessage(`Created node ${name || formatNodeFallbackLabel({ round, position })}.`);
+        savedNodeId = created?.id || null;
       }
+
+      // Keep advancement pointers in sync with the sources. A source of
+      // "winner/loser of node X into slot A/B" means node X advances its
+      // winner/loser here on that side — so write that pointer back onto the
+      // upstream node(s), and clear any stale pointer that used to feed here.
+      if (savedNodeId) {
+        await syncAdvancementFromSources({
+          savedNodeId,
+          sourceA,
+          sourceB,
+          nodes: selectedBracketNodes,
+        });
+      }
+
+      await loadSelectedEventData();
+      if (!selectedNodeId && savedNodeId) {
+        setSelectedNodeId(savedNodeId);
+      }
+      setMessage(
+        `${selectedNodeId ? "Updated" : "Created"} node ${
+          name || formatNodeFallbackLabel({ round, position })
+        }.`,
+      );
     } catch (saveError) {
       setError(saveError?.message || "Failed to save node.");
     } finally {
       setNodeBusy(false);
     }
-  }, [loadSelectedEventData, nodeForm, selectedBracketId, selectedNodeId, sourceLookups]);
+  }, [loadSelectedEventData, nodeForm, selectedBracketId, selectedBracketNodes, selectedNodeId, sourceLookups]);
 
   const handleDeleteNode = useCallback(async () => {
     if (!selectedNodeId || !selectedNode) {
@@ -2049,7 +2138,7 @@ export default function PlayoffStructurePage() {
               />
 
               <div className="grid gap-2 md:grid-cols-3">
-                <Field label="Bracket name">
+                <Field label="Bracket name" hint="Required.">
                   <Input
                     value={bracketForm.name}
                     onChange={(event) => setBracketForm((current) => ({ ...current, name: event.target.value }))}
@@ -2101,6 +2190,20 @@ export default function PlayoffStructurePage() {
                   </p>
                 ) : null}
               </div>
+
+              {/* Feedback repeated here: the page-level banners live in the
+                  header, which is scrolled well out of view by the time the
+                  operator is working in this panel. */}
+              {error ? (
+                <p className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-2 py-1 text-xs text-rose-100">
+                  {error}
+                </p>
+              ) : null}
+              {!error && message ? (
+                <p className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-100">
+                  {message}
+                </p>
+              ) : null}
             </Panel>
 
             <div className="grid items-start gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))] xl:grid-cols-[minmax(17rem,19rem)_minmax(0,1fr)]">
@@ -2454,8 +2557,10 @@ export default function PlayoffStructurePage() {
                         Advanced — placement &amp; advancement
                       </summary>
                       <p className="mt-1 text-xs text-ink-muted">
-                        Placement is set automatically from where you add the game on the bracket. Advancement
-                        is optional wiring — set it here, or drag connectors on the bracket.
+                        Placement is set automatically from where you add the game on the bracket.
+                        Advancement is now wired automatically: when a game's Source A/B is set to
+                        &ldquo;winner/loser of&rdquo; another game, that game&rsquo;s winner/loser pointer is
+                        filled in for you. The fields below are a manual override for unusual structures.
                       </p>
 
                       <div className="mt-2 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr))]">
@@ -2574,14 +2679,20 @@ export default function PlayoffStructurePage() {
                       <EditorSection
                         title="Preview"
                         description="Quick summary of the currently selected node."
-                        className="border-[var(--sc-surface-light-border)] bg-[var(--sc-surface-light)] text-[var(--sc-surface-light-ink)]"
+                        className="sc-surface-light border border-[#0b1f19]/20 text-[var(--sc-surface-light-ink)]"
                         titleClassName="text-[var(--sc-surface-light-ink)]"
                         descriptionClassName="text-[var(--sc-surface-light-ink)]/70"
                         stepClassName="border-[var(--sc-surface-light-ink)]/20 bg-white/70 text-[var(--sc-surface-light-ink)]"
                       >
                         <div className="flex flex-wrap items-center gap-1">
-                          <Chip>{getNodeDisplayName(selectedNode)}</Chip>
-                          {selectedNode.match ? <Chip>{formatMatchStatus(selectedNode.match.status)}</Chip> : null}
+                          <Chip className="border-[#0b1f19]/20 bg-white/70 text-[var(--sc-surface-light-ink)]">
+                            {getNodeDisplayName(selectedNode)}
+                          </Chip>
+                          {selectedNode.match ? (
+                            <Chip className="border-[#0b1f19]/20 bg-white/70 text-[var(--sc-surface-light-ink)]">
+                              {formatMatchStatus(selectedNode.match.status)}
+                            </Chip>
+                          ) : null}
                         </div>
                         <p className="text-sm text-[var(--sc-surface-light-ink)]">
                           {formatSourceLabel(selectedNode.source_a, sourceLookups)} vs {formatSourceLabel(selectedNode.source_b, sourceLookups)}

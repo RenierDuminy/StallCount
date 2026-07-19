@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Card,
@@ -11,6 +11,8 @@ import { StandardEventMatchCard } from "../../components/StandardEventMatchCard"
 import { useAuth } from "../../context/AuthContext";
 import { getEventHierarchy } from "../../services/leagueService";
 import { getMatchesByEvent } from "../../services/matchService";
+import { getBracketsByEvent } from "../../services/playoffStructureService";
+import BracketStructureView from "../playoff/BracketStructureView";
 import { executeCustomScript } from "../../services/customScriptService";
 import {
   getStbRl26RosterSyncStatus,
@@ -99,7 +101,8 @@ const PHASE_WEEK_GROUPS = [
   {
     id: "phase-2",
     title: "Pool crossover",
-    description: "MMP crossover games with FMP round robin pool games.",
+    description:
+      "MMP crossover games with FMP round robin pool games, followed by the MMP seeding stage with FMP crossover and seeding fixtures.",
     weeks: [
       {
         id: "week-4",
@@ -134,14 +137,6 @@ const PHASE_WEEK_GROUPS = [
           { id: "2026-05-21", day: "Thursday", date: "21 May" },
         ],
       },
-    ],
-  },
-  {
-    id: "phase-3",
-    title: "Seeding & knockouts begin",
-    description:
-      "MMP seeding stage with FMP crossover and seeding fixtures. The Men's Round of 16 (Week 8) and Round of 8 (Week 9) run alongside catch-up games.",
-    weeks: [
       {
         id: "week-7",
         label: "Week 7",
@@ -153,138 +148,29 @@ const PHASE_WEEK_GROUPS = [
           { id: "2026-07-23", day: "Thursday", date: "23 Jul" },
         ],
       },
-      {
-        id: "week-8",
-        label: "Week 8",
-        dateRange: "27 Jul - 30 Jul",
-        days: [
-          { id: "2026-07-27", day: "Monday", date: "27 Jul" },
-          { id: "2026-07-28", day: "Tuesday", date: "28 Jul" },
-          { id: "2026-07-29", day: "Wednesday", date: "29 Jul" },
-          { id: "2026-07-30", day: "Thursday", date: "30 Jul" },
-        ],
-      },
-      {
-        id: "week-9",
-        label: "Week 9",
-        dateRange: "3 Aug - 6 Aug",
-        days: [
-          { id: "2026-08-03", day: "Monday", date: "3 Aug" },
-          { id: "2026-08-04", day: "Tuesday", date: "4 Aug" },
-          { id: "2026-08-05", day: "Wednesday", date: "5 Aug" },
-          { id: "2026-08-06", day: "Thursday", date: "6 Aug" },
-        ],
-      },
     ],
   },
 ];
-const KNOCKOUT_PLACEHOLDER_WEEKS = [
-  {
-    id: "week-10-knockouts",
-    label: "Week 10",
-    stage: "Quarterfinal Gauntlet (10 Aug - 13 Aug)",
-    days: [
-      {
-        day: "Monday",
-        detail: "Men's MMP",
-        items: [{ code: "QF7", matchup: "8.3 Loser v 8.7 Loser" }],
-      },
-      {
-        day: "Tuesday",
-        detail: "Men's MMP",
-        items: [
-          { code: "QF1", matchup: "8.1 Winner v 8.5 Winner" },
-          { code: "QF2", matchup: "8.2 Winner v 8.6 Winner" },
-          { code: "QF3", matchup: "8.3 Winner v 8.7 Winner" },
-          { code: "QF4", matchup: "8.4 Winner v 8.8 Winner" },
-          { code: "QF5", matchup: "8.1 Loser v 8.5 Loser" },
-          { code: "QF6", matchup: "8.2 Loser v 8.6 Loser" },
-        ],
-      },
-      {
-        day: "Wednesday",
-        detail: "Women's FMP Knockouts",
-        items: [
-          { code: "FMP Semifinal", matchup: "Seed 1 v Seed 5" },
-          { code: "FMP Semifinal", matchup: "Seed 2 v Seed 4" },
-        ],
-      },
-      {
-        day: "Thursday",
-        detail: "Men's MMP",
-        items: [{ code: "QF8", matchup: "8.4 Loser v 8.8 Loser" }],
-      },
-    ],
-  },
-  {
-    id: "week-11-knockouts",
-    label: "Week 11",
-    stage: "Semifinals (17 Aug - 20 Aug)",
-    days: [
-      {
-        day: "Monday",
-        detail: "Men's MMP",
-        items: [{ code: "SF7", matchup: "QF5 Loser v QF7 Loser" }],
-      },
-      {
-        day: "Tuesday",
-        detail: "Men's MMP",
-        items: [
-          { code: "SF1", matchup: "QF1 Winner v QF3 Winner" },
-          { code: "SF2", matchup: "QF2 Winner v QF4 Winner" },
-          { code: "SF3", matchup: "QF1 Loser v QF5 Winner" },
-          { code: "SF4", matchup: "QF2 Loser v QF6 Winner" },
-          { code: "SF5", matchup: "QF3 Loser v QF7 Winner" },
-          { code: "SF6", matchup: "QF4 Loser v QF8 Winner" },
-        ],
-      },
-      {
-        day: "Wednesday",
-        detail: "Women's FMP Knockouts",
-        items: [
-          { code: "FMP Final", matchup: "Seed 2 v Seed 3" },
-          { code: "FMP Last place playoff", matchup: "Seed 4 v Seed 5" },
-        ],
-      },
-      {
-        day: "Thursday",
-        detail: "Men's MMP",
-        items: [{ code: "SF8", matchup: "QF6 Loser v QF8 Loser" }],
-      },
-    ],
-  },
-  {
-    id: "week-12-finals",
-    label: "Week 12",
-    stage: "Finals & placements (25 Aug)",
-    days: [
-      {
-        day: "Monday",
-        detail: "Men's MMP",
-        items: [
-          { code: "13th playoff", matchup: "SF7 Winner v SF8 Winner" },
-          { code: "15th playoff", matchup: "SF7 Loser v SF8 Loser" },
-        ],
-      },
-      {
-        day: "Tuesday",
-        detail: "MMP & FMP Finals",
-        items: [
-          { code: "5th playoff", matchup: "SF3/4/5/6 Winner v SF3/4/5/6 Winner" },
-          { code: "7th playoff", matchup: "SF3/4/5/6 Winner v SF3/4/5/6 Winner" },
-          { code: "9th playoff", matchup: "SF3/4/5/6 Loser v SF3/4/5/6 Loser" },
-          { code: "11th playoff", matchup: "SF3/4/5/6 Loser v SF3/4/5/6 Loser" },
-          { code: "Women's Bronze Final", matchup: "" },
-          { code: "Men's Bronze Final", matchup: "SF1 Loser v SF2 Loser" },
-          { code: "Women's Final", matchup: "" },
-          { code: "Men's Final", matchup: "SF1 Winner v SF2 Winner" },
-        ],
-      },
-      { day: "Wednesday", items: [] },
-      { day: "Thursday", items: [] },
-    ],
-  },
-];
+
+const BRACKET_TYPE_LABELS = {
+  placement: "Placement",
+  single_elim: "Single elimination",
+  double_elim: "Double elimination",
+  play_in: "Play-in",
+  custom: "Custom",
+};
+
+// Human label for a bracket's `type` column, shown beside its name when the
+// event publishes more than one bracket.
+function formatBracketType(value) {
+  if (!value) return "Bracket";
+  return (
+    BRACKET_TYPE_LABELS[value] ||
+    String(value)
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+  );
+}
 
 function PdfIcon(props) {
   return (
@@ -788,53 +674,12 @@ function WeekScheduleCard({ week, renderMatchCard, loading }) {
   );
 }
 
-function PlaceholderScheduleWeek({ week }) {
-  return (
-    <div className="space-y-3 rounded-xl border border-border/70 bg-surface-muted/40 px-2 py-3 sm:px-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-base font-semibold text-ink">{week.label}</p>
-          <p className="text-sm text-ink-muted">{week.stage}</p>
-        </div>
-      </div>
-      <div className="grid gap-3 md:grid-cols-4">
-        {week.days.map((day) => (
-          <section key={`${week.id}-${day.day}`} className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
-              {day.day}
-            </p>
-            {day.detail ? (
-              <p className="text-xs font-semibold text-ink">{day.detail}</p>
-            ) : null}
-            {day.items.length ? (
-              <div className="space-y-2">
-                {day.items.map((item) => (
-                  <div
-                    key={`${week.id}-${day.day}-${item.code}`}
-                    className="rounded-lg border border-border bg-surface px-3 py-2"
-                  >
-                    <p className="text-sm font-semibold text-ink">{item.code}</p>
-                    {item.matchup ? (
-                      <p className="text-sm text-ink-muted">{item.matchup}</p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-ink-muted">TBC</p>
-            )}
-          </section>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function StellenboschRl2026WorkspacePage() {
   const { session, roles } = useAuth();
   const scriptRunLockRef = useRef(false);
   const [eventData, setEventData] = useState(null);
   const [matches, setMatches] = useState([]);
+  const [brackets, setBrackets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [autoSyncSchedule, setAutoSyncSchedule] = useState(() =>
@@ -866,15 +711,19 @@ export default function StellenboschRl2026WorkspacePage() {
     setLoading(true);
     setError(null);
     try {
-      const [structure, rows] = await Promise.all([
+      const [structure, rows, bracketRows] = await Promise.all([
         getEventHierarchy(EVENT_ID),
         getMatchesByEvent(EVENT_ID, MATCH_LIMIT, {
           includeFinished: true,
         }),
+        // The bracket is supplementary: if it fails to load the schedule below
+        // should still render, so swallow the error and fall back to none.
+        getBracketsByEvent(EVENT_ID).catch(() => []),
       ]);
       if (!ignoreRef?.current) {
         setEventData(structure || null);
         setMatches(rows || []);
+        setBrackets(bracketRows || []);
       }
     } catch (err) {
       if (!ignoreRef?.current) {
@@ -938,28 +787,29 @@ export default function StellenboschRl2026WorkspacePage() {
         .sort(sortByStartTimeAsc),
     [matches],
   );
+  const bindWeekMatches = useCallback(
+    (week) => {
+      const days = week.days.map((day) => ({
+        ...day,
+        matches: datedMatches.filter(
+          (match) => formatDateKey(match.start_time) === day.id,
+        ),
+      }));
+      return {
+        ...week,
+        days,
+        matchCount: days.reduce((total, day) => total + day.matches.length, 0),
+      };
+    },
+    [datedMatches],
+  );
   const phaseSchedules = useMemo(
     () =>
       PHASE_WEEK_GROUPS.map((phase) => ({
         ...phase,
-        weeks: phase.weeks.map((week) => {
-          const days = week.days.map((day) => ({
-            ...day,
-            matches: datedMatches.filter(
-              (match) => formatDateKey(match.start_time) === day.id,
-            ),
-          }));
-          return {
-            ...week,
-            days,
-            matchCount: days.reduce(
-              (total, day) => total + day.matches.length,
-              0,
-            ),
-          };
-        }),
+        weeks: phase.weeks.map(bindWeekMatches),
       })),
-    [datedMatches],
+    [bindWeekMatches],
   );
 
   const runRosterUpdate = useCallback(async ({
@@ -1069,6 +919,44 @@ export default function StellenboschRl2026WorkspacePage() {
       forceFullSync: true,
     });
   }, [runRosterUpdate]);
+
+  // An event can carry several brackets (championship plus placement, or one
+  // per division). Show them all, skipping any that have no games yet so an
+  // empty scaffold bracket doesn't take up a heading.
+  const playoffBrackets = useMemo(
+    () => (brackets || []).filter((bracket) => (bracket?.nodes || []).length > 0),
+    [brackets],
+  );
+
+  // Lookups let bracket source labels resolve to human names ("Pool A #1",
+  // "Winner of Quarterfinal 1") instead of raw ids.
+  const bracketLookups = useMemo(() => {
+    const divisions = eventData?.divisions || [];
+    const divisionById = new Map(
+      divisions.filter((division) => division?.id).map((division) => [division.id, division]),
+    );
+    const poolById = new Map(
+      divisions
+        .flatMap((division) => division?.pools || [])
+        .filter((pool) => pool?.id)
+        .map((pool) => [pool.id, pool]),
+    );
+    // Pool teams arrive as { seed, team } entries, so unwrap before indexing.
+    const teamById = new Map(
+      divisions
+        .flatMap((division) => division?.pools || [])
+        .flatMap((pool) => pool?.teams || [])
+        .map((entry) => entry?.team || entry)
+        .filter((team) => team?.id)
+        .map((team) => [team.id, team]),
+    );
+    const nodeById = new Map(
+      (brackets || []).flatMap((bracket) =>
+        (bracket?.nodes || []).map((node) => [node.id, node]),
+      ),
+    );
+    return { divisionById, poolById, teamById, nodeById };
+  }, [brackets, eventData]);
 
   const renderMatchCard = (match, options = {}) => {
     const liveOrFinal =
@@ -1272,14 +1160,46 @@ export default function StellenboschRl2026WorkspacePage() {
 
         <section className="space-y-3 py-4 sm:py-5">
           <SectionHeader
-            title="Knockouts"
-            action={<Chip>Weeks 10-12</Chip>}
+            title="Playoffs"
+            description="Winners and losers both advance. Fixtures fill in as each round is decided."
+            action={<Chip>Weeks 8-12</Chip>}
           />
-          <div className="space-y-3">
-            {KNOCKOUT_PLACEHOLDER_WEEKS.map((week) => (
-              <PlaceholderScheduleWeek key={week.id} week={week} />
-            ))}
-          </div>
+          {playoffBrackets.length > 1 ? (
+            // Several brackets (e.g. championship + placement, or one per
+            // division): head each with its own name so they stay distinct.
+            <div className="space-y-3 sm:space-y-6">
+              {playoffBrackets.map((bracket) => (
+                <div
+                  key={bracket.id}
+                  className="space-y-2 rounded-2xl border border-[var(--sc-border-strong)] bg-[var(--sc-surface)]/40 p-2 sm:space-y-3 sm:p-4"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-[var(--sc-border-strong)] pb-1.5 sm:pb-2">
+                    <h3 className="text-sm font-semibold text-[var(--sc-ink)] sm:text-lg">
+                      {bracket.name || "Bracket"}
+                    </h3>
+                    <Chip>{formatBracketType(bracket.type)}</Chip>
+                  </div>
+                  <BracketStructureView
+                    bracket={bracket}
+                    lookups={bracketLookups}
+                    renderMatchCard={renderMatchCard}
+                    emptyMessage="No games in this bracket yet."
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <BracketStructureView
+              bracket={playoffBrackets[0] || null}
+              lookups={bracketLookups}
+              renderMatchCard={renderMatchCard}
+              emptyMessage={
+                loading
+                  ? "Loading the playoff bracket..."
+                  : "The playoff bracket has not been published yet."
+              }
+            />
+          )}
         </section>
       </SectionShell>
     </div>

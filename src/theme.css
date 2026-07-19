@@ -2109,3 +2109,89 @@ details[open] > summary.wizard-cursor-pointer::before {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Playoff bracket: a wide bracket scrolls sideways inside its own box, so the
+   scrollbar is deliberately thick and tinted rather than the hairline default —
+   horizontal overflow is easy to miss otherwise. */
+.sc-bracket-scroll {
+  overflow-x: auto;
+  scrollbar-width: auto;
+  scrollbar-color: var(--sc-border-strong) transparent;
+  /* Column widths and gaps are rem-based, so shrinking the root font size here
+     scales the whole bracket -- cards, text and spacing together. Done with
+     font-size rather than transform: scale() because the connector overlay
+     measures real DOM rects, and a transform would desync the two. */
+  --sc-bracket-scale: 1rem;
+  font-size: var(--sc-bracket-scale);
+}
+
+@media (max-width: 640px) {
+  .sc-bracket-scroll {
+    /* ~20% smaller on phones, where the bracket is mostly off-screen. */
+    --sc-bracket-scale: 0.8rem;
+  }
+
+  /* The shared match card is built from rem utilities, which ignore the em
+     scale above. zoom resizes it and its layout box together, so the connector
+     overlay still measures the real on-screen rect (unlike transform: scale,
+     which would leave the measured box at full size). */
+  .sc-bracket-match {
+    zoom: 0.8;
+  }
+}
+
+.sc-bracket-scroll::-webkit-scrollbar {
+  height: 0.75rem;
+}
+
+.sc-bracket-scroll::-webkit-scrollbar-track {
+  background: var(--sc-surface-plain);
+  border-radius: 999px;
+}
+
+.sc-bracket-scroll::-webkit-scrollbar-thumb {
+  background: var(--sc-border-strong);
+  border-radius: 999px;
+  border: 3px solid var(--sc-surface-plain);
+}
+
+.sc-bracket-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--sc-accent-alt);
+}
+
+/* Edge fades signalling there is more bracket off-screen. Toggled by the view
+   as the user scrolls, so the cue disappears once an end is reached. */
+.sc-bracket-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0.75rem;
+  width: 2.5rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  z-index: 20;
+}
+
+.sc-bracket-edge[data-visible="true"] {
+  opacity: 1;
+}
+
+.sc-bracket-edge--start {
+  left: 0;
+  background: linear-gradient(
+    to right,
+    var(--sc-surface-plain),
+    transparent
+  );
+  border-left: 2px solid var(--sc-border-glow);
+}
+
+.sc-bracket-edge--end {
+  right: 0;
+  background: linear-gradient(
+    to left,
+    var(--sc-surface-plain),
+    transparent
+  );
+  border-right: 2px solid var(--sc-border-glow);
+}
