@@ -25,9 +25,25 @@ function doReload() {
   if (hasReloaded) return;
   hasReloaded = true;
   window.location.reload();
+
+  // reload() is asynchronous and can be refused (a beforeunload prompt the user
+  // dismisses, or a bfcache restore). If this code is still running shortly
+  // after, the navigation did not happen -- clear both latches so a later
+  // update attempt is not silently swallowed.
+  setTimeout(() => {
+    hasReloaded = false;
+    reloadPending = false;
+  }, 5000);
 }
 
 // Reload now if it is safe, otherwise wait until no live activity is running.
+//
+// The deferred path must be careful with `pagehide`: on mobile it fires when the
+// tab is merely backgrounded, and the page is then restored from the bfcache
+// rather than unloaded. Treating that as an unload would mark the reload as
+// done while the old bundle is still running, leaving the tab pinned to the old
+// build forever (every later controllerchange would return at the guard below).
+// So a bfcache restore explicitly releases the latch and re-arms the update.
 function reloadWhenSafe() {
   if (reloadPending) return;
   reloadPending = true;
@@ -37,18 +53,45 @@ function reloadWhenSafe() {
     return;
   }
 
-  // A match is live — defer. Reload when the activity ends, or on the next
-  // navigation away from the current view (pagehide covers back/forward/close
-  // and in-app navigations that unload the document).
-  const stop = onLiveActivityChange((active) => {
+  // Declared before the subscription below: onLiveActivityChange invokes its
+  // listener synchronously with the current state, so `stop` must already be
+  // assignable by the time the listener can run.
+  let stop = () => {};
+
+  function cleanup() {
+    stop();
+    window.removeEventListener("pagehide", onPageHide);
+    window.removeEventListener("pageshow", onPageShow);
+  }
+
+  // A match is live — defer until it ends, or until the document really unloads.
+  stop = onLiveActivityChange((active) => {
     if (!active) {
-      stop();
+      cleanup();
       doReload();
     }
   });
 
-  const onPageHide = () => doReload();
-  window.addEventListener("pagehide", onPageHide, { once: true });
+  // Only reload here if the match has genuinely finished; otherwise let the
+  // live-activity listener above own the timing.
+  function onPageHide() {
+    if (!isLiveActivity()) {
+      cleanup();
+      doReload();
+    }
+  }
+
+  // Restored from the bfcache: the page never unloaded and is still on the old
+  // bundle. Release the latch so a future controllerchange can retry.
+  function onPageShow(event) {
+    if (event.persisted) {
+      cleanup();
+      reloadPending = false;
+    }
+  }
+
+  window.addEventListener("pagehide", onPageHide);
+  window.addEventListener("pageshow", onPageShow);
 }
 
 export async function registerAutoUpdate() {

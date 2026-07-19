@@ -4,7 +4,9 @@ import "./index.css";
 import "./theme.css";
 import App from "./App.jsx";
 import { registerAutoUpdate } from "./services/appUpdater";
+import { publishBuildInfo } from "./services/buildInfo";
 
+publishBuildInfo();
 void registerAutoUpdate();
 
 createRoot(document.getElementById("root")).render(

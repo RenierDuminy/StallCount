@@ -7,6 +7,13 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores(['dist', 'dev-dist']),
   {
+    // Build tooling runs in Node, not the browser.
+    files: ['vite.config.js', 'scripts/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     files: ['**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
@@ -15,7 +22,12 @@ export default defineConfig([
     ],
     languageOptions: {
       ecmaVersion: 2020,
-      globals: globals.browser,
+      globals: {
+        ...globals.browser,
+        // Injected at build time by Vite's `define` (see vite.config.js).
+        __BUILD_SHA__: 'readonly',
+        __BUILD_TIME__: 'readonly',
+      },
       parserOptions: {
         ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },
