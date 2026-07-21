@@ -2832,14 +2832,16 @@ const rosterNameLookup = useMemo(() => {
     return () => {
       ignore = true;
     };
-  }, [
-    activeMatch,
-    matches,
-    userId,
-    fetchRostersForTeams,
-    loadMatchEventDefinitions,
-    refreshMatchLogs,
-  ]);
+    // Run once on mount. The `urlHydrationRef` guard already makes this a
+    // run-once effect; including volatile values (activeMatch, matches,
+    // refreshMatchLogs, …) in the deps caused the effect to re-run — and its
+    // cleanup to fire `ignore = true` — mid-hydration whenever the synchronous
+    // setSelectedEventId/setSelectedMatchId calls above triggered a dependent
+    // state change. That aborted `hydrateFromUrl` right after `getMatchById`,
+    // before `setActiveMatch`, so the 5v5 console never opened and the page
+    // fell back to the "Open scorekeeper setup" screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // user-interaction handlers moved to useScoreKeeperActions
 
