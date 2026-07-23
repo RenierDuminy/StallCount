@@ -13,3 +13,6 @@ export const SESSION_SAVE_DEBOUNCE_MS = 400;
 export const TIMER_TICK_INTERVAL_MS = 500;
 export const CALAHAN_ASSIST_VALUE = "__CALAHAN_ASSIST__";
 export const SCORE_NA_PLAYER_VALUE = "__SCORE_PLAYER_NA__";
+// The 7v7/5v5 chooser ("intermediate page"). `view=menu` keeps the chooser visible
+// even when a 7v7 console session is live, so returning here never ends a match.
+export const SCOREKEEPER_MENU_PATH = "/score-keeper?view=menu";

@@ -19,6 +19,13 @@ import {
   clearScorekeeperSession,
 } from "../../services/scorekeeperSessionStore";
 import {
+  clearMatchRules,
+  loadMatchRules,
+  pruneStoredMatchRules,
+  saveMatchRules,
+} from "../../services/matchRulesStore";
+import { describeError, describeQueuedWrite } from "../../utils/errorMessages";
+import {
   createQueueId,
   enqueueMatchLogEntry,
   listOfflineQueue,
@@ -714,7 +721,7 @@ const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
       return data ?? [];
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Unable to load match event definitions.";
+        describeError(err, { action: "Load event types" });
       setMatchEventsError(message);
       return [];
     }
@@ -754,7 +761,7 @@ const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
         previous && filteredEvents.some((event) => event.id === previous) ? previous : null,
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to load events.";
+      const message = describeError(err, { action: "Load events" });
       setEventsError(message);
     } finally {
       setEventsLoading(false);
@@ -797,7 +804,7 @@ const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
         }
         setSelectedMatchId(allowDefaultSelect ? setupMatches[0].id : null);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to load matches.";
+        const message = describeError(err, { action: "Load matches" });
         setMatchesError(message);
         setSelectedMatchId(null);
       } finally {
@@ -833,6 +840,13 @@ const previousPrimaryRunningRef = useRef(false);
 const stoppageActiveRef = useRef(false);
 const appliedEventRulesRef = useRef(null);
 const urlHydrationRef = useRef(false);
+// True from first paint when the URL carries a match to open, so the console can
+// show a loading state instead of flashing the setup landing page in between.
+const [urlBootstrapping, setUrlBootstrapping] = useState(() => {
+  if (typeof window === "undefined") return false;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("mode") === "5v5" && Boolean(params.get("matchId"));
+});
 const [trackedSecondaryEventVersion, setTrackedSecondaryEventVersion] = useState(0);
   const [matchStarted, setMatchStarted] = useState(false);
   const consoleReady = Boolean(activeMatch);
@@ -908,6 +922,33 @@ const commitSecondaryTimerState = useCallback(
 const markRulesManuallyEdited = useCallback(() => {
   setRulesManuallyEdited(true);
 }, []);
+
+useEffect(() => {
+  pruneStoredMatchRules();
+}, []);
+
+// Persist the current rules as this match's override. Returns false when storage
+// rejects the write (quota / private mode) so the caller can surface it.
+const persistMatchRules = useCallback(
+  (matchIdOverride = null) => {
+    const targetMatchId = matchIdOverride || activeMatch?.id || selectedMatchId || null;
+    if (!targetMatchId) return false;
+    return saveMatchRules(targetMatchId, rules);
+  },
+  [activeMatch?.id, selectedMatchId, rules]
+);
+
+// Drop the override so the match falls back to its event's rules again.
+const resetMatchRules = useCallback(
+  (matchIdOverride = null) => {
+    const targetMatchId = matchIdOverride || activeMatch?.id || selectedMatchId || null;
+    if (!targetMatchId) return;
+    clearMatchRules(targetMatchId);
+    appliedEventRulesRef.current = null;
+    setRulesManuallyEdited(false);
+  },
+  [activeMatch?.id, selectedMatchId]
+);
 
 const refreshPendingEntries = useCallback(async () => {
   try {
@@ -1039,20 +1080,8 @@ useEffect(() => {
       return;
     }
     if (resumeHydrationRef.current || matchStarted) return;
-    const eventWithRules = events.find((evt) => evt.id === selectedEventId);
-    if (!eventWithRules) return;
-    if (appliedEventRulesRef.current === selectedEventId) return;
-    const normalizedRules = normalizeEventRules(eventWithRules.rules);
-    applyEventRules(normalizedRules, { force: true });
-    appliedEventRulesRef.current = selectedEventId;
-  }, [selectedEventId, events, applyEventRules, matchStarted]);
-
-  useEffect(() => {
-    if (!selectedEventId) {
-      appliedEventRulesRef.current = null;
-      return;
-    }
-    if (resumeHydrationRef.current || matchStarted) return;
+    // Never let event defaults stomp a saved per-match override.
+    if (selectedMatchId && loadMatchRules(selectedMatchId)) return;
     const eventWithRules = events.find((evt) => evt.id === selectedEventId);
     if (!eventWithRules) return;
     const appliedKey = `event-${selectedEventId}`;
@@ -1060,15 +1089,26 @@ useEffect(() => {
     const normalizedRules = normalizeEventRules(eventWithRules.rules);
     applyEventRules(normalizedRules, { force: true });
     appliedEventRulesRef.current = appliedKey;
-  }, [selectedEventId, events, applyEventRules, matchStarted]);
+  }, [selectedEventId, selectedMatchId, events, applyEventRules, matchStarted]);
 
   useEffect(() => {
     if (resumeHydrationRef.current || matchStarted) return;
     const matchSource = activeMatch || selectedMatch;
-    const rulesSource = matchSource?.rules || matchSource?.event?.rules || null;
-    if (!matchSource?.id || !rulesSource) return;
+    if (!matchSource?.id) return;
     const appliedKey = `match-${matchSource.id}`;
     if (appliedEventRulesRef.current === appliedKey) return;
+
+    // A saved per-match override wins over the event defaults. It is already in the
+    // flat normalized shape, so merge it onto the defaults rather than re-normalizing.
+    const storedRules = loadMatchRules(matchSource.id);
+    if (storedRules) {
+      applyEventRules({ ...DEFAULT_RULES, ...storedRules }, { force: true });
+      appliedEventRulesRef.current = appliedKey;
+      return;
+    }
+
+    const rulesSource = matchSource.rules || matchSource.event?.rules || null;
+    if (!rulesSource) return;
     applyEventRules(normalizeEventRules(rulesSource), { force: true });
     appliedEventRulesRef.current = appliedKey;
   }, [activeMatch, selectedMatch, applyEventRules, matchStarted]);
@@ -1099,7 +1139,7 @@ useEffect(() => {
       })
       .catch((err) => {
         if (!ignore) {
-          const message = err instanceof Error ? err.message : "Failed to load rosters.";
+          const message = describeError(err, { action: "Load rosters" });
           setRostersError(message);
         }
       })
@@ -1776,6 +1816,8 @@ const recordPendingEntry = useCallback(
     }
 
     const queueId = optimisticId || createQueueId("match-log");
+    // Name the specific event in any error, so "score" vs "timeout start" is obvious.
+    const eventLabel = String(eventTypeCode || "match event").replace(/_/g, " ");
 
     void (async () => {
       const queueForRetry = async () => {
@@ -1790,15 +1832,15 @@ const recordPendingEntry = useCallback(
       if (DB_WRITES_DISABLED) {
         console.warn("[5v5ScoreKeeper] DB writes are temporarily disabled. Skipping save.", dbPayload);
         await queueForRetry();
-        setConsoleError((prev) => prev || "Scorekeeper is in offline mode; changes aren't being saved.");
+        setConsoleError(
+          (prev) => prev || `Offline mode is on — ${eventLabel} is queued, not saved.`
+        );
         return;
       }
 
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
         await queueForRetry();
-        setConsoleError(
-          (prev) => prev || "Scorekeeper is offline; changes are queued and will sync when online."
-        );
+        setConsoleError((prev) => prev || describeQueuedWrite(eventLabel));
         return;
       }
 
@@ -1817,7 +1859,11 @@ const recordPendingEntry = useCallback(
         await queueForRetry();
         await markOfflineQueueFailure(queueId);
         setConsoleError((prev) =>
-          prev || (err instanceof Error ? err.message : "Failed to submit match log entry.")
+          prev ||
+          describeError(err, {
+            action: `Save ${eventLabel}`,
+            queued: "kept locally and retrying",
+          })
         );
       }
     })();
@@ -2019,7 +2065,7 @@ const rosterNameLookup = useMemo(() => {
         };
         recordPendingEntry(entry);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to record match event.";
+        const message = describeError(err, { action: "Record match event" });
         setConsoleError(message);
       }
     },
@@ -2169,7 +2215,7 @@ const rosterNameLookup = useMemo(() => {
         };
         recordPendingEntry(entry);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to log turnover.";
+        const message = describeError(err, { action: "Log turnover" });
         setConsoleError(message);
       }
     },
@@ -2690,7 +2736,7 @@ const rosterNameLookup = useMemo(() => {
         return derived.totals;
       } catch (err) {
         setConsoleError(
-          err instanceof Error ? err.message : "Failed to load match logs."
+          describeError(err, { action: "Load match log" })
         );
         return null;
       } finally {
@@ -2714,7 +2760,6 @@ const rosterNameLookup = useMemo(() => {
     if (!urlMatchId) return undefined;
 
     urlHydrationRef.current = true;
-    let ignore = false;
 
     const hydrateFromUrl = async () => {
       resumeHydrationRef.current = true;
@@ -2760,7 +2805,6 @@ const rosterNameLookup = useMemo(() => {
           targetMatch = await getMatchById(urlMatchId);
         }
 
-        if (ignore) return;
         if (!targetMatch) {
           throw new Error("Unable to locate the initialised 5v5 match.");
         }
@@ -2790,17 +2834,11 @@ const rosterNameLookup = useMemo(() => {
           setRostersError(null);
           try {
             const rosterData = await fetchRostersForTeams(teamA, teamB, targetEventId);
-            if (!ignore) {
-              setRosters(rosterData);
-            }
+            setRosters(rosterData);
           } catch (err) {
-            if (!ignore) {
-              setRostersError(err instanceof Error ? err.message : "Failed to load rosters.");
-            }
+            setRostersError(describeError(err, { action: "Load rosters" }));
           } finally {
-            if (!ignore) {
-              setRostersLoading(false);
-            }
+            setRostersLoading(false);
           }
         }
 
@@ -2815,12 +2853,11 @@ const rosterNameLookup = useMemo(() => {
         appliedEventRulesRef.current = `match-${targetMatch.id}`;
         setConsoleError(null);
       } catch (err) {
-        if (!ignore) {
-          setConsoleError(
-            err instanceof Error ? err.message : "Failed to open the 5v5 console.",
-          );
-        }
+        setConsoleError(
+          describeError(err, { action: "Open 5v5 console" }),
+        );
       } finally {
+        setUrlBootstrapping(false);
         setTimeout(() => {
           resumeHydrationRef.current = false;
         }, 0);
@@ -2829,17 +2866,19 @@ const rosterNameLookup = useMemo(() => {
 
     void hydrateFromUrl();
 
-    return () => {
-      ignore = true;
-    };
-    // Run once on mount. The `urlHydrationRef` guard already makes this a
-    // run-once effect; including volatile values (activeMatch, matches,
-    // refreshMatchLogs, …) in the deps caused the effect to re-run — and its
-    // cleanup to fire `ignore = true` — mid-hydration whenever the synchronous
-    // setSelectedEventId/setSelectedMatchId calls above triggered a dependent
-    // state change. That aborted `hydrateFromUrl` right after `getMatchById`,
-    // before `setActiveMatch`, so the 5v5 console never opened and the page
-    // fell back to the "Open scorekeeper setup" screen.
+    // Run once on mount, guarded solely by `urlHydrationRef`.
+    //
+    // There is deliberately no `ignore` cleanup flag. Under StrictMode the effect is
+    // invoked twice: the first run started hydration, the cleanup set `ignore = true`,
+    // and the second run bailed on the ref — so the in-flight hydration aborted right
+    // after `getMatchById`, before `setActiveMatch`, and the console never opened.
+    // The ref alone makes this run exactly once per mount; the trailing state writes
+    // are no-ops if the component has genuinely unmounted.
+    //
+    // Deps stay empty for the same reason: including volatile values (activeMatch,
+    // matches, refreshMatchLogs, …) re-ran the effect mid-hydration whenever the
+    // synchronous setSelectedEventId/setSelectedMatchId calls above triggered a
+    // dependent state change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2967,7 +3006,7 @@ const rosterNameLookup = useMemo(() => {
           const rosterData = await fetchRostersForTeams(teamA, teamB, rosterEventId);
           setRosters(rosterData);
         } catch (err) {
-          setRostersError(err instanceof Error ? err.message : "Failed to load rosters.");
+          setRostersError(describeError(err, { action: "Load rosters" }));
         } finally {
           setRostersLoading(false);
         }
@@ -2994,7 +3033,7 @@ const rosterNameLookup = useMemo(() => {
       setResumeHandled(true);
       return true;
     } catch (err) {
-      setResumeError(err instanceof Error ? err.message : "Failed to resume session.");
+      setResumeError(describeError(err, { action: "Resume session" }));
       return false;
     } finally {
       setResumeBusy(false);
@@ -3051,6 +3090,8 @@ const rosterNameLookup = useMemo(() => {
     rules,
     setRules,
     markRulesManuallyEdited,
+    persistMatchRules,
+    resetMatchRules,
     score,
     setScore,
     logs,
@@ -3120,6 +3161,7 @@ const rosterNameLookup = useMemo(() => {
     matchStarted,
     setMatchStarted,
     consoleReady,
+    urlBootstrapping,
     displayTeamA,
     displayTeamB,
     displayTeamAShort,
@@ -3190,3 +3232,4 @@ const rosterNameLookup = useMemo(() => {
     clearLocalMatchState,
   };
 }
+

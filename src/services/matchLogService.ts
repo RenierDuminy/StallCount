@@ -1,4 +1,5 @@
-import { supabase } from "./supabaseClient";
+﻿import { supabase } from "./supabaseClient";
+import { fromSupabaseError } from "../utils/errorMessages";
 
 export const MATCH_LOG_EVENT_CODES = {
   SCORE: "score",
@@ -203,7 +204,7 @@ async function resolveEventTypeId(eventTypeCode: string): Promise<number> {
       .maybeSingle();
 
     if (error) {
-      throw new Error(error.message || `Unable to resolve event type: ${eventTypeCode}`);
+      throw fromSupabaseError(error, `Unable to resolve event type: ${eventTypeCode}`);
     }
 
     return data?.id ?? null;
@@ -221,7 +222,7 @@ async function resolveEventTypeId(eventTypeCode: string): Promise<number> {
   return id;
 }
 
-async function findMatchLogByOptimisticId(matchId: string, optimisticId: string) {
+export async function findMatchLogByOptimisticId(matchId: string, optimisticId: string) {
   if (!matchLogsSupportsOptimisticId || !matchId || !optimisticId) {
     return null;
   }
@@ -240,7 +241,7 @@ async function findMatchLogByOptimisticId(matchId: string, optimisticId: string)
       matchLogsSupportsOptimisticId = false;
       return null;
     }
-    throw new Error(error.message || "Failed to fetch match log by optimistic id");
+    throw fromSupabaseError(error, "Failed to fetch match log by optimistic id");
   }
 
   return (Array.isArray(data) ? data[0] : null) as MatchLogRow | null;
@@ -259,7 +260,7 @@ export async function getMatchLogs(matchId: string) {
       matchLogsSupportsOptimisticId = false;
       return getMatchLogs(matchId);
     }
-    throw new Error(error.message || "Failed to fetch match logs");
+    throw fromSupabaseError(error, "Failed to fetch match logs");
   }
 
   return (data ?? []) as MatchLogRow[];
@@ -315,7 +316,7 @@ export async function createMatchLogEntry(input: MatchLogInput) {
         return existing;
       }
     }
-    throw new Error(error?.message || "Failed to create match log");
+    throw fromSupabaseError(error, "Failed to create match log");
   }
 
   return data as MatchLogRow;
@@ -358,7 +359,7 @@ export async function updateMatchLogEntry(logId: string, updates: MatchLogUpdate
         matchLogsSupportsOptimisticId = false;
         return updateMatchLogEntry(logId, updates);
       }
-      throw new Error(error?.message || "Failed to fetch match log");
+      throw fromSupabaseError(error, "Failed to fetch match log");
     }
 
     return data as MatchLogRow;
@@ -376,10 +377,22 @@ export async function updateMatchLogEntry(logId: string, updates: MatchLogUpdate
       matchLogsSupportsOptimisticId = false;
       return updateMatchLogEntry(logId, updates);
     }
-    throw new Error(error?.message || "Failed to update match log");
+    throw fromSupabaseError(error, "Failed to update match log");
   }
 
   return data as MatchLogRow;
+}
+
+export async function updateMatchLogEntryByOptimisticId(
+  matchId: string,
+  optimisticId: string,
+  updates: MatchLogUpdate
+) {
+  const existing = await findMatchLogByOptimisticId(matchId, optimisticId);
+  if (!existing) {
+    throw new Error("Match log is still syncing. Please try again.");
+  }
+  return updateMatchLogEntry(existing.id, updates);
 }
 
 export async function updateMatchLogEntryByTimestamp(
@@ -411,48 +424,46 @@ export async function updateMatchLogEntryByTimestamp(
 
   const selectClause = matchLogsSupportsOptimisticId ? MATCH_LOG_SELECT : MATCH_LOG_SELECT_LEGACY;
 
-  if (Object.keys(updatePayload).length === 0) {
-    const { data, error } = await supabase
-      .from("match_logs")
-      .select(selectClause)
-      .eq("match_id", matchId)
-      .eq("created_at", createdAt)
-      .maybeSingle();
-
-    if (error || !data) {
-      if (matchLogsSupportsOptimisticId && isMissingOptimisticColumn(error)) {
-        matchLogsSupportsOptimisticId = false;
-        return updateMatchLogEntryByTimestamp(matchId, createdAt, updates);
-      }
-      throw new Error(error?.message || "Failed to fetch match log");
-    }
-
-    return data as MatchLogRow;
-  }
-
-  const { data, error } = await supabase
+  // Timestamps are millisecond-resolution and several events can share one (a score
+  // and its follow-on turnover). Resolve to a single row id before writing so an
+  // update can never fan out across unrelated log entries.
+  const { data: candidates, error: lookupError } = await supabase
     .from("match_logs")
-    .update(updatePayload)
+    .select(selectClause)
     .eq("match_id", matchId)
     .eq("created_at", createdAt)
-    .select(selectClause)
-    .maybeSingle();
+    .order("id", { ascending: true })
+    .limit(2);
 
-  if (error || !data) {
-    if (matchLogsSupportsOptimisticId && isMissingOptimisticColumn(error)) {
+  if (lookupError) {
+    if (matchLogsSupportsOptimisticId && isMissingOptimisticColumn(lookupError)) {
       matchLogsSupportsOptimisticId = false;
       return updateMatchLogEntryByTimestamp(matchId, createdAt, updates);
     }
-    throw new Error(error?.message || "Failed to update match log");
+    throw new Error(lookupError.message || "Failed to fetch match log");
   }
 
-  return data as MatchLogRow;
+  const rows = (Array.isArray(candidates) ? candidates : []) as MatchLogRow[];
+  if (rows.length === 0) {
+    throw new Error("Failed to fetch match log");
+  }
+  if (rows.length > 1) {
+    throw new Error(
+      "Multiple match log entries share this timestamp. Refresh the log and retry the edit."
+    );
+  }
+
+  if (Object.keys(updatePayload).length === 0) {
+    return rows[0];
+  }
+
+  return updateMatchLogEntry(rows[0].id, updates);
 }
 
 export async function deleteMatchLogEntry(logId: string) {
   const { error } = await supabase.from("match_logs").delete().eq("id", logId);
   if (error) {
-    throw new Error(error.message || "Failed to delete match log");
+    throw fromSupabaseError(error, "Failed to delete match log");
   }
 }
 
@@ -467,7 +478,7 @@ export async function getMatchEventDefinitions() {
       .order("code", { ascending: true });
 
     if (error) {
-      throw new Error(error.message || "Failed to load match event definitions");
+      throw fromSupabaseError(error, "Failed to load match event definitions");
     }
 
     const normalized = normalizeMatchEventDefinitions(data);
@@ -486,3 +497,4 @@ export async function getMatchEventDefinitions() {
     return fallback;
   }
 }
+

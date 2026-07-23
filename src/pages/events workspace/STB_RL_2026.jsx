@@ -44,7 +44,7 @@ const TEAM_STANDINGS_GRID_STYLE = {
 };
 const MENS_DIVISION_POOL_LETTERS = new Set(["a", "b", "c", "d"]);
 const MENS_DIVISION_STANDINGS_START_DATE = "2026-04-13";
-const MENS_DIVISION_STANDINGS_END_DATE = "2026-05-21";
+const MENS_DIVISION_STANDINGS_END_DATE = "2026-07-23";
 const SUMMARY_RULES_HREF = "/rules/stellenbosch-rl-2026-rules-summary.pdf";
 const FULL_RULES_HREF = "/rules/stellenbosch-rl-2026-rules.pdf";
 const RULE_DOCUMENTS = [

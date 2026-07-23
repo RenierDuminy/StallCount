@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { fromSupabaseError } from "../utils/errorMessages";
 
 /**
  * Update a match score.
@@ -11,6 +12,6 @@ export async function updateScore(matchId, newScoreA, newScoreB) {
     .eq("id", matchId);
 
   if (error) {
-    throw new Error(error.message || "Failed to update match score");
+    throw fromSupabaseError(error, "Failed to update match score");
   }
 }

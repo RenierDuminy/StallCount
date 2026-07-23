@@ -1,7 +1,8 @@
-import { useRef } from "react";
+﻿import { useRef } from "react";
 import { initialiseMatch, updateMatchStatus } from "../../services/matchService";
 import { removeOfflineQueueItem } from "../../services/offlineQueue";
 import { updateScore } from "../../services/realtimeService";
+import { describeError } from "../../utils/errorMessages";
 import {
   MATCH_LOG_EVENT_CODES,
   createMatchLogOptimisticId,
@@ -96,6 +97,10 @@ export function useScoreKeeperActions(controller) {
 
       const updated = await initialiseMatch(controller.selectedMatch.id, payload);
 
+      // Capture the configured rules as this match's override so they survive
+      // reloads instead of being re-derived from the event defaults.
+      controller.persistMatchRules?.(updated.id);
+
       controller.setActiveMatch(updated);
       controller.setSelectedMatchId(updated.id);
       controller.setMatches((prev) => prev.map((match) => (match.id === updated.id ? updated : match)));
@@ -116,7 +121,7 @@ export function useScoreKeeperActions(controller) {
           controller.setRosters(rosterData);
         } catch (err) {
           controller.setRostersError(
-            err instanceof Error ? err.message : "Failed to load rosters."
+            describeError(err, { action: "Load rosters" })
           );
         } finally {
           controller.setRostersLoading(false);
@@ -140,7 +145,7 @@ export function useScoreKeeperActions(controller) {
       }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to initialise match.";
+        describeError(err, { action: "Initialise match" });
       controller.setConsoleError(message);
     } finally {
       controller.setInitialising(false);
@@ -381,9 +386,30 @@ export function useScoreKeeperActions(controller) {
     try {
       await updateScore(matchId, nextScore.a, nextScore.b);
     } catch (err) {
-      const message = err instanceof Error ? err.message : err;
-      console.error("Failed to sync score:", message);
+      console.error("Failed to sync score:", err);
+      controller.setConsoleError(
+        describeError(err, {
+          action: `Sync score ${nextScore.a}-${nextScore.b}`,
+          queued: "kept locally and retrying",
+        })
+      );
     }
+  }
+
+  function handleSaveSettings() {
+    const saved = controller.persistMatchRules?.();
+    if (saved === false) {
+      controller.setConsoleError(
+        "Couldn't save these settings on this device. Check your browser storage settings."
+      );
+      return false;
+    }
+    controller.setConsoleError(null);
+    return true;
+  }
+
+  function handleResetSettings() {
+    controller.resetMatchRules?.();
   }
 
   function handleRuleChange(field, value) {
@@ -558,7 +584,7 @@ export function useScoreKeeperActions(controller) {
       }
     } catch (err) {
       controller.setConsoleError(
-        err instanceof Error ? err.message : "Failed to update log entry."
+        describeError(err, { action: "Update log entry" })
       );
     }
   }
@@ -717,7 +743,7 @@ export function useScoreKeeperActions(controller) {
       closeScoreModal();
     } catch (err) {
       controller.setConsoleError(
-        err instanceof Error ? err.message : "Failed to delete log entry."
+        describeError(err, { action: "Delete log entry" })
       );
     }
   }
@@ -806,7 +832,7 @@ export function useScoreKeeperActions(controller) {
       return true;
     } catch (err) {
       controller.setConsoleError(
-        err instanceof Error ? err.message : "Failed to close the match."
+        describeError(err, { action: "End match" })
       );
       return false;
     }
@@ -825,6 +851,8 @@ export function useScoreKeeperActions(controller) {
     handleAddScore,
     syncActiveMatchScore,
     handleRuleChange,
+    handleSaveSettings,
+    handleResetSettings,
     openScoreModal,
     closeScoreModal,
     handleScoreModalSubmit,
@@ -838,3 +866,4 @@ export function useScoreKeeperActions(controller) {
     logMatchStartEvent,
   };
 }
+

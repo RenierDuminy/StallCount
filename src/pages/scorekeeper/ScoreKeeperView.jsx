@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import { saveScorekeeperSession } from "../../services/scorekeeperSessionStore";
 import { setLiveActivity } from "../../services/liveActivity";
@@ -67,11 +67,33 @@ const SECONDARY_TIMER_GUIDES = {
 
 export default function ScoreKeeperView() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The chooser ("intermediate page") and the 7v7 console share this route. `?view=menu`
+  // forces the chooser even while a console session is live, so the settings modal's
+  // back button can return here without tearing down the match.
+  const showMenu = searchParams.get("view") === "menu";
   const data = useScoreKeeperData();
   const actions = useScoreKeeperActions(data);
   const fiveVFiveData = useScoreKeeper5v5Data();
   const autoResumeSevenVSevenRef = useRef(null);
   const autoResumeFiveVFiveRef = useRef(null);
+
+  const goToMenu = useCallback(() => {
+    setSearchParams({ view: "menu" });
+  }, [setSearchParams]);
+
+  const goToConsole = useCallback(() => {
+    setSearchParams({});
+  }, [setSearchParams]);
+
+  const [settingsSavedAt, setSettingsSavedAt] = useState(null);
+  const [fiveVFiveSettingsSavedAt, setFiveVFiveSettingsSavedAt] = useState(null);
+
+  // Resuming is async (match -> rosters -> logs) and `consoleReady` stays false the
+  // whole time, which would otherwise flash the chooser on the way to the console.
+  // On failure `resumeBusy` clears and the chooser returns with the error shown.
+  const consoleOpening =
+    !showMenu && (data.resumeBusy || fiveVFiveResumeBusy);
   const {
     consoleReady: fiveVFiveConsoleReady,
     resumeCandidate: fiveVFiveResumeCandidate,
@@ -358,6 +380,9 @@ export default function ScoreKeeperView() {
     const matchId = resumeCandidate?.matchId || resumeCandidate?.selectedMatchId || null;
     if (
       !matchId ||
+      // `?view=menu` means the user deliberately came back to the chooser via
+      // "Back to score keeper menu" — respect that instead of reopening the console.
+      showMenu ||
       resumeCandidateCount !== 1 ||
       resumeHandled ||
       resumeBusy ||
@@ -371,6 +396,7 @@ export default function ScoreKeeperView() {
     void handleResumeSession();
   }, [
     resumeCandidate,
+    showMenu,
     resumeCandidateCount,
     resumeHandled,
     resumeBusy,
@@ -405,6 +431,8 @@ export default function ScoreKeeperView() {
       null;
     if (
       !matchId ||
+      // See above: an explicit return to the menu must not bounce straight back.
+      showMenu ||
       resumeCandidateCount !== 1 ||
       fiveVFiveResumeHandled ||
       fiveVFiveResumeBusy ||
@@ -418,6 +446,7 @@ export default function ScoreKeeperView() {
     void handleFiveVFiveResumeAndOpenConsole();
   }, [
     fiveVFiveResumeCandidate,
+    showMenu,
     resumeCandidateCount,
     fiveVFiveResumeHandled,
     fiveVFiveResumeBusy,
@@ -435,16 +464,19 @@ export default function ScoreKeeperView() {
     });
   }, [orderedLogs]);
 
-  const logIndexById = useMemo(() => {
+  // Positions in the chronological `logs` array (the list renders newest-first),
+  // used only for the ABBA descriptor fallback.
+  const chronologicalIndexById = useMemo(() => {
     const map = new Map();
-    orderedLogs.forEach((entry, i) => {
-      if (entry.id) map.set(entry.id, i);
+    logs.forEach((entry, i) => {
+      if (!entry) return;
+      if (entry.id !== undefined && entry.id !== null) map.set(entry.id, i);
     });
     return map;
-  }, [orderedLogs]);
+  }, [logs]);
 
   const renderMatchEventCard = (log, options) => {
-    const { chronologicalIndex, editIndex } = options;
+    const { chronologicalIndex, logRef } = options;
     const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
     const normalizedEventDescription = `${log.eventDescription || ""}`.toLowerCase();
     const isBlockLog =
@@ -484,7 +516,7 @@ export default function ScoreKeeperView() {
         key={log.id}
         log={log}
         chronologicalIndex={chronologicalIndex}
-        editIndex={editIndex}
+        logRef={logRef}
         displayTeamA={displayTeamA}
         displayTeamB={displayTeamB}
         displayTeamAShort={displayTeamAShort}
@@ -539,7 +571,7 @@ export default function ScoreKeeperView() {
   const POSSESSION_DRAG_THRESHOLD = 24;
   const [simpleEventEditState, setSimpleEventEditState] = useState({
     open: false,
-    logIndex: null,
+    logRef: null,
     teamKey: "",
     eventLabel: "",
     eventCode: "",
@@ -554,7 +586,7 @@ export default function ScoreKeeperView() {
   const [possessionModalOpen, setPossessionModalOpen] = useState(false);
   const [pendingPossessionTeam, setPendingPossessionTeam] = useState(null);
   const [possessionPreviewTeam, setPossessionPreviewTeam] = useState(null);
-  const [possessionEditIndex, setPossessionEditIndex] = useState(null);
+  const [possessionEditRef, setPossessionEditRef] = useState(null);
   const [possessionDeleteModalOpen, setPossessionDeleteModalOpen] = useState(false);
   const [endMatchModalOpen, setEndMatchModalOpen] = useState(false);
   const [endMatchBusy, setEndMatchBusy] = useState(false);
@@ -732,7 +764,7 @@ export default function ScoreKeeperView() {
     setPossessionPreviewTeam(null);
     setPossessionEventReady(false);
     setPossessionResult("throwaway");
-    setPossessionEditIndex(null);
+    setPossessionEditRef(null);
   };
 
   const confirmPossessionChange = (actorOverride) => {
@@ -749,17 +781,17 @@ export default function ScoreKeeperView() {
     setPossessionActorId(actorId || "");
     const isBlock = possessionResult === "block";
     const eventTeamKey = nextTeam;
-    const editingIndex = possessionEditIndex;
+    const editingRef = possessionEditRef;
     resetPossessionModalState();
-    if (editingIndex !== null) {
+    if (editingRef !== null) {
       if (isBlock) {
-        void handleUpdateLog(editingIndex, {
+        void handleUpdateLog(editingRef, {
           teamKey: eventTeamKey,
           scorerId: actorId || null,
           eventTypeId: BLOCK_EVENT_TYPE_ID,
         });
       } else {
-        void handleUpdateLog(editingIndex, {
+        void handleUpdateLog(editingRef, {
           teamKey: eventTeamKey,
           scorerId: actorId || null,
           eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
@@ -804,10 +836,10 @@ export default function ScoreKeeperView() {
     scoreForm.assistId === scoreForm.scorerId;
   const isScoreFormValid = Boolean(scoreForm.scorerId && scoreForm.assistId && !scorerAssistClash);
 
-  const openSimpleEventModal = useCallback((log, index) => {
+  const openSimpleEventModal = useCallback((log, ref) => {
     setSimpleEventEditState({
       open: true,
-      logIndex: index,
+      logRef: ref,
       teamKey: log.team || "",
       eventLabel: log.eventDescription || "Match event",
       eventCode: log.eventCode || "",
@@ -823,7 +855,7 @@ export default function ScoreKeeperView() {
     return desc.includes("block");
   };
 
-  const openPossessionEditModal = useCallback((log, index) => {
+  const openPossessionEditModal = useCallback((log, ref) => {
     const isBlockLog = isBlockPossessionLog(log);
     const loggedTeam = log?.team || null;
     const nextTeam = isBlockLog ? loggedTeam : loggedTeam;
@@ -832,13 +864,13 @@ export default function ScoreKeeperView() {
     setPossessionResult(isBlockLog ? "block" : "throwaway");
     setPossessionActorId(log?.scorerId || "");
     setPossessionModalOpen(true);
-    setPossessionEditIndex(index);
+    setPossessionEditRef(ref);
   }, []);
 
   const closeSimpleEventModal = () => {
     setSimpleEventEditState({
       open: false,
-      logIndex: null,
+      logRef: null,
       teamKey: "",
       eventLabel: "",
       eventCode: "",
@@ -847,21 +879,21 @@ export default function ScoreKeeperView() {
 
   const handleSimpleEventSubmit = async (event) => {
     event.preventDefault();
-    if (simpleEventEditState.logIndex === null) return;
-    await handleUpdateLog(simpleEventEditState.logIndex, {
+    if (simpleEventEditState.logRef === null) return;
+    await handleUpdateLog(simpleEventEditState.logRef, {
       teamKey: simpleEventEditState.teamKey || null,
     });
     closeSimpleEventModal();
   };
 
   const handleSimpleEventDelete = async () => {
-    if (simpleEventEditState.logIndex === null) return;
-    await handleDeleteLog(simpleEventEditState.logIndex);
+    if (simpleEventEditState.logRef === null) return;
+    await handleDeleteLog(simpleEventEditState.logRef);
     closeSimpleEventModal();
   };
 
   const openPossessionDeleteModal = () => {
-    if (possessionEditIndex === null) return;
+    if (possessionEditRef === null) return;
     setPossessionDeleteModalOpen(true);
   };
 
@@ -870,8 +902,8 @@ export default function ScoreKeeperView() {
   };
 
   const handlePossessionDelete = async () => {
-    if (possessionEditIndex === null) return;
-    await handleDeleteLog(possessionEditIndex);
+    if (possessionEditRef === null) return;
+    await handleDeleteLog(possessionEditRef);
     setPossessionDeleteModalOpen(false);
     resetPossessionModalState();
   };
@@ -916,7 +948,7 @@ export default function ScoreKeeperView() {
   return (
     <ScorekeeperShell>
       <main className="py-2">
-        {consoleReady ? (
+        {consoleReady && !showMenu ? (
           <section className="space-y-2">
             <div className="rounded-3xl border border-emerald-900/15 bg-white/90 p-1.5 w-full">
               <div className="flex items-center justify-between gap-2">
@@ -1181,10 +1213,10 @@ export default function ScoreKeeperView() {
                     No match events captured yet. Use the buttons above to log an event.
                   </div>
                 ) : (
-                  dedupedLogs.map((log, i) => {
-                    const chronologicalIndex = log.id !== undefined ? (logIndexById.get(log.id) ?? -1) : -1;
-                    const editIndex = chronologicalIndex >= 0 ? chronologicalIndex : i;
-                    return renderMatchEventCard(log, { chronologicalIndex, editIndex });
+                  dedupedLogs.map((log) => {
+                    const chronologicalIndex = chronologicalIndexById.get(log.id) ?? -1;
+                    const logRef = log.id ?? log.optimisticId ?? null;
+                    return renderMatchEventCard(log, { chronologicalIndex, logRef });
                   })
                 )}
                 <button
@@ -1258,11 +1290,25 @@ export default function ScoreKeeperView() {
             </details>
 
           </section>
+        ) : consoleOpening ? (
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 text-center">
+            <p className="text-sm font-semibold text-[#0f5132]">Opening console...</p>
+            <p className="mt-1 text-xs text-slate-500">Loading the match, rosters and log.</p>
+          </section>
         ) : (
           <section
             className="space-y-[var(--setup-button-size)] rounded-3xl border border-slate-200 bg-white p-2 text-center"
             style={{ "--setup-button-size": "4.5rem" }}
           >
+            {consoleReady && showMenu && (
+              <button
+                type="button"
+                onClick={goToConsole}
+                className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full border-2 border-brand bg-brand/10 px-4 text-sm font-semibold text-brand transition hover:bg-brand/20"
+              >
+                Return to live console
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setSetupModalOpen(true)}
@@ -1321,7 +1367,25 @@ export default function ScoreKeeperView() {
           open: setupModalOpen,
           title: "7v7 match setup",
           onClose: () => setSetupModalOpen(false),
-          onSubmit: handleInitialiseMatch,
+          onBack: () => {
+            setSetupModalOpen(false);
+            goToMenu();
+          },
+          onSubmit: async (event) => {
+            await handleInitialiseMatch(event);
+            // Setup succeeded from the chooser -> drop ?view=menu so the console shows.
+            goToConsole();
+          },
+          onSaveSettings: () => {
+            if (actions.handleSaveSettings()) {
+              setSettingsSavedAt(Date.now());
+            }
+          },
+          onResetSettings: () => {
+            actions.handleResetSettings();
+            setSettingsSavedAt(null);
+          },
+          settingsSavedAt,
           events,
           eventsLoading,
           eventsError,
@@ -1334,7 +1398,11 @@ export default function ScoreKeeperView() {
           selectedMatchId,
           onRefreshMatches: loadMatches,
           rules,
-          setRules,
+          // Flag the edit so event defaults can't quietly reclaim it mid-session.
+          setRules: (updater) => {
+            data.markRulesManuallyEdited?.();
+            setRules(updater);
+          },
           setupForm,
           setSetupForm,
           teamAId,
@@ -1359,7 +1427,7 @@ export default function ScoreKeeperView() {
           actorId: possessionActorId,
           onActorSelect: handlePossessionActorSelect,
           renderPlayerGridLabel,
-          editIndex: possessionEditIndex,
+          editRef: possessionEditRef,
           onOpenDelete: openPossessionDeleteModal,
         }}
         possessionDelete={{
@@ -1422,7 +1490,21 @@ export default function ScoreKeeperView() {
           open: fiveVFiveData.setupModalOpen,
           title: "5v5 match setup",
           onClose: () => fiveVFiveData.setSetupModalOpen(false),
+          onBack: () => {
+            fiveVFiveData.setSetupModalOpen(false);
+            goToMenu();
+          },
           onSubmit: fiveVFiveActions.handleInitialiseMatch,
+          onSaveSettings: () => {
+            if (fiveVFiveActions.handleSaveSettings()) {
+              setFiveVFiveSettingsSavedAt(Date.now());
+            }
+          },
+          onResetSettings: () => {
+            fiveVFiveActions.handleResetSettings();
+            setFiveVFiveSettingsSavedAt(null);
+          },
+          settingsSavedAt: fiveVFiveSettingsSavedAt,
           events: fiveVFiveData.events,
           eventsLoading: fiveVFiveData.eventsLoading,
           eventsError: fiveVFiveData.eventsError,
@@ -1435,7 +1517,10 @@ export default function ScoreKeeperView() {
           selectedMatchId: fiveVFiveData.selectedMatchId,
           onRefreshMatches: fiveVFiveData.loadMatches,
           rules: fiveVFiveData.rules,
-          setRules: fiveVFiveData.setRules,
+          setRules: (updater) => {
+            fiveVFiveData.markRulesManuallyEdited?.();
+            fiveVFiveData.setRules(updater);
+          },
           setupForm: fiveVFiveData.setupForm,
           setSetupForm: fiveVFiveData.setSetupForm,
           teamAId: fiveVFiveData.teamAId,
@@ -1591,7 +1676,7 @@ function SecondaryTimerDescription({ label, running, remainingSeconds, totalSeco
 function MatchLogCard({
   log,
   chronologicalIndex,
-  editIndex,
+  logRef,
   displayTeamA,
   displayTeamB,
   displayTeamAShort,
@@ -1753,7 +1838,7 @@ function MatchLogCard({
             <div className="md:col-span-3 flex justify-end">
               <button
                 type="button"
-                onClick={() => openScoreModal(log.team, "edit", editIndex)}
+                onClick={() => openScoreModal(log.team, "edit", logRef)}
                 className="rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
                 aria-label="Edit event"
                 title="Edit event"
@@ -1804,7 +1889,7 @@ function MatchLogCard({
           {!showDetachedEdit && (
             <button
               type="button"
-              onClick={() => openSimpleEventModal(log, editIndex)}
+              onClick={() => openSimpleEventModal(log, logRef)}
               className="rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
               aria-label="Edit event"
               title="Edit event"
@@ -1829,7 +1914,7 @@ function MatchLogCard({
       {showDetachedEdit && (
         <button
           type="button"
-          onClick={() => openPossessionEditModal(log, editIndex)}
+          onClick={() => openPossessionEditModal(log, logRef)}
           className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
           aria-label="Edit event"
           title="Edit event"

@@ -1,5 +1,6 @@
-import { supabase } from "./supabaseClient";
+﻿import { supabase } from "./supabaseClient";
 import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
+import { fromSupabaseError } from "../utils/errorMessages";
 
 const RECENT_MATCHES_CACHE_TTL_MS = 30 * 1000;
 const OPEN_MATCHES_CACHE_TTL_MS = 30 * 1000;
@@ -43,7 +44,7 @@ export async function getRecentMatches(limit = 4) {
         .limit(limit);
 
       if (error) {
-        throw new Error(error.message || "Failed to load matches");
+        throw fromSupabaseError(error, "Failed to load matches");
       }
 
       return data ?? [];
@@ -64,7 +65,7 @@ export async function getOpenMatches(limit = 12) {
         .limit(limit);
 
       if (error) {
-        throw new Error(error.message || "Failed to load open matches");
+        throw fromSupabaseError(error, "Failed to load open matches");
       }
 
       return data ?? [];
@@ -93,7 +94,7 @@ export async function getMatchesByEvent(eventId, limit = 24, options = {}) {
       const { data, error } = await query;
 
       if (error) {
-        throw new Error(error.message || "Failed to load matches for event");
+        throw fromSupabaseError(error, "Failed to load matches for event");
       }
 
       return data ?? [];
@@ -114,7 +115,7 @@ export async function getRecentMatchesWithMedia(limit = 5) {
         .limit(limit);
 
       if (error) {
-        throw new Error(error.message || "Failed to load recent matches with media");
+        throw fromSupabaseError(error, "Failed to load recent matches with media");
       }
 
       return data ?? [];
@@ -135,7 +136,7 @@ export async function getRecentFinalMatches(limit = 16) {
         .limit(limit);
 
       if (error) {
-        throw new Error(error.message || "Failed to load recent final matches");
+        throw fromSupabaseError(error, "Failed to load recent final matches");
       }
 
       return data ?? [];
@@ -152,7 +153,7 @@ export async function getMatchById(matchId) {
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message || "Failed to load match");
+    throw fromSupabaseError(error, "Failed to load match");
   }
 
   return data || null;
@@ -198,7 +199,7 @@ export async function createMatch(payload = {}) {
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message || "Failed to create match");
+    throw fromSupabaseError(error, "Failed to create match");
   }
 
   if (data?.event_id) {
@@ -249,7 +250,7 @@ export async function updateMatch(matchId, payload = {}) {
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message || "Failed to update match");
+    throw fromSupabaseError(error, "Failed to update match");
   }
 
   if (data?.event_id) {
@@ -281,7 +282,7 @@ export async function deleteMatch(matchId) {
   const { error } = await supabase.from("matches").delete().eq("id", matchId);
 
   if (error) {
-    throw new Error(error.message || "Failed to delete match");
+    throw fromSupabaseError(error, "Failed to delete match");
   }
 
   if (existing?.event_id) {
@@ -331,7 +332,7 @@ export async function initialiseMatch(matchId, payload) {
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message || "Failed to initialise match");
+    throw fromSupabaseError(error, "Failed to initialise match");
   }
 
   if (data) {
@@ -363,7 +364,7 @@ export async function updateMatchStatus(matchId, nextStatus = "finished") {
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message || "Failed to update match status");
+    throw fromSupabaseError(error, "Failed to update match status");
   }
 
   if (data?.event_id) {
@@ -395,7 +396,7 @@ export async function updateMatchParticipants(matchId, payload = {}) {
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message || "Failed to update match participants");
+    throw fromSupabaseError(error, "Failed to update match participants");
   }
 
   if (data?.event_id) {
@@ -422,7 +423,7 @@ export async function updateMatchMediaLink(matchId, mediaPayload) {
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message || "Failed to update match media link");
+    throw fromSupabaseError(error, "Failed to update match media link");
   }
 
   if (data?.event_id) {
@@ -458,7 +459,7 @@ export async function getMatchesByIds(ids = []) {
         .in("id", uniqueIds);
 
       if (error) {
-        throw new Error(error.message || "Failed to load matches by id");
+        throw fromSupabaseError(error, "Failed to load matches by id");
       }
 
       const rows = data ?? [];
@@ -468,3 +469,4 @@ export async function getMatchesByIds(ids = []) {
     { ttlMs: MATCH_IDS_CACHE_TTL_MS },
   );
 }
+

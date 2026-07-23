@@ -25,6 +25,7 @@ import {
   DEFAULT_DISCUSSION_SECONDS,
   SCORE_NA_PLAYER_VALUE,
 } from "./5v5scorekeeperConstants";
+import { SCOREKEEPER_MENU_PATH } from "./scorekeeperConstants";
 import { ResumeSessionSection } from "./ScorekeeperPopup";
 import { setLiveActivity } from "../../services/liveActivity";
 
@@ -123,6 +124,7 @@ export default function ScoreKeeperView() {
     stoppageActive,
     matchStarted,
     consoleReady,
+    urlBootstrapping,
     displayTeamA,
     displayTeamB,
     displayTeamAShort,
@@ -288,6 +290,8 @@ export default function ScoreKeeperView() {
     handleAddScore,
     syncActiveMatchScore,
     handleRuleChange,
+    handleSaveSettings,
+    handleResetSettings,
     openScoreModal,
     closeScoreModal,
     handleScoreModalSubmit,
@@ -323,6 +327,7 @@ export default function ScoreKeeperView() {
   const [possessionDeleteModalOpen, setPossessionDeleteModalOpen] = useState(false);
   const [endMatchModalOpen, setEndMatchModalOpen] = useState(false);
   const [endMatchBusy, setEndMatchBusy] = useState(false);
+  const [settingsSavedAt, setSettingsSavedAt] = useState(null);
   const [online, setOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
@@ -675,8 +680,9 @@ export default function ScoreKeeperView() {
           </div>
           <div className="flex items-center gap-2">
             {consoleReady ? (
-              <Link
-                to="/score-keeper"
+              <button
+                type="button"
+                onClick={() => setSetupModalOpen(true)}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                 aria-label="Open setup"
                 title="Setup"
@@ -695,7 +701,7 @@ export default function ScoreKeeperView() {
                   <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
                   <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.03.03a2.16 2.16 0 0 1-3.05 3.05l-.03-.03a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.09 1.65V21a2.16 2.16 0 0 1-4.32 0v-.05a1.8 1.8 0 0 0-1.09-1.65 1.8 1.8 0 0 0-1.98.36l-.03.03a2.16 2.16 0 1 1-3.05-3.05l.03-.03A1.8 1.8 0 0 0 3.6 15a1.8 1.8 0 0 0-1.65-1.09H1.9a2.16 2.16 0 0 1 0-4.32h.05A1.8 1.8 0 0 0 3.6 8.5a1.8 1.8 0 0 0-.36-1.98l-.03-.03a2.16 2.16 0 1 1 3.05-3.05l.03.03a1.8 1.8 0 0 0 1.98.36h.01a1.8 1.8 0 0 0 1.08-1.65V2.16a2.16 2.16 0 0 1 4.32 0v.05a1.8 1.8 0 0 0 1.09 1.65 1.8 1.8 0 0 0 1.98-.36l.03-.03a2.16 2.16 0 1 1 3.05 3.05l-.03.03a1.8 1.8 0 0 0-.36 1.98v.01a1.8 1.8 0 0 0 1.65 1.08h.05a2.16 2.16 0 0 1 0 4.32h-.05A1.8 1.8 0 0 0 19.4 15Z" />
                 </svg>
-              </Link>
+              </button>
             ) : null}
           </div>
         </div>
@@ -984,13 +990,18 @@ export default function ScoreKeeperView() {
             </details>
 
           </section>
+        ) : urlBootstrapping ? (
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 text-center">
+            <p className="text-sm font-semibold text-[#0f5132]">Opening 5v5 console...</p>
+            <p className="mt-1 text-xs text-slate-500">Loading the match, rosters and log.</p>
+          </section>
         ) : (
           <section
             className="space-y-[var(--setup-button-size)] rounded-3xl border border-slate-200 bg-white p-2 text-center"
             style={{ "--setup-button-size": "4.5rem" }}
           >
             <Link
-              to="/score-keeper"
+              to={SCOREKEEPER_MENU_PATH}
               className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark"
             >
               Open scorekeeper setup
@@ -1295,6 +1306,46 @@ export default function ScoreKeeperView() {
             >
               {initialising ? "Initialising..." : "Initialise"}
             </button>
+            <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (handleSaveSettings()) {
+                    setSettingsSavedAt(Date.now());
+                  }
+                }}
+                className="w-full rounded-full bg-[#0f5132] px-5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+              >
+                Save settings for this match
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleResetSettings();
+                  setSettingsSavedAt(null);
+                }}
+                className="w-full rounded-full border border-[#0f5132]/30 px-5 py-1.5 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
+              >
+                Reset to event defaults
+              </button>
+              <p className="text-xs text-[#0f5132]/70">
+                {settingsSavedAt
+                  ? `Saved ${new Date(settingsSavedAt).toLocaleTimeString()}. Stored on this device only.`
+                  : "Saved on this device only — they won't follow you to another tablet."}
+              </p>
+            </div>
+            <Link
+              to={SCOREKEEPER_MENU_PATH}
+              className="block w-full rounded-full border border-[#0f5132]/30 px-5 py-1.5 text-center text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
+            >
+              Back to score keeper menu
+            </Link>
+            <Link
+              to="/admin"
+              className="block w-full rounded-full border border-[#0f5132]/30 px-5 py-1.5 text-center text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
+            >
+              Back to admin hub
+            </Link>
           </form>
         </ActionModal>
       )}

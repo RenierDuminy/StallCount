@@ -89,7 +89,11 @@ export function ScorekeeperPopups({
     open: setupOpen,
     title: setupTitle = "7v7 match setup",
     onClose: onSetupClose,
+    onBack: onSetupBack,
     onSubmit: onSetupSubmit,
+    onSaveSettings: onSetupSaveSettings,
+    onResetSettings: onSetupResetSettings,
+    settingsSavedAt: setupSettingsSavedAt,
     events = [],
     eventsLoading,
     eventsError,
@@ -128,7 +132,7 @@ export function ScorekeeperPopups({
     actorId: possessionActorId,
     onActorSelect: onPossessionActorSelect,
     renderPlayerGridLabel: renderPossessionPlayerLabel,
-    editIndex: possessionEditIndex,
+    editRef: possessionEditRef,
     onOpenDelete: onPossessionDeleteOpen,
   } = possession;
   const {
@@ -542,6 +546,40 @@ export function ScorekeeperPopups({
                 {setupError}
               </p>
             )}
+            {onSetupSaveSettings && (
+              <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2">
+                <button
+                  type="button"
+                  onClick={onSetupSaveSettings}
+                  className="w-full rounded-full bg-[#0f5132] px-5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                >
+                  Save settings for this match
+                </button>
+                {onSetupResetSettings && (
+                  <button
+                    type="button"
+                    onClick={onSetupResetSettings}
+                    className="w-full rounded-full border border-[#0f5132]/30 px-5 py-1.5 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
+                  >
+                    Reset to event defaults
+                  </button>
+                )}
+                <p className="text-xs text-[#0f5132]/70">
+                  {setupSettingsSavedAt
+                    ? `Saved ${new Date(setupSettingsSavedAt).toLocaleTimeString()}. Stored on this device only.`
+                    : "Saved on this device only — they won't follow you to another tablet."}
+                </p>
+              </div>
+            )}
+            {onSetupBack && (
+              <button
+                type="button"
+                onClick={onSetupBack}
+                className="block w-full rounded-full border border-[#0f5132]/30 px-5 py-1.5 text-center text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
+              >
+                Back to score keeper menu
+              </button>
+            )}
             <Link
               to="/admin"
               className="block w-full rounded-full border border-[#0f5132]/30 px-5 py-1.5 text-center text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
@@ -654,7 +692,7 @@ export function ScorekeeperPopups({
                 Select a team to continue.
               </div>
             )}
-            {possessionEditIndex !== null && (
+            {possessionEditRef !== null && (
               <button
                 type="button"
                 onClick={onPossessionDeleteOpen}
@@ -977,7 +1015,7 @@ export function ScorekeeperPopups({
                     type="button"
                     onClick={() => {
                       if (onScoreDelete) {
-                        onScoreDelete(scoreModalState.logIndex);
+                        onScoreDelete(scoreModalState.logRef);
                       }
                     }}
                     className="w-full rounded-full bg-[#b91c1c] px-3 py-3 text-sm font-semibold text-white transition hover:bg-[#991b1b]"
@@ -1053,7 +1091,7 @@ export function ScorekeeperPopups({
                   Save changes
                 </button>
               )}
-              {simpleEventState.logIndex !== null && (
+              {simpleEventState.logRef !== null && (
                 <button
                   type="button"
                   onClick={onSimpleEventDelete}

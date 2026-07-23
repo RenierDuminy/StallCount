@@ -19,6 +19,13 @@ import {
   clearScorekeeperSession,
 } from "../../services/scorekeeperSessionStore";
 import {
+  clearMatchRules,
+  loadMatchRules,
+  pruneStoredMatchRules,
+  saveMatchRules,
+} from "../../services/matchRulesStore";
+import { describeError, describeQueuedWrite } from "../../utils/errorMessages";
+import {
   createQueueId,
   enqueueMatchLogEntry,
   listOfflineQueue,
@@ -463,18 +470,23 @@ const DEFAULT_RULES = normalizeEventRules(DEFAULT_EVENT_RULES);
 function deriveTimerStateFromSnapshot(
   snapshot,
   fallbackSeconds,
-  fallbackLabel = DEFAULT_TIMER_LABEL
+  fallbackLabel = DEFAULT_TIMER_LABEL,
+  options = {}
 ) {
+  // The primary clock runs negative during overtime, so it must not be clamped at
+  // zero on restore — doing so drops the elapsed overtime and stops the clock.
+  const { allowNegative = false } = options;
+  const clamp = (value) => (allowNegative ? value : Math.max(0, value));
   const safeFallback = Number.isFinite(fallbackSeconds) ? fallbackSeconds : 0;
   const baseSeconds = Number.isFinite(snapshot?.seconds)
     ? snapshot.seconds
     : safeFallback;
-  let remaining = Math.max(0, Math.round(baseSeconds));
+  let remaining = clamp(Math.round(baseSeconds));
 
   if (snapshot?.running && typeof snapshot.savedAt === "number") {
     const elapsed = Math.floor((Date.now() - snapshot.savedAt) / 1000);
     if (Number.isFinite(elapsed) && elapsed > 0) {
-      remaining = Math.max(0, remaining - elapsed);
+      remaining = clamp(remaining - elapsed);
     }
   }
 
@@ -484,7 +496,7 @@ function deriveTimerStateFromSnapshot(
 
   return {
     seconds: remaining,
-    running: Boolean(snapshot?.running) && remaining > 0,
+    running: Boolean(snapshot?.running) && (allowNegative || remaining > 0),
     label: snapshot?.label || fallbackLabel,
     totalSeconds,
   };
@@ -737,7 +749,7 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
       return data ?? [];
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Unable to load match event definitions.";
+        describeError(err, { action: "Load event types" });
       setMatchEventsError(message);
       return [];
     }
@@ -777,8 +789,7 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
         previous && filteredEvents.some((event) => event.id === previous) ? previous : null,
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to load events.";
-      setEventsError(message);
+      setEventsError(describeError(err, { action: "Load events" }));
     } finally {
       setEventsLoading(false);
     }
@@ -820,8 +831,7 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
         }
         setSelectedMatchId(allowDefaultSelect ? setupMatches[0].id : null);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to load matches.";
-        setMatchesError(message);
+        setMatchesError(describeError(err, { action: "Load matches" }));
         setSelectedMatchId(null);
       } finally {
         setMatchesLoading(false);
@@ -832,6 +842,7 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
 
 const initialScoreRef = useRef({ a: 0, b: 0 });
 const currentMatchScoreRef = useRef({ a: 0, b: 0 });
+const baseScoreRef = useRef({ matchId: null, baseScore: { a: 0, b: 0 } });
 const matchIdRef = useRef(null);
 const refreshMatchLogsRef = useRef(null);
 const primaryResetRef = useRef(null);
@@ -931,6 +942,33 @@ const markRulesManuallyEdited = useCallback(() => {
   setRulesManuallyEdited(true);
 }, []);
 
+useEffect(() => {
+  pruneStoredMatchRules();
+}, []);
+
+// Persist the current rules as this match's override. Returns false when storage
+// rejects the write (quota / private mode) so the caller can surface it.
+const persistMatchRules = useCallback(
+  (matchIdOverride = null) => {
+    const targetMatchId = matchIdOverride || activeMatch?.id || selectedMatchId || null;
+    if (!targetMatchId) return false;
+    return saveMatchRules(targetMatchId, rules);
+  },
+  [activeMatch?.id, selectedMatchId, rules]
+);
+
+// Drop the override so the match falls back to its event's rules again.
+const resetMatchRules = useCallback(
+  (matchIdOverride = null) => {
+    const targetMatchId = matchIdOverride || activeMatch?.id || selectedMatchId || null;
+    if (!targetMatchId) return;
+    clearMatchRules(targetMatchId);
+    appliedEventRulesRef.current = null;
+    setRulesManuallyEdited(false);
+  },
+  [activeMatch?.id, selectedMatchId]
+);
+
 const refreshPendingEntries = useCallback(async () => {
   try {
     const items = await listOfflineQueue();
@@ -1000,6 +1038,7 @@ const clearLocalMatchState = useCallback(() => {
     secondaryResetTriggeredRef.current = false;
     setTrackedSecondaryEvent(null);
     matchIdRef.current = null;
+    baseScoreRef.current = { matchId: null, baseScore: { a: 0, b: 0 } };
     if (userId) {
       clearScorekeeperSession(userId);
     }
@@ -1080,20 +1119,8 @@ useEffect(() => {
       return;
     }
     if (resumeHydrationRef.current || matchStarted) return;
-    const eventWithRules = events.find((evt) => evt.id === selectedEventId);
-    if (!eventWithRules) return;
-    if (appliedEventRulesRef.current === selectedEventId) return;
-    const normalizedRules = normalizeEventRules(eventWithRules.rules);
-    applyEventRules(normalizedRules, { force: true });
-    appliedEventRulesRef.current = selectedEventId;
-  }, [selectedEventId, events, applyEventRules, matchStarted]);
-
-  useEffect(() => {
-    if (!selectedEventId) {
-      appliedEventRulesRef.current = null;
-      return;
-    }
-    if (resumeHydrationRef.current || matchStarted) return;
+    // Never let event defaults stomp a saved per-match override.
+    if (selectedMatchId && loadMatchRules(selectedMatchId)) return;
     const eventWithRules = events.find((evt) => evt.id === selectedEventId);
     if (!eventWithRules) return;
     const appliedKey = `event-${selectedEventId}`;
@@ -1101,15 +1128,26 @@ useEffect(() => {
     const normalizedRules = normalizeEventRules(eventWithRules.rules);
     applyEventRules(normalizedRules, { force: true });
     appliedEventRulesRef.current = appliedKey;
-  }, [selectedEventId, events, applyEventRules, matchStarted]);
+  }, [selectedEventId, selectedMatchId, events, applyEventRules, matchStarted]);
 
   useEffect(() => {
     if (resumeHydrationRef.current || matchStarted) return;
     const matchSource = activeMatch || selectedMatch;
-    const rulesSource = matchSource?.rules || matchSource?.event?.rules || null;
-    if (!matchSource?.id || !rulesSource) return;
+    if (!matchSource?.id) return;
     const appliedKey = `match-${matchSource.id}`;
     if (appliedEventRulesRef.current === appliedKey) return;
+
+    // A saved per-match override wins over the event defaults. It is already in the
+    // flat normalized shape, so merge it onto the defaults rather than re-normalizing.
+    const storedRules = loadMatchRules(matchSource.id);
+    if (storedRules) {
+      applyEventRules({ ...DEFAULT_RULES, ...storedRules }, { force: true });
+      appliedEventRulesRef.current = appliedKey;
+      return;
+    }
+
+    const rulesSource = matchSource.rules || matchSource.event?.rules || null;
+    if (!rulesSource) return;
     applyEventRules(normalizeEventRules(rulesSource), { force: true });
     appliedEventRulesRef.current = appliedKey;
   }, [activeMatch, selectedMatch, applyEventRules, matchStarted]);
@@ -1140,8 +1178,7 @@ useEffect(() => {
       })
       .catch((err) => {
         if (!ignore) {
-          const message = err instanceof Error ? err.message : "Failed to load rosters.";
-          setRostersError(message);
+          setRostersError(describeError(err, { action: "Load rosters" }));
         }
       })
       .finally(() => {
@@ -1189,10 +1226,12 @@ useEffect(() => {
     return;
   }
   const normalizedSecondaryLabel = (secondaryLabel || "").toLowerCase();
-  const shouldFlash = secondarySeconds <= 30;
+  // The discussion timer's amber band starts at 45s (see secondaryTimerBg), so it
+  // flashes across that whole band; other timers start at 30s. Both accelerate at 15s.
+  const flashThreshold = normalizedSecondaryLabel === "discussion" ? 45 : 30;
+  const shouldFlash = secondarySeconds <= flashThreshold;
   if (shouldFlash) {
-    const fastThreshold = normalizedSecondaryLabel === "discussion" ? 15 : 15;
-    const nextRate = secondarySeconds <= fastThreshold ? 175 : 450;
+    const nextRate = secondarySeconds <= 15 ? 175 : 450;
     setSecondaryFlashRateMs(nextRate);
     setSecondaryFlashActive(true);
     setSecondaryFlashPulse(false);
@@ -1214,7 +1253,6 @@ useEffect(() => {
 useEffect(() => {
   if (resumeHydrationRef.current) return;
   if (!secondaryRunning) {
-    setSecondaryTotalSeconds(rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS);
     setSecondaryTotalSeconds(rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS);
   }
 }, [rules.timeoutSeconds, secondaryRunning]);
@@ -1453,11 +1491,11 @@ useEffect(() => {
     if (matchIdRef.current !== activeId) {
       matchIdRef.current = activeId;
       initialScoreRef.current = nextScore;
+      baseScoreRef.current = { matchId: null, baseScore: { a: 0, b: 0 } };
       setLogs([]);
       if (!hydrating) {
         setTimeoutUsage({ A: 0, B: 0 });
         commitPrimaryTimerState((rules.matchDuration || DEFAULT_DURATION) * 60, false);
-        commitSecondaryTimerState(rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS, false);
         commitSecondaryTimerState(rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS, false);
       }
     }
@@ -1643,6 +1681,7 @@ useEffect(() => {
       halftimeTriggered,
       halftimeBreakActive,
       halftimeTriggerType,
+      halftimeTimeCapArmed,
       stoppageActive,
       scoreTarget,
       softCapApplied,
@@ -1669,6 +1708,7 @@ useEffect(() => {
     halftimeTriggered,
     halftimeBreakActive,
     halftimeTriggerType,
+    halftimeTimeCapArmed,
     stoppageActive,
     secondaryTotalSeconds,
     scoreTarget,
@@ -1720,12 +1760,13 @@ useEffect(() => {
       }
     };
 
-    window.addEventListener("visibilitychange", handleVisibility);
+    // `visibilitychange` fires on document, not window.
+    document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("pagehide", persistNow);
     window.addEventListener("beforeunload", persistNow);
 
     return () => {
-      window.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("pagehide", persistNow);
       window.removeEventListener("beforeunload", persistNow);
     };
@@ -1805,6 +1846,8 @@ const recordPendingEntry = useCallback(
     }
 
     const queueId = optimisticId || createQueueId("match-log");
+    // Name the specific event in any error, so "score" vs "timeout_start" is obvious.
+    const eventLabel = String(eventTypeCode || "match event").replace(/_/g, " ");
 
     void (async () => {
       const queueForRetry = async () => {
@@ -1819,16 +1862,15 @@ const recordPendingEntry = useCallback(
       if (DB_WRITES_DISABLED) {
         console.warn("[ScoreKeeper] DB writes are temporarily disabled. Skipping save.", dbPayload);
         await queueForRetry();
-        setConsoleError((prev) => prev || "Scorekeeper is in offline mode; changes aren't being saved.");
+        setConsoleError(
+          (prev) => prev || `Offline mode is on — ${eventLabel} is queued, not saved.`
+        );
         return;
       }
 
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
         await queueForRetry();
-        setConsoleError(
-          (prev) =>
-            prev || "Scorekeeper is offline; changes are queued and will sync when online."
-        );
+        setConsoleError((prev) => prev || describeQueuedWrite(eventLabel));
         return;
       }
 
@@ -1847,7 +1889,11 @@ const recordPendingEntry = useCallback(
         await queueForRetry();
         await markOfflineQueueFailure(queueId);
         setConsoleError((prev) =>
-          prev || (err instanceof Error ? err.message : "Failed to submit match log entry.")
+          prev ||
+          describeError(err, {
+            action: `Save ${eventLabel}`,
+            queued: "kept locally and retrying",
+          })
         );
       }
     })();
@@ -2062,8 +2108,14 @@ const replaceSecondaryTimer = useCallback(
         };
         recordPendingEntry(entry);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to record match event.";
-        setConsoleError(message);
+        // Drop the in-flight marker on failure, otherwise it masks halftime_end for
+        // the rest of the session and the event can never be re-logged.
+        if (eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END && activeMatch?.id) {
+          halftimeEndInFlightRef.current.delete(activeMatch.id);
+        }
+        setConsoleError(
+          describeError(err, { action: `Record ${String(eventCode).replace(/_/g, " ")}` })
+        );
       }
     },
     [
@@ -2078,6 +2130,25 @@ const replaceSecondaryTimer = useCallback(
       score,
     ]
   );
+
+  // Once a halftime_end is durably represented (in the log or the offline queue) the
+  // transient in-flight marker is redundant; clearing it keeps the guard from going
+  // stale and permanently suppressing a legitimate re-log.
+  useEffect(() => {
+    const targetMatchId = activeMatch?.id;
+    if (!targetMatchId || !halftimeEndInFlightRef.current.has(targetMatchId)) return;
+    const settled =
+      logs.some((entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) ||
+      pendingEntries.some(
+        (item) =>
+          item?.kind === "match_log" &&
+          item?.payload?.matchId === targetMatchId &&
+          item?.payload?.eventTypeCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
+      );
+    if (settled) {
+      halftimeEndInFlightRef.current.delete(targetMatchId);
+    }
+  }, [activeMatch?.id, logs, pendingEntries]);
 
   const clearSecondaryTimerEvent = useCallback(() => {
     setTrackedSecondaryEvent(null);
@@ -2217,8 +2288,7 @@ const replaceSecondaryTimer = useCallback(
         };
         recordPendingEntry(entry);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to log turnover.";
-        setConsoleError(message);
+        setConsoleError(describeError(err, { action: "Log turnover" }));
       }
     },
     [
@@ -2598,7 +2668,8 @@ const replaceSecondaryTimer = useCallback(
   }, [processQueueAndRefresh]);
 
   const deriveLogsFromRows = useCallback(
-    (rows, matchScore) => {
+    (rows, matchScore, options = {}) => {
+      const { matchId = null } = options;
       let rawA = 0;
       let rawB = 0;
       rows.forEach((row) => {
@@ -2620,10 +2691,22 @@ const replaceSecondaryTimer = useCallback(
         }
       });
 
-      const baseScore = {
-        a: Math.max(matchScore.a - rawA, 0),
-        b: Math.max(matchScore.b - rawB, 0),
-      };
+      // The baseline covers points scored before logging began. Pin it on the first
+      // derive for a match and reuse it: recomputing from a moving `matchScore` lets
+      // DB drift (an unflushed score_update, a deleted log) silently rebase the game
+      // and undo the operator's corrections on the next refresh.
+      let baseScore;
+      if (matchId && baseScoreRef.current.matchId === matchId) {
+        baseScore = baseScoreRef.current.baseScore;
+      } else {
+        baseScore = {
+          a: Math.max(matchScore.a - rawA, 0),
+          b: Math.max(matchScore.b - rawB, 0),
+        };
+        if (matchId) {
+          baseScoreRef.current = { matchId, baseScore };
+        }
+      }
 
       let runningA = baseScore.a;
       let runningB = baseScore.b;
@@ -2698,7 +2781,7 @@ const replaceSecondaryTimer = useCallback(
       setLogsLoading(true);
       try {
         const rows = await getMatchLogs(targetMatchId);
-        const derived = deriveLogsFromRows(rows, matchScore);
+        const derived = deriveLogsFromRows(rows, matchScore, { matchId: targetMatchId });
         initialScoreRef.current = derived.baseScore;
         setLogs((prev) => {
           const serverOptimisticIds = new Set(
@@ -2754,9 +2837,7 @@ const replaceSecondaryTimer = useCallback(
 
         return derived.totals;
       } catch (err) {
-        setConsoleError(
-          err instanceof Error ? err.message : "Failed to load match logs."
-        );
+        setConsoleError(describeError(err, { action: "Load match log" }));
         return null;
       } finally {
         setLogsLoading(false);
@@ -2806,6 +2887,7 @@ const replaceSecondaryTimer = useCallback(
     setHalftimeTriggered(Boolean(snapshot.halftimeTriggered));
     setHalftimeBreakActive(Boolean(snapshot.halftimeBreakActive));
     setHalftimeTriggerType(normalizeHalftimeTriggerType(snapshot.halftimeTriggerType));
+    setHalftimeTimeCapArmed(Boolean(snapshot.halftimeTimeCapArmed));
     setStoppageActive(Boolean(snapshot.stoppageActive));
     setMatchStarted(resumeWasStarted);
     setScoreTarget(
@@ -2826,7 +2908,8 @@ const replaceSecondaryTimer = useCallback(
     const restoredPrimary = deriveTimerStateFromSnapshot(
       snapshot.timer,
       ((snapshot.rules?.matchDuration ?? rules.matchDuration ?? DEFAULT_DURATION) || DEFAULT_DURATION) * 60,
-      snapshot.timer?.label || DEFAULT_TIMER_LABEL
+      snapshot.timer?.label || DEFAULT_TIMER_LABEL,
+      { allowNegative: true }
     );
     const shouldRunPrimary = restoredPrimary.running && !snapshot.stoppageActive;
     commitPrimaryTimerState(restoredPrimary.seconds, shouldRunPrimary);
@@ -2922,7 +3005,7 @@ const replaceSecondaryTimer = useCallback(
       setResumeHandled(true);
       return true;
     } catch (err) {
-      setResumeError(err instanceof Error ? err.message : "Failed to resume session.");
+      setResumeError(describeError(err, { action: "Resume session" }));
       return false;
     } finally {
       setResumeBusy(false);
@@ -2979,6 +3062,8 @@ const replaceSecondaryTimer = useCallback(
     rules,
     setRules,
     markRulesManuallyEdited,
+    persistMatchRules,
+    resetMatchRules,
     score,
     setScore,
     logs,

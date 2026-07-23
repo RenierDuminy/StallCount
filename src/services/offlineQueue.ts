@@ -234,10 +234,6 @@ export async function upsertScoreUpdate(
   payload: ScoreUpdatePayload,
   options: { id?: string; attempts?: number; lastAttemptAt?: number; createdAt?: number } = {},
 ) {
-  const items = await listOfflineQueue();
-  const remaining = items.filter(
-    (item) => !(item.kind === "score_update" && item.payload.matchId === payload.matchId),
-  );
   const nextItem: OfflineQueueItem = {
     id: options.id || createQueueId("score-update"),
     kind: "score_update",
@@ -248,27 +244,55 @@ export async function upsertScoreUpdate(
       ? options.lastAttemptAt
       : undefined,
   };
-  remaining.push(nextItem);
+
   const backendToUse = await ensureBackend();
   if (backendToUse === "idb") {
+    // Only touch this match's superseded score_update rows. Clearing and rewriting
+    // the whole store would drop any match_log queued concurrently by another write.
     await withStore("readwrite", async (store) => {
-      await createRequestPromise(store.clear());
-      for (const item of remaining) {
-        await createRequestPromise(store.put(item));
+      const existing = await createRequestPromise<OfflineQueueItem[]>(store.getAll());
+      for (const item of existing || []) {
+        if (
+          item.kind === "score_update" &&
+          item.payload.matchId === payload.matchId &&
+          item.id !== nextItem.id
+        ) {
+          await createRequestPromise(store.delete(item.id));
+        }
       }
+      await createRequestPromise(store.put(nextItem));
       return undefined;
     });
-  } else {
-    writeLocalQueue(remaining);
+    return nextItem;
   }
+
+  const remaining = readLocalQueue().filter(
+    (item) =>
+      !(
+        item.kind === "score_update" &&
+        item.payload.matchId === payload.matchId &&
+        item.id !== nextItem.id
+      ) && item.id !== nextItem.id,
+  );
+  remaining.push(nextItem);
+  writeLocalQueue(remaining);
   return nextItem;
 }
+
+// After this many consecutive failures an item is treated as permanently
+// undeliverable (bad FK, RLS denial) and dropped, so it stops being retried
+// forever and stops showing as unsynced work in the console.
+export const OFFLINE_QUEUE_MAX_ATTEMPTS = 12;
 
 function getBackoffMs(attempts: number) {
   const safeAttempts = Number.isFinite(attempts) ? Math.max(0, attempts) : 0;
   const base = 2000;
   const max = 60000;
   return Math.min(max, base * Math.pow(2, Math.min(safeAttempts, 5)));
+}
+
+function isExhausted(item: OfflineQueueItem) {
+  return (item.attempts ?? 0) >= OFFLINE_QUEUE_MAX_ATTEMPTS;
 }
 
 function shouldAttempt(item: OfflineQueueItem, now: number) {
@@ -280,19 +304,31 @@ function shouldAttempt(item: OfflineQueueItem, now: number) {
 export async function processOfflineQueue(options: {
   onItemSuccess?: (item: OfflineQueueItem) => void;
   onItemError?: (item: OfflineQueueItem, error: unknown) => void;
+  onItemDropped?: (item: OfflineQueueItem) => void;
 } = {}) {
-  if (isProcessing) return { processed: 0, succeeded: 0, failed: 0 };
+  if (isProcessing) return { processed: 0, succeeded: 0, failed: 0, dropped: 0 };
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
-    return { processed: 0, succeeded: 0, failed: 0, skipped: true };
+    return { processed: 0, succeeded: 0, failed: 0, dropped: 0, skipped: true };
   }
   isProcessing = true;
   let processed = 0;
   let succeeded = 0;
   let failed = 0;
+  let dropped = 0;
   try {
     const items = await listOfflineQueue();
     const now = Date.now();
     for (const item of items) {
+      if (isExhausted(item)) {
+        await removeOfflineQueueItem(item.id);
+        dropped += 1;
+        console.error(
+          `[OfflineQueue] Dropping ${item.kind} after ${item.attempts} failed attempts.`,
+          item.payload,
+        );
+        options.onItemDropped?.(item);
+        continue;
+      }
       if (!shouldAttempt(item, now)) {
         continue;
       }
@@ -315,5 +351,5 @@ export async function processOfflineQueue(options: {
   } finally {
     isProcessing = false;
   }
-  return { processed, succeeded, failed };
+  return { processed, succeeded, failed, dropped };
 }

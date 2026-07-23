@@ -3,11 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { initialiseMatch, updateMatchStatus } from "../../services/matchService";
 import { removeOfflineQueueItem } from "../../services/offlineQueue";
 import { updateScore } from "../../services/realtimeService";
+import { describeError } from "../../utils/errorMessages";
 import {
   MATCH_LOG_EVENT_CODES,
   createMatchLogOptimisticId,
   deleteMatchLogEntry,
+  findMatchLogByOptimisticId,
   updateMatchLogEntry,
+  updateMatchLogEntryByOptimisticId,
   updateMatchLogEntryByTimestamp,
 } from "../../services/matchLogService";
 import {
@@ -25,6 +28,21 @@ export function useScoreKeeperActions(controller) {
   const navigate = useNavigate();
   const DB_WRITES_DISABLED = false;
   const scoreSubmitInFlightRef = useRef(false);
+  const submittedScoreKeysRef = useRef(new Set());
+
+  // Log references are identities (server id / optimistic id), never positions.
+  // `logs` is insertion-ordered while the UI renders newest-first, so a positional
+  // index from the view would resolve to the wrong entry.
+  function resolveLogRef(ref) {
+    const logs = Array.isArray(controller.logs) ? controller.logs : [];
+    if (ref === null || ref === undefined) return { log: null, index: -1 };
+    const key = typeof ref === "object" ? ref.id ?? ref.optimisticId ?? null : ref;
+    if (key === null || key === undefined) return { log: null, index: -1 };
+    const index = logs.findIndex(
+      (entry) => entry && (entry.id === key || (entry.optimisticId && entry.optimisticId === key))
+    );
+    return { log: index >= 0 ? logs[index] : null, index };
+  }
 
   function cancelPrimaryHoldReset() {
     if (controller.primaryResetRef.current) {
@@ -98,6 +116,10 @@ export function useScoreKeeperActions(controller) {
 
       const updated = await initialiseMatch(controller.selectedMatch.id, payload);
 
+      // Capture the configured rules as this match's override so they survive
+      // reloads instead of being re-derived from the event defaults.
+      controller.persistMatchRules?.(updated.id);
+
       controller.setActiveMatch(updated);
       controller.setSelectedMatchId(updated.id);
       controller.setMatches((prev) => prev.map((match) => (match.id === updated.id ? updated : match)));
@@ -117,9 +139,7 @@ export function useScoreKeeperActions(controller) {
           const rosterData = await controller.fetchRostersForTeams(teamA, teamB, rosterEventId);
           controller.setRosters(rosterData);
         } catch (err) {
-          controller.setRostersError(
-            err instanceof Error ? err.message : "Failed to load rosters."
-          );
+          controller.setRostersError(describeError(err, { action: "Load rosters" }));
         } finally {
           controller.setRostersLoading(false);
         }
@@ -138,9 +158,7 @@ export function useScoreKeeperActions(controller) {
 
       controller.setSetupModalOpen(false);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to initialise match.";
-      controller.setConsoleError(message);
+      controller.setConsoleError(describeError(err, { action: "Initialise match" }));
     } finally {
       controller.setInitialising(false);
     }
@@ -384,12 +402,35 @@ export function useScoreKeeperActions(controller) {
     try {
       await updateScore(matchId, nextScore.a, nextScore.b);
     } catch (err) {
-      const message = err instanceof Error ? err.message : err;
-      console.error("Failed to sync score:", message);
+      console.error("Failed to sync score:", err);
       if (typeof controller.queueScoreUpdate === "function") {
         await controller.queueScoreUpdate(matchId, nextScore);
       }
+      // The score is safely queued, so say so rather than leaving the operator
+      // wondering whether the point registered.
+      controller.setConsoleError(
+        describeError(err, {
+          action: `Sync score ${nextScore.a}-${nextScore.b}`,
+          queued: "kept locally and retrying",
+        })
+      );
     }
+  }
+
+  function handleSaveSettings() {
+    const saved = controller.persistMatchRules?.();
+    if (saved === false) {
+      controller.setConsoleError(
+        "Couldn't save these settings on this device. Check your browser storage settings."
+      );
+      return false;
+    }
+    controller.setConsoleError(null);
+    return true;
+  }
+
+  function handleResetSettings() {
+    controller.resetMatchRules?.();
   }
 
   function handleRuleChange(field, value) {
@@ -410,16 +451,16 @@ export function useScoreKeeperActions(controller) {
     }
   }
 
-  function openScoreModal(team, mode = "add", logIndex = null) {
+  function openScoreModal(team, mode = "add", logRef = null) {
     controller.setScoreModalState({
       open: true,
       team,
       mode,
-      logIndex,
+      logRef,
       openedAt: mode === "add" ? new Date().toISOString() : null,
     });
-    if (mode === "edit" && logIndex !== null) {
-      const log = controller.logs[logIndex];
+    if (mode === "edit" && logRef !== null) {
+      const { log } = resolveLogRef(logRef);
       controller.setScoreForm({
         scorerId:
           log?.scorerId === null || log?.scorerId === undefined ? SCORE_NA_PLAYER_VALUE : log?.scorerId,
@@ -440,7 +481,7 @@ export function useScoreKeeperActions(controller) {
       open: false,
       team: null,
       mode: "add",
-      logIndex: null,
+      logRef: null,
       openedAt: null,
     });
     controller.setScoreForm({ scorerId: "", assistId: "" });
@@ -474,8 +515,8 @@ export function useScoreKeeperActions(controller) {
 
     scoreSubmitInFlightRef.current = true;
     try {
-      if (controller.scoreModalState.mode === "edit" && controller.scoreModalState.logIndex !== null) {
-        await handleUpdateLog(controller.scoreModalState.logIndex, {
+      if (controller.scoreModalState.mode === "edit" && controller.scoreModalState.logRef !== null) {
+        await handleUpdateLog(controller.scoreModalState.logRef, {
           scorerId: normalizedScorerId,
           assistId: normalizedAssistId || null,
           eventCode: isCalahan ? MATCH_LOG_EVENT_CODES.CALAHAN : MATCH_LOG_EVENT_CODES.SCORE,
@@ -483,12 +524,27 @@ export function useScoreKeeperActions(controller) {
       } else {
         const submittedTimestamp =
           controller.scoreModalState.openedAt || new Date().toISOString();
-        await handleAddScore(
-          controller.scoreModalState.team,
-          normalizedScorerId,
-          normalizedAssistId || null,
-          { isCalahan, timestamp: submittedTimestamp }
-        );
+        // `openedAt` is stamped once per modal open, so re-submitting the same
+        // opened modal (double tap, slow network) must not add a second point.
+        const submissionKey = `${controller.activeMatch?.id || ""}:${
+          controller.scoreModalState.team
+        }:${submittedTimestamp}`;
+        if (submittedScoreKeysRef.current.has(submissionKey)) {
+          closeScoreModal();
+          return;
+        }
+        submittedScoreKeysRef.current.add(submissionKey);
+        try {
+          await handleAddScore(
+            controller.scoreModalState.team,
+            normalizedScorerId,
+            normalizedAssistId || null,
+            { isCalahan, timestamp: submittedTimestamp }
+          );
+        } catch (err) {
+          submittedScoreKeysRef.current.delete(submissionKey);
+          throw err;
+        }
       }
 
       closeScoreModal();
@@ -497,9 +553,9 @@ export function useScoreKeeperActions(controller) {
     }
   }
 
-  async function handleUpdateLog(index, updates) {
-    if (index === null || index === undefined) return;
-    const targetLog = controller.logs[index];
+  async function handleUpdateLog(logRef, updates) {
+    if (logRef === null || logRef === undefined) return;
+    const { log: targetLog } = resolveLogRef(logRef);
     if (!targetLog?.id) return;
 
     try {
@@ -540,11 +596,20 @@ export function useScoreKeeperActions(controller) {
         await updateMatchLogEntry(targetLog.id, payload);
       } else {
         const matchId = controller.matchLogMatchId;
-        const createdAt = targetLog.timestamp;
-        if (!matchId || !createdAt) {
+        if (!matchId) {
           throw new Error("Match log is still syncing. Please try again.");
         }
-        await updateMatchLogEntryByTimestamp(matchId, createdAt, payload);
+        // Prefer the optimistic id: it is unique per entry, whereas a timestamp
+        // can be shared by several events recorded in the same millisecond.
+        if (targetLog.optimisticId) {
+          await updateMatchLogEntryByOptimisticId(matchId, targetLog.optimisticId, payload);
+        } else {
+          const createdAt = targetLog.timestamp;
+          if (!createdAt) {
+            throw new Error("Match log is still syncing. Please try again.");
+          }
+          await updateMatchLogEntryByTimestamp(matchId, createdAt, payload);
+        }
       }
       const totals = await controller.refreshMatchLogs(
         controller.matchLogMatchId,
@@ -554,15 +619,13 @@ export function useScoreKeeperActions(controller) {
         await syncActiveMatchScore(totals);
       }
     } catch (err) {
-      controller.setConsoleError(
-        err instanceof Error ? err.message : "Failed to update log entry."
-      );
+      controller.setConsoleError(describeError(err, { action: "Update log entry" }));
     }
   }
 
-  async function handleDeleteLog(index) {
-    if (index === null || index === undefined) return;
-    const targetLog = controller.logs[index];
+  async function handleDeleteLog(logRef) {
+    if (logRef === null || logRef === undefined) return;
+    const { log: targetLog, index } = resolveLogRef(logRef);
     if (!targetLog) return;
 
     try {
@@ -678,6 +741,24 @@ export function useScoreKeeperActions(controller) {
       for (const id of serverIds) {
         await deleteMatchLogEntry(id);
       }
+
+      // An optimistic entry may already have been inserted server-side (the write
+      // fires immediately when online and only clears on the next refresh). Removing
+      // it locally is not enough — look it up by optimistic id and delete the row,
+      // otherwise it reappears on refresh and re-inflates the score.
+      const matchIdForCleanup = controller.matchLogMatchId;
+      if (matchIdForCleanup) {
+        for (const optimisticId of optimisticIds) {
+          try {
+            const existing = await findMatchLogByOptimisticId(matchIdForCleanup, optimisticId);
+            if (existing?.id) {
+              await deleteMatchLogEntry(existing.id);
+            }
+          } catch (err) {
+            console.error("[ScoreKeeper] Failed to clean up synced optimistic log:", err);
+          }
+        }
+      }
       const isScoreLog =
         targetLog.eventCode === MATCH_LOG_EVENT_CODES.SCORE ||
         targetLog.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
@@ -714,9 +795,7 @@ export function useScoreKeeperActions(controller) {
       }
       closeScoreModal();
     } catch (err) {
-      controller.setConsoleError(
-        err instanceof Error ? err.message : "Failed to delete log entry."
-      );
+      controller.setConsoleError(describeError(err, { action: "Delete log entry" }));
     }
   }
 
@@ -846,9 +925,7 @@ export function useScoreKeeperActions(controller) {
         });
       }
     } catch (err) {
-      controller.setConsoleError(
-        err instanceof Error ? err.message : "Failed to close the match."
-      );
+      controller.setConsoleError(describeError(err, { action: "End match" }));
     }
   }
 
@@ -865,6 +942,8 @@ export function useScoreKeeperActions(controller) {
     handleAddScore,
     syncActiveMatchScore,
     handleRuleChange,
+    handleSaveSettings,
+    handleResetSettings,
     openScoreModal,
     closeScoreModal,
     handleScoreModalSubmit,
