@@ -2195,3 +2195,28 @@ details[open] > summary.wizard-cursor-pointer::before {
   );
   border-right: 2px solid var(--sc-border-glow);
 }
+
+/* Standings form-guide dots: shown as their own column when the table has
+   room, and dropped underneath the team name when the card is too narrow. */
+.sc-standings-table-wrap {
+  container-type: inline-size;
+  container-name: sc-standings;
+}
+
+.sc-standings-form-col {
+  display: none;
+}
+
+.sc-standings-form-inline {
+  display: block;
+}
+
+@container sc-standings (min-width: 20rem) {
+  .sc-standings-form-col {
+    display: table-cell;
+  }
+
+  .sc-standings-form-inline {
+    display: none;
+  }
+}

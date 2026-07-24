@@ -35,10 +35,16 @@ const AUTO_ROSTER_SYNC_INTERVAL_MS = 30 * 1000;
 const ROSTER_SCRIPT_SLUG = "STB_RL_26_update_rosters";
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
+const CANCELED_STATUSES = new Set(["canceled", "cancelled"]);
 const STANDINGS_WIN_POINTS = 3;
 const STANDINGS_LOSS_POINTS = 1;
 const STANDINGS_CLOSE_LOSS_POINTS = 2;
 const STANDINGS_CLOSE_LOSS_MAX_MARGIN = 4;
+// Forfeit: recorded as a canceled match with a 5-0 line. The innocent (winning)
+// team is awarded 1 standings point, the guilty (forfeiting) team 0.
+const STANDINGS_FORFEIT_SCORE = 5;
+const STANDINGS_FORFEIT_WIN_POINTS = 2;
+const STANDINGS_FORFEIT_LOSS_POINTS = 0;
 const TEAM_STANDINGS_GRID_STYLE = {
   gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 14rem), 1fr))",
 };
@@ -227,6 +233,19 @@ const formatMatchStatus = (status) => {
 const isLiveMatch = (status) => LIVE_STATUSES.has((status || "").toLowerCase());
 const isFinishedMatch = (status) =>
   FINISHED_STATUSES.has((status || "").toLowerCase());
+const isCanceledMatch = (status) =>
+  CANCELED_STATUSES.has((status || "").toLowerCase());
+// A forfeit is a canceled match recorded with a 5-0 line (in either direction).
+const isForfeitMatch = (match) => {
+  if (!isCanceledMatch(match?.status)) return false;
+  const scoreA = match?.score_a;
+  const scoreB = match?.score_b;
+  if (typeof scoreA !== "number" || typeof scoreB !== "number") return false;
+  return (
+    (scoreA === STANDINGS_FORFEIT_SCORE && scoreB === 0) ||
+    (scoreB === STANDINGS_FORFEIT_SCORE && scoreA === 0)
+  );
+};
 
 const formatMatchTime = (value) => {
   if (!value) {
@@ -376,12 +395,89 @@ const getStandingsLossPoints = (scoreFor, scoreAgainst) =>
     ? STANDINGS_CLOSE_LOSS_POINTS
     : STANDINGS_LOSS_POINTS;
 
+// Form-guide dots shown under each team name in the standings.
+const FORM_DOT_COLORS = {
+  win: "#16a34a", // green
+  loss: "#eab308", // yellow
+  canceled: "#dc2626", // red (includes forfeits, which are logged as canceled)
+  scheduled: "#9ca3af", // gray (not yet played)
+  draw: "#9ca3af", // gray (finished, level score)
+};
+
+const FORM_OUTCOME_LABELS = {
+  win: "Win",
+  loss: "Loss",
+  canceled: "Canceled",
+  scheduled: "Scheduled",
+  draw: "Draw",
+};
+
+const FORM_LEGEND_ITEMS = ["win", "loss", "canceled", "scheduled"];
+
+const getTeamMatchOutcome = (match, teamScore, oppScore) => {
+  if (isCanceledMatch(match?.status)) return "canceled";
+  if (
+    isFinishedMatch(match?.status) &&
+    typeof teamScore === "number" &&
+    typeof oppScore === "number"
+  ) {
+    if (teamScore > oppScore) return "win";
+    if (teamScore < oppScore) return "loss";
+    return "draw";
+  }
+  return "scheduled";
+};
+
+const buildTeamFormEntry = (match, opponent, teamScore, oppScore) => {
+  const outcome = getTeamMatchOutcome(match, teamScore, oppScore);
+  const opponentName = opponent?.short_name || opponent?.name || "TBD";
+  const hasScore =
+    outcome !== "scheduled" &&
+    typeof teamScore === "number" &&
+    typeof oppScore === "number";
+  const scorePart = hasScore ? ` ${teamScore}-${oppScore}` : "";
+  return {
+    outcome,
+    title: `${FORM_OUTCOME_LABELS[outcome]}${scorePart} vs ${opponentName}`,
+  };
+};
+
+const FormDots = ({ form, className = "", dotClassName = "h-1.5 w-1.5" }) => {
+  if (!form?.length) return null;
+  return (
+    <div className={`flex flex-wrap gap-0.5 ${className}`} aria-hidden="true">
+      {form.map((entry, index) => (
+        <span
+          key={index}
+          title={entry.title}
+          className={`inline-block rounded-full ${dotClassName}`}
+          style={{ backgroundColor: FORM_DOT_COLORS[entry.outcome] || FORM_DOT_COLORS.scheduled }}
+        />
+      ))}
+    </div>
+  );
+};
+
+const FormLegend = () => (
+  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] uppercase tracking-wide text-ink-muted">
+    {FORM_LEGEND_ITEMS.map((outcome) => (
+      <span key={outcome} className="inline-flex items-center gap-1">
+        <span
+          className="inline-block h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: FORM_DOT_COLORS[outcome] }}
+        />
+        {FORM_OUTCOME_LABELS[outcome]}
+      </span>
+    ))}
+  </div>
+);
+
 const StandingsTable = ({ rows, showRank = false }) => {
   if (!rows.length) {
     return <p className="text-sm text-ink-muted">No standings available yet.</p>;
   }
   return (
-    <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded border border-border bg-surface">
+    <div className="sc-standings-table-wrap min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded border border-border bg-surface">
       <table className="w-full table-fixed whitespace-nowrap text-xs">
         <thead className="bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
           <tr>
@@ -389,6 +485,7 @@ const StandingsTable = ({ rows, showRank = false }) => {
               <th className="w-8 px-0.5 py-1 text-center font-semibold">#</th>
             ) : null}
             <th className="w-full px-1 py-1 text-left font-semibold">Team</th>
+            <th className="sc-standings-form-col w-16 px-1 py-1 text-center font-semibold">Form</th>
             <th className="w-10 px-0.5 py-1 text-center font-semibold">Pts</th>
             <th className="w-10 px-0.5 py-1 text-center font-semibold">W-L</th>
             <th className="w-9 px-0.5 py-1 text-center font-semibold">+/-</th>
@@ -406,16 +503,22 @@ const StandingsTable = ({ rows, showRank = false }) => {
               }}
             >
               {showRank ? (
-                <td className="px-0.5 py-1 text-center tabular-nums text-ink-muted">
+                <td className="px-0.5 py-1 text-center align-top tabular-nums text-ink-muted">
                   {index + 1}
                 </td>
               ) : null}
-              <td className="min-w-0 px-1 py-1" title={row.name}>
+              <td className="min-w-0 px-1 py-1 align-top" title={row.name}>
                 <span className="block truncate">{row.name}</span>
+                <div className="sc-standings-form-inline">
+                  <FormDots form={row.form} className="mt-0.5" />
+                </div>
               </td>
-              <td className="px-0.5 py-1 text-center tabular-nums">{row.points}</td>
-              <td className="px-0.5 py-1 text-center tabular-nums">{`${row.wins}-${row.losses}`}</td>
-              <td className="px-0.5 py-1 text-center tabular-nums">{formatScoreDiff(row.scoreDiff)}</td>
+              <td className="sc-standings-form-col px-1 py-1 align-top">
+                <FormDots form={row.form} className="justify-center" dotClassName="h-[7px] w-[7px]" />
+              </td>
+              <td className="px-0.5 py-1 text-center align-top tabular-nums">{row.points}</td>
+              <td className="px-0.5 py-1 text-center align-top tabular-nums">{`${row.wins}-${row.losses}`}</td>
+              <td className="px-0.5 py-1 text-center align-top tabular-nums">{formatScoreDiff(row.scoreDiff)}</td>
             </tr>
           ))}
         </tbody>
@@ -445,6 +548,7 @@ const buildPoolGroupStandings = (pools, matches, options = {}) => {
         played: 0,
         points: 0,
         scoreDiff: 0,
+        form: [],
       },
     ]),
   );
@@ -470,25 +574,43 @@ const buildPoolGroupStandings = (pools, matches, options = {}) => {
   });
 
   poolMatches.forEach((match) => {
-    if (!isFinishedMatch(match?.status)) return;
-    if (typeof match?.score_a !== "number" || typeof match?.score_b !== "number") {
-      return;
-    }
+    const forfeit = isForfeitMatch(match);
 
     const teamAId = match.team_a?.id;
     const teamBId = match.team_b?.id;
     const teamAStanding = teamAId ? standingsByTeam.get(teamAId) : null;
     const teamBStanding = teamBId ? standingsByTeam.get(teamBId) : null;
 
+    // Record a form dot for every match (played, canceled, or still scheduled).
+    if (teamAStanding) {
+      teamAStanding.form.push(
+        buildTeamFormEntry(match, match.team_b, match.score_a, match.score_b),
+      );
+    }
+    if (teamBStanding) {
+      teamBStanding.form.push(
+        buildTeamFormEntry(match, match.team_a, match.score_b, match.score_a),
+      );
+    }
+
+    if (!isFinishedMatch(match?.status) && !forfeit) return;
+    if (typeof match?.score_a !== "number" || typeof match?.score_b !== "number") {
+      return;
+    }
+
     if (teamAStanding) {
       teamAStanding.played += 1;
       teamAStanding.scoreDiff += match.score_a - match.score_b;
       if (match.score_a > match.score_b) {
         teamAStanding.wins += 1;
-        teamAStanding.points += STANDINGS_WIN_POINTS;
+        teamAStanding.points += forfeit
+          ? STANDINGS_FORFEIT_WIN_POINTS
+          : STANDINGS_WIN_POINTS;
       } else if (match.score_a < match.score_b) {
         teamAStanding.losses += 1;
-        teamAStanding.points += getStandingsLossPoints(match.score_a, match.score_b);
+        teamAStanding.points += forfeit
+          ? STANDINGS_FORFEIT_LOSS_POINTS
+          : getStandingsLossPoints(match.score_a, match.score_b);
       }
     }
 
@@ -497,10 +619,14 @@ const buildPoolGroupStandings = (pools, matches, options = {}) => {
       teamBStanding.scoreDiff += match.score_b - match.score_a;
       if (match.score_b > match.score_a) {
         teamBStanding.wins += 1;
-        teamBStanding.points += STANDINGS_WIN_POINTS;
+        teamBStanding.points += forfeit
+          ? STANDINGS_FORFEIT_WIN_POINTS
+          : STANDINGS_WIN_POINTS;
       } else if (match.score_b < match.score_a) {
         teamBStanding.losses += 1;
-        teamBStanding.points += getStandingsLossPoints(match.score_b, match.score_a);
+        teamBStanding.points += forfeit
+          ? STANDINGS_FORFEIT_LOSS_POINTS
+          : getStandingsLossPoints(match.score_b, match.score_a);
       }
     }
   });
@@ -1101,8 +1227,10 @@ export default function StellenboschRl2026WorkspacePage() {
           <SectionHeader title="Team standings" />
           <p className="text-xs text-ink-muted">
             Points: {STANDINGS_WIN_POINTS} for a win, {STANDINGS_CLOSE_LOSS_POINTS} for losing by {STANDINGS_CLOSE_LOSS_MAX_MARGIN} or less,
-            and {STANDINGS_LOSS_POINTS} for any other loss.
+            and {STANDINGS_LOSS_POINTS} for any other loss. A forfeit ({STANDINGS_FORFEIT_SCORE}-0)
+            awards {STANDINGS_FORFEIT_WIN_POINTS} to the innocent team and {STANDINGS_FORFEIT_LOSS_POINTS} to the team that forfeits.
           </p>
+          <FormLegend />
           <div>
             {loading && standingsGroups.length === 0 ? (
               <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
