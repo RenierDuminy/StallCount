@@ -7,6 +7,7 @@ import {
   SectionHeader,
   SectionShell,
 } from "../../components/ui/primitives";
+import { StandardEventMatchCard } from "../../components/StandardEventMatchCard";
 import { getMatchesByEvent } from "../../services/matchService";
 import { getEventHierarchy } from "../../services/leagueService";
 
@@ -16,6 +17,7 @@ export const EVENT_NAME = "CTFDA MX League";
 export const EVENT_WORKSPACE_PRIORITY = 10;
 const MATCH_LIMIT = 200;
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
+const CANCELED_STATUSES = new Set(["canceled", "cancelled"]);
 const TEAM_STANDINGS_GRID_STYLE = {
   gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 14rem), 1fr))",
 };
@@ -55,6 +57,8 @@ const copyToClipboard = async (text, onSuccess, onError) => {
 
 const isFinishedMatch = (status) =>
   FINISHED_STATUSES.has((status || "").toLowerCase());
+const isCanceledMatch = (status) =>
+  CANCELED_STATUSES.has((status || "").toLowerCase());
 
 const buildPoolTeams = (pool) => {
   const rows = [];
@@ -88,16 +92,202 @@ const formatScoreDiff = (value) => {
   return value > 0 ? `+${value}` : `${value}`;
 };
 
+const formatMatchTime = (value) => {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatScheduleDayLabel = (value) => {
+  if (!value) return "Date TBC";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date TBC";
+  return date.toLocaleDateString([], {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const formatMatchup = (match) => {
+  const teamA = match?.team_a?.name || "Team A";
+  const teamB = match?.team_b?.name || "Team B";
+  return `${teamA} vs ${teamB}`;
+};
+
+const formatScoreLine = (match) => {
+  const scoreA =
+    typeof match?.score_a === "number" ? match.score_a.toString() : "-";
+  const scoreB =
+    typeof match?.score_b === "number" ? match.score_b.toString() : "-";
+  return `${scoreA} - ${scoreB}`;
+};
+
+const formatMatchStatus = (status, fallback = "Scheduled") => {
+  const normalized = (status || "").toString().trim().toLowerCase();
+  if (!normalized) return fallback;
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
+// Desktop: size the match-card grid to how many matches that day has so the
+// cards expand to fill the row instead of leaving a fixed 3-column gap.
+const getScheduleGridClass = (matchCount) => {
+  if (matchCount <= 1) return "grid gap-2";
+  if (matchCount === 2) return "grid gap-2 md:grid-cols-2";
+  return "grid gap-2 md:grid-cols-2 2xl:grid-cols-3";
+};
+
+const buildScheduleDays = (matches = []) => {
+  const buckets = new Map();
+  matches.forEach((match) => {
+    const startTime = match?.start_time || null;
+    const dayKey = startTime
+      ? new Date(startTime).toISOString().slice(0, 10)
+      : "tbc";
+    if (!buckets.has(dayKey)) {
+      buckets.set(dayKey, { key: dayKey, startTime, matches: [] });
+    }
+    buckets.get(dayKey).matches.push(match);
+  });
+
+  const days = Array.from(buckets.values());
+  days.forEach((day) => {
+    day.matches.sort((a, b) => {
+      const aTime = a?.start_time ? new Date(a.start_time).getTime() : Infinity;
+      const bTime = b?.start_time ? new Date(b.start_time).getTime() : Infinity;
+      if (aTime !== bTime) return aTime - bTime;
+      return formatMatchup(a).localeCompare(formatMatchup(b));
+    });
+  });
+  days.sort((a, b) => {
+    const aTime = a.startTime ? new Date(a.startTime).getTime() : Infinity;
+    const bTime = b.startTime ? new Date(b.startTime).getTime() : Infinity;
+    return aTime - bTime;
+  });
+  return days;
+};
+
+// Split the schedule by division (top level), then by day within each division.
+// `divisionNames` maps a division_id to its display name (from the hierarchy).
+const buildScheduleDivisions = (matches = [], divisionNames = new Map()) => {
+  const buckets = new Map();
+  matches.forEach((match) => {
+    const divisionId = match?.division_id || "unassigned";
+    if (!buckets.has(divisionId)) {
+      buckets.set(divisionId, { id: divisionId, matches: [] });
+    }
+    buckets.get(divisionId).matches.push(match);
+  });
+
+  const divisions = Array.from(buckets.values()).map((bucket) => ({
+    id: bucket.id,
+    name:
+      bucket.id === "unassigned"
+        ? "Unassigned"
+        : divisionNames.get(bucket.id) || "Division",
+    days: buildScheduleDays(bucket.matches),
+  }));
+
+  divisions.sort((a, b) => {
+    if (a.id === "unassigned") return 1;
+    if (b.id === "unassigned") return -1;
+    return a.name.localeCompare(b.name);
+  });
+  return divisions;
+};
+
+// Form-guide dots shown under each team name in the standings.
+const FORM_DOT_COLORS = {
+  win: "#16a34a", // green
+  loss: "#eab308", // yellow
+  canceled: "#dc2626", // red
+  scheduled: "#9ca3af", // gray (not yet played)
+  draw: "#9ca3af", // gray (finished, level score)
+};
+
+const FORM_OUTCOME_LABELS = {
+  win: "Win",
+  loss: "Loss",
+  canceled: "Canceled",
+  scheduled: "Scheduled",
+  draw: "Draw",
+};
+
+const FORM_LEGEND_ITEMS = ["win", "loss", "canceled", "scheduled"];
+
+const getTeamMatchOutcome = (match, teamScore, oppScore) => {
+  if (isCanceledMatch(match?.status)) return "canceled";
+  if (
+    isFinishedMatch(match?.status) &&
+    typeof teamScore === "number" &&
+    typeof oppScore === "number"
+  ) {
+    if (teamScore > oppScore) return "win";
+    if (teamScore < oppScore) return "loss";
+    return "draw";
+  }
+  return "scheduled";
+};
+
+const buildTeamFormEntry = (match, opponent, teamScore, oppScore) => {
+  const outcome = getTeamMatchOutcome(match, teamScore, oppScore);
+  const opponentName = opponent?.short_name || opponent?.name || "TBD";
+  const hasScore =
+    outcome !== "scheduled" &&
+    typeof teamScore === "number" &&
+    typeof oppScore === "number";
+  const scorePart = hasScore ? ` ${teamScore}-${oppScore}` : "";
+  return {
+    outcome,
+    title: `${FORM_OUTCOME_LABELS[outcome]}${scorePart} vs ${opponentName}`,
+  };
+};
+
+const FormDots = ({ form, className = "", dotClassName = "h-1.5 w-1.5", wrap = true }) => {
+  if (!form?.length) return null;
+  return (
+    <div className={`flex ${wrap ? "flex-wrap" : "flex-nowrap"} gap-0.5 ${className}`} aria-hidden="true">
+      {form.map((entry, index) => (
+        <span
+          key={index}
+          title={entry.title}
+          className={`inline-block rounded-full ${dotClassName}`}
+          style={{ backgroundColor: FORM_DOT_COLORS[entry.outcome] || FORM_DOT_COLORS.scheduled }}
+        />
+      ))}
+    </div>
+  );
+};
+
+const FormLegend = () => (
+  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] uppercase tracking-wide text-ink-muted">
+    {FORM_LEGEND_ITEMS.map((outcome) => (
+      <span key={outcome} className="inline-flex items-center gap-1">
+        <span
+          className="inline-block h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: FORM_DOT_COLORS[outcome] }}
+        />
+        {FORM_OUTCOME_LABELS[outcome]}
+      </span>
+    ))}
+  </div>
+);
+
 const StandingsTable = ({ rows }) => {
   if (!rows.length) {
     return <p className="text-sm text-ink-muted">No standings available yet.</p>;
   }
   return (
     <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded border border-border bg-surface">
-      <table className="w-full table-fixed whitespace-nowrap text-xs">
+      <table className="w-full table-auto whitespace-nowrap text-xs">
         <thead className="bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
           <tr>
             <th className="w-full px-1 py-1 text-left font-semibold">Team</th>
+            <th className="whitespace-nowrap px-2 py-1 text-center font-semibold">Form</th>
             <th className="w-10 px-0.5 py-1 text-center font-semibold">W-L</th>
             <th className="w-9 px-0.5 py-1 text-center font-semibold">+/-</th>
           </tr>
@@ -113,13 +303,16 @@ const StandingsTable = ({ rows }) => {
                     : "var(--sc-surface-muted)",
               }}
             >
-              <td className="min-w-0 px-1 py-1" title={row.name}>
+              <td className="min-w-0 px-1 py-1 align-top" title={row.name}>
                 <span className="block truncate">
                   {row.name}
                 </span>
               </td>
-              <td className="px-0.5 py-1 text-center tabular-nums">{`${row.wins}-${row.losses}`}</td>
-              <td className="px-0.5 py-1 text-center tabular-nums">{formatScoreDiff(row.scoreDiff)}</td>
+              <td className="whitespace-nowrap px-2 py-1 align-middle">
+                <FormDots form={row.form} className="justify-center" dotClassName="h-[7px] w-[7px]" wrap={false} />
+              </td>
+              <td className="px-0.5 py-1 text-center align-top tabular-nums">{`${row.wins}-${row.losses}`}</td>
+              <td className="px-0.5 py-1 text-center align-top tabular-nums">{formatScoreDiff(row.scoreDiff)}</td>
             </tr>
           ))}
         </tbody>
@@ -139,6 +332,7 @@ const buildPoolStandings = (pool, matches) => {
         losses: 0,
         played: 0,
         scoreDiff: 0,
+        form: [],
       },
     ]),
   );
@@ -146,15 +340,27 @@ const buildPoolStandings = (pool, matches) => {
   const poolMatches = (matches || []).filter((match) => match?.pool_id === pool?.id);
 
   poolMatches.forEach((match) => {
-    if (!isFinishedMatch(match?.status)) return;
-    if (typeof match?.score_a !== "number" || typeof match?.score_b !== "number") {
-      return;
-    }
-
     const teamAId = match.team_a?.id;
     const teamBId = match.team_b?.id;
     const teamAStanding = teamAId ? standingsByTeam.get(teamAId) : null;
     const teamBStanding = teamBId ? standingsByTeam.get(teamBId) : null;
+
+    // Record a form dot for every match (played, canceled, or still scheduled).
+    if (teamAStanding) {
+      teamAStanding.form.push(
+        buildTeamFormEntry(match, match.team_b, match.score_a, match.score_b),
+      );
+    }
+    if (teamBStanding) {
+      teamBStanding.form.push(
+        buildTeamFormEntry(match, match.team_a, match.score_b, match.score_a),
+      );
+    }
+
+    if (!isFinishedMatch(match?.status)) return;
+    if (typeof match?.score_a !== "number" || typeof match?.score_b !== "number") {
+      return;
+    }
 
     if (teamAStanding) {
       teamAStanding.played += 1;
@@ -260,6 +466,13 @@ export default function CptMxLeagueWorkspacePage() {
     );
   }, [eventData, matches]);
 
+  const scheduleDivisions = useMemo(() => {
+    const divisionNames = new Map(
+      (eventData?.divisions || []).map((division) => [division.id, division.name]),
+    );
+    return buildScheduleDivisions(matches, divisionNames);
+  }, [matches, eventData]);
+
   const sortedVenues = useMemo(
     () => sortVenuesByCityLocationName(eventData?.venues || []),
     [eventData?.venues],
@@ -364,9 +577,12 @@ export default function CptMxLeagueWorkspacePage() {
             </Panel>
           </div>
           <div className="border-t border-white/30 pt-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Pool standings
-            </p>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                Division standings
+              </p>
+              <FormLegend />
+            </div>
           {loading && standingsByPool.length === 0 ? (
             <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
               Loading standings...
@@ -506,14 +722,56 @@ export default function CptMxLeagueWorkspacePage() {
 
         <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
           <SectionHeader
-            title="Weekly schedule"
+            title="Matches"
           />
-          <Panel
-            variant="muted"
-            className="border border-white/50 p-4 text-center text-sm font-semibold uppercase tracking-wide text-ink-muted"
-          >
-            TBC
-          </Panel>
+          {scheduleDivisions.length ? (
+            <div className="space-y-6">
+              {scheduleDivisions.map((division) => (
+                <div key={division.id} className="min-w-0 space-y-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-ink">
+                    {division.name}
+                  </h3>
+                  {division.days.map((day) => (
+                    <div key={day.key} className="min-w-0 space-y-2">
+                      <h4 className="text-sm font-semibold text-ink-muted">
+                        {formatScheduleDayLabel(day.startTime)}
+                      </h4>
+                      <div className={getScheduleGridClass(day.matches.length)}>
+                        {day.matches.map((match) => {
+                          const showScore = isFinishedMatch(match.status);
+                          return (
+                            <StandardEventMatchCard
+                              key={match.id}
+                              match={match}
+                              eyebrow={
+                                match.start_time
+                                  ? formatMatchTime(match.start_time)
+                                  : "Time TBC"
+                              }
+                              hideEyebrow={false}
+                              title={formatMatchup(match)}
+                              score={showScore ? formatScoreLine(match) : null}
+                              status={formatMatchStatus(
+                                match.status,
+                                showScore ? "Final" : "Scheduled",
+                              )}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Panel
+              variant="muted"
+              className="border border-white/50 p-4 text-center text-sm font-semibold uppercase tracking-wide text-ink-muted"
+            >
+              TBC
+            </Panel>
+          )}
         </Card>
       </SectionShell>
     </div>
