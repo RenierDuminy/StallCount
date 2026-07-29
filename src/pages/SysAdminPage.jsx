@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { getErrorLog, clearErrorLog } from "../components/ErrorBoundary";
+import {
+  getErrorLog,
+  clearErrorLog,
+  subscribeToErrorLog,
+} from "../components/ErrorBoundary";
+import { BUILD_SHA, BUILD_TIME, checkBuildFreshness } from "../services/buildInfo";
+import { describeError } from "../utils/errorMessages";
 import {
   getBaseTableName,
   deleteTableRowByFilters,
@@ -62,24 +68,184 @@ function formatVenueOptionLabel(venue) {
   return parts.join(" - ");
 }
 
+const SOURCE_LABELS = {
+  render: "Render crash",
+  "window.onerror": "Uncaught error",
+  unhandledrejection: "Promise rejection",
+};
+
+function formatTimestamp(iso) {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return iso || "";
+  return parsed.toLocaleTimeString(undefined, { hour12: false });
+}
+
+// "Which build is this browser running, and is it the deployed one?" — a stale
+// service worker serving old code looks identical to a bad deploy from the UI.
+function BuildIdentityRow() {
+  const [freshness, setFreshness] = useState(null);
+  const [checking, setChecking] = useState(false);
+
+  const runCheck = useCallback(async () => {
+    setChecking(true);
+    try {
+      setFreshness(await checkBuildFreshness());
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    runCheck();
+  }, [runCheck]);
+
+  const stale = freshness?.stale === true;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-muted">
+      <span>
+        Build <code className="font-mono text-ink">{BUILD_SHA}</code>
+      </span>
+      <span>built {formatTimestamp(BUILD_TIME)}</span>
+      {stale && (
+        <span className="font-semibold text-amber-700">
+          Stale — server has {freshness.deployed}. Reload to update.
+        </span>
+      )}
+      {freshness && !stale && <span className="text-emerald-700">Up to date</span>}
+      {!freshness && !checking && <span>Deployed build unknown (offline?)</span>}
+      <button type="button" onClick={runCheck} className="underline" disabled={checking}>
+        {checking ? "Checking..." : "Re-check"}
+      </button>
+    </div>
+  );
+}
+
+function ErrorLogEntry({ entry }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = Boolean(entry.stack || entry.errorStack);
+
+  return (
+    <div className="rounded-xl border border-rose-200 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-rose-800">
+            {entry.name}
+            {entry.count > 1 && (
+              <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                ×{entry.count}
+              </span>
+            )}
+          </p>
+          <p className="mt-0.5 text-[11px] text-rose-500">
+            {SOURCE_LABELS[entry.source] ?? entry.source}
+            {entry.route ? ` · ${entry.route}` : ""}
+          </p>
+        </div>
+        <span className="shrink-0 text-[11px] text-rose-400">
+          {formatTimestamp(entry.timestamp)}
+        </span>
+      </div>
+      <p className="mt-2 break-words text-xs text-rose-700">{entry.message}</p>
+      {hasDetail && (
+        <>
+          <button
+            type="button"
+            onClick={() => setExpanded((prev) => !prev)}
+            className="mt-2 text-[11px] font-semibold text-rose-600 underline"
+          >
+            {expanded ? "Hide details" : "Show details"}
+          </button>
+          {expanded && (
+            <div className="mt-2 space-y-2">
+              {entry.stack && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-rose-400">
+                    Component stack
+                  </p>
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-rose-50 p-2 text-[10px] text-rose-500">
+                    {entry.stack.trim()}
+                  </pre>
+                </div>
+              )}
+              {entry.errorStack && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-rose-400">
+                    Error stack
+                  </p>
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-rose-50 p-2 text-[10px] text-rose-500">
+                    {entry.errorStack.trim()}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function BrokenComponentsPanel() {
-  const [log, setLog] = useState(() => getErrorLog());
+  const [log, setLog] = useState(() => [...getErrorLog()]);
+  const [copied, setCopied] = useState(false);
+
+  // The log mutates in place, so without a subscription the panel would only
+  // ever show errors that happened before it mounted.
+  useEffect(() => subscribeToErrorLog(setLog), []);
 
   const handleClear = () => {
     clearErrorLog();
-    setLog([]);
+    setCopied(false);
   };
 
-  const handleRefresh = () => setLog([...getErrorLog()]);
+  // Errors reset on reload, so there has to be a way to get them off the device
+  // before that happens — e.g. into a bug report from a phone in the field.
+  const handleCopy = async () => {
+    const report = [
+      `StallCount error report`,
+      `Build: ${BUILD_SHA} (built ${BUILD_TIME})`,
+      `User agent: ${typeof navigator !== "undefined" ? navigator.userAgent : "unknown"}`,
+      `Captured: ${log.length} error(s)`,
+      "",
+      ...log.map((entry, i) =>
+        [
+          `#${i + 1} [${SOURCE_LABELS[entry.source] ?? entry.source}] ${entry.name}` +
+            (entry.count > 1 ? ` (x${entry.count})` : ""),
+          `  when:  ${entry.timestamp}`,
+          `  route: ${entry.route || "unknown"}`,
+          `  error: ${entry.message}`,
+          entry.errorStack ? `  stack:\n${entry.errorStack.trim()}` : "",
+          entry.stack ? `  component stack:\n${entry.stack.trim()}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      ),
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(report);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard is blocked outside secure contexts — fall back to the console
+      // so the report is still retrievable.
+      console.info(report);
+      window.alert("Clipboard unavailable. Report written to the browser console.");
+    }
+  };
 
   if (log.length === 0) {
     return (
-      <Panel className="flex items-center gap-3 border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-800">
-        <span className="text-base">✓</span>
-        <span className="font-semibold">No component errors recorded this session.</span>
-        <button type="button" onClick={handleRefresh} className="ml-auto sc-button text-xs">
-          Refresh
-        </button>
+      <Panel className="space-y-2 border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-800">
+        <div className="flex items-center gap-3">
+          <span className="text-base">✓</span>
+          <span className="font-semibold">No errors recorded this session.</span>
+          <span className="text-xs text-emerald-700">
+            Watching render crashes, uncaught errors and promise rejections.
+          </span>
+        </div>
+        <BuildIdentityRow />
       </Panel>
     );
   }
@@ -89,33 +255,23 @@ function BrokenComponentsPanel() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-rose-800">
-            {log.length} component error{log.length !== 1 ? "s" : ""} this session
+            {log.length} error{log.length !== 1 ? "s" : ""} this session
           </p>
           <p className="text-xs text-rose-600">Errors reset on full page reload.</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={handleRefresh} className="sc-button text-xs">
-            Refresh
+          <button type="button" onClick={handleCopy} className="sc-button text-xs">
+            {copied ? "Copied" : "Copy report"}
           </button>
           <button type="button" onClick={handleClear} className="sc-button text-xs">
             Clear log
           </button>
         </div>
       </div>
+      <BuildIdentityRow />
       <div className="space-y-3">
-        {log.map((entry, i) => (
-          <div key={i} className="rounded-xl border border-rose-200 bg-white p-4">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="text-sm font-semibold text-rose-800">{entry.name}</p>
-              <span className="text-[11px] text-rose-400">{entry.timestamp}</span>
-            </div>
-            <p className="mt-1 text-xs text-rose-700">{entry.message}</p>
-            {entry.stack && (
-              <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-rose-50 p-2 text-[10px] text-rose-500 whitespace-pre-wrap">
-                {entry.stack.trim()}
-              </pre>
-            )}
-          </div>
+        {log.map((entry) => (
+          <ErrorLogEntry key={entry.id} entry={entry} />
         ))}
       </div>
     </Panel>
@@ -137,6 +293,7 @@ export default function SysAdminPage() {
   const [rows, setRows] = useState([]);
   const [rowsLoading, setRowsLoading] = useState(false);
   const [rowsError, setRowsError] = useState("");
+  const [referenceError, setReferenceError] = useState("");
   const [draftPayload, setDraftPayload] = useState(buildTemplate(tables[0] || ""));
   const [draftError, setDraftError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
@@ -190,6 +347,18 @@ export default function SysAdminPage() {
   );
   const deleteKeysReady = deleteKeyEntries.every((entry) => entry.value);
 
+  // Delete is the only irreversible action here. Block it whenever the operator
+  // can't actually see what they're about to destroy: the target doesn't exist,
+  // or the cascade preview failed to build.
+  const deleteBlockReason = useMemo(() => {
+    if (!deleteKeysReady) return "";
+    if (cascadeLoading) return "Waiting for the cascade preview to finish.";
+    if (cascadeError) return "Cascade preview failed — resolve it before deleting.";
+    if (targetRowCount === 0) return "No record matches that key.";
+    return "";
+  }, [cascadeError, cascadeLoading, deleteKeysReady, targetRowCount]);
+  const deleteBlocked = Boolean(deleteBlockReason);
+
   const filteredTables = useMemo(() => {
     if (!tableSearch.trim()) return tables;
     const q = tableSearch.toLowerCase();
@@ -229,23 +398,43 @@ export default function SysAdminPage() {
     setTargetRowCount(null);
   }, [selectedTable]);
 
-  useEffect(() => {
-    const loadReferenceData = async () => {
-      try {
-        const [teamRows, eventRows, venueRows] = await Promise.all([
-          getAllTeams(200),
-          getEventsList(200),
-          queryTableRows("venues", { limit: 200, orderBy: "name" }),
-        ]);
-        setTeams(teamRows ?? []);
-        setEventsList(eventRows ?? []);
-        setVenues(Array.isArray(venueRows) ? venueRows : []);
-      } catch (err) {
-        console.error("[SYS] Failed to load reference data", err);
-      }
-    };
-    loadReferenceData();
+  const loadReferenceData = useCallback(async () => {
+    setReferenceError("");
+    // allSettled, not all: one failing lookup shouldn't blank the other two
+    // dropdowns, and the operator should be told exactly which one is missing.
+    const [teamResult, eventResult, venueResult] = await Promise.allSettled([
+      getAllTeams(200),
+      getEventsList(200),
+      queryTableRows("venues", { limit: 200, orderBy: "name" }),
+    ]);
+
+    if (teamResult.status === "fulfilled") setTeams(teamResult.value ?? []);
+    if (eventResult.status === "fulfilled") setEventsList(eventResult.value ?? []);
+    if (venueResult.status === "fulfilled") {
+      setVenues(Array.isArray(venueResult.value) ? venueResult.value : []);
+    }
+
+    const failures = [
+      ["Teams", teamResult],
+      ["Events", eventResult],
+      ["Venues", venueResult],
+    ].filter(([, result]) => result.status === "rejected");
+
+    if (failures.length) {
+      failures.forEach(([label, result]) =>
+        console.error(`[SYS] Failed to load ${label}`, result.reason),
+      );
+      setReferenceError(
+        failures
+          .map(([label, result]) => describeError(result.reason, { action: `Load ${label}`, technical: true }))
+          .join(" "),
+      );
+    }
   }, []);
+
+  useEffect(() => {
+    loadReferenceData();
+  }, [loadReferenceData]);
 
   const loadRows = useCallback(async () => {
     if (!selectedTable) return;
@@ -262,7 +451,7 @@ export default function SysAdminPage() {
       });
       setRows(data ?? []);
     } catch (err) {
-      setRowsError(err instanceof Error ? err.message : "Unable to load rows.");
+      setRowsError(describeError(err, { action: `Load rows from ${selectedTable}`, technical: true }));
       setRows([]);
     } finally {
       setRowsLoading(false);
@@ -323,7 +512,7 @@ export default function SysAdminPage() {
           if (!ignore) {
             setTargetRowPreview(null);
             setTargetRowCount(null);
-            setCascadeError(err instanceof Error ? err.message : "Unable to load target row.");
+            setCascadeError(describeError(err, { action: "Load target row", technical: true }));
           }
         }
 
@@ -383,7 +572,7 @@ export default function SysAdminPage() {
                 rows: [],
                 count: 0,
                 composite: false,
-                error: err instanceof Error ? err.message : "Unable to load related rows.",
+                error: describeError(err, { action: `Load related rows from ${ref.table}`, technical: true }),
               };
             }
           }),
@@ -391,6 +580,13 @@ export default function SysAdminPage() {
 
         if (!ignore) {
           setCascadePreview(results);
+        }
+      } catch (err) {
+        // Without this the preview silently stays empty right before a
+        // destructive delete — the operator must know it is incomplete.
+        if (!ignore) {
+          setCascadePreview([]);
+          setCascadeError(describeError(err, { action: "Build cascade preview", technical: true }));
         }
       } finally {
         if (!ignore) {
@@ -423,7 +619,7 @@ export default function SysAdminPage() {
       setDraftPayload(JSON.stringify(saved ?? payload, null, 2));
       loadRows();
     } catch (err) {
-      setDraftError(err instanceof Error ? err.message : "Insert failed.");
+      setDraftError(describeError(err, { action: `Insert into ${selectedTable}`, technical: true }));
     }
   };
 
@@ -451,7 +647,7 @@ export default function SysAdminPage() {
       setActionMessage("Row updated.");
       loadRows();
     } catch (err) {
-      setDraftError(err instanceof Error ? err.message : "Update failed.");
+      setDraftError(describeError(err, { action: `Update row in ${selectedTable}`, technical: true }));
     }
   };
 
@@ -484,7 +680,7 @@ export default function SysAdminPage() {
       }
       loadRows();
     } catch (err) {
-      setMatchError(err instanceof Error ? err.message : "Failed to create match.");
+      setMatchError(describeError(err, { action: "Create match", technical: true }));
     } finally {
       setMatchSaving(false);
     }
@@ -523,7 +719,7 @@ export default function SysAdminPage() {
       setTargetRowCount(null);
       loadRows();
     } catch (err) {
-      setCascadeError(err instanceof Error ? err.message : "Delete failed.");
+      setCascadeError(describeError(err, { action: `Delete from ${selectedTable}`, technical: true }));
     } finally {
       setDeleteLoading(false);
     }
@@ -558,8 +754,16 @@ export default function SysAdminPage() {
         </Card>
       </SectionShell>
 
-      <SectionShell className="py-4">
+      <SectionShell className="py-4 space-y-3">
         <BrokenComponentsPanel />
+        {referenceError && (
+          <Panel className="flex flex-wrap items-center gap-3 border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <span>{referenceError}</span>
+            <button type="button" onClick={loadReferenceData} className="ml-auto sc-button text-xs">
+              Retry
+            </button>
+          </Panel>
+        )}
       </SectionShell>
 
       <SectionShell as="main" className="pb-16">
@@ -892,8 +1096,11 @@ export default function SysAdminPage() {
                 </Chip>
               </div>
               {rowsError && (
-                <Panel className="mx-6 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-                  {rowsError}
+                <Panel className="mx-6 flex flex-wrap items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                  <span>{rowsError}</span>
+                  <button type="button" onClick={loadRows} className="ml-auto sc-button text-xs">
+                    Retry
+                  </button>
                 </Panel>
               )}
               <div className="max-h-[45vh] overflow-auto px-6 pb-6 sm:max-h-[55vh] lg:max-h-[65vh]">
@@ -1220,11 +1427,16 @@ export default function SysAdminPage() {
                 <button
                   type="button"
                   onClick={handleCascadeDelete}
-                  disabled={deleteLoading || !deleteConfirm || !deleteKeysReady}
+                  disabled={
+                    deleteLoading || !deleteConfirm || !deleteKeysReady || deleteBlocked
+                  }
                   className="sc-button"
                 >
                   {deleteLoading ? "Deleting..." : "Delete with cascade"}
                 </button>
+                {deleteBlocked && (
+                  <span className="text-xs font-semibold text-rose-700">{deleteBlockReason}</span>
+                )}
               </div>
             </Card>
           </div>

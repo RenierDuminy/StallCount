@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { listTableColumns, pickRecencyColumn } from "./schemaService";
+import { fromSupabaseError } from "../utils/errorMessages";
 
 export type AuditLogEntry = {
   id: number;
@@ -40,7 +41,7 @@ export async function getRecentAuditLogs(limit = 20): Promise<AuditLogEntry[]> {
     .limit(limit);
 
   if (error) {
-    throw new Error(error.message || "Failed to load audit log entries");
+    throw fromSupabaseError(error, "Failed to load audit log entries");
   }
 
   return (data ?? []) as AuditLogEntry[];
@@ -88,7 +89,7 @@ export async function queryTableRows(
   }
 
   if (error) {
-    throw new Error(error.message || `Failed to load rows from ${tableName}`);
+    throw fromSupabaseError(error, `Failed to load rows from ${tableName}`);
   }
 
   return (data ?? []) as Record<string, unknown>[];
@@ -109,7 +110,7 @@ export async function insertTableRow(
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message || `Failed to insert row into ${tableName}`);
+    throw fromSupabaseError(error, `Failed to insert row into ${tableName}`);
   }
 
   return (data as Record<string, unknown>) ?? null;
@@ -133,7 +134,7 @@ export async function updateTableRow(
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message || `Failed to update row in ${tableName}`);
+    throw fromSupabaseError(error, `Failed to update row in ${tableName}`);
   }
 
   return (data as Record<string, unknown>) ?? null;
@@ -158,7 +159,7 @@ export async function queryTableRowsExact(
     .limit(options.limit ?? 200);
 
   if (error) {
-    throw new Error(error.message || `Failed to load rows from ${tableName}`);
+    throw fromSupabaseError(error, `Failed to load rows from ${tableName}`);
   }
 
   return { rows: (data ?? []) as Record<string, unknown>[], count };
@@ -191,7 +192,7 @@ export async function queryTableRowsByFilters(
 
   const { data, error, count } = await query;
   if (error) {
-    throw new Error(error.message || `Failed to load rows from ${tableName}`);
+    throw fromSupabaseError(error, `Failed to load rows from ${tableName}`);
   }
 
   return { rows: (data ?? []) as Record<string, unknown>[], count };
@@ -214,7 +215,7 @@ export async function deleteTableRow(
     .maybeSingle();
 
   if (error) {
-    throw new Error(error.message || `Failed to delete row from ${tableName}`);
+    throw fromSupabaseError(error, `Failed to delete row from ${tableName}`);
   }
 
   return (data as Record<string, unknown>) ?? null;
@@ -242,7 +243,7 @@ export async function deleteTableRowByFilters(
 
   const { data, error } = await query.select("*");
   if (error) {
-    throw new Error(error.message || `Failed to delete rows from ${tableName}`);
+    throw fromSupabaseError(error, `Failed to delete rows from ${tableName}`);
   }
 
   return (data ?? []) as Record<string, unknown>[];

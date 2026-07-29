@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import { Outlet, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import SiteHeader from "./SiteHeader";
+import AdminErrorBanner from "./AdminErrorBanner";
+import { SilentErrorBoundary } from "./ErrorBoundary";
 
 const routeFallback = (
   <div className="sc-shell flex min-h-[40vh] items-center justify-center text-sm text-[var(--sc-ink-muted)]">
@@ -14,6 +16,10 @@ export default function AppLayout() {
 
   return (
     <div className="sc-page flex min-h-screen flex-col">
+      {/* A component whose job is announcing errors must never cause one. */}
+      <SilentErrorBoundary name="AdminErrorBanner">
+        <AdminErrorBanner />
+      </SilentErrorBoundary>
       <SiteHeader />
       <main className="relative flex-1">
         <Suspense fallback={routeFallback}>

@@ -93,10 +93,11 @@ function isAuthoredMessage(error) {
  * @param {object} options
  * @param {string} options.action   What was being attempted, e.g. "Save score".
  * @param {string} [options.queued] Text describing offline fallback, e.g. "queued to sync".
+ * @param {boolean} [options.technical] Append driver `details`/`hint` (admin surfaces).
  * @returns {string}
  */
 export function describeError(error, options = {}) {
-  const { action = null, queued = null } = options;
+  const { action = null, queued = null, technical = false } = options;
   const prefix = action ? `${action} failed` : "Request failed";
 
   if (isOffline()) {
@@ -113,16 +114,26 @@ export function describeError(error, options = {}) {
       : `${prefix}: ${why}. Check your signal, then retry.`;
   }
 
+  // Admin surfaces want the underlying constraint/column, which is the whole
+  // answer for an operator who can act on it. Field surfaces don't — the advice
+  // line is what a scorekeeper needs. Opt in with `technical: true`.
+  const technicalTail = technical
+    ? [String(error?.details || "").trim(), String(error?.hint || "").trim()]
+        .filter(Boolean)
+        .join(" ")
+    : "";
+  const withTechnical = (text) => (technicalTail ? `${text} ${technicalTail}` : text);
+
   const code = error?.code ? String(error.code) : null;
   const hint = code ? CODE_HINTS[code] : null;
   if (hint) {
-    return `${prefix}: ${hint.label} (${code}). ${hint.advice}`;
+    return withTechnical(`${prefix}: ${hint.label} (${code}). ${hint.advice}`);
   }
 
   const status = getStatus(error);
   const httpHint = status ? HTTP_HINTS[status] : null;
   if (httpHint) {
-    return `${prefix}: ${httpHint.label} (${status}). ${httpHint.advice}`;
+    return withTechnical(`${prefix}: ${httpHint.label} (${status}). ${httpHint.advice}`);
   }
 
   if (isAuthoredMessage(error)) {
