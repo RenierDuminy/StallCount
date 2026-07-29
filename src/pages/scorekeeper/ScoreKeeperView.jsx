@@ -89,11 +89,6 @@ export default function ScoreKeeperView() {
   const [settingsSavedAt, setSettingsSavedAt] = useState(null);
   const [fiveVFiveSettingsSavedAt, setFiveVFiveSettingsSavedAt] = useState(null);
 
-  // Resuming is async (match -> rosters -> logs) and `consoleReady` stays false the
-  // whole time, which would otherwise flash the chooser on the way to the console.
-  // On failure `resumeBusy` clears and the chooser returns with the error shown.
-  const consoleOpening =
-    !showMenu && (data.resumeBusy || fiveVFiveResumeBusy);
   const {
     consoleReady: fiveVFiveConsoleReady,
     resumeCandidate: fiveVFiveResumeCandidate,
@@ -104,6 +99,11 @@ export default function ScoreKeeperView() {
     handleResumeSession: handleFiveVFiveResumeSession,
     handleDiscardResume: handleFiveVFiveDiscardResume,
   } = fiveVFiveData;
+
+  // Resuming is async (match -> rosters -> logs) and `consoleReady` stays false the
+  // whole time, which would otherwise flash the chooser on the way to the console.
+  // On failure `resumeBusy` clears and the chooser returns with the error shown.
+  const consoleOpening = !showMenu && (data.resumeBusy || fiveVFiveResumeBusy);
   const fiveVFiveController = {
     ...fiveVFiveData,
     onInitialiseComplete: (match) => {
