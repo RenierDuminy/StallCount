@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import usePersistentState from "../../hooks/usePersistentState";
@@ -9,7 +9,10 @@ import { createMatch, deleteMatch, updateMatch } from "../../services/matchServi
 import { saveTournamentDirectorSpiritScores } from "../../services/spiritScoreService";
 import { getEventLinkedUsers } from "../../services/userService";
 import { roleAssignmentsIncludeAdmin } from "../../utils/accessControl";
-import { TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY } from "./persistenceKeys";
+import {
+  TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY,
+  getScheduleFiltersStorageKey,
+} from "./persistenceKeys";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
@@ -97,22 +100,11 @@ const EMPTY_MATCH_CREATE_FORM = {
   hasMedia: false,
   mediaLinkJson: "",
 };
-const EMPTY_SCHEDULE_FILTERS = {
-  date: "",
-  time: "",
-  venue: "",
-  status: "",
-  teamA: "",
-  scoreA: "",
-  scoreB: "",
-  teamB: "",
-  spirit: "",
-  captain: "",
-};
 const SCHEDULE_FILTER_FIELDS = [
   { key: "date", label: "Date", placeholder: "All dates" },
   { key: "time", label: "Time", placeholder: "All times" },
   { key: "venue", label: "Venue", placeholder: "All venues" },
+  { key: "division", label: "Division", placeholder: "All divisions" },
   { key: "status", label: "Status", placeholder: "All statuses" },
   { key: "teamA", label: "Team A", placeholder: "All Team A" },
   { key: "scoreA", label: "SA", placeholder: "All SA" },
@@ -121,6 +113,43 @@ const SCHEDULE_FILTER_FIELDS = [
   { key: "spirit", label: "Spirit", placeholder: "All spirit" },
   { key: "captain", label: "Captain", placeholder: "All captain" },
 ];
+
+// Filters track the values that are *excluded*, so values that appear later (after a
+// refresh adds matches) stay included by default without needing to be re-checked.
+function createEmptyScheduleFilters() {
+  return SCHEDULE_FILTER_FIELDS.reduce((acc, field) => ({ ...acc, [field.key]: [] }), {});
+}
+
+// Rebuilds filters from a stored blob, keeping only the fields that still exist
+// and discarding anything malformed, so a stale or hand-edited entry cannot
+// leave the table filtered by a key the UI no longer renders.
+function normalizeScheduleFilters(stored) {
+  const empty = createEmptyScheduleFilters();
+  if (!stored || typeof stored !== "object") {
+    return empty;
+  }
+
+  return SCHEDULE_FILTER_FIELDS.reduce((acc, field) => {
+    const values = stored[field.key];
+    return {
+      ...acc,
+      [field.key]: Array.isArray(values) ? values.filter((value) => typeof value === "string") : [],
+    };
+  }, empty);
+}
+
+function readStoredScheduleFilters(eventId) {
+  if (typeof window === "undefined" || !eventId) {
+    return createEmptyScheduleFilters();
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getScheduleFiltersStorageKey(eventId));
+    return raw === null ? createEmptyScheduleFilters() : normalizeScheduleFilters(JSON.parse(raw));
+  } catch {
+    return createEmptyScheduleFilters();
+  }
+}
 
 function createEmptySpiritScores() {
   return {
@@ -396,7 +425,19 @@ function getStatusBadgeClass(status) {
   return "border-slate-300 bg-slate-100 text-slate-600";
 }
 
-function getScheduleRowValues(match) {
+function formatDivisionLabel(match, divisionLookup, poolLookup) {
+  const pool = match?.pool_id ? poolLookup?.get(match.pool_id) || null : null;
+  const divisionName =
+    (match?.division_id ? divisionLookup?.get(match.division_id) : null) || pool?.divisionName || "";
+  const poolName = pool?.name || "";
+
+  if (divisionName && poolName) return `${divisionName} (${poolName})`;
+  if (divisionName) return divisionName;
+  if (poolName) return `(${poolName})`;
+  return "Unassigned";
+}
+
+function getScheduleRowValues(match, divisionLookup, poolLookup) {
   const timestamp = match?.start_time || match?.confirmed_at || null;
   const localParts = getLocalDateTimeParts(timestamp);
   const formattedParts = formatDateParts(timestamp);
@@ -411,6 +452,7 @@ function getScheduleRowValues(match) {
     time: localParts.time || "TBD",
     timeLabel: formattedParts.time,
     venue: match?.displayVenue || "Unassigned",
+    division: formatDivisionLabel(match, divisionLookup, poolLookup),
     status: match?.status || "Unknown",
     teamA: match?.displayTeamA || "TBD",
     scoreA: String(match?.score_a ?? 0),
@@ -437,6 +479,119 @@ function compareScheduleValues(left, right) {
     compareText(left.venue, right.venue) ||
     compareText(left.teamA, right.teamA) ||
     compareText(left.teamB, right.teamB)
+  );
+}
+
+function ScheduleFilterMenu({
+  field,
+  options,
+  excludedValues,
+  isOpen,
+  onToggleOpen,
+  onClose,
+  onToggleValue,
+  onSelectAll,
+  onSelectNone,
+}) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        onClose();
+      }
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  const excludedSet = useMemo(() => new Set(excludedValues || []), [excludedValues]);
+  const includedCount = options.filter((option) => !excludedSet.has(option.value)).length;
+  const isFiltered = excludedSet.size > 0;
+  const buttonLabel = isFiltered
+    ? `${field.label}: ${includedCount}/${options.length}`
+    : field.placeholder;
+
+  return (
+    <div ref={containerRef} className="relative min-w-[7.5rem] flex-[1_1_8rem] sm:flex-initial">
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        aria-label={`Filter schedule by ${field.label.toLowerCase()}`}
+        title={buttonLabel}
+        className={`${LIGHT_INPUT_CLASS} flex w-full items-center justify-between gap-1.5 text-left ${
+          isFiltered ? "border-[#0a3d29] font-semibold text-[#0a3d29]" : ""
+        }`}
+      >
+        <span className="truncate">{buttonLabel}</span>
+        <svg aria-hidden="true" viewBox="0 0 20 20" className="h-3 w-3 shrink-0" fill="none">
+          <path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {isOpen ? (
+        <div
+          className="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-[var(--sc-surface-light-border)] bg-white p-2 shadow-lg shadow-black/10"
+          role="group"
+          aria-label={`${field.label} values`}
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-[var(--sc-surface-light-border)] pb-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/55">
+              {field.label}
+            </span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={onSelectAll}
+                className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0a3d29] transition hover:bg-[#eef7f1]"
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={onSelectNone}
+                className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70 transition hover:bg-[#eef7f1]"
+              >
+                None
+              </button>
+            </div>
+          </div>
+          <div className="max-h-56 overflow-auto py-1">
+            {options.length === 0 ? (
+              <p className="px-1 py-1 text-xs text-[var(--sc-surface-light-ink)]/60">No values</p>
+            ) : (
+              options.map((option) => (
+                <label
+                  key={`${field.key}:${option.value}`}
+                  className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs text-[var(--sc-surface-light-ink)] transition hover:bg-[#eef7f1]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!excludedSet.has(option.value)}
+                    onChange={() => onToggleValue(option.value)}
+                    className="h-3.5 w-3.5 shrink-0 accent-[#0a3d29]"
+                  />
+                  <span className="truncate" title={option.label}>
+                    {option.label}
+                  </span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -468,7 +623,10 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
   const [createError, setCreateError] = useState("");
   const [createSaving, setCreateSaving] = useState(false);
   const [linkedUsers, setLinkedUsers] = useState([]);
-  const [scheduleFilters, setScheduleFilters] = useState(() => ({ ...EMPTY_SCHEDULE_FILTERS }));
+  const [scheduleFilters, setScheduleFilters] = useState(() =>
+    readStoredScheduleFilters(selectedEventId),
+  );
+  const [openFilterKey, setOpenFilterKey] = useState("");
 
   const accessibleEvents = useMemo(() => {
     if (!Array.isArray(eventsList) || eventsList.length === 0) {
@@ -599,9 +757,26 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
     };
   }, [selectedEventId]);
 
+  // Switching events swaps in that event's saved filters (empty if it has none).
   useEffect(() => {
-    setScheduleFilters({ ...EMPTY_SCHEDULE_FILTERS });
+    setScheduleFilters(readStoredScheduleFilters(selectedEventId));
+    setOpenFilterKey("");
   }, [selectedEventId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !selectedEventId) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        getScheduleFiltersStorageKey(selectedEventId),
+        JSON.stringify(scheduleFilters),
+      );
+    } catch {
+      // Ignore quota/serialization failures; filters still work for this session.
+    }
+  }, [scheduleFilters, selectedEventId]);
 
   const summary = overview.summary;
   const totalMatches = summary?.totalMatches || 0;
@@ -761,15 +936,26 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
 
     return [createForm.status, ...MATCH_STATUS_OPTIONS];
   }, [createForm.status]);
+  const divisionLookup = useMemo(
+    () => new Map(divisionOptions.map((division) => [division.id, division.name])),
+    [divisionOptions],
+  );
+  const poolLookup = useMemo(
+    () =>
+      new Map(
+        poolOptions.map((pool) => [pool.id, { name: pool.name, divisionName: pool.divisionName }]),
+      ),
+    [poolOptions],
+  );
   const scheduleRows = useMemo(
     () =>
       (overview.matches || [])
         .map((match) => ({
           ...match,
-          scheduleValues: getScheduleRowValues(match),
+          scheduleValues: getScheduleRowValues(match, divisionLookup, poolLookup),
         }))
         .sort((left, right) => compareScheduleValues(left.scheduleValues, right.scheduleValues)),
-    [overview.matches],
+    [divisionLookup, overview.matches, poolLookup],
   );
   const scheduleFilterOptions = useMemo(() => {
     const optionMaps = SCHEDULE_FILTER_FIELDS.reduce(
@@ -782,6 +968,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
       optionMaps.date.set(values.date, values.dateLabel);
       optionMaps.time.set(values.time, values.timeLabel);
       optionMaps.venue.set(values.venue, values.venue);
+      optionMaps.division.set(values.division, values.division);
       optionMaps.status.set(values.status, values.status);
       optionMaps.teamA.set(values.teamA, values.teamA);
       optionMaps.scoreA.set(values.scoreA, values.scoreA);
@@ -809,6 +996,9 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
       venue: Array.from(optionMaps.venue.entries())
         .map(([value, label]) => ({ value, label }))
         .sort((a, b) => a.label.localeCompare(b.label)),
+      division: Array.from(optionMaps.division.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
       status: Array.from(optionMaps.status.entries())
         .map(([value, label]) => ({ value, label }))
         .sort((a, b) => a.label.localeCompare(b.label)),
@@ -832,16 +1022,23 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
         .sort((a, b) => a.label.localeCompare(b.label)),
     };
   }, [scheduleRows]);
+  const excludedValueSets = useMemo(
+    () =>
+      SCHEDULE_FILTER_FIELDS.reduce(
+        (acc, field) => ({ ...acc, [field.key]: new Set(scheduleFilters[field.key] || []) }),
+        {},
+      ),
+    [scheduleFilters],
+  );
   const filteredMatches = useMemo(() => {
     return scheduleRows.filter((match) =>
-      SCHEDULE_FILTER_FIELDS.every((field) => {
-        const filterValue = scheduleFilters[field.key];
-        return !filterValue || match.scheduleValues[field.key] === filterValue;
-      }),
+      SCHEDULE_FILTER_FIELDS.every(
+        (field) => !excludedValueSets[field.key].has(match.scheduleValues[field.key]),
+      ),
     );
-  }, [scheduleRows, scheduleFilters]);
+  }, [scheduleRows, excludedValueSets]);
   const hasActiveScheduleFilters = useMemo(
-    () => Object.values(scheduleFilters).some(Boolean),
+    () => Object.values(scheduleFilters).some((values) => (values || []).length > 0),
     [scheduleFilters],
   );
   const scheduleRowsLabel = loading
@@ -850,9 +1047,27 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
       ? `${filteredMatches.length} of ${totalMatches} rows`
       : `${totalMatches} rows`;
 
-  const handleScheduleFilterChange = (field, value) => {
-    setScheduleFilters((prev) => ({ ...prev, [field]: value }));
-  };
+  const handleToggleScheduleFilterValue = useCallback((fieldKey, value) => {
+    setScheduleFilters((prev) => {
+      const excluded = prev[fieldKey] || [];
+      return {
+        ...prev,
+        [fieldKey]: excluded.includes(value)
+          ? excluded.filter((entry) => entry !== value)
+          : [...excluded, value],
+      };
+    });
+  }, []);
+
+  const handleSelectAllScheduleFilterValues = useCallback((fieldKey) => {
+    setScheduleFilters((prev) => ({ ...prev, [fieldKey]: [] }));
+  }, []);
+
+  const handleSelectNoScheduleFilterValues = useCallback((fieldKey, options) => {
+    setScheduleFilters((prev) => ({ ...prev, [fieldKey]: options.map((option) => option.value) }));
+  }, []);
+
+  const closeScheduleFilterMenu = useCallback(() => setOpenFilterKey(""), []);
 
   const openMatchCreator = () => {
     if (!selectedEventId) return;
@@ -1219,33 +1434,34 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
         />
       </div>
 
-      <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
+      <Card variant="light" className="space-y-3 p-4 pb-0 shadow-sm shadow-[rgba(8,25,21,0.05)]">
         <SectionHeader
           title="Chronological schedule"
           action={
             <div className="flex w-full flex-wrap items-center justify-end gap-2">
-              {SCHEDULE_FILTER_FIELDS.map((field) => (
-                <label key={field.key} className="block min-w-[7.5rem] flex-[1_1_8rem] sm:flex-initial">
-                  <span className="sr-only">{field.label}</span>
-                  <select
-                    value={scheduleFilters[field.key]}
-                    onChange={(event) => handleScheduleFilterChange(field.key, event.target.value)}
-                    className={`${LIGHT_INPUT_CLASS} w-full appearance-none`}
-                    aria-label={`Filter schedule by ${field.label.toLowerCase()}`}
-                  >
-                    <option value="">{field.placeholder}</option>
-                    {(scheduleFilterOptions[field.key] || []).map((option) => (
-                      <option key={`${field.key}:${option.value}`} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
+              {SCHEDULE_FILTER_FIELDS.map((field) => {
+                const options = scheduleFilterOptions[field.key] || [];
+                return (
+                  <ScheduleFilterMenu
+                    key={field.key}
+                    field={field}
+                    options={options}
+                    excludedValues={scheduleFilters[field.key]}
+                    isOpen={openFilterKey === field.key}
+                    onToggleOpen={() =>
+                      setOpenFilterKey((prev) => (prev === field.key ? "" : field.key))
+                    }
+                    onClose={closeScheduleFilterMenu}
+                    onToggleValue={(value) => handleToggleScheduleFilterValue(field.key, value)}
+                    onSelectAll={() => handleSelectAllScheduleFilterValues(field.key)}
+                    onSelectNone={() => handleSelectNoScheduleFilterValues(field.key, options)}
+                  />
+                );
+              })}
               {hasActiveScheduleFilters ? (
                 <button
                   type="button"
-                  onClick={() => setScheduleFilters({ ...EMPTY_SCHEDULE_FILTERS })}
+                  onClick={() => setScheduleFilters(createEmptyScheduleFilters())}
                   className="sc-button"
                 >
                   Clear
@@ -1265,86 +1481,106 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
             </div>
           }
         />
-        <div className="overflow-hidden rounded-xl border border-[var(--sc-surface-light-border)] bg-[#f8fcf9]">
+        <div className="-mx-4 overflow-hidden rounded-b-[inherit] border-t border-[var(--sc-surface-light-border)]">
           {loading && overview.matches.length === 0 ? (
-            <p className="p-4 text-sm text-[var(--sc-surface-light-ink)]/70">Loading overview...</p>
+            <p className="px-4 py-3 text-sm text-[var(--sc-surface-light-ink)]/70">Loading overview...</p>
           ) : overview.matches.length === 0 ? (
-            <p className="p-4 text-sm text-[var(--sc-surface-light-ink)]/70">No matches found for this event.</p>
+            <p className="px-4 py-3 text-sm text-[var(--sc-surface-light-ink)]/70">No matches found for this event.</p>
           ) : filteredMatches.length === 0 ? (
-            <p className="p-4 text-sm text-[var(--sc-surface-light-ink)]/70">No matches match the current filters.</p>
+            <p className="px-4 py-3 text-sm text-[var(--sc-surface-light-ink)]/70">No matches match the current filters.</p>
           ) : (
             <div className="overflow-auto">
-            <table className="min-w-full table-fixed divide-y divide-[var(--sc-surface-light-border)] text-sm">
-              <thead className="sticky top-0 z-10 bg-[#eef7f1] shadow-sm">
+            <table className="min-w-full table-auto divide-y divide-[var(--sc-surface-light-border)] text-sm">
+              <thead className="sticky top-0 z-10 bg-[#eef7f1]">
                 <tr>
                   {[
-                    "Date",
-                    "Time",
-                    "Venue",
-                    "Status",
-                    "Team A",
-                    "SA",
-                    "SB",
-                    "Team B",
-                    "Spirit",
-                    "Captain",
-                    "",
+                    { key: "date", label: "Date", mobileLabel: "Date / Time" },
+                    { key: "division", label: "Division", mobileLabel: "Division / Venue" },
+                    { key: "status", label: "Status", divider: true },
+                    { key: "teamA", label: "Team A", align: "text-right", divider: true },
+                    { key: "score", label: "Score", align: "text-center" },
+                    { key: "teamB", label: "Team B" },
+                    { key: "spirit", label: "Spirit", divider: true },
+                    { key: "captain", label: "Captain" },
+                    { key: "actions", label: "" },
                   ].map((column) => (
                     <th
-                      key={column || "actions"}
-                      className="whitespace-nowrap px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/55"
+                      key={column.key}
+                      className={`whitespace-nowrap px-2 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/55 first:pl-4 last:pr-4 ${
+                        column.align || "text-left"
+                      } ${column.divider ? "border-l border-[var(--sc-surface-light-border)]/60" : ""}`}
                     >
-                      {column}
+                      {column.mobileLabel ? (
+                        <>
+                          <span className="sm:hidden">{column.mobileLabel}</span>
+                          <span className="hidden sm:inline">{column.label}</span>
+                        </>
+                      ) : (
+                        column.label
+                      )}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
+              <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70 [&_td:first-child]:pl-4 [&_td:last-child]:pr-4">
                 {filteredMatches.map((match, index) => {
                   const { date, time } = formatDateParts(match.start_time || match.confirmed_at);
                   return (
                     <tr
                       key={match.id}
-                      className={`cursor-pointer transition hover:bg-[#e8f4ec] ${index % 2 === 0 ? "bg-white" : "bg-[#fbfdfb]"}`}
+                      className={`cursor-pointer transition hover:bg-[#e8f4ec] ${index % 2 === 0 ? "bg-white" : "bg-[#f4faf6]"}`}
                       onClick={() => navigate(`/matches?matchId=${encodeURIComponent(match.id)}`)}
                     >
                       <td className="whitespace-nowrap px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
-                        <div className="flex flex-col">
-                          <span className="font-semibold">{date}</span>
+                        <div className="flex flex-col items-start gap-px sm:flex-row sm:items-baseline sm:gap-2">
+                          <span className="font-semibold leading-tight">{date}</span>
+                          <span className="text-[11px] font-medium leading-tight tabular-nums text-[var(--sc-surface-light-ink)]/55">
+                            {time}
+                          </span>
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-2 py-1.5 text-[var(--sc-surface-light-ink)]/80">
-                        <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold tabular-nums shadow-sm">
-                          {time}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
-                        <span className="block max-w-[7rem] truncate font-medium">{match.displayVenue}</span>
-                      </td>
                       <td className="whitespace-nowrap px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
+                        <div className="flex flex-col items-start gap-px sm:flex-row sm:items-baseline sm:gap-2">
+                          <span className="font-semibold leading-tight">{match.scheduleValues.division}</span>
+                          <span className="text-[11px] leading-tight text-[var(--sc-surface-light-ink)]/55">
+                            {match.displayVenue}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap border-l border-[var(--sc-surface-light-border)]/60 px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
                         <span
                           className={`inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${getStatusBadgeClass(match.status)}`}
                         >
                           {match.status || "Unknown"}
                         </span>
                       </td>
-                      <td className="px-2 py-1.5 font-medium text-[var(--sc-surface-light-ink)]">
-                        <span className="block max-w-[7rem] truncate">{match.displayTeamA}</span>
+                      <td className="whitespace-nowrap border-l border-[var(--sc-surface-light-border)]/60 px-2 py-1.5 text-right font-medium text-[var(--sc-surface-light-ink)]">
+                        {match.displayTeamA}
                       </td>
-                      <td className="whitespace-nowrap px-1.5 py-1.5 text-center">
-                        <span className="inline-flex min-w-[2rem] justify-center rounded-md bg-[#eaf5ee] px-1.5 py-0.5 font-bold tabular-nums text-[var(--sc-surface-light-ink)] shadow-sm">
+                      <td className="whitespace-nowrap py-1.5 pl-1.5 pr-0.5 text-center">
+                        <span
+                          className={`inline-flex min-w-[1.85rem] justify-center rounded-l-md border-y border-l border-[var(--sc-surface-light-border)]/70 bg-[#eaf5ee] px-1.5 py-0.5 tabular-nums ${
+                            (match.score_a ?? 0) >= (match.score_b ?? 0)
+                              ? "font-bold text-[var(--sc-surface-light-ink)]"
+                              : "font-medium text-[var(--sc-surface-light-ink)]/55"
+                          }`}
+                        >
                           {match.score_a ?? 0}
                         </span>
-                      </td>
-                      <td className="whitespace-nowrap px-1.5 py-1.5 text-center">
-                        <span className="inline-flex min-w-[2rem] justify-center rounded-md bg-[#eaf5ee] px-1.5 py-0.5 font-bold tabular-nums text-[var(--sc-surface-light-ink)] shadow-sm">
+                        <span
+                          className={`inline-flex min-w-[1.85rem] justify-center rounded-r-md border-y border-r border-[var(--sc-surface-light-border)]/70 bg-[#eaf5ee] px-1.5 py-0.5 tabular-nums ${
+                            (match.score_b ?? 0) >= (match.score_a ?? 0)
+                              ? "font-bold text-[var(--sc-surface-light-ink)]"
+                              : "font-medium text-[var(--sc-surface-light-ink)]/55"
+                          }`}
+                        >
                           {match.score_b ?? 0}
                         </span>
                       </td>
-                      <td className="px-2 py-1.5 font-medium text-[var(--sc-surface-light-ink)]">
-                        <span className="block max-w-[7rem] truncate">{match.displayTeamB}</span>
+                      <td className="whitespace-nowrap px-2 py-1.5 font-medium text-[var(--sc-surface-light-ink)]">
+                        {match.displayTeamB}
                       </td>
-                      <td className="whitespace-nowrap px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
+                      <td className="whitespace-nowrap border-l border-[var(--sc-surface-light-border)]/60 px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
                         {match.spiritScoreA !== null || match.spiritScoreB !== null ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-[#edf7f0] px-1.5 py-0.5 font-semibold tabular-nums">
                             <span>{match.spiritScoreA ?? "-"}</span>

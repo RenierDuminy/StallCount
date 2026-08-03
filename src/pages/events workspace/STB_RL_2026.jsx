@@ -157,6 +157,71 @@ const PHASE_WEEK_GROUPS = [
     ],
   },
 ];
+// Playoff weeks. Same Mon-Thu cadence as weeks 1-7, continuing from 27 Jul.
+// Rendered in a collapsed dropdown because the bracket view below is the
+// primary way to follow this phase.
+const PLAYOFF_WEEK_GROUP = {
+  id: "phase-3",
+  title: "Playoff schedule",
+  description: "Day-by-day fixtures for the playoff weeks.",
+  weeks: [
+    {
+      id: "week-8",
+      label: "Week 8",
+      dateRange: "27 Jul - 30 Jul",
+      days: [
+        { id: "2026-07-27", day: "Monday", date: "27 Jul" },
+        { id: "2026-07-28", day: "Tuesday", date: "28 Jul" },
+        { id: "2026-07-29", day: "Wednesday", date: "29 Jul" },
+        { id: "2026-07-30", day: "Thursday", date: "30 Jul" },
+      ],
+    },
+    {
+      id: "week-9",
+      label: "Week 9",
+      dateRange: "3 Aug - 6 Aug",
+      days: [
+        { id: "2026-08-03", day: "Monday", date: "3 Aug" },
+        { id: "2026-08-04", day: "Tuesday", date: "4 Aug" },
+        { id: "2026-08-05", day: "Wednesday", date: "5 Aug" },
+        { id: "2026-08-06", day: "Thursday", date: "6 Aug" },
+      ],
+    },
+    {
+      id: "week-10",
+      label: "Week 10",
+      dateRange: "10 Aug - 13 Aug",
+      days: [
+        { id: "2026-08-10", day: "Monday", date: "10 Aug" },
+        { id: "2026-08-11", day: "Tuesday", date: "11 Aug" },
+        { id: "2026-08-12", day: "Wednesday", date: "12 Aug" },
+        { id: "2026-08-13", day: "Thursday", date: "13 Aug" },
+      ],
+    },
+    {
+      id: "week-11",
+      label: "Week 11",
+      dateRange: "17 Aug - 20 Aug",
+      days: [
+        { id: "2026-08-17", day: "Monday", date: "17 Aug" },
+        { id: "2026-08-18", day: "Tuesday", date: "18 Aug" },
+        { id: "2026-08-19", day: "Wednesday", date: "19 Aug" },
+        { id: "2026-08-20", day: "Thursday", date: "20 Aug" },
+      ],
+    },
+    {
+      id: "week-12",
+      label: "Week 12",
+      dateRange: "24 Aug - 27 Aug",
+      days: [
+        { id: "2026-08-24", day: "Monday", date: "24 Aug" },
+        { id: "2026-08-25", day: "Tuesday", date: "25 Aug" },
+        { id: "2026-08-26", day: "Wednesday", date: "26 Aug" },
+        { id: "2026-08-27", day: "Thursday", date: "27 Aug" },
+      ],
+    },
+  ],
+};
 
 const BRACKET_TYPE_LABELS = {
   placement: "Placement",
@@ -937,6 +1002,18 @@ export default function StellenboschRl2026WorkspacePage() {
       })),
     [bindWeekMatches],
   );
+  const playoffSchedule = useMemo(
+    () => ({
+      ...PLAYOFF_WEEK_GROUP,
+      weeks: PLAYOFF_WEEK_GROUP.weeks.map(bindWeekMatches),
+    }),
+    [bindWeekMatches],
+  );
+  const playoffScheduleMatchCount = useMemo(
+    () =>
+      playoffSchedule.weeks.reduce((total, week) => total + week.matchCount, 0),
+    [playoffSchedule],
+  );
 
   const runRosterUpdate = useCallback(async ({
     trigger = "manual",
@@ -1292,6 +1369,37 @@ export default function StellenboschRl2026WorkspacePage() {
             description="Winners and losers both advance. Fixtures fill in as each round is decided."
             action={<Chip>Weeks 8-12</Chip>}
           />
+          <details className="group rounded-xl border border-border/70 bg-surface-muted/40">
+            <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+              <div>
+                <p className="text-base font-semibold text-ink">
+                  {playoffSchedule.title}
+                </p>
+                <p className="text-sm text-ink-muted">
+                  {playoffSchedule.description}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Chip>{playoffScheduleMatchCount} matches</Chip>
+                <span
+                  aria-hidden="true"
+                  className="text-ink-muted transition-transform group-open:rotate-180"
+                >
+                  ▾
+                </span>
+              </div>
+            </summary>
+            <div className="space-y-3 px-2 pb-3 sm:px-3">
+              {playoffSchedule.weeks.map((week) => (
+                <WeekScheduleCard
+                  key={week.id}
+                  week={week}
+                  renderMatchCard={renderMatchCard}
+                  loading={loading}
+                />
+              ))}
+            </div>
+          </details>
           {playoffBrackets.length > 1 ? (
             // Several brackets (e.g. championship + placement, or one per
             // division): head each with its own name so they stay distinct.

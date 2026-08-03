@@ -3,7 +3,14 @@ import { getMatchesByIds, updateMatchParticipants } from "./matchService";
 
 const BRACKET_FIELDS = "id, event_id, name, type, is_locked, created_at";
 const BRACKET_NODE_FIELDS = "*";
-const FINISHED_MATCH_STATUSES = new Set(["finished", "completed"]);
+// Canceled matches still carry a recorded score line (e.g. a forfeit), so they
+// resolve a winner/loser for advancement just like a played match does.
+const FINISHED_MATCH_STATUSES = new Set([
+  "finished",
+  "completed",
+  "canceled",
+  "cancelled",
+]);
 
 function normalizeLookupText(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";

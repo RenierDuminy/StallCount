@@ -18,8 +18,16 @@ import { isLiveActivity, onLiveActivityChange } from "./liveActivity";
 // while the tab stays open). 30 minutes is a reasonable balance.
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
+// Grace period for a quick look at another tab. Returning to the tab within this
+// window skips the update check entirely, so briefly checking something else
+// cannot trigger a reload that discards in-page state (filters, scroll, a
+// half-filled form). A longer absence is treated as coming back to the app and
+// does check for a new build.
+const VISIBILITY_UPDATE_GRACE_MS = 30 * 1000;
+
 let reloadPending = false;
 let hasReloaded = false;
+let lastHiddenAt = 0;
 
 function doReload() {
   if (hasReloaded) return;
@@ -125,12 +133,22 @@ export async function registerAutoUpdate() {
     reloadWhenSafe();
   });
 
-  // Re-check for updates whenever the tab regains focus.
+  // Re-check for updates when the tab regains focus after a real absence.
+  // Quick tab switches (under the grace period) are skipped so that glancing at
+  // another tab never costs the user their place on this one.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      navigator.serviceWorker.getRegistration().then((reg) => {
-        reg?.update().catch(() => {});
-      });
+    if (document.visibilityState === "hidden") {
+      lastHiddenAt = Date.now();
+      return;
     }
+
+    if (document.visibilityState !== "visible") return;
+
+    const hiddenFor = lastHiddenAt ? Date.now() - lastHiddenAt : Infinity;
+    if (hiddenFor < VISIBILITY_UPDATE_GRACE_MS) return;
+
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      reg?.update().catch(() => {});
+    });
   });
 }

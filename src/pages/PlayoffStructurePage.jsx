@@ -40,7 +40,15 @@ import {
 
 const PLAYOFF_STRUCTURE_EVENT_KEY = "stallcount.playoffStructure.eventId";
 const MATCH_LIMIT = 400;
-const FINISHED_MATCH_STATUSES = new Set(["finished", "completed", "final"]);
+// Canceled matches keep the score line recorded against them (e.g. a forfeit),
+// so they count as a decided result for standings and seeding.
+const FINISHED_MATCH_STATUSES = new Set([
+  "finished",
+  "completed",
+  "final",
+  "canceled",
+  "cancelled",
+]);
 const BRACKET_TYPES = [
   { value: "placement", label: "Placement" },
   { value: "single_elim", label: "Single elimination" },
