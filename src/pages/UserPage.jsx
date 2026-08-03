@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Card, Chip, Panel, SectionShell, SectionHeader } from "../components/ui/primitives";
+import AppUpdateChecker from "../components/AppUpdateChecker";
 import { getCurrentUser, getRoleCatalog } from "../services/userService";
 import { supabase } from "../services/supabaseClient";
 import {
@@ -636,6 +637,8 @@ export default function UserPage() {
             </div>
           </section>
         ) : null}
+
+        <AppUpdateChecker />
 
         {user ? (
           <>

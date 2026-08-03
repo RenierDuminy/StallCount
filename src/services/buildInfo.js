@@ -9,6 +9,8 @@
 // __BUILD_SHA__ / __BUILD_TIME__ are substituted at build time by Vite
 // (see the `define` block in vite.config.js).
 
+import { clearAllCachedQueries } from "../utils/queryCache";
+
 export const BUILD_SHA = __BUILD_SHA__;
 export const BUILD_TIME = __BUILD_TIME__;
 
@@ -53,4 +55,61 @@ export async function checkBuildFreshness() {
     deployed,
     stale: deployed !== BUILD_SHA,
   };
+}
+
+// Apply a pending update: swap onto the new bundle and reload onto fresh data.
+//
+// A plain location.reload() is not enough. The service worker serves the
+// precached OLD bundle, so the page would come back on the same build it is
+// already running. The waiting worker has to be activated (or the registration
+// updated, if the new worker has not been picked up yet) before the reload, and
+// the read-through query cache has to be dropped so the new code does not render
+// data the old build cached.
+//
+// Best-effort throughout: every step is optional, and the reload happens even if
+// the service worker is unavailable (unsupported browser, dev server, private
+// mode), because on those paths a plain reload does fetch the new bundle anyway.
+export async function applyAppUpdate() {
+  try {
+    clearAllCachedQueries();
+  } catch {
+    // Cache clearing must never block the reload.
+  }
+
+  if ("serviceWorker" in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        // Pull the newest worker in case this tab has not noticed the deploy.
+        await registration.update().catch(() => {});
+        const waiting = registration.waiting;
+        if (waiting) {
+          // sw.js listens for SKIP_WAITING and activates immediately.
+          waiting.postMessage({ type: "SKIP_WAITING" });
+          // Give the new worker a moment to take control so the reload below is
+          // served the new bundle. Capped so a worker that never activates
+          // cannot leave the user staring at a spinner.
+          await waitForControllerChange(3000);
+        }
+      }
+    } catch {
+      // Fall through to the reload regardless.
+    }
+  }
+
+  window.location.reload();
+}
+
+function waitForControllerChange(timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    function finish() {
+      if (settled) return;
+      settled = true;
+      navigator.serviceWorker.removeEventListener("controllerchange", finish);
+      resolve();
+    }
+    navigator.serviceWorker.addEventListener("controllerchange", finish);
+    setTimeout(finish, timeoutMs);
+  });
 }

@@ -143,6 +143,26 @@ export function invalidateCachedQuery(rawKey) {
   }
 }
 
+// Drop every cached read, in both layers. Used when applying an app update:
+// the new build may read data whose shape has changed, so nothing cached by the
+// old build should survive the reload.
+export function clearAllCachedQueries() {
+  memoryCache.clear();
+
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    for (let i = storage.length - 1; i >= 0; i -= 1) {
+      const key = storage.key(i);
+      if (key && key.startsWith(CACHE_PREFIX)) {
+        storage.removeItem(key);
+      }
+    }
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
 export function invalidateCachedQueries(prefix) {
   const storage = getStorage();
   const scopedPrefix = buildKey(prefix);
