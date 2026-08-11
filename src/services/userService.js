@@ -28,6 +28,27 @@ function mapEventRoleAssignments(assignments) {
   }));
 }
 
+function mapTeamRoleAssignments(assignments) {
+  return (Array.isArray(assignments) ? assignments : []).map((assignment) => ({
+    assignmentId: assignment.id,
+    roleId: assignment.role_id ?? assignment.role?.id ?? null,
+    roleName: assignment.role?.name ?? null,
+    roleScope: assignment.role?.scope ?? "team",
+    roleDescription: assignment.role?.description ?? "",
+    teamId: assignment.team_id ?? assignment.team?.id ?? null,
+    teamName: assignment.team?.name ?? "",
+    teamShortName: assignment.team?.short_name ?? null,
+    // Team grants keep their event details so callers can resolve parent-event
+    // access without a second lookup.
+    eventId: assignment.event_id ?? assignment.event?.id ?? null,
+    eventName: assignment.event?.name ?? "",
+    eventStartDate: assignment.event?.start_date ?? null,
+    eventEndDate: assignment.event?.end_date ?? null,
+    grantedAt: assignment.created_at ?? null,
+    grantedBy: assignment.granted_by ?? null,
+  }));
+}
+
 function mapRolePermissions(permissionRows) {
   const items = Array.isArray(permissionRows) ? permissionRows : [];
   return items
@@ -75,6 +96,17 @@ export async function getCurrentUser() {
           granted_by,
           role:roles(id, name, description, scope),
           event:events(id, name, start_date, end_date)
+        ),
+        team_roles:team_user_roles!team_user_roles_user_id_fkey(
+          id,
+          role_id,
+          team_id,
+          event_id,
+          created_at,
+          granted_by,
+          role:roles(id, name, description, scope),
+          team:teams(id, name, short_name),
+          event:events(id, name, start_date, end_date)
         )
       `,
     )
@@ -88,12 +120,14 @@ export async function getCurrentUser() {
   if (data) {
     const roles = mapRoleAssignments(data.assignments);
     const eventRoles = mapEventRoleAssignments(data.event_roles);
+    const teamRoles = mapTeamRoleAssignments(data.team_roles);
     const primaryRole = roles[0]?.roleName || null;
     return {
       ...data,
       role: primaryRole,
       roles,
       eventRoles,
+      teamRoles,
       email: data.email || user.email,
     };
   }
@@ -104,6 +138,7 @@ export async function getCurrentUser() {
     role: user.user_metadata?.role || "",
     roles: [],
     eventRoles: [],
+    teamRoles: [],
     email: user.email,
   };
 }
@@ -166,14 +201,52 @@ export async function getUserEventRoleAssignments(userId) {
   return mapEventRoleAssignments(data);
 }
 
+const TEAM_ROLE_SELECT = `
+  id,
+  user_id,
+  role_id,
+  team_id,
+  event_id,
+  created_at,
+  granted_by,
+  role:roles(id, name, description, scope),
+  team:teams(id, name, short_name),
+  event:events(id, name, start_date, end_date)
+`;
+
+export async function getUserTeamRoleAssignments(userId) {
+  if (!userId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("team_user_roles")
+    .select(TEAM_ROLE_SELECT)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("[getUserTeamRoleAssignments] Unable to load team roles:", error);
+    throw new Error(error.message || "Failed to load user team roles");
+  }
+
+  return mapTeamRoleAssignments(data);
+}
+
 export async function getUserAccessRoleAssignments(userId) {
   if (!userId) {
     return [];
   }
 
-  const [globalRoles, eventRoles] = await Promise.all([
+  const [globalRoles, eventRoles, teamRoles] = await Promise.all([
     getUserRoleAssignments(userId),
     getUserEventRoleAssignments(userId),
+    // Team roles must never be able to break global/event access: this feeds
+    // AuthContext, so a throw here would lock users out of every gated route.
+    getUserTeamRoleAssignments(userId).catch((error) => {
+      console.error("[getUserAccessRoleAssignments] Team roles unavailable:", error);
+      return [];
+    }),
   ]);
 
   const seen = new Set();
@@ -183,7 +256,16 @@ export async function getUserAccessRoleAssignments(userId) {
     const roleId = assignment?.roleId ?? null;
     const roleName = assignment?.roleName ?? "";
     const eventId = assignment?.eventId ?? null;
-    const key = `${roleId ?? "none"}|${String(roleName).trim().toLowerCase()}|${eventId ?? "global"}`;
+    const teamId = assignment?.teamId ?? null;
+    // Scope and team are part of the key: two captain grants for different
+    // teams at the same event are distinct grants and must both survive.
+    const key = [
+      scope,
+      roleId ?? "none",
+      String(roleName).trim().toLowerCase(),
+      eventId ?? "-",
+      teamId ?? "-",
+    ].join("|");
     if (seen.has(key)) {
       return;
     }
@@ -199,6 +281,9 @@ export async function getUserAccessRoleAssignments(userId) {
   );
   (Array.isArray(eventRoles) ? eventRoles : []).forEach((assignment) =>
     appendUnique(assignment, "event"),
+  );
+  (Array.isArray(teamRoles) ? teamRoles : []).forEach((assignment) =>
+    appendUnique(assignment, "team"),
   );
 
   return combined;
@@ -223,6 +308,17 @@ const ACCESS_CONTROL_USER_SELECT = `
     granted_by,
     role:roles(id, name, description, scope),
     event:events(id, name, start_date, end_date)
+  ),
+  team_roles:team_user_roles!team_user_roles_user_id_fkey(
+    id,
+    role_id,
+    team_id,
+    event_id,
+    created_at,
+    granted_by,
+    role:roles(id, name, description, scope),
+    team:teams(id, name, short_name),
+    event:events(id, name, start_date, end_date)
   )
 `;
 
@@ -234,6 +330,7 @@ function mapAccessControlUserRow(row) {
     createdAt: row.created_at || null,
     roles: mapRoleAssignments(row.assignments),
     eventRoles: mapEventRoleAssignments(row.event_roles),
+    teamRoles: mapTeamRoleAssignments(row.team_roles),
   };
 }
 
@@ -376,6 +473,65 @@ export async function getEventLinkedUsers(eventId) {
     };
 
     existing.eventRoles = [...existing.eventRoles, mappedEventRole];
+    grouped.set(userId, existing);
+  });
+
+  return Array.from(grouped.values()).sort((left, right) => {
+    const leftLabel = left.fullName || left.email || "";
+    const rightLabel = right.fullName || right.email || "";
+    return leftLabel.localeCompare(rightLabel);
+  });
+}
+
+/**
+ * Users holding team-scoped grants, grouped per user.
+ * Pass `teamId` for a single team, `eventId` for every team in an event.
+ */
+export async function getTeamLinkedUsers({ teamId, eventId } = {}) {
+  if (!teamId && !eventId) {
+    return [];
+  }
+
+  let query = supabase
+    .from("team_user_roles")
+    .select(
+      `${TEAM_ROLE_SELECT},
+        user:profiles!team_user_roles_user_id_fkey(id, email, full_name, created_at)
+      `,
+    )
+    .order("created_at", { ascending: true });
+
+  if (teamId) {
+    query = query.eq("team_id", teamId);
+  }
+  if (eventId) {
+    query = query.eq("event_id", eventId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(error.message || "Failed to load team-linked users");
+  }
+
+  const grouped = new Map();
+
+  (data ?? []).forEach((row) => {
+    const userId = row?.user?.id || row?.user_id || null;
+    if (!userId) return;
+
+    const mappedTeamRole = mapTeamRoleAssignments([row])[0];
+    if (!mappedTeamRole) return;
+
+    const existing = grouped.get(userId) || {
+      id: userId,
+      email: row?.user?.email || "",
+      fullName: row?.user?.full_name || "",
+      createdAt: row?.user?.created_at || null,
+      teamRoles: [],
+    };
+
+    existing.teamRoles = [...existing.teamRoles, mappedTeamRole];
     grouped.set(userId, existing);
   });
 
@@ -612,6 +768,90 @@ export async function addEventUserRoleAssignment(userId, roleId, eventId) {
     grantedAt: data?.created_at ?? null,
     grantedBy: data?.granted_by ?? null,
   };
+}
+
+export async function addTeamUserRoleAssignment(userId, roleId, teamId, eventId = null) {
+  if (!userId) {
+    throw new Error("User ID is required to add a team role.");
+  }
+  if (!teamId) {
+    throw new Error("Team ID is required to add a team role.");
+  }
+
+  let normalizedRoleId = null;
+  if (roleId !== null && roleId !== undefined && roleId !== "") {
+    const parsed = Number(roleId);
+    normalizedRoleId = Number.isNaN(parsed) ? null : parsed;
+  }
+
+  if (normalizedRoleId === null) {
+    throw new Error("Role ID is required to add a team role.");
+  }
+
+  const {
+    data: { user: actor },
+  } = await supabase.auth.getUser();
+  const grantedBy = actor?.id ?? null;
+
+  const { data, error } = await supabase
+    .from("team_user_roles")
+    .insert({
+      user_id: userId,
+      role_id: normalizedRoleId,
+      team_id: teamId,
+      event_id: eventId || null,
+      granted_by: grantedBy,
+    })
+    .select(TEAM_ROLE_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    // 23505 = the unique constraint / partial unique index on this table.
+    if (error.code === "23505") {
+      throw new Error("That user already has this role for this team.");
+    }
+    throw new Error(error.message || "Failed to add team role");
+  }
+
+  return mapTeamRoleAssignments(data ? [data] : [])[0] ?? null;
+}
+
+export async function removeTeamUserRoleAssignment(
+  assignmentId,
+  userId,
+  roleId,
+  teamId,
+  eventId = null,
+) {
+  if (
+    !assignmentId &&
+    (!userId || !teamId || roleId === undefined || roleId === null || roleId === "")
+  ) {
+    throw new Error(
+      "Assignment ID or user/team/role identifiers are required to remove a team role.",
+    );
+  }
+
+  let query = supabase.from("team_user_roles").delete();
+
+  if (assignmentId) {
+    query = query.eq("id", assignmentId);
+  } else {
+    const parsed = Number(roleId);
+    const normalizedRoleId = Number.isNaN(parsed) ? null : parsed;
+    if (normalizedRoleId === null) {
+      throw new Error("Valid role ID is required to remove a team role.");
+    }
+    query = query.eq("user_id", userId).eq("team_id", teamId).eq("role_id", normalizedRoleId);
+    // A null event_id needs .is() — .eq("event_id", null) matches nothing.
+    query = eventId ? query.eq("event_id", eventId) : query.is("event_id", null);
+  }
+
+  const { error } = await query;
+
+  if (error) {
+    throw new Error(error.message || "Failed to remove team role");
+  }
 }
 
 export async function removeEventUserRoleAssignment(assignmentId, userId, roleId, eventId) {

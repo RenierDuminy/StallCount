@@ -1031,7 +1031,16 @@ export default function ScoreKeeperView() {
 
       {setupModalOpen && (
         <ActionModal title="5v5 match setup" onClose={() => setSetupModalOpen(false)} alignTop scrollable wide>
-          <form className="space-y-2" onSubmit={handleInitialiseMatch}>
+          <form
+            className="space-y-2"
+            onSubmit={async (event) => {
+              // Persist the rules for this match first so initialise runs against saved settings.
+              if (handleSaveSettings()) {
+                setSettingsSavedAt(Date.now());
+              }
+              await handleInitialiseMatch(event);
+            }}
+          >
             <div className="space-y-1.5">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1304,20 +1313,9 @@ export default function ScoreKeeperView() {
               disabled={initialising || !selectedMatch || !isStartMatchReady}
               className="w-full rounded-full bg-[#0f5132] px-5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {initialising ? "Initialising..." : "Initialise"}
+              {initialising ? "Saving & initialising..." : "Save settings & initialise"}
             </button>
             <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (handleSaveSettings()) {
-                    setSettingsSavedAt(Date.now());
-                  }
-                }}
-                className="w-full rounded-full bg-[#0f5132] px-5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
-              >
-                Save settings for this match
-              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -1330,8 +1328,8 @@ export default function ScoreKeeperView() {
               </button>
               <p className="text-xs text-[#0f5132]/70">
                 {settingsSavedAt
-                  ? `Saved ${new Date(settingsSavedAt).toLocaleTimeString()}. Stored on this device only.`
-                  : "Saved on this device only — they won't follow you to another tablet."}
+                  ? `Settings saved ${new Date(settingsSavedAt).toLocaleTimeString()}. Stored on this device only.`
+                  : "Initialising saves these settings on this device only — they won't follow you to another tablet."}
               </p>
             </div>
             <Link

@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import usePersistentState from "../../hooks/usePersistentState";
 import { Card, Panel, SectionHeader, Chip } from "../../components/ui/primitives";
-import { getEventLinkedUsers } from "../../services/userService";
+import { getEventLinkedUsers, getTeamLinkedUsers } from "../../services/userService";
 import { normaliseRoleList, roleAssignmentsIncludeAdmin } from "../../utils/accessControl";
+import { assignmentScopeOf } from "../../utils/roleScope";
 import { TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY } from "./persistenceKeys";
 
 const LIGHT_INPUT_CLASS =
@@ -23,10 +24,46 @@ const LINKED_ROLE_GROUPS = [
     title: "Captains",
   },
   {
+    key: "team_manager",
+    title: "Team managers",
+  },
+  {
     key: "media",
     title: "Media",
   },
 ];
+
+function compareAlphabetical(a, b) {
+  return String(a ?? "").localeCompare(String(b ?? ""), undefined, { sensitivity: "base" });
+}
+
+/**
+ * Load event-scoped and team-scoped grants for an event and merge them by user
+ * id, so someone holding both kinds appears once carrying both lists.
+ */
+async function loadLinkedCrew(eventId) {
+  const [linkedUsers, teamLinkedUsers] = await Promise.all([
+    getEventLinkedUsers(eventId),
+    getTeamLinkedUsers({ eventId }).catch(() => []),
+  ]);
+
+  const merged = new Map();
+  (Array.isArray(linkedUsers) ? linkedUsers : []).forEach((user) => {
+    merged.set(user.id, { ...user, teamRoles: [] });
+  });
+  (Array.isArray(teamLinkedUsers) ? teamLinkedUsers : []).forEach((user) => {
+    const existing = merged.get(user.id);
+    if (existing) {
+      existing.teamRoles = [...(existing.teamRoles ?? []), ...(user.teamRoles ?? [])];
+      return;
+    }
+    merged.set(user.id, { ...user, eventRoles: [] });
+  });
+
+  return Array.from(merged.values()).sort((left, right) =>
+    compareAlphabetical(left.fullName || left.email || "", right.fullName || right.email || ""),
+  );
+}
 
 function formatGrantedAt(value) {
   if (!value) return "Grant date unknown";
@@ -62,9 +99,14 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
       return eventsList;
     }
 
+    // Team grants carry their parent event, so they widen event access too.
     const allowedEventIds = new Set(
       roles
-        .filter((assignment) => assignment?.scope === "event" && typeof assignment?.eventId === "string")
+        .filter((assignment) => {
+          const scope = assignmentScopeOf(assignment);
+          if (scope !== "event" && scope !== "team") return false;
+          return typeof assignment?.eventId === "string";
+        })
         .map((assignment) => assignment.eventId),
     );
 
@@ -113,9 +155,9 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
       setLoading(true);
       setError("");
       try {
-        const linkedUsers = await getEventLinkedUsers(selectedEventId);
+        const crew = await loadLinkedCrew(selectedEventId);
         if (!active) return;
-        setUsers(Array.isArray(linkedUsers) ? linkedUsers : []);
+        setUsers(crew);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : "Unable to load linked users.");
@@ -137,26 +179,64 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
   const groupedUsers = useMemo(
     () =>
       LINKED_ROLE_GROUPS.map((group) => {
-        const entries = users
-          .map((user) => {
-            const matchingAssignments = (Array.isArray(user.eventRoles) ? user.eventRoles : []).filter((assignment) =>
-              normaliseRoleList(assignment?.roleName).includes(group.key),
-            );
+        const entries = [];
 
-            if (!matchingAssignments.length) {
-              return null;
-            }
+        users.forEach((user) => {
+          const allAssignments = [
+            ...(Array.isArray(user.eventRoles) ? user.eventRoles : []),
+            ...(Array.isArray(user.teamRoles) ? user.teamRoles : []),
+          ];
+          const matchingAssignments = allAssignments.filter((assignment) =>
+            normaliseRoleList(assignment?.roleName).includes(group.key),
+          );
 
-            return {
+          if (!matchingAssignments.length) return;
+
+          // One row per team so a captain of several teams is listed under
+          // each. Assignments without a team (event-scoped roles) collapse
+          // into a single teamless row.
+          const teamAssignments = matchingAssignments.filter((assignment) => assignment?.teamName);
+          const eventOnlyAssignments = matchingAssignments.filter(
+            (assignment) => !assignment?.teamName,
+          );
+
+          teamAssignments.forEach((assignment) => {
+            entries.push({
               ...user,
-              matchingAssignments,
-            };
-          })
-          .filter(Boolean);
+              rowKey: `${user.id}-${assignment.assignmentId || assignment.teamId}`,
+              teamName: assignment.teamName || "",
+              matchingAssignments: [assignment],
+            });
+          });
+
+          if (eventOnlyAssignments.length > 0) {
+            entries.push({
+              ...user,
+              rowKey: `${user.id}-event`,
+              teamName: "",
+              matchingAssignments: eventOnlyAssignments,
+            });
+          }
+        });
+
+        // Team first, then user. Teamless (event-wide) rows sort last.
+        entries.sort((left, right) => {
+          if (Boolean(left.teamName) !== Boolean(right.teamName)) {
+            return left.teamName ? -1 : 1;
+          }
+          const byTeam = compareAlphabetical(left.teamName, right.teamName);
+          if (byTeam !== 0) return byTeam;
+          return compareAlphabetical(
+            left.fullName || left.email || "",
+            right.fullName || right.email || "",
+          );
+        });
 
         return {
           ...group,
           users: entries,
+          // Rows are per user-team pairing; the tile counts people.
+          personCount: new Set(entries.map((entry) => entry.id)).size,
         };
       }),
     [users],
@@ -180,9 +260,9 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
                   if (!selectedEventId) return;
                   setLoading(true);
                   setError("");
-                  getEventLinkedUsers(selectedEventId)
-                    .then((linkedUsers) => {
-                      setUsers(Array.isArray(linkedUsers) ? linkedUsers : []);
+                  loadLinkedCrew(selectedEventId)
+                    .then((crew) => {
+                      setUsers(crew);
                     })
                     .catch((err) => {
                       setError(err instanceof Error ? err.message : "Unable to refresh linked users.");
@@ -246,7 +326,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
             </div>
             <div className="flex items-center gap-3">
               <div>
-                <p className="text-right text-lg font-bold leading-none text-[var(--sc-surface-light-ink)]">{group.users.length}</p>
+                <p className="text-right text-lg font-bold leading-none text-[var(--sc-surface-light-ink)]">{group.personCount}</p>
                 <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/55">linked</p>
               </div>
             </div>
@@ -262,7 +342,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
                 <p className="truncate text-lg font-semibold text-[var(--sc-surface-light-ink)]">{group.title}</p>
               </div>
               <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/55">
-                {group.users.length} linked
+                {group.personCount} linked
               </p>
             </div>
 
@@ -274,29 +354,40 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
               </Panel>
             ) : (
               <div className="overflow-hidden rounded-xl border border-[var(--sc-surface-light-border)] bg-white">
-                {group.users.map((user) => (
-                  <div
-                    key={`${group.key}-${user.id}`}
-                    className="grid grid-cols-[minmax(0,1fr),auto] items-center gap-3 border-b border-[var(--sc-surface-light-border)] px-3 py-2 last:border-b-0"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-[var(--sc-surface-light-ink)]">
-                        {user.fullName || "Unnamed user"}
-                      </p>
-                      <p className="truncate text-xs text-[var(--sc-surface-light-ink)]/65">
-                        {user.email || "No email recorded"}
-                      </p>
+                {group.users.map((entry, index) => {
+                  // Rows are pre-sorted by team; print a heading whenever the
+                  // team changes so each team's crew reads as one block.
+                  const previous = index > 0 ? group.users[index - 1] : null;
+                  const showTeamHeading = !previous || previous.teamName !== entry.teamName;
+
+                  return (
+                    <div key={`${group.key}-${entry.rowKey}`}>
+                      {showTeamHeading ? (
+                        <p className="border-b border-[var(--sc-surface-light-border)]/30 bg-[var(--sc-surface-light-tint)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/80">
+                          {entry.teamName || "Event-wide"}
+                        </p>
+                      ) : null}
+                      <div className="grid grid-cols-[minmax(0,1fr),auto] items-center gap-3 border-b border-[var(--sc-surface-light-border)] px-3 py-2 last:border-b-0">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[var(--sc-surface-light-ink)]">
+                            {entry.fullName || "Unnamed user"}
+                          </p>
+                          <p className="truncate text-xs text-[var(--sc-surface-light-ink)]/65">
+                            {entry.email || "No email recorded"}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/50">
+                            Linked
+                          </p>
+                          <p className="text-xs font-medium text-[var(--sc-surface-light-ink)]">
+                            {formatGrantedAt(entry.matchingAssignments[0]?.grantedAt)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/50">
-                        Linked
-                      </p>
-                      <p className="text-xs font-medium text-[var(--sc-surface-light-ink)]">
-                        {formatGrantedAt(user.matchingAssignments[0]?.grantedAt)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>

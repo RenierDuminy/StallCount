@@ -167,6 +167,8 @@ export default function TournamentDirectorPage() {
       return eventsList;
     }
 
+    // Deliberately event-scoped only: a team-scoped grant (captain, team
+    // manager) does not unlock the tournament director workspace.
     const allowedEventIds = new Set(
       roles
         .filter((assignment) => assignment?.scope === "event" && typeof assignment?.eventId === "string")

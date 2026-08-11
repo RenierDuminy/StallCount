@@ -8,6 +8,8 @@ const ROLE_NAME_BY_ID = {
 const ADMIN_TOOL_ACCESS_ROLES = ["admin", "tournament_director", "media", "captain"];
 const SCOREKEEPER_ACCESS_ROLES = ["tournament_director", "field_assistant", "scorekeeper"];
 const CAPTAIN_ACCESS_ROLES = ["captain"];
+// Roles that are granted per team via team_user_roles.
+const TEAM_MANAGEMENT_ACCESS_ROLES = ["captain", "team_manager"];
 const TOURNAMENT_DIRECTOR_ACCESS_ROLES = ["tournament_director"];
 const SYS_ADMIN_ACCESS_ROLES = ["admin"];
 const ADMIN_ACCESS_ACCESS_ROLES = ["admin"];
@@ -307,6 +309,7 @@ export {
   ADMIN_TOOL_ACCESS_ROLES,
   SCOREKEEPER_ACCESS_ROLES,
   CAPTAIN_ACCESS_ROLES,
+  TEAM_MANAGEMENT_ACCESS_ROLES,
   TOURNAMENT_DIRECTOR_ACCESS_ROLES,
   SYS_ADMIN_ACCESS_ROLES,
   ADMIN_ACCESS_ACCESS_ROLES,

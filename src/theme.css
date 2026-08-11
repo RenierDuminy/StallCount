@@ -104,6 +104,8 @@
   --sc-surface-light-border: #0b3a24;
   --sc-surface-light-ink: #0b1f19;
   --sc-surface-light-shadow: 0 25px 60px rgba(0, 0, 0, 0.08);
+  /* Tinted band for grouping headers inside light panels. */
+  --sc-surface-light-tint: #e3f5e6;
 
   --sc-tag-bg: rgba(198, 255, 98, 0.12);
   --sc-tag-border: rgba(198, 255, 98, 0.6);

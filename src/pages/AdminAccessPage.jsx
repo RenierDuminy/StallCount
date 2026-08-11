@@ -13,12 +13,16 @@ import {
 import {
   addUserRoleAssignment,
   addEventUserRoleAssignment,
+  addTeamUserRoleAssignment,
   getAccessControlEvents,
   getAccessControlUsers,
   getRoleCatalog,
   removeUserRoleAssignment,
   removeEventUserRoleAssignment,
+  removeTeamUserRoleAssignment,
 } from "../services/userService";
+import { getTeamsLinkedToEvent } from "../services/teamService";
+import { isTeamScopedRole } from "../utils/roleScope";
 import usePersistentState from "../hooks/usePersistentState";
 
 const ADMIN_ACCESS_SEARCH_KEY = "stallcount:admin-access:search:v1";
@@ -29,6 +33,7 @@ const ADMIN_ACCESS_SELECTED_USER_KEY = "stallcount:admin-access:selected-user:v1
 const ADMIN_ACCESS_SELECTED_EVENT_KEY = "stallcount:admin-access:selected-event:v1";
 const ADMIN_ACCESS_PENDING_ROLE_KEY = "stallcount:admin-access:pending-event-role:v1";
 const ADMIN_ACCESS_PENDING_ADMIN_ROLE_KEY = "stallcount:admin-access:pending-admin-role:v1";
+const ADMIN_ACCESS_PENDING_TEAM_KEY = "stallcount:admin-access:pending-team:v1";
 
 function normalizePermissionKey(value) {
   return String(value || "")
@@ -55,6 +60,7 @@ function formatRoleCounts(users, adminRoleIds, adminRoleNames) {
   return users.reduce((acc, user) => {
     const assignments = Array.isArray(user.roles) ? user.roles : [];
     const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
+    const teamRoles = Array.isArray(user.teamRoles) ? user.teamRoles : [];
     const adminAssignments = assignments.filter((assignment) => {
       if (!assignment) return false;
       if (assignment.roleId !== null && assignment.roleId !== undefined) {
@@ -63,7 +69,7 @@ function formatRoleCounts(users, adminRoleIds, adminRoleNames) {
       const normalizedName = normalizePermissionKey(assignment.roleName || "");
       return normalizedName ? adminRoleNames.has(normalizedName) : false;
     });
-    if (adminAssignments.length === 0 && eventRoles.length === 0) {
+    if (adminAssignments.length === 0 && eventRoles.length === 0 && teamRoles.length === 0) {
       acc.set("none", (acc.get("none") || 0) + 1);
       return acc;
     }
@@ -75,6 +81,13 @@ function formatRoleCounts(users, adminRoleIds, adminRoleNames) {
       acc.set(key, (acc.get(key) || 0) + 1);
     });
     eventRoles.forEach((assignment) => {
+      if (assignment.roleId === null || assignment.roleId === undefined) {
+        return;
+      }
+      const key = String(assignment.roleId);
+      acc.set(key, (acc.get(key) || 0) + 1);
+    });
+    teamRoles.forEach((assignment) => {
       if (assignment.roleId === null || assignment.roleId === undefined) {
         return;
       }
@@ -96,6 +109,16 @@ function formatEventRoleLabel(entry) {
   const eventLabel = entry.eventName || entry.eventId || "Event";
   const roleLabel = entry.roleName || entry.roleId || "Role";
   return `${eventLabel} - ${roleLabel}`;
+}
+
+function formatTeamRoleLabel(entry) {
+  if (!entry) return "Team role";
+  const teamLabel = entry.teamName || entry.teamId || "Team";
+  const roleLabel = entry.roleName || entry.roleId || "Role";
+  const eventLabel = entry.eventName || "";
+  return eventLabel
+    ? `${teamLabel} - ${roleLabel} (${eventLabel})`
+    : `${teamLabel} - ${roleLabel}`;
 }
 
 function formatEventOptionLabel(event) {
@@ -134,10 +157,50 @@ export default function AdminAccessPage() {
   const [roleManagerError, setRoleManagerError] = useState("");
   const [pendingRoleId, setPendingRoleId] = usePersistentState(ADMIN_ACCESS_PENDING_ROLE_KEY, "");
   const [pendingAdminRoleId, setPendingAdminRoleId] = usePersistentState(ADMIN_ACCESS_PENDING_ADMIN_ROLE_KEY, "");
+  const [pendingTeamId, setPendingTeamId] = usePersistentState(ADMIN_ACCESS_PENDING_TEAM_KEY, "");
+  const [eventTeams, setEventTeams] = useState([]);
+  const [eventTeamsLoading, setEventTeamsLoading] = useState(false);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  // Teams for the selected event, used when granting a team-scoped role.
+  useEffect(() => {
+    if (!selectedEventId) {
+      setEventTeams([]);
+      setEventTeamsLoading(false);
+      return undefined;
+    }
+
+    let isCancelled = false;
+    setEventTeamsLoading(true);
+
+    getTeamsLinkedToEvent(selectedEventId)
+      .then((data) => {
+        if (isCancelled) return;
+        setEventTeams(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (isCancelled) return;
+        setEventTeams([]);
+      })
+      .finally(() => {
+        if (!isCancelled) setEventTeamsLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedEventId]);
+
+  // Drop a persisted team that is not in the selected event.
+  useEffect(() => {
+    if (eventTeamsLoading) return;
+    if (pendingTeamId && !eventTeams.some((team) => String(team.id) === String(pendingTeamId))) {
+      setPendingTeamId("");
+    }
+  }, [eventTeams, eventTeamsLoading, pendingTeamId, setPendingTeamId]);
 
   async function loadData() {
     setLoading(true);
@@ -257,6 +320,86 @@ export default function AdminAccessPage() {
     }
   }
 
+  async function handleAddTeamRole(userId) {
+    if (!userId) return;
+    if (!selectedEventId) {
+      setRoleManagerError("Select an event to manage team roles.");
+      return;
+    }
+    if (!pendingRoleId) {
+      setRoleManagerError("Select a role to add.");
+      return;
+    }
+    if (!pendingTeamId) {
+      setRoleManagerError("Select a team to add this role for.");
+      return;
+    }
+
+    setRoleManagerError("");
+    setRoleManagerBusy(true);
+    try {
+      const assignment = await addTeamUserRoleAssignment(
+        userId,
+        pendingRoleId,
+        pendingTeamId,
+        selectedEventId,
+      );
+      setUsers((prev) =>
+        prev.map((user) => {
+          if (user.id !== userId) return user;
+          const teamRoles = Array.isArray(user.teamRoles) ? user.teamRoles : [];
+          return { ...user, teamRoles: [...teamRoles, assignment] };
+        }),
+      );
+      // Keep the role selected so another team can be granted straight away;
+      // the just-granted team drops out of the team list on its own.
+      setPendingTeamId("");
+    } catch (err) {
+      setRoleManagerError(err instanceof Error ? err.message : "Unable to add team role.");
+    } finally {
+      setRoleManagerBusy(false);
+    }
+  }
+
+  async function handleRemoveTeamRole(userId, assignment) {
+    if (!userId) return;
+    setRoleManagerError("");
+    setRoleManagerBusy(true);
+    try {
+      await removeTeamUserRoleAssignment(
+        assignment.assignmentId,
+        userId,
+        assignment.roleId,
+        assignment.teamId,
+        assignment.eventId,
+      );
+      setUsers((prev) =>
+        prev.map((user) => {
+          if (user.id !== userId) return user;
+          const teamRoles = Array.isArray(user.teamRoles) ? user.teamRoles : [];
+          const nextTeamRoles = teamRoles.filter((role) => {
+            if (assignment.assignmentId) {
+              return role.assignmentId !== assignment.assignmentId;
+            }
+            if (assignment.teamId) {
+              return (
+                role.roleId !== assignment.roleId ||
+                role.teamId !== assignment.teamId ||
+                role.eventId !== assignment.eventId
+              );
+            }
+            return role.roleId !== assignment.roleId;
+          });
+          return { ...user, teamRoles: nextTeamRoles };
+        }),
+      );
+    } catch (err) {
+      setRoleManagerError(err instanceof Error ? err.message : "Unable to remove team role.");
+    } finally {
+      setRoleManagerBusy(false);
+    }
+  }
+
   async function handleAddAdminRole(userId) {
     if (!userId) return;
     if (!pendingAdminRoleId) {
@@ -318,7 +461,17 @@ export default function AdminAccessPage() {
     return new Set(adminRoles.map((role) => normalizePermissionKey(role.name)).filter(Boolean));
   }, [roles]);
   const adminRoles = useMemo(() => roles.filter((role) => isAdminRole(role)), [roles]);
-  const eventRoles = useMemo(() => roles.filter((role) => !isAdminRole(role)), [roles]);
+  // Three-way partition. Team-scoped roles (captain, team_manager) must not
+  // appear in the event-role dropdown, or they get written to event_user_roles
+  // with no team context.
+  const teamScopedRoles = useMemo(
+    () => roles.filter((role) => !isAdminRole(role) && isTeamScopedRole(role)),
+    [roles],
+  );
+  const eventRoles = useMemo(
+    () => roles.filter((role) => !isAdminRole(role) && !isTeamScopedRole(role)),
+    [roles],
+  );
 
   const filteredUsers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -332,18 +485,25 @@ export default function AdminAccessPage() {
         : true;
       const assignments = Array.isArray(user.roles) ? user.roles : [];
       const eventAssignments = Array.isArray(user.eventRoles) ? user.eventRoles : [];
+      const teamAssignments = Array.isArray(user.teamRoles) ? user.teamRoles : [];
       const adminAssignments = assignments.filter((assignment) =>
         isAdminAssignment(assignment, adminRoleIds, adminRoleNames),
       );
       const matchesRole = (() => {
         if (roleKey === null) return true;
-        if (roleKey === "none") return adminAssignments.length === 0 && eventAssignments.length === 0;
+        if (roleKey === "none") {
+          return (
+            adminAssignments.length === 0 &&
+            eventAssignments.length === 0 &&
+            teamAssignments.length === 0
+          );
+        }
         if (adminRoleIds.has(String(roleKey))) {
           return adminAssignments.some(
             (assignment) => assignment.roleId !== null && String(assignment.roleId) === roleKey,
           );
         }
-        return eventAssignments.some(
+        return [...eventAssignments, ...teamAssignments].some(
           (assignment) => assignment.roleId !== null && String(assignment.roleId) === roleKey,
         );
       })();
@@ -450,6 +610,29 @@ export default function AdminAccessPage() {
   const availableEventRoles = eventRoles.filter(
     (role) => !assignedEventRoleIds.has(String(role.id)),
   );
+
+  const selectedTeamRolesForEvent = useMemo(() => {
+    const teamRoles = Array.isArray(selectedUser?.teamRoles) ? selectedUser.teamRoles : [];
+    return selectedEventId
+      ? teamRoles.filter((entry) => entry.eventId === selectedEventId)
+      : [];
+  }, [selectedUser, selectedEventId]);
+  const pendingRoleIsTeamScoped = useMemo(() => {
+    if (!pendingRoleId) return false;
+    const role = roles.find((entry) => String(entry.id) === String(pendingRoleId));
+    return isTeamScopedRole(role);
+  }, [pendingRoleId, roles]);
+  // Team roles stay fully available (one person can hold the same role for
+  // several teams); the teams already holding it are removed instead.
+  const availableTeams = useMemo(() => {
+    if (!pendingRoleIsTeamScoped) return eventTeams;
+    const takenTeamIds = new Set(
+      selectedTeamRolesForEvent
+        .filter((entry) => String(entry.roleId) === String(pendingRoleId))
+        .map((entry) => String(entry.teamId)),
+    );
+    return eventTeams.filter((team) => !takenTeamIds.has(String(team.id)));
+  }, [eventTeams, pendingRoleId, pendingRoleIsTeamScoped, selectedTeamRolesForEvent]);
   const assignedAdminRoleIds = new Set(
     adminAssignments
       .map((assignment) => assignment.roleId)
@@ -581,28 +764,46 @@ export default function AdminAccessPage() {
               </Panel>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Role" hint="Select event role first">
+              <Field label="Role" hint="Team roles also need a team">
                 <Select
                   value={pendingRoleId}
                   onChange={(event) => {
                     setPendingRoleId(event.target.value);
                     setSelectedEventId("");
+                    setPendingTeamId("");
                     setRoleManagerError("");
                   }}
-                  disabled={!selectedUser || roleManagerBusy || eventRoles.length === 0}
+                  disabled={
+                    !selectedUser ||
+                    roleManagerBusy ||
+                    eventRoles.length + teamScopedRoles.length === 0
+                  }
                 >
                   <option value="">
                     {!selectedUser
                       ? "Select a user first"
-                      : eventRoles.length === 0
-                        ? "No event roles available"
+                      : eventRoles.length + teamScopedRoles.length === 0
+                        ? "No roles available"
                         : "Select a role"}
                   </option>
-                  {eventRoles.map((role) => (
-                    <option key={role.id} value={String(role.id)}>
-                      {role.name}
-                    </option>
-                  ))}
+                  {eventRoles.length > 0 ? (
+                    <optgroup label="Event roles">
+                      {eventRoles.map((role) => (
+                        <option key={role.id} value={String(role.id)}>
+                          {role.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {teamScopedRoles.length > 0 ? (
+                    <optgroup label="Team roles">
+                      {teamScopedRoles.map((role) => (
+                        <option key={role.id} value={String(role.id)}>
+                          {role.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
                 </Select>
               </Field>
               <Field label="Event" hint="Select after role">
@@ -636,13 +837,50 @@ export default function AdminAccessPage() {
                   {selectedUser
                     ? pendingRoleId
                       ? selectedEventId
-                        ? "Ready to add event role"
+                        ? pendingRoleIsTeamScoped
+                          ? pendingTeamId
+                            ? "Ready to add team role"
+                            : "Step 4: select team"
+                          : "Ready to add event role"
                         : "Step 3: select event"
                       : "Step 2: select role"
                     : "Step 1: select user"}
                 </span>
               </Panel>
             </div>
+            {pendingRoleIsTeamScoped ? (
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="Team" hint="Required for team roles">
+                  <Select
+                    value={pendingTeamId}
+                    onChange={(event) => {
+                      setPendingTeamId(event.target.value);
+                      setRoleManagerError("");
+                    }}
+                    disabled={
+                      !selectedUser || !selectedEventId || roleManagerBusy || eventTeamsLoading
+                    }
+                  >
+                    <option value="">
+                      {!selectedEventId
+                        ? "Select an event first"
+                        : eventTeamsLoading
+                          ? "Loading teams..."
+                          : eventTeams.length === 0
+                            ? "No teams in this event"
+                            : availableTeams.length === 0
+                              ? "All teams already assigned"
+                              : "Select a team"}
+                    </option>
+                    {availableTeams.map((team) => (
+                      <option key={team.id} value={String(team.id)}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+            ) : null}
             {selectedUser ? (
               <div className="space-y-3 rounded-xl border border-border/60 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -756,19 +994,56 @@ export default function AdminAccessPage() {
                     </div>
                   )}
                 </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    Team roles (selected event)
+                  </p>
+                  {!selectedEventId ? (
+                    <span className="text-xs text-ink-muted">Select an event to view team roles.</span>
+                  ) : selectedTeamRolesForEvent.length === 0 ? (
+                    <span className="text-xs text-ink-muted">No team roles assigned for this event.</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedTeamRolesForEvent.map((entry) => (
+                        <div
+                          key={entry.assignmentId || `${entry.teamId}-${entry.roleId}`}
+                          className="flex items-center gap-1"
+                        >
+                          <Chip variant="ghost">{formatTeamRoleLabel(entry)}</Chip>
+                          <button
+                            type="button"
+                            className="text-[10px] uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => handleRemoveTeamRole(selectedUser.id, entry)}
+                            disabled={roleManagerBusy}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     className="sc-button is-ghost text-xs"
-                    onClick={() => handleAddEventRole(selectedUser.id)}
+                    onClick={() =>
+                      pendingRoleIsTeamScoped
+                        ? handleAddTeamRole(selectedUser.id)
+                        : handleAddEventRole(selectedUser.id)
+                    }
                     disabled={
                       roleManagerBusy ||
                       !pendingRoleId ||
                       !selectedEventId ||
-                      !availableEventRoles.some((role) => String(role.id) === String(pendingRoleId))
+                      (pendingRoleIsTeamScoped
+                        ? !pendingTeamId
+                        : !availableEventRoles.some(
+                            (role) => String(role.id) === String(pendingRoleId),
+                          ))
                     }
                   >
-                    Add role
+                    {pendingRoleIsTeamScoped ? "Add team role" : "Add role"}
                   </button>
                   {roleManagerError ? (
                     <span className="text-[11px] text-rose-200">{roleManagerError}</span>

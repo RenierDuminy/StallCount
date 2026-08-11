@@ -51,6 +51,9 @@ const TEAM_STANDINGS_GRID_STYLE = {
 const MENS_DIVISION_POOL_LETTERS = new Set(["a", "b", "c", "d"]);
 const MENS_DIVISION_STANDINGS_START_DATE = "2026-04-13";
 const MENS_DIVISION_STANDINGS_END_DATE = "2026-07-23";
+const WOMENS_DIVISION_POOL_LETTERS = new Set(["e", "f"]);
+const WOMENS_DIVISION_STANDINGS_START_DATE = MENS_DIVISION_STANDINGS_START_DATE;
+const WOMENS_DIVISION_STANDINGS_END_DATE = MENS_DIVISION_STANDINGS_END_DATE;
 const SUMMARY_RULES_HREF = "/rules/stellenbosch-rl-2026-rules-summary.pdf";
 const FULL_RULES_HREF = "/rules/stellenbosch-rl-2026-rules.pdf";
 const RULE_DOCUMENTS = [
@@ -390,28 +393,59 @@ const getPoolLetter = (pool) => {
   return poolMatch?.[1] || singleLetterMatch?.[1] || "";
 };
 
-const isCombinedHousePool = (pool) =>
+const isMensDivisionPool = (pool) =>
   MENS_DIVISION_POOL_LETTERS.has(getPoolLetter(pool));
+
+const isWomensDivisionPool = (pool) =>
+  WOMENS_DIVISION_POOL_LETTERS.has(getPoolLetter(pool));
+
+const isCombinedHousePool = (pool) =>
+  isMensDivisionPool(pool) || isWomensDivisionPool(pool);
+
+// Each division's pools are merged into a single ranked standings table scored
+// across the whole season, rather than one table per pool. Because the pools are
+// combined, a match cannot be attributed by pool_id alone (crossover fixtures
+// pair teams from different pools), so matches are matched on both teams being
+// in the division and the match falling inside the season date range.
+const DIVISION_STANDINGS_GROUPS = [
+  {
+    id: "mens-division",
+    name: "Men's Division",
+    includesPool: isMensDivisionPool,
+    matchStartDateKey: MENS_DIVISION_STANDINGS_START_DATE,
+    matchEndDateKey: MENS_DIVISION_STANDINGS_END_DATE,
+  },
+  {
+    id: "womens-division",
+    name: "Women's Division",
+    includesPool: isWomensDivisionPool,
+    matchStartDateKey: WOMENS_DIVISION_STANDINGS_START_DATE,
+    matchEndDateKey: WOMENS_DIVISION_STANDINGS_END_DATE,
+  },
+];
 
 const buildStandingsPoolGroups = (eventData) => {
   const pools = getEventPools(eventData);
-  const combinedPools = pools.filter(isCombinedHousePool);
   const separatePools = pools.filter((pool) => !isCombinedHousePool(pool));
 
+  const divisionGroups = DIVISION_STANDINGS_GROUPS.flatMap((division) => {
+    const divisionPools = pools.filter(division.includesPool);
+    if (!divisionPools.length) return [];
+    return [
+      {
+        id: division.id,
+        name: division.name,
+        pools: divisionPools,
+        showRank: true,
+        matchMode: "team_date_range",
+        matchStartDateKey: division.matchStartDateKey,
+        matchEndDateKey: division.matchEndDateKey,
+      },
+    ];
+  });
+
   return [
-    ...(combinedPools.length
-      ? [
-          {
-            id: "mens-division",
-            name: "Men's Division",
-            pools: combinedPools,
-            showRank: true,
-            matchMode: "team_date_range",
-            matchStartDateKey: MENS_DIVISION_STANDINGS_START_DATE,
-            matchEndDateKey: MENS_DIVISION_STANDINGS_END_DATE,
-          },
-        ]
-      : []),
+    ...divisionGroups,
     ...separatePools.map((pool) => ({
       id: pool.id,
       name: pool.name,

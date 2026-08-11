@@ -1372,14 +1372,13 @@ export default function ScoreKeeperView() {
             goToMenu();
           },
           onSubmit: async (event) => {
-            await handleInitialiseMatch(event);
-            // Setup succeeded from the chooser -> drop ?view=menu so the console shows.
-            goToConsole();
-          },
-          onSaveSettings: () => {
+            // Persist the rules for this match first so initialise runs against saved settings.
             if (actions.handleSaveSettings()) {
               setSettingsSavedAt(Date.now());
             }
+            await handleInitialiseMatch(event);
+            // Setup succeeded from the chooser -> drop ?view=menu so the console shows.
+            goToConsole();
           },
           onResetSettings: () => {
             actions.handleResetSettings();
@@ -1494,11 +1493,12 @@ export default function ScoreKeeperView() {
             fiveVFiveData.setSetupModalOpen(false);
             goToMenu();
           },
-          onSubmit: fiveVFiveActions.handleInitialiseMatch,
-          onSaveSettings: () => {
+          onSubmit: async (event) => {
+            // Persist the rules for this match first so initialise runs against saved settings.
             if (fiveVFiveActions.handleSaveSettings()) {
               setFiveVFiveSettingsSavedAt(Date.now());
             }
+            await fiveVFiveActions.handleInitialiseMatch(event);
           },
           onResetSettings: () => {
             fiveVFiveActions.handleResetSettings();

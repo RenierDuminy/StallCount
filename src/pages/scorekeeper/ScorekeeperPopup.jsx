@@ -91,7 +91,6 @@ export function ScorekeeperPopups({
     onClose: onSetupClose,
     onBack: onSetupBack,
     onSubmit: onSetupSubmit,
-    onSaveSettings: onSetupSaveSettings,
     onResetSettings: onSetupResetSettings,
     settingsSavedAt: setupSettingsSavedAt,
     events = [],
@@ -539,35 +538,26 @@ export function ScorekeeperPopups({
               disabled={initialising || !selectedMatch || !isStartMatchReady}
               className="w-full rounded-full bg-[#0f5132] px-5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {initialising ? "Initialising..." : "Initialise"}
+              {initialising ? "Saving & initialising..." : "Save settings & initialise"}
             </button>
             {setupError && (
               <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                 {setupError}
               </p>
             )}
-            {onSetupSaveSettings && (
+            {onSetupResetSettings && (
               <div className="space-y-1.5 rounded-2xl border border-[#0f5132]/20 bg-[#ecfdf3] p-2">
                 <button
                   type="button"
-                  onClick={onSetupSaveSettings}
-                  className="w-full rounded-full bg-[#0f5132] px-5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24]"
+                  onClick={onSetupResetSettings}
+                  className="w-full rounded-full border border-[#0f5132]/30 px-5 py-1.5 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
                 >
-                  Save settings for this match
+                  Reset to event defaults
                 </button>
-                {onSetupResetSettings && (
-                  <button
-                    type="button"
-                    onClick={onSetupResetSettings}
-                    className="w-full rounded-full border border-[#0f5132]/30 px-5 py-1.5 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
-                  >
-                    Reset to event defaults
-                  </button>
-                )}
                 <p className="text-xs text-[#0f5132]/70">
                   {setupSettingsSavedAt
-                    ? `Saved ${new Date(setupSettingsSavedAt).toLocaleTimeString()}. Stored on this device only.`
-                    : "Saved on this device only — they won't follow you to another tablet."}
+                    ? `Settings saved ${new Date(setupSettingsSavedAt).toLocaleTimeString()}. Stored on this device only.`
+                    : "Initialising saves these settings on this device only — they won't follow you to another tablet."}
                 </p>
               </div>
             )}

@@ -10,8 +10,17 @@ import {
 } from "../services/playerService";
 import { getTeamsLinkedToEvent } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
+import { getRoleCatalog } from "../services/userService";
 import { SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
 import usePersistentState from "../hooks/usePersistentState";
+import { useAuth } from "../context/AuthContext";
+import { CAPTAIN_ACCESS_PERMISSIONS } from "../utils/accessControl";
+import {
+  allowedTeamIdsForEvent,
+  filterByScope,
+  resolveAccessScope,
+  scopeIsEmpty,
+} from "../utils/roleScope";
 
 const EMPTY_PLAYER_FORM = {
   id: "",
@@ -165,6 +174,8 @@ function CheckIcon() {
 }
 
 export default function CaptainPage() {
+  const { session, roles, rolesLoading } = useAuth();
+  const [roleCatalog, setRoleCatalog] = useState(null);
   const [playerDirectory, setPlayerDirectory] = useState([]);
   const [playerForm, setPlayerForm] = usePersistentState(CAPTAIN_PLAYER_FORM_KEY, EMPTY_PLAYER_FORM);
   const [playerSaving, setPlayerSaving] = useState(false);
@@ -190,7 +201,64 @@ export default function CaptainPage() {
     getEventsList(50)
       .then((data) => setEvents(data ?? []))
       .catch(() => setEvents([]));
+    getRoleCatalog()
+      .then((catalog) => setRoleCatalog(Array.isArray(catalog) ? catalog : []))
+      .catch(() => setRoleCatalog([]));
   }, []);
+
+  // Which events/teams this user may manage. Admin, tournament director and
+  // field assistant bypass scoping entirely (see roleScope.js).
+  const accessScope = useMemo(
+    () =>
+      resolveAccessScope({
+        user: session?.user,
+        roleAssignments: roles,
+        roleCatalog,
+        permissions: CAPTAIN_ACCESS_PERMISSIONS,
+      }),
+    [session?.user, roles, roleCatalog],
+  );
+
+  const scopeResolved = !accessScope.loading && !rolesLoading && roleCatalog !== null;
+
+  const availableEvents = useMemo(
+    () => filterByScope(events, accessScope.eventIds),
+    [events, accessScope],
+  );
+
+  const allowedTeamIds = useMemo(
+    () => allowedTeamIdsForEvent(accessScope, selectedEventId),
+    [accessScope, selectedEventId],
+  );
+
+  const availableTeams = useMemo(
+    () => filterByScope(eventTeams, allowedTeamIds),
+    [eventTeams, allowedTeamIds],
+  );
+
+  const hasNoTeamAccess = scopeResolved && scopeIsEmpty(accessScope);
+
+  // Clear a persisted selection that is no longer permitted. Gated on
+  // scopeResolved so a page load doesn't wipe a valid selection.
+  useEffect(() => {
+    if (!scopeResolved) return;
+    if (
+      selectedEventId &&
+      !availableEvents.some((event) => String(event.id) === String(selectedEventId))
+    ) {
+      setSelectedEventId("");
+    }
+  }, [scopeResolved, availableEvents, selectedEventId, setSelectedEventId]);
+
+  useEffect(() => {
+    if (!scopeResolved || eventTeamsLoading) return;
+    if (
+      selectedTeamId &&
+      !availableTeams.some((team) => String(team.id) === String(selectedTeamId))
+    ) {
+      setSelectedTeamId("");
+    }
+  }, [scopeResolved, eventTeamsLoading, availableTeams, selectedTeamId, setSelectedTeamId]);
 
   useEffect(() => {
     const eventChanged = previousEventIdRef.current !== selectedEventId;
@@ -630,6 +698,22 @@ export default function CaptainPage() {
     }
   }
 
+  /**
+   * Client-side guard for roster mutations. This is a UX affordance only —
+   * the roster services key on row ids with no team validation, so real
+   * enforcement has to live in RLS on team_roster.
+   */
+  function assertTeamAccess() {
+    if (accessScope.unrestricted) return true;
+    if (allowedTeamIds === null) return true;
+    if (selectedTeamId && allowedTeamIds.has(String(selectedTeamId))) return true;
+    setRosterAlert({
+      tone: "error",
+      message: "You do not have access to manage this team.",
+    });
+    return false;
+  }
+
   async function handleAddToRoster(event) {
     event.preventDefault();
     if (!selectedTeamId || !selectedEventId || assignableSelectedPlayerIds.length === 0) {
@@ -639,6 +723,7 @@ export default function CaptainPage() {
       });
       return;
     }
+    if (!assertTeamAccess()) return;
 
     setAssigning(true);
     setRosterAlert(null);
@@ -675,6 +760,7 @@ export default function CaptainPage() {
   }
 
   async function handleRemoveRosterEntry(entryId) {
+    if (!assertTeamAccess()) return;
     const confirmed = window.confirm(
       "Remove this player from the roster? This action cannot be undone."
     );
@@ -695,6 +781,7 @@ export default function CaptainPage() {
   }
 
   async function handleUpdateCaptain(entryId, roleValue) {
+    if (!assertTeamAccess()) return;
     setRosterAlert(null);
     try {
       await updateRosterCaptainRole(entryId, roleValue || null);
@@ -725,6 +812,25 @@ export default function CaptainPage() {
       </SectionShell>
 
       <SectionShell as="main" className="space-y-6 py-3 sm:space-y-8 sm:py-5">
+        {!scopeResolved ? (
+          <p className="px-1 text-sm text-ink-muted">Checking access...</p>
+        ) : hasNoTeamAccess ? (
+          <section className="space-y-3 rounded-xl border border-border/80 border-l-4 border-l-warning-border bg-[rgba(15,37,31,0.38)] p-4 sm:p-5">
+            <SectionHeader title="No team access yet" />
+            <p className="text-sm text-ink-muted">
+              Captain tools are granted per team. You do not currently hold a captain or team
+              manager role for any team, so there is nothing to manage here.
+            </p>
+            <p className="text-sm text-ink-muted">
+              Ask your tournament director to grant you access for your team, then reload this
+              page.
+            </p>
+            <Link to="/admin" className="sc-button is-ghost w-fit">
+              Back to admin hub
+            </Link>
+          </section>
+        ) : (
+        <>
         <section className="space-y-4 rounded-xl border border-border/80 border-l-4 border-l-warning-border bg-[rgba(15,37,31,0.38)] p-3 sm:space-y-5 sm:p-4">
           <SectionHeader
             title="Team roster control"
@@ -737,8 +843,10 @@ export default function CaptainPage() {
                 value={selectedEventId}
                 onChange={(event) => setSelectedEventId(event.target.value)}
               >
-                <option value="">Choose an event</option>
-                {events.map((eventItem) => (
+                <option value="">
+                  {availableEvents.length === 0 ? "No events available" : "Choose an event"}
+                </option>
+                {availableEvents.map((eventItem) => (
                   <option key={eventItem.id} value={eventItem.id}>
                     {eventItem.name}
                   </option>
@@ -764,9 +872,11 @@ export default function CaptainPage() {
                     ? "Choose an event first"
                     : eventTeamsLoading
                       ? "Loading teams..."
-                      : "Choose a team"}
+                      : availableTeams.length === 0
+                        ? "No teams available"
+                        : "Choose a team"}
                 </option>
-                {eventTeams.map((team) => (
+                {availableTeams.map((team) => (
                   <option key={team.id} value={team.id}>
                     {team.name}
                   </option>
@@ -1017,6 +1127,8 @@ export default function CaptainPage() {
             )}
           </section>
         </section>
+        </>
+        )}
       </SectionShell>
 
       {playerEditorOpen ? (

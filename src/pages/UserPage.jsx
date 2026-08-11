@@ -249,6 +249,21 @@ function getAssignmentEventLabel(assignment) {
   return String(value).trim() || "Event";
 }
 
+function getAssignmentTeamLabel(assignment) {
+  const value = assignment?.teamName || assignment?.team?.name || assignment?.teamId || "";
+  return String(value).trim();
+}
+
+/**
+ * Role label for display. Team-scoped grants carry the team so a user can see
+ * which team a captain role applies to.
+ */
+function getScopedAssignmentRoleLabel(assignment) {
+  const roleLabel = getAssignmentRoleLabel(assignment);
+  const teamLabel = getAssignmentTeamLabel(assignment);
+  return teamLabel ? `${roleLabel} - ${teamLabel}` : roleLabel;
+}
+
 function compareAlphabetical(a, b) {
   return String(a).localeCompare(String(b), undefined, { sensitivity: "base" });
 }
@@ -353,6 +368,16 @@ export default function UserPage() {
     return [];
   }, [profile?.eventRoles, sessionRoles]);
 
+  const teamAssignmentSource = useMemo(() => {
+    if (Array.isArray(profile?.teamRoles) && profile.teamRoles.length > 0) {
+      return profile.teamRoles;
+    }
+    if (Array.isArray(sessionRoles) && sessionRoles.length > 0) {
+      return sessionRoles.filter((assignment) => assignment?.scope === "team");
+    }
+    return [];
+  }, [profile?.teamRoles, sessionRoles]);
+
   const fallbackRoleSource =
     profile?.role ||
     user?.app_metadata?.role ||
@@ -371,14 +396,20 @@ export default function UserPage() {
       normaliseRoleList(fallbackRoleSource).forEach((role) => collected.add(role));
     }
 
-    eventAssignmentSource.forEach((assignment) => {
+    [...eventAssignmentSource, ...teamAssignmentSource].forEach((assignment) => {
       const roleValue =
         assignment?.roleName || assignment?.role?.name || assignment?.roleId || "";
       normaliseRoleList(roleValue).forEach((role) => collected.add(role));
     });
 
     return Array.from(collected);
-  }, [globalAssignmentSource, fallbackRoleSource, eventAssignmentSource, user]);
+  }, [
+    globalAssignmentSource,
+    fallbackRoleSource,
+    eventAssignmentSource,
+    teamAssignmentSource,
+    user,
+  ]);
 
   const recognisedRoles = useMemo(
     () => normalizedRoles.filter((role) => Boolean(ROLE_LIBRARY[role])),
@@ -403,8 +434,9 @@ export default function UserPage() {
     return [
       ...(Array.isArray(globalAssignmentSource) ? globalAssignmentSource : []),
       ...(Array.isArray(eventAssignmentSource) ? eventAssignmentSource : []),
+      ...(Array.isArray(teamAssignmentSource) ? teamAssignmentSource : []),
     ];
-  }, [eventAssignmentSource, globalAssignmentSource, sessionRoles]);
+  }, [eventAssignmentSource, teamAssignmentSource, globalAssignmentSource, sessionRoles]);
 
   const accessLevelLabels = useMemo(() => {
     const labels = [];
@@ -418,11 +450,16 @@ export default function UserPage() {
       labels.push(...globalLabels);
     }
 
-    if (Array.isArray(eventAssignmentSource) && eventAssignmentSource.length > 0) {
+    const scopedAssignments = [
+      ...(Array.isArray(eventAssignmentSource) ? eventAssignmentSource : []),
+      ...(Array.isArray(teamAssignmentSource) ? teamAssignmentSource : []),
+    ];
+
+    if (scopedAssignments.length > 0) {
       const groupedByEvent = new Map();
-      eventAssignmentSource.forEach((assignment) => {
+      scopedAssignments.forEach((assignment) => {
         const eventLabel = getAssignmentEventLabel(assignment);
-        const roleLabel = getAssignmentRoleLabel(assignment);
+        const roleLabel = getScopedAssignmentRoleLabel(assignment);
         const roles = groupedByEvent.get(eventLabel) || new Set();
         roles.add(roleLabel);
         groupedByEvent.set(eventLabel, roles);
@@ -450,7 +487,14 @@ export default function UserPage() {
     }
     const fallbackAccess = `${accessInfo.role} - ${accessInfo.level}`;
     return fallbackAccess.trim() ? [fallbackAccess] : [];
-  }, [globalAssignmentSource, eventAssignmentSource, recognisedRoles, fallbackRoles, accessInfo]);
+  }, [
+    globalAssignmentSource,
+    eventAssignmentSource,
+    teamAssignmentSource,
+    recognisedRoles,
+    fallbackRoles,
+    accessInfo,
+  ]);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -468,11 +512,18 @@ export default function UserPage() {
   const accessLevelGroups = useMemo(() => {
     const groups = new Map();
 
-    if (Array.isArray(eventAssignmentSource) && eventAssignmentSource.length > 0) {
-      eventAssignmentSource.forEach((assignment) => {
+    // Event and team grants both group under their event; team grants carry
+    // the team name so "Captain - Metanoia (M)" reads unambiguously.
+    const scopedAssignments = [
+      ...(Array.isArray(eventAssignmentSource) ? eventAssignmentSource : []),
+      ...(Array.isArray(teamAssignmentSource) ? teamAssignmentSource : []),
+    ];
+
+    if (scopedAssignments.length > 0) {
+      scopedAssignments.forEach((assignment) => {
         const eventLabel = getAssignmentEventLabel(assignment);
-        const roleLabel = getAssignmentRoleLabel(assignment);
-        if (!shouldDisplayAccessRole(roleLabel)) return;
+        const roleLabel = getScopedAssignmentRoleLabel(assignment);
+        if (!shouldDisplayAccessRole(getAssignmentRoleLabel(assignment))) return;
         const roles = groups.get(eventLabel) || new Set();
         roles.add(roleLabel);
         groups.set(eventLabel, roles);
@@ -504,7 +555,14 @@ export default function UserPage() {
     }
 
     return [{ topic: "General", roles: [`${accessInfo.role} - ${accessInfo.level}`] }];
-  }, [eventAssignmentSource, globalAssignmentSource, accessLevelLabels, accessInfo.role, accessInfo.level]);
+  }, [
+    eventAssignmentSource,
+    teamAssignmentSource,
+    globalAssignmentSource,
+    accessLevelLabels,
+    accessInfo.role,
+    accessInfo.level,
+  ]);
 
   const moduleRoles = useMemo(
     () => recognisedRoles.filter((role) => role !== "admin" && isElevatedRole(role)),
