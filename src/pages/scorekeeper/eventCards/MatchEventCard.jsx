@@ -188,6 +188,7 @@ export const MatchEventCard = memo(function MatchEventCard({
   log,
   chronologicalIndex,
   editIndex,
+  logRef,
   displayTeamA,
   displayTeamB,
   displayTeamAShort,
@@ -200,6 +201,10 @@ export const MatchEventCard = memo(function MatchEventCard({
   variantOverrides = null,
 }) {
   const flags = getEventFlags(log);
+  // The 7v7 console identifies logs by an id-based ref; the 5v5 console still passes an
+  // array index. Prefer the ref when present — passing an index where a ref is expected
+  // resolves to no log at all, which silently no-ops edit and delete.
+  const resolvedLogRef = logRef ?? editIndex;
   const { shortTeamLabel, fullTeamLabel, resolvedTeamLabel } = resolveTeamLabels({
     log,
     displayTeamA,
@@ -232,10 +237,10 @@ export const MatchEventCard = memo(function MatchEventCard({
   const matchStartLayoutClass = flags.isMatchStartLog ? "flex flex-col justify-center" : "";
   const detailSpacingClass = flags.isMatchStartLog ? "mt-2" : "mt-3";
   const editHandler = flags.isScoringDisplay
-    ? () => openScoreModal(log.team, "edit", editIndex)
+    ? () => openScoreModal(log.team, "edit", resolvedLogRef)
     : flags.isPossessionLog
-      ? () => openPossessionEditModal(log, editIndex)
-      : () => openSimpleEventModal(log, editIndex);
+      ? () => openPossessionEditModal(log, resolvedLogRef)
+      : () => openSimpleEventModal(log, resolvedLogRef);
   const showEdit = editLocation !== "none";
   const editPositionClass = getEditPositionClass(editLocation);
   const editColorClass =
@@ -347,6 +352,7 @@ export const ScoreEventCard = memo(function ScoreEventCard({
   log,
   chronologicalIndex,
   editIndex,
+  logRef,
   displayTeamA,
   displayTeamB,
   displayTeamAShort,
@@ -354,6 +360,7 @@ export const ScoreEventCard = memo(function ScoreEventCard({
   getAbbaDescriptor,
   openScoreModal,
 }) {
+  const resolvedLogRef = logRef ?? editIndex;
   const { resolvedTeamLabel } = resolveTeamLabels({
     log,
     displayTeamA,
@@ -396,7 +403,7 @@ export const ScoreEventCard = memo(function ScoreEventCard({
       </div>
 
       <EditButton
-        onClick={() => openScoreModal(log.team, "edit", editIndex)}
+        onClick={() => openScoreModal(log.team, "edit", resolvedLogRef)}
         positionClass="right-3 top-1/2 -translate-y-1/2"
         textClass="text-[#0f5132]"
         borderClass="border-border"
@@ -411,6 +418,7 @@ export const CalahanEventCard = memo(function CalahanEventCard({
   log,
   chronologicalIndex,
   editIndex,
+  logRef,
   displayTeamA,
   displayTeamB,
   displayTeamAShort,
@@ -418,6 +426,7 @@ export const CalahanEventCard = memo(function CalahanEventCard({
   getAbbaDescriptor,
   openScoreModal,
 }) {
+  const resolvedLogRef = logRef ?? editIndex;
   const { resolvedTeamLabel } = resolveTeamLabels({
     log,
     displayTeamA,
@@ -460,7 +469,7 @@ export const CalahanEventCard = memo(function CalahanEventCard({
       </div>
 
       <EditButton
-        onClick={() => openScoreModal(log.team, "edit", editIndex)}
+        onClick={() => openScoreModal(log.team, "edit", resolvedLogRef)}
         positionClass="right-3 top-1/2 -translate-y-1/2"
         textClass="text-[#b45309]"
         borderClass="border-[#facc15]"
@@ -474,12 +483,14 @@ export const CalahanEventCard = memo(function CalahanEventCard({
 export const BlockEventCard = memo(function BlockEventCard({
   log,
   editIndex,
+  logRef,
   displayTeamA,
   displayTeamB,
   displayTeamAShort,
   displayTeamBShort,
   openPossessionEditModal,
 }) {
+  const resolvedLogRef = logRef ?? editIndex;
   const { resolvedTeamLabel } = resolveTeamLabels({
     log,
     displayTeamA,
@@ -506,7 +517,7 @@ export const BlockEventCard = memo(function BlockEventCard({
       </div>
 
       <EditButton
-        onClick={() => openPossessionEditModal(log, editIndex)}
+        onClick={() => openPossessionEditModal(log, resolvedLogRef)}
         positionClass="right-3 top-3"
         textClass="text-[#0f5132]"
         borderClass="border-border"
@@ -520,12 +531,14 @@ export const BlockEventCard = memo(function BlockEventCard({
 export const TurnoverEventCard = memo(function TurnoverEventCard({
   log,
   editIndex,
+  logRef,
   displayTeamA,
   displayTeamB,
   displayTeamAShort,
   displayTeamBShort,
   openPossessionEditModal,
 }) {
+  const resolvedLogRef = logRef ?? editIndex;
   const { resolvedTeamLabel } = resolveTeamLabels({
     log,
     displayTeamA,
@@ -547,12 +560,12 @@ export const TurnoverEventCard = memo(function TurnoverEventCard({
       </div>
 
       <div className={`mt-3 flex flex-col gap-1 ${alignClass} ${TEXT_SIZES.m}`}>
-        <p>{`${resolvedTeamLabel} now has the disc`}</p>
+        <p>{resolvedTeamLabel}</p>
         <p className={`${TEXT_SIZES.s} font-semibold text-black/70`}>Credited: {creditedPlayerLabel}</p>
       </div>
 
       <EditButton
-        onClick={() => openPossessionEditModal(log, editIndex)}
+        onClick={() => openPossessionEditModal(log, resolvedLogRef)}
         positionClass="right-3 top-3"
         textClass="text-[#0f5132]"
         borderClass="border-border"

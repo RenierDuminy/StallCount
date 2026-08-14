@@ -500,7 +500,9 @@ export default function ScoreKeeperView() {
     const actorId = options.find((player) => player.id === resolvedActor)?.id || resolvedActor || null;
     setPossessionActorId(actorId || "");
     const isBlock = possessionResult === "block";
-    const eventTeamKey = nextTeam;
+    // Stamp the log with the acting player's own team: the defender who got the D
+    // on a block, the thrower who turfed it on a throwaway.
+    const eventTeamKey = isBlock ? nextTeam : blockTeam;
     const editingIndex = possessionEditIndex;
     resetPossessionModalState();
     if (editingIndex !== null) {
@@ -523,7 +525,7 @@ export default function ScoreKeeperView() {
     void updatePossession(nextTeam, {
       actorId: actorId || null,
       eventTypeIdOverride: isBlock ? BLOCK_EVENT_TYPE_ID : null,
-      eventTeamKey: isBlock ? nextTeam : null,
+      eventTeamKey,
     });
   };
 

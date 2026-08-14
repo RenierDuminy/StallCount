@@ -53,7 +53,6 @@ import {
   DEFAULT_DISCUSSION_SECONDS,
   SESSION_SAVE_DEBOUNCE_MS,
   TIMER_TICK_INTERVAL_MS,
-  ABBA_LINE_SEQUENCE,
 } from "./scorekeeperConstants";
 import {
   ADMIN_OVERRIDE_PERMISSIONS,
@@ -842,6 +841,9 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
 
 const initialScoreRef = useRef({ a: 0, b: 0 });
 const currentMatchScoreRef = useRef({ a: 0, b: 0 });
+// Mirrors `pendingEntries` so score derivation can read the live queue without taking
+// it as a dependency (which would rebuild refreshMatchLogs on every queue change).
+const pendingEntriesRef = useRef([]);
 const baseScoreRef = useRef({ matchId: null, baseScore: { a: 0, b: 0 } });
 const matchIdRef = useRef(null);
 const refreshMatchLogsRef = useRef(null);
@@ -862,6 +864,10 @@ const secondaryTimerCompletedRef = useRef(false);
 const restoreTrackedSecondaryCompletionRef = useRef(false);
 const halftimeReconciliationKeyRef = useRef(null);
 const halftimeEndInFlightRef = useRef(new Set());
+// Set when an operator deletes a halftime log. Without it the time-cap effect below
+// sees "past the cap, halftime not triggered" on the very next render and re-fires,
+// making the deleted entry reappear instantly.
+const halftimeTimeCapSuppressedRef = useRef(false);
 const previousSecondaryRunningRef = useRef(false);
 const previousPrimaryRunningRef = useRef(false);
 const stoppageActiveRef = useRef(false);
@@ -999,6 +1005,10 @@ useEffect(() => {
   void refreshPendingEntries();
 }, [refreshPendingEntries]);
 
+useEffect(() => {
+  pendingEntriesRef.current = pendingEntries;
+}, [pendingEntries]);
+
 const setTrackedSecondaryEvent = useCallback((nextEvent) => {
   activeSecondaryEventRef.current = normalizeTrackedSecondaryEvent(nextEvent);
   setTrackedSecondaryEventVersion((version) => version + 1);
@@ -1022,6 +1032,7 @@ const clearLocalMatchState = useCallback(() => {
     setHalftimeTriggerType("unknown");
     setHalftimeTimeCapArmed(false);
     setHalftimeCapTargetScore(null);
+    halftimeTimeCapSuppressedRef.current = false;
     setStoppageActive(false);
     setMatchStarted(false);
     setScoreTarget(DEFAULT_RULES.gamePointTarget || null);
@@ -1470,6 +1481,7 @@ useEffect(() => {
   if (resumeHydrationRef.current) return;
   setHalftimeTriggered(false);
   setHalftimeTriggerType("unknown");
+  halftimeTimeCapSuppressedRef.current = false;
 }, [activeMatch?.id]);
 
   useEffect(() => {
@@ -1487,8 +1499,9 @@ useEffect(() => {
       b: activeMatch.score_b ?? 0,
     };
     const hydrating = resumeHydrationRef.current;
+    const isMatchSwitch = matchIdRef.current !== activeId;
 
-    if (matchIdRef.current !== activeId) {
+    if (isMatchSwitch) {
       matchIdRef.current = activeId;
       initialScoreRef.current = nextScore;
       baseScoreRef.current = { matchId: null, baseScore: { a: 0, b: 0 } };
@@ -1500,7 +1513,11 @@ useEffect(() => {
       }
     }
 
-    if (!hydrating) {
+    // Only seed the score from the match row when switching matches. This effect also
+    // runs whenever `activeMatch` is mutated in place (syncActiveMatchScore rewrites
+    // score_a/score_b after every point), and re-seeding there would let the DB columns
+    // overwrite log-derived totals — reverting queued points the operator can still see.
+    if (!hydrating && isMatchSwitch) {
       setScore(nextScore);
     }
   }, [activeMatch, rules.matchDuration, rules.timeoutSeconds, commitPrimaryTimerState, commitSecondaryTimerState]);
@@ -1567,11 +1584,17 @@ useEffect(() => {
       }
       const startCode = rules.abbaPattern === "male" ? "M" : "F";
       const alternateCode = startCode === "M" ? "F" : "M";
-      const step = orderIndex % ABBA_LINE_SEQUENCE.length;
-      const suffix = ABBA_LINE_SEQUENCE[step] ?? "1";
-      const halfSequence = Math.max(1, Math.floor(ABBA_LINE_SEQUENCE.length / 2));
-      const useStartCode = step < halfSequence;
-      const prefix = useStartCode ? startCode : alternateCode;
+
+      // ABBA opens on a single starting-gender point, then settles into repeating
+      // 2-point blocks: X1, Y1, Y2, X1, X2, Y1, Y2, ... Mirrors getAbbaDescriptor.
+      if (orderIndex === 0) {
+        return normalizeAbbaLine(`${startCode}1`);
+      }
+
+      const normalizedIndex = orderIndex - 1;
+      const pairIndex = Math.floor(normalizedIndex / 2);
+      const prefix = pairIndex % 2 === 1 ? startCode : alternateCode;
+      const suffix = normalizedIndex % 2 === 0 ? "1" : "2";
       return normalizeAbbaLine(`${prefix}${suffix}`);
     },
     [rules.abbaPattern, normalizeAbbaLine]
@@ -2074,9 +2097,21 @@ const replaceSecondaryTimer = useCallback(
   const logSimpleEvent = useCallback(
     async (eventCode, { teamKey = null, timestamp: providedTimestamp = null, optimisticId: providedOptimisticId = null } = {}) => {
       if (!consoleReady || !activeMatch?.id) return;
+      // Claim the in-flight marker synchronously, before the first await. Callers guard
+      // on `hasLoggedOrPendingMatchEvent`, which reads React state that cannot update
+      // until this function yields — so claiming it after `resolveEventTypeIdLocal`
+      // leaves a window where a second caller passes the same guard and double-logs.
+      const isHalftimeEnd = eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END;
+      if (isHalftimeEnd) {
+        if (halftimeEndInFlightRef.current.has(activeMatch.id)) return;
+        halftimeEndInFlightRef.current.add(activeMatch.id);
+      }
       try {
         const eventTypeId = await resolveEventTypeIdLocal(eventCode);
         if (!eventTypeId) {
+          if (isHalftimeEnd) {
+            halftimeEndInFlightRef.current.delete(activeMatch.id);
+          }
           setConsoleError(
             `Missing \`${eventCode}\` event type in match_events. Please add it in Supabase before logging.`
           );
@@ -2084,9 +2119,6 @@ const replaceSecondaryTimer = useCallback(
         }
         const timestamp = providedTimestamp || new Date().toISOString();
         const optimisticId = providedOptimisticId || createMatchLogOptimisticId();
-        if (eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
-          halftimeEndInFlightRef.current.add(activeMatch.id);
-        }
         const appended = appendLocalLog({
           team: teamKey,
           timestamp,
@@ -2155,6 +2187,40 @@ const replaceSecondaryTimer = useCallback(
     secondaryTimerCompletedRef.current = false;
     setHalftimeBreakActive(false);
   }, [setTrackedSecondaryEvent]);
+
+  // Score totals are derived by counting score rows returned by the server. Points that
+  // are still sitting in the offline queue have no server row yet, so without this they
+  // would drop out of the score on the next refresh even though the operator can still
+  // see them in the log. Count them here, skipping any the server has already echoed
+  // back (matched on optimistic_id) so a point is never counted twice.
+  const countQueuedScores = useCallback(
+    (targetMatchId, serverOptimisticIds) => {
+      const queued = { a: 0, b: 0 };
+      if (!targetMatchId) return queued;
+      pendingEntriesRef.current.forEach((item) => {
+        if (item?.kind !== "match_log") return;
+        const payload = item.payload;
+        if (!payload || payload.matchId !== targetMatchId) return;
+        if (payload.optimisticId && serverOptimisticIds.has(payload.optimisticId)) return;
+
+        const code =
+          payload.eventTypeCode ||
+          matchEventOptions.find((option) => option.id === payload.eventTypeId)?.code ||
+          null;
+        const isScoreEvent =
+          code === MATCH_LOG_EVENT_CODES.SCORE || code === MATCH_LOG_EVENT_CODES.CALAHAN;
+        if (!isScoreEvent) return;
+
+        if (payload.teamId === teamAId) {
+          queued.a += 1;
+        } else if (payload.teamId === teamBId) {
+          queued.b += 1;
+        }
+      });
+      return queued;
+    },
+    [matchEventOptions, teamAId, teamBId]
+  );
 
   const hasLoggedOrPendingMatchEvent = useCallback(
     (targetMatchId, eventCode) => {
@@ -2573,6 +2639,12 @@ const replaceSecondaryTimer = useCallback(
     }
   }, [halftimeTriggered]);
 
+  // Called after a halftime log is deleted so the elapsed-time cap doesn't immediately
+  // re-trigger the halftime the operator just removed.
+  const suppressHalftimeTimeCap = useCallback(() => {
+    halftimeTimeCapSuppressedRef.current = true;
+  }, []);
+
   useEffect(() => {
     if (!matchStarted || halftimeTriggered || halftimeLogged) {
       if (halftimeTimeCapArmed) {
@@ -2594,6 +2666,20 @@ const replaceSecondaryTimer = useCallback(
       return;
     }
     const elapsedSeconds = matchDuration * 60 - timerSeconds;
+    if (elapsedSeconds < halftimeMinutes * 60) {
+      // Back inside the cap window (clock rewound or rules changed): a later deletion
+      // shouldn't stay suppressed, so let the cap arm normally again.
+      halftimeTimeCapSuppressedRef.current = false;
+    }
+    if (halftimeTimeCapSuppressedRef.current) {
+      if (halftimeTimeCapArmed) {
+        setHalftimeTimeCapArmed(false);
+      }
+      if (halftimeCapTargetScore !== null) {
+        setHalftimeCapTargetScore(null);
+      }
+      return;
+    }
     if (elapsedSeconds >= halftimeMinutes * 60) {
       const halftimeCapEndMode = rules.halftimeCapEndMode || "afterPoint";
       if (halftimeCapEndMode === "immediate") {
@@ -2691,17 +2777,30 @@ const replaceSecondaryTimer = useCallback(
         }
       });
 
-      // The baseline covers points scored before logging began. Pin it on the first
-      // derive for a match and reuse it: recomputing from a moving `matchScore` lets
-      // DB drift (an unflushed score_update, a deleted log) silently rebase the game
-      // and undo the operator's corrections on the next refresh.
+      // The baseline covers points scored before logging began — a scorekeeper taking
+      // over a match already in progress. Pin it on the first derive for a match and
+      // reuse it: recomputing from a moving `matchScore` lets DB drift (an unflushed
+      // score_update, a deleted log) silently rebase the game and undo the operator's
+      // corrections on the next refresh.
+      //
+      // Only infer a baseline when the log has no scoring rows at all. Once a single
+      // point is logged, the log is the authority for the score and `matchScore -
+      // counted` stops being a safe inference: any disagreement between the DB columns
+      // and the log (a queued point the DB hasn't seen, a failed score sync) would be
+      // absorbed into the baseline and added to every total for the rest of the match.
+      const hasScoreRows = rawA > 0 || rawB > 0;
       let baseScore;
       if (matchId && baseScoreRef.current.matchId === matchId) {
         baseScore = baseScoreRef.current.baseScore;
+      } else if (hasScoreRows) {
+        baseScore = { a: 0, b: 0 };
+        if (matchId) {
+          baseScoreRef.current = { matchId, baseScore };
+        }
       } else {
         baseScore = {
-          a: Math.max(matchScore.a - rawA, 0),
-          b: Math.max(matchScore.b - rawB, 0),
+          a: Math.max(matchScore.a, 0),
+          b: Math.max(matchScore.b, 0),
         };
         if (matchId) {
           baseScoreRef.current = { matchId, baseScore };
@@ -2783,12 +2882,12 @@ const replaceSecondaryTimer = useCallback(
         const rows = await getMatchLogs(targetMatchId);
         const derived = deriveLogsFromRows(rows, matchScore, { matchId: targetMatchId });
         initialScoreRef.current = derived.baseScore;
+        const serverOptimisticIds = new Set(
+          derived.logs
+            .map((log) => log.optimisticId)
+            .filter((id) => typeof id === "string" && id.length > 0)
+        );
         setLogs((prev) => {
-          const serverOptimisticIds = new Set(
-            derived.logs
-              .map((log) => log.optimisticId)
-              .filter((id) => typeof id === "string" && id.length > 0)
-          );
           const optimistic = prev.filter(
             (entry) =>
               entry.isOptimistic &&
@@ -2812,7 +2911,13 @@ const replaceSecondaryTimer = useCallback(
           });
           return merged;
         });
-        setScore(derived.totals);
+
+        const queuedScores = countQueuedScores(targetMatchId, serverOptimisticIds);
+        const totals = {
+          a: derived.totals.a + queuedScores.a,
+          b: derived.totals.b + queuedScores.b,
+        };
+        setScore(totals);
 
         if (!resumeHydrationRef.current) {
           const matchStartLog = derived.logs.find(
@@ -2835,7 +2940,7 @@ const replaceSecondaryTimer = useCallback(
           }
         }
 
-        return derived.totals;
+        return totals;
       } catch (err) {
         setConsoleError(describeError(err, { action: "Load match log" }));
         return null;
@@ -2843,7 +2948,14 @@ const replaceSecondaryTimer = useCallback(
         setLogsLoading(false);
       }
     },
-    [deriveLogsFromRows, matchLogMatchId, activeMatch?.status, selectedMatch?.status, rules.matchDuration]
+    [
+      deriveLogsFromRows,
+      matchLogMatchId,
+      activeMatch?.status,
+      selectedMatch?.status,
+      rules.matchDuration,
+      countQueuedScores,
+    ]
   );
 
   useEffect(() => {
@@ -3122,6 +3234,7 @@ const replaceSecondaryTimer = useCallback(
     setHalftimeTimeCapArmed,
     halftimeCapTargetScore,
     setHalftimeCapTargetScore,
+    suppressHalftimeTimeCap,
     resumeCandidate,
     setResumeCandidate,
     resumeHandled,

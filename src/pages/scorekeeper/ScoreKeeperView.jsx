@@ -271,6 +271,29 @@ export default function ScoreKeeperView() {
       : halftimeTriggerType === "timeCap"
         ? "Time cap"
         : "Unknown";
+  // Surfaces how the current score sits against the (possibly cap-adjusted) target, which
+  // otherwise only ever appeared in the timer label.
+  const scoreTargetBannerMessage = (() => {
+    if (!matchStarted) return null;
+    if (!Number.isFinite(scoreTarget) || scoreTarget <= 0) return null;
+
+    const reachedA = score.a >= scoreTarget;
+    const reachedB = score.b >= scoreTarget;
+    if (reachedA || reachedB) {
+      const winner = reachedA && score.a >= score.b ? safeTeamAName : safeTeamBName;
+      return `${winner} reached match target`;
+    }
+
+    const matchPointA = score.a === scoreTarget - 1;
+    const matchPointB = score.b === scoreTarget - 1;
+    if (matchPointA && matchPointB) {
+      return `Target ${scoreTarget}: UNIVERSE POINT!!!`;
+    }
+    if (matchPointA || matchPointB) {
+      return `Target ${scoreTarget}: ${matchPointA ? safeTeamAName : safeTeamBName} match point`;
+    }
+    return null;
+  })();
   const attentionBannerMessage = (() => {
     if (!matchStarted) return null;
     const softCapMode = rules.gameSoftCapMode || "none";
@@ -278,7 +301,7 @@ export default function ScoreKeeperView() {
       return "Halftime time cap has been reached and will start HT after the point.";
     }
     if (hardCapReached) {
-      return "Time cap reached, new match target set.";
+      return "Hard cap reached!";
     }
     if (
       softCapApplied &&
@@ -780,7 +803,9 @@ export default function ScoreKeeperView() {
     const actorId = options.find((player) => player.id === resolvedActor)?.id || resolvedActor || null;
     setPossessionActorId(actorId || "");
     const isBlock = possessionResult === "block";
-    const eventTeamKey = nextTeam;
+    // Stamp the log with the acting player's own team: the defender who got the D
+    // on a block, the thrower who turfed it on a throwaway.
+    const eventTeamKey = isBlock ? nextTeam : blockTeam;
     const editingRef = possessionEditRef;
     resetPossessionModalState();
     if (editingRef !== null) {
@@ -803,7 +828,7 @@ export default function ScoreKeeperView() {
     void updatePossession(nextTeam, {
       actorId: actorId || null,
       eventTypeIdOverride: isBlock ? BLOCK_EVENT_TYPE_ID : null,
-      eventTeamKey: isBlock ? nextTeam : null,
+      eventTeamKey,
     });
   };
 
@@ -1070,6 +1095,12 @@ export default function ScoreKeeperView() {
             {attentionBannerMessage && (
               <p className="rounded-2xl border border-red-500 bg-red-200 px-3 py-2 text-sm font-bold text-red-900 shadow-[0_0_0_1px_rgba(239,68,68,0.15)]">
                 {attentionBannerMessage}
+              </p>
+            )}
+
+            {scoreTargetBannerMessage && (
+              <p className="rounded-2xl border border-[#0f5132] bg-[#d1fae5] px-3 py-2 text-sm font-bold text-[#0f5132] shadow-[0_0_0_1px_rgba(15,81,50,0.15)]">
+                {scoreTargetBannerMessage}
               </p>
             )}
 

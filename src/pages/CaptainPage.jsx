@@ -632,6 +632,18 @@ export default function CaptainPage() {
     setPlayerAlert(null);
   }
 
+  // The player form is persisted, so a stale id from a previous visit would
+  // silently reopen the editor in update mode. Always start from a blank form.
+  function openPlayerEditor() {
+    resetPlayerForm();
+    setPlayerEditorOpen(true);
+  }
+
+  function closePlayerEditor() {
+    setPlayerEditorOpen(false);
+    resetPlayerForm();
+  }
+
   async function handlePlayerSubmit(event) {
     event.preventDefault();
     const normalizedName = playerForm.name.trim();
@@ -682,7 +694,9 @@ export default function CaptainPage() {
 
       setPlayerAlert({
         tone: "success",
-        message: playerForm.id ? "Player updated." : "Player added.",
+        message: playerForm.id
+          ? `${normalizedName} has been updated.`
+          : `${normalizedName} has been added.`,
       });
       await loadDirectory();
       if (!playerForm.id) {
@@ -905,7 +919,7 @@ export default function CaptainPage() {
             <div>
               <button
                 type="button"
-                onClick={() => setPlayerEditorOpen(true)}
+                onClick={openPlayerEditor}
                 className="sc-button is-ghost text-xs"
               >
                 Create/Update player
@@ -1053,17 +1067,17 @@ export default function CaptainPage() {
                   const playerName = entry.player?.name || "Unnamed player";
 
                   return (
-                    <li key={entry.id} className="px-3 py-2.5 text-sm sm:px-4 sm:py-3">
+                    <li key={entry.id} className="px-3 py-1 text-sm sm:px-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="flex flex-wrap items-center gap-2 font-semibold text-ink">
+                          <p className="flex flex-nowrap items-center gap-1.5 font-semibold text-ink">
                             {getRosterRoleTags(entry).length > 0 ? (
                               <span className="flex flex-nowrap gap-1">
                                 {getRosterRoleTags(entry).map((tag) => (
                                   <span
                                     key={`${entry.id}-${tag.label}`}
                                     title={tag.title}
-                                    className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
+                                    className="inline-flex items-center rounded-full border px-1.5 text-[10px] font-semibold uppercase leading-[1.35] tracking-wide"
                                     style={{
                                       background: "var(--sc-accent)",
                                       color: "var(--sc-button-ink)",
@@ -1086,7 +1100,7 @@ export default function CaptainPage() {
                         <button
                           type="button"
                           onClick={() => setEditingRosterEntryId(isEditing ? "" : entry.id)}
-                          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition ${
+                          className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition ${
                             isEditing
                               ? "border-accent bg-accent text-[var(--sc-button-ink)]"
                               : "border-border bg-surface text-ink-muted hover:border-accent hover:text-ink"
@@ -1100,7 +1114,7 @@ export default function CaptainPage() {
                       </div>
 
                       {isEditing ? (
-                        <div className="mt-2.5 flex flex-col gap-2 rounded-xl border border-border/70 bg-surface px-3 py-2.5 text-xs sm:mt-3 sm:flex-row sm:items-center sm:justify-end sm:py-3">
+                        <div className="mb-1.5 mt-1.5 flex flex-col gap-2 rounded-xl border border-border/70 bg-surface px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-end">
                           <Select
                             className="is-compact sm:w-48"
                             value={entry.is_captain ? "captain" : entry.is_spirit_captain ? "spirit" : ""}
@@ -1137,7 +1151,7 @@ export default function CaptainPage() {
           role="dialog"
           aria-modal="true"
           aria-label="Create/Update players"
-          onClick={() => setPlayerEditorOpen(false)}
+          onClick={closePlayerEditor}
         >
           <section
             className="w-full max-w-5xl rounded-xl border border-border/80 border-l-4 border-l-accent bg-surface-muted p-3 text-ink shadow-strong sm:p-4"
@@ -1149,7 +1163,7 @@ export default function CaptainPage() {
               />
               <button
                 type="button"
-                onClick={() => setPlayerEditorOpen(false)}
+                onClick={closePlayerEditor}
                 className="sc-button is-ghost shrink-0 text-xs"
               >
                 Close
@@ -1215,10 +1229,7 @@ export default function CaptainPage() {
                             <button
                               type="button"
                               onClick={() => handleSelectPlayer(entry.player)}
-                              className={`sc-button is-ghost text-xs ${
-                                isAssigned ? "cursor-not-allowed opacity-45 hover:text-ink-muted" : ""
-                              }`}
-                              disabled={isAssigned}
+                              className="sc-button is-ghost text-xs"
                             >
                               Load
                             </button>
@@ -1231,6 +1242,22 @@ export default function CaptainPage() {
               </section>
 
               <form className="space-y-3 border-t border-border-strong pt-4 sm:space-y-4 sm:pt-5" onSubmit={handlePlayerSubmit}>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border-strong bg-surface px-3 py-2 text-xs">
+                  {playerForm.id ? (
+                    <span className="min-w-0 text-ink">
+                      Editing{" "}
+                      <span className="font-semibold">
+                        {playerForm.name.trim() || "existing player"}
+                      </span>
+                      . Saving will update this player&apos;s details.
+                    </span>
+                  ) : (
+                    <span className="text-ink-muted">
+                      Creating a new player. Load an existing player above to update them instead.
+                    </span>
+                  )}
+                </div>
+
                 <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
                   <Field label="Player name" htmlFor="player-name">
                     <Input

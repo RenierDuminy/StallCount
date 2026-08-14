@@ -26,6 +26,7 @@ dist-ssr
 dev-dist
 dev-server.log
 dev-server.err.log
+migrations/*.sql
 
 # Supabase schema dumps (not needed at build time)
 docs/Triggers.txt

@@ -759,21 +759,13 @@ export function useScoreKeeperActions(controller) {
           }
         }
       }
-      const isScoreLog =
-        targetLog.eventCode === MATCH_LOG_EVENT_CODES.SCORE ||
-        targetLog.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
+      // Pass the score through unchanged. It only seeds the pre-logging baseline
+      // (`matchScore - countedRows`), and the deleted row is already absent from that
+      // count — subtracting it here too would remove the same point twice.
       const currentScore = controller.currentMatchScoreRef.current || { a: 0, b: 0 };
-      let nextScore = currentScore;
-      if (isScoreLog) {
-        if (targetLog.team === "A") {
-          nextScore = { ...currentScore, a: Math.max(0, currentScore.a - 1) };
-        } else if (targetLog.team === "B") {
-          nextScore = { ...currentScore, b: Math.max(0, currentScore.b - 1) };
-        }
-      }
       const totals = await controller.refreshMatchLogs(
         controller.matchLogMatchId,
-        nextScore
+        currentScore
       );
       if (totals) {
         await syncActiveMatchScore(totals);
@@ -788,6 +780,9 @@ export function useScoreKeeperActions(controller) {
         }
       }
       if (isHalftimeLog) {
+        // Suppress before clearing the flags: the time-cap effect would otherwise see
+        // "past the cap, halftime not triggered" and immediately re-add what was deleted.
+        controller.suppressHalftimeTimeCap?.();
         controller.setHalftimeTriggered(false);
         controller.setHalftimeTriggerType("unknown");
         controller.setHalftimeTimeCapArmed(false);

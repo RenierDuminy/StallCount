@@ -7,7 +7,6 @@ import {
 } from "../../services/scrimmageSessionStore";
 import { deriveShortName, formatClock, sortRoster, toDateTimeLocal } from "./scrimmageUtils";
 import {
-  ABBA_LINE_SEQUENCE,
   DEFAULT_TIMER_LABEL,
   DEFAULT_SECONDARY_LABEL,
   MAX_SCRIMMAGE_TIMER_SECONDS,
@@ -474,11 +473,16 @@ export function useScrimmageData() {
       if (!["male", "female"].includes(abbaPattern)) return "none";
       const startCode = abbaPattern === "male" ? "M" : "F";
       const alternateCode = startCode === "M" ? "F" : "M";
-      const step = orderIndex % ABBA_LINE_SEQUENCE.length;
-      const suffix = ABBA_LINE_SEQUENCE[step] ?? "1";
-      const halfSequence = Math.max(1, Math.floor(ABBA_LINE_SEQUENCE.length / 2));
-      const useStartCode = step < halfSequence;
-      const prefix = useStartCode ? startCode : alternateCode;
+      // ABBA opens on a single starting-gender point, then settles into repeating
+      // 2-point blocks: X1, Y1, Y2, X1, X2, Y1, Y2, ... Mirrors getAbbaDescriptor.
+      if (orderIndex === 0) {
+        return `${startCode}1`;
+      }
+
+      const normalizedIndex = orderIndex - 1;
+      const pairIndex = Math.floor(normalizedIndex / 2);
+      const prefix = pairIndex % 2 === 1 ? startCode : alternateCode;
+      const suffix = normalizedIndex % 2 === 0 ? "1" : "2";
       return `${prefix}${suffix}`;
     },
     [abbaPattern]

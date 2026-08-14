@@ -694,7 +694,7 @@ export default function ScrimmageView() {
     void updatePossession(nextTeam, {
       actorId: actorId || null,
       eventTypeIdOverride: isBlock ? BLOCK_EVENT_TYPE_ID : null,
-      eventTeamKey: isBlock ? nextTeam : null,
+      eventTeamKey,
     });
   };
 
