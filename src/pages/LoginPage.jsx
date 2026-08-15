@@ -1,8 +1,6 @@
-import { Auth } from "@supabase/auth-ui-react";
-import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../services/supabaseClient";
+import SupabaseAuthForm from "../components/SupabaseAuthForm";
 import { Card, Chip, Panel, SectionShell, SectionHeader } from "../components/ui/primitives";
 
 const ADMIN_MODULES = [
@@ -59,13 +57,7 @@ export default function LoginPage() {
               eyebrowVariant="tag"
             />
             <Panel variant="light" className="p-6 shadow-inner shadow-[rgba(9,31,24,0.04)]">
-              <Auth
-                supabaseClient={supabase}
-                appearance={{ theme: ThemeSupa }}
-                theme="default"
-                providers={["google"]}
-                redirectTo={authRedirectTo}
-              />
+              <SupabaseAuthForm redirectTo={authRedirectTo} />
             </Panel>
             <Chip variant="ghost" className="text-xs text-[var(--sc-surface-light-ink)] opacity-80">
               By signing in you accept StallCount policies.
