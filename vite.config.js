@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 // Identify the build so a running client can be matched against a deployment.
@@ -42,6 +43,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    tailwindcss(),
     buildShaPlugin(),
     VitePWA({
       strategies: "injectManifest",

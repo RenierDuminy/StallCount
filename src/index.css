@@ -1,5 +1,84 @@
 @import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Tailwind v4 keeps theme config in CSS. Everything below is a direct port of
+   the `theme.extend` block from the former tailwind.config.js. The `--sc-*`
+   variables it references are defined in theme.css. */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+
+  --color-brand: #0e9e6e;
+  --color-brand-light: #33ba8a;
+  --color-brand-dark: #047857;
+
+  --color-ink: var(--sc-ink);
+  --color-ink-muted: var(--sc-ink-muted);
+  --color-ink-strong: var(--sc-ink-strong);
+
+  --color-surface: var(--sc-surface);
+  --color-surface-muted: var(--sc-surface-muted);
+  --color-surface-plain: var(--sc-surface-plain);
+  --color-surface-lift: var(--sc-surface-lift);
+
+  --color-border: var(--sc-border);
+  --color-border-strong: var(--sc-border-strong);
+  --color-border-glow: var(--sc-border-glow);
+
+  --color-accent: var(--sc-accent);
+  --color-accent-strong: var(--sc-accent-strong);
+  --color-accent-alt: var(--sc-accent-alt);
+
+  --color-warning: var(--sc-warning);
+  --color-warning-ink: var(--sc-warning-ink);
+  --color-warning-bg: var(--sc-warning-bg);
+  --color-warning-border: var(--sc-warning-border);
+
+  --color-media: var(--sc-media);
+  --color-media-ink: var(--sc-media-ink);
+  --color-media-bg: var(--sc-media-bg);
+  --color-media-border: var(--sc-media-border);
+
+  --color-admin: var(--sc-admin);
+  --color-admin-ink: var(--sc-admin-ink);
+  --color-admin-bg: var(--sc-admin-bg);
+  --color-admin-border: var(--sc-admin-border);
+
+  --color-live: var(--sc-live);
+  --color-live-ink: var(--sc-live-ink);
+  --color-live-bg: var(--sc-live-bg);
+  --color-live-border: var(--sc-live-border);
+
+  --radius-sc-sm: var(--sc-radius-sm);
+  --radius-sc-md: var(--sc-radius-md);
+  --radius-sc-lg: var(--sc-radius-lg);
+  --radius-sc-xl: var(--sc-radius-xl);
+
+  /* Reduced global rounding scale (overrides Tailwind defaults).
+     Pill/circle (`rounded-full`) is intentionally left untouched. */
+  --radius-sm: 3px;
+  --radius-DEFAULT: 4px;
+  --radius-md: 5px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-2xl: 10px;
+  --radius-3xl: 12px;
+
+  --shadow-card: var(--sc-shadow-card);
+  --shadow-strong: var(--sc-shadow-strong);
+  --shadow-lift: var(--sc-shadow-lift);
+}
+
+/* v3 applied `border-color: theme(borderColor.DEFAULT)` in preflight; v4
+   defaults to `currentColor`. Restore the v3 behaviour so the ~900 existing
+   `border` utilities keep rendering the design-token border. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--sc-border);
+  }
+}
