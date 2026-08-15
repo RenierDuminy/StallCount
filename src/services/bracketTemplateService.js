@@ -152,6 +152,7 @@ export async function instantiateTemplate({
     }
     throw new Error(
       `Template apply failed and was rolled back: ${error?.message || "unknown error"}`,
+      { cause: error },
     );
   }
 }

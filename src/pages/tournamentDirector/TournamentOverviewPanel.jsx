@@ -333,7 +333,9 @@ function buildCreateMediaLink(form) {
       }
       return parsed;
     } catch (err) {
-      throw new Error(err instanceof Error ? err.message : "Media link JSON is invalid.");
+      throw new Error(err instanceof Error ? err.message : "Media link JSON is invalid.", {
+        cause: err,
+      });
     }
   }
 

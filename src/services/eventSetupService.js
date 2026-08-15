@@ -1844,7 +1844,7 @@ export async function getEventHierarchy(eventId) {
     };
   };
 
-  let brackets = [];
+  let brackets;
   try {
     const bracketRows = await getBracketsByEvent(normalizedEventId);
     brackets = (bracketRows || []).map((bracket) => ({
