@@ -20,10 +20,10 @@ const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const VENUE_GRID_CLASS =
   "flex flex-wrap gap-2";
 const POOL_GRID_STYLE = {
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 16rem), 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(16rem, 1fr))",
 };
 const MATCH_GRID_CLASS =
-  "grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr))]";
+  "grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(14rem,1fr))]";
 const SCHEDULE_TIMEZONE = "Africa/Johannesburg";
 const SCHEDULE_DAYS = [
   {

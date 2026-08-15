@@ -186,7 +186,6 @@ export default function ScoreKeeperView() {
     secondaryTimerAnchorRef,
     timerLabel,
     consoleError,
-    rosters,
     rostersLoading,
     rostersError,
     timeModalOpen,
@@ -196,7 +195,6 @@ export default function ScoreKeeperView() {
     scoreModalState,
     scoreForm,
     setScoreForm,
-    timeoutUsage,
     possessionTeam,
     halftimeBreakActive,
     halftimeTriggerType,
@@ -231,8 +229,6 @@ export default function ScoreKeeperView() {
     formattedSecondaryClock,
     orderedLogs,
     nextAbbaDescriptor,
-    primaryTimerBg,
-    secondaryTimerBg,
     secondaryResetTriggeredRef,
     commitSecondaryTimerState,
     setSecondaryTotalSeconds,
@@ -251,11 +247,6 @@ export default function ScoreKeeperView() {
   const primaryClockDisplay = primaryOvertime
     ? formatClock(Math.abs(timerSeconds))
     : formattedPrimaryClock;
-  const formatTeamLabel = (teamKey) => {
-    if (teamKey === "A") return safeTeamAName;
-    if (teamKey === "B") return safeTeamBName;
-    return null;
-  };
   const halftimeStartLogged = logs.some(
     (entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START
   );
@@ -312,8 +303,6 @@ export default function ScoreKeeperView() {
     }
     return null;
   })();
-  const possessionDisplay =
-    formatTeamLabel(possessionTeam) || possessionLeader || "Unassigned";
 
   const formatPlayerSelectLabel = (player) => {
     if (!player) return "Unassigned";
@@ -566,18 +555,11 @@ export default function ScoreKeeperView() {
   };
 
   const {
-    cancelPrimaryHoldReset,
-    startPrimaryHoldReset,
     cancelSecondaryHoldReset,
     startSecondaryHoldReset,
     handleInitialiseMatch,
     handleToggleTimer,
-    handleSecondaryToggle,
-    handleSecondaryReset,
     handleStartMatch,
-    handleAddScore,
-    syncActiveMatchScore,
-    handleRuleChange,
     openScoreModal,
     closeScoreModal,
     handleScoreModalSubmit,
@@ -588,7 +570,6 @@ export default function ScoreKeeperView() {
     handleForceEndHalftime,
     handleGameStoppage,
     handleEndMatchNavigation,
-    logMatchStartEvent
   } = actions;
 
   const POSSESSION_DRAG_THRESHOLD = 24;
@@ -603,7 +584,7 @@ export default function ScoreKeeperView() {
   const possessionPointerIdRef = useRef(null);
   const possessionDragStateRef = useRef({ startX: null, moved: false });
   const possessionConfirmTimeoutRef = useRef(null);
-  const [possessionEventReady, setPossessionEventReady] = useState(false);
+  const [, setPossessionEventReady] = useState(false);
   const [possessionResult, setPossessionResult] = useState("throwaway"); // "throwaway" | "block"
   const [possessionActorId, setPossessionActorId] = useState("");
   const [possessionModalOpen, setPossessionModalOpen] = useState(false);
@@ -644,9 +625,6 @@ export default function ScoreKeeperView() {
     const nextTeam = clamped >= 0.5 ? "B" : "A";
     if (nextTeam === possessionTeam && !possessionPreviewTeam) return;
 
-    const blockTeam = nextTeam === "A" ? "B" : "A";
-    const rosterSourceTeam = possessionResult === "block" ? nextTeam : blockTeam;
-    const options = getRosterOptionsForTeam(rosterSourceTeam);
     setPendingPossessionTeam(nextTeam);
     setPossessionPreviewTeam(nextTeam);
     setPossessionActorId("");
@@ -966,9 +944,6 @@ export default function ScoreKeeperView() {
     setSecondaryFlashPulse(false);
   };
 
-  const handleScorePopupSelection = (teamKey) => {
-    openScoreModal(teamKey);
-  };
 
   return (
     <ScorekeeperShell>
@@ -1701,270 +1676,5 @@ function SecondaryTimerDescription({ label, running, remainingSeconds, totalSeco
       <p className="text-center text-slate-900">{guide.title}</p>
       {activeStep && <p>{activeStep.text}</p>}
     </div>
-  );
-}
-
-function MatchLogCard({
-  log,
-  chronologicalIndex,
-  logRef,
-  displayTeamA,
-  displayTeamB,
-  displayTeamAShort,
-  displayTeamBShort,
-  getAbbaDescriptor,
-  openScoreModal,
-  openSimpleEventModal,
-  openPossessionEditModal,
-}) {
-  const isScoreLog = log.eventCode === MATCH_LOG_EVENT_CODES.SCORE;
-  const isMatchStartLog = log.eventCode === MATCH_LOG_EVENT_CODES.MATCH_START;
-  const isTimeoutLog =
-    log.eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT ||
-    log.eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START;
-  const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
-  const normalizedEventDescription = `${log.eventDescription || ""}`.toLowerCase();
-  const isBlockLog =
-    (Number.isFinite(log.eventTypeId) && log.eventTypeId === BLOCK_EVENT_TYPE_ID) ||
-    normalizedEventCode.includes("block") ||
-    normalizedEventDescription.includes("block");
-  const isPossessionLog =
-    log.eventCode === MATCH_LOG_EVENT_CODES.TURNOVER ||
-    normalizedEventCode.includes("turnover") ||
-    normalizedEventDescription.includes("turnover") ||
-    isBlockLog;
-  const isHalftimeLog = log.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START;
-  const isStoppageStart = log.eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START;
-  const isCalahanLog = log.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
-  const shortTeamLabel =
-    log.team === "B" ? displayTeamBShort : log.team === "A" ? displayTeamAShort : null;
-  const fullTeamLabel =
-    log.team === "B" ? displayTeamB : log.team === "A" ? displayTeamA : null;
-  const abbaLineLabel = log.abbaLine && log.abbaLine !== "none" ? log.abbaLine : null;
-  const abbaDescriptor = isScoreLog || isCalahanLog ? abbaLineLabel : null;
-  const eventTime = new Date(log.timestamp).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const creditedPlayerLabel = isPossessionLog
-    ? log.scorerName || (log.scorerId ? "Unknown player" : "Unassigned")
-    : null;
-  const alignClass = (() => {
-    if (isPossessionLog) {
-      return log.team === "A" ? "text-right" : log.team === "B" ? "text-left" : "text-center";
-    }
-    return log.team === "A" ? "text-left" : log.team === "B" ? "text-right" : "text-center";
-  })();
-  let bannerBgClass = "bg-white";
-  let bannerBorderClass = "border-slate-300";
-  let bannerTextClass = "text-black";
-
-  if (isMatchStartLog || isTimeoutLog) {
-    bannerBgClass = "bg-[#d4f5e1]";
-    bannerBorderClass = "border-[#16a34a]/60";
-    bannerTextClass = "text-black";
-  } else if (isHalftimeLog) {
-    bannerBgClass = "bg-[#e0e7ff]";
-    bannerBorderClass = "border-[#4338ca]/50";
-    bannerTextClass = "text-black";
-  } else if (isCalahanLog) {
-    bannerBgClass = "bg-[#fff1e0]";
-    bannerBorderClass = "border-[#f59e0b]/60";
-    bannerTextClass = "text-black";
-  } else if (isScoreLog && log.team === "A") {
-    bannerBgClass = "bg-[#d1fae5]";
-    bannerBorderClass = "border-[#10b981]/70";
-    bannerTextClass = "text-black";
-  } else if (isScoreLog && log.team === "B") {
-    bannerBgClass = "bg-[#bbf7d0]";
-    bannerBorderClass = "border-[#059669]/70";
-    bannerTextClass = "text-black";
-  } else if (isStoppageStart) {
-    bannerBgClass = "bg-[#fecdd3]";
-    bannerBorderClass = "border-[#ef4444]/60";
-    bannerTextClass = "text-black";
-  }
-
-  const isScoringDisplay = isScoreLog || isCalahanLog;
-
-  const eventStyles = (() => {
-    if (isCalahanLog) {
-      return { bg: "bg-[#f0fff4]", border: "border-[#c6f6d5]", label: "text-black" };
-    }
-    if (isScoreLog) {
-      return { bg: "bg-[#e5ffe8]", border: "border-[#16a34a]/70", label: "text-black" };
-    }
-    if (isTimeoutLog || isStoppageStart) {
-      return { bg: "bg-[#fef3c7]", border: "border-[#f59e0b]/60", label: "text-black" };
-    }
-    if (isHalftimeLog) {
-      return { bg: "bg-[#e0e7ff]", border: "border-[#4338ca]/50", label: "text-black" };
-    }
-    if (isPossessionLog) {
-      return { bg: "bg-[#cffafe]", border: "border-[#06b6d4]/60", label: "text-black" };
-    }
-    return { bg: "bg-white", border: "border-slate-300", label: "text-black" };
-  })();
-
-  const description = isMatchStartLog
-    ? `Pulling team: ${fullTeamLabel || "Unassigned"}`
-    : isTimeoutLog
-      ? `${shortTeamLabel || "Team"} timeout`
-      : isHalftimeLog
-        ? "Halftime reached"
-        : isStoppageStart
-          ? "Match stoppage"
-          : null;
-  const showDetachedEdit = isPossessionLog;
-
-  return (
-    <article
-      className={`rounded-2xl border px-4 py-3 text-sm transition ${eventStyles.bg} ${eventStyles.border} ${alignClass} ${
-        showDetachedEdit ? "relative pr-12" : ""
-      }`}
-    >
-      <div className={`w-full ${alignClass}`}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-black">
-          {isMatchStartLog ? "Match start" : log.eventDescription || "Match event"}
-          {!isScoringDisplay && !isMatchStartLog && shortTeamLabel ? ` - ${shortTeamLabel}` : ""}
-        </p>
-        {abbaDescriptor && (
-          <p className="text-[30px] font-extrabold uppercase tracking-wide text-black">{abbaDescriptor}</p>
-        )}
-        {description && <p className="text-xs text-black">{description}</p>}
-        <p className="text-xs text-black">{eventTime}</p>
-      </div>
-
-      {isScoringDisplay ? (
-        <div className="mt-3 grid items-center gap-3 md:grid-cols-[1fr_auto_1fr]">
-          {log.team === "A" ? (
-            <div className="text-left text-xs text-black">
-              <p className="font-semibold text-black">{displayTeamA}</p>
-              <p className="font-semibold text-black">
-                {log.assistName ? `${log.assistName} -> ` : ""}
-                {log.scorerName || "Unassigned"}
-              </p>
-            </div>
-          ) : (
-            <div />
-          )}
-
-          <p className="text-center text-lg font-semibold text-black">
-            {log.totalA} - {log.totalB}
-          </p>
-
-          {log.team === "B" ? (
-            <div className="text-right text-xs text-black">
-              <p className="font-semibold text-black">{displayTeamB}</p>
-              <p className="font-semibold text-black">
-                {log.assistName ? `${log.assistName} -> ` : ""}
-                {log.scorerName || "Unassigned"}
-              </p>
-            </div>
-          ) : (
-            <div />
-          )}
-
-          {log.team && (
-            <div className="md:col-span-3 flex justify-end">
-              <button
-                type="button"
-                onClick={() => openScoreModal(log.team, "edit", logRef)}
-                className="rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
-                aria-label="Edit event"
-                title="Edit event"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                </svg>
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div
-          className={`mt-3 text-xs text-black ${
-            isPossessionLog
-              ? "flex flex-col items-start gap-1"
-              : `flex items-center ${description ? "justify-between" : "justify-end"}`
-          }`}
-        >
-          {(description || isPossessionLog) && (
-            <p>
-              {isPossessionLog
-                ? `${shortTeamLabel || "Team"} now has the disc`
-                : isTimeoutLog
-                  ? `${shortTeamLabel || "Team"} called a timeout`
-                  : isStoppageStart
-                    ? "Clock paused while stoppage is logged"
-                    : isHalftimeLog
-                      ? "Second-half prep underway"
-                      : ""}
-            </p>
-          )}
-          {isPossessionLog && (
-            <p className="text-[11px] font-semibold text-black/70">
-              Credited: {creditedPlayerLabel}
-            </p>
-          )}
-          {!showDetachedEdit && (
-            <button
-              type="button"
-              onClick={() => openSimpleEventModal(log, logRef)}
-              className="rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
-              aria-label="Edit event"
-              title="Edit event"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-              </svg>
-            </button>
-          )}
-        </div>
-      )}
-      {showDetachedEdit && (
-        <button
-          type="button"
-          onClick={() => openPossessionEditModal(log, logRef)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-border px-2.5 py-1 text-[#0f5132] transition hover:border-[#0f5132] hover:bg-[#e6fffa]"
-          aria-label="Edit event"
-          title="Edit event"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-          </svg>
-        </button>
-      )}
-    </article>
   );
 }

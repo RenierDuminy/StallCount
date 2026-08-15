@@ -46,7 +46,7 @@ const STANDINGS_FORFEIT_SCORE = 5;
 const STANDINGS_FORFEIT_WIN_POINTS = 2;
 const STANDINGS_FORFEIT_LOSS_POINTS = 0;
 const TEAM_STANDINGS_GRID_STYLE = {
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 14rem), 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
 };
 const MENS_DIVISION_POOL_LETTERS = new Set(["a", "b", "c", "d"]);
 const MENS_DIVISION_STANDINGS_START_DATE = "2026-04-13";

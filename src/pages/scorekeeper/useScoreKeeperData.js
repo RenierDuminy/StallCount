@@ -360,7 +360,6 @@ function normalizeEventRules(rawRules) {
 
   const gamePointTarget = coerceOptionalNumber(mergedRaw.game?.pointTarget);
   const gameSoftCapMinutes = coerceOptionalNumber(mergedRaw.game?.softCapMinutes);
-  const gameSoftCapMode = normalizeSoftCapMode(mergedRaw.game?.softCapMode);
   const gameHardCapMinutes =
     coerceOptionalNumber(getGameTimeCapMinutes(mergedRaw)) ??
     coerceRuleNumber(getGameTimeCapMinutes(baseRaw), DEFAULT_DURATION);
@@ -839,12 +838,10 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
     [selectedEventId, selectedMatchId]
   );
 
-const initialScoreRef = useRef({ a: 0, b: 0 });
 const currentMatchScoreRef = useRef({ a: 0, b: 0 });
 // Mirrors `pendingEntries` so score derivation can read the live queue without taking
 // it as a dependency (which would rebuild refreshMatchLogs on every queue change).
 const pendingEntriesRef = useRef([]);
-const baseScoreRef = useRef({ matchId: null, baseScore: { a: 0, b: 0 } });
 const matchIdRef = useRef(null);
 const refreshMatchLogsRef = useRef(null);
 const primaryResetRef = useRef(null);
@@ -1049,7 +1046,6 @@ const clearLocalMatchState = useCallback(() => {
     secondaryResetTriggeredRef.current = false;
     setTrackedSecondaryEvent(null);
     matchIdRef.current = null;
-    baseScoreRef.current = { matchId: null, baseScore: { a: 0, b: 0 } };
     if (userId) {
       clearScorekeeperSession(userId);
     }
@@ -1198,7 +1194,7 @@ useEffect(() => {
         }
       });
 
-    refreshMatchLogsRef.current?.(targetMatchId, currentMatchScoreRef.current);
+    refreshMatchLogsRef.current?.(targetMatchId);
 
     return () => {
       ignore = true;
@@ -1487,24 +1483,17 @@ useEffect(() => {
   useEffect(() => {
     if (!activeMatch) {
       matchIdRef.current = null;
-      initialScoreRef.current = { a: 0, b: 0 };
       setScore({ a: 0, b: 0 });
       setLogs([]);
       return;
     }
 
     const activeId = activeMatch.id;
-    const nextScore = {
-      a: activeMatch.score_a ?? 0,
-      b: activeMatch.score_b ?? 0,
-    };
     const hydrating = resumeHydrationRef.current;
     const isMatchSwitch = matchIdRef.current !== activeId;
 
     if (isMatchSwitch) {
       matchIdRef.current = activeId;
-      initialScoreRef.current = nextScore;
-      baseScoreRef.current = { matchId: null, baseScore: { a: 0, b: 0 } };
       setLogs([]);
       if (!hydrating) {
         setTimeoutUsage({ A: 0, B: 0 });
@@ -1513,12 +1502,13 @@ useEffect(() => {
       }
     }
 
-    // Only seed the score from the match row when switching matches. This effect also
-    // runs whenever `activeMatch` is mutated in place (syncActiveMatchScore rewrites
-    // score_a/score_b after every point), and re-seeding there would let the DB columns
-    // overwrite log-derived totals — reverting queued points the operator can still see.
+    // Start a newly selected match from 0-0 and let refreshMatchLogs fill in the counted
+    // total. Seeding from score_a/score_b here would put a stale or already-inflated
+    // published value on screen, and this effect also re-runs whenever activeMatch is
+    // mutated in place (syncActiveMatchScore rewrites those columns after every point),
+    // so seeding at all risks the columns overwriting the log-derived count.
     if (!hydrating && isMatchSwitch) {
-      setScore(nextScore);
+      setScore({ a: 0, b: 0 });
     }
   }, [activeMatch, rules.matchDuration, rules.timeoutSeconds, commitPrimaryTimerState, commitSecondaryTimerState]);
 
@@ -1905,7 +1895,7 @@ const recordPendingEntry = useCallback(
         await refreshPendingEntries();
         const refresh = refreshMatchLogsRef.current;
         if (refresh) {
-          void refresh(matchId, currentMatchScoreRef.current);
+          void refresh(matchId);
         }
       } catch (err) {
         console.error("[ScoreKeeper] Failed to persist match log entry:", err);
@@ -2735,7 +2725,7 @@ const replaceSecondaryTimer = useCallback(
       },
     });
     if (shouldRefreshLogs && refreshMatchLogsRef.current) {
-      void refreshMatchLogsRef.current(matchLogMatchId, currentMatchScoreRef.current);
+      void refreshMatchLogsRef.current(matchLogMatchId);
     }
     await refreshPendingEntries();
     return result;
@@ -2754,61 +2744,14 @@ const replaceSecondaryTimer = useCallback(
   }, [processQueueAndRefresh]);
 
   const deriveLogsFromRows = useCallback(
-    (rows, matchScore, options = {}) => {
-      const { matchId = null } = options;
-      let rawA = 0;
-      let rawB = 0;
-      rows.forEach((row) => {
-        const teamKey =
-          row.team_id && row.team_id === teamBId
-            ? "B"
-            : row.team_id && row.team_id === teamAId
-              ? "A"
-              : null;
-        const isScoreEvent =
-          row.event?.code === MATCH_LOG_EVENT_CODES.SCORE ||
-          row.event?.code === MATCH_LOG_EVENT_CODES.CALAHAN;
-        if (isScoreEvent) {
-          if (teamKey === "A") {
-            rawA += 1;
-          } else if (teamKey === "B") {
-            rawB += 1;
-          }
-        }
-      });
-
-      // The baseline covers points scored before logging began — a scorekeeper taking
-      // over a match already in progress. Pin it on the first derive for a match and
-      // reuse it: recomputing from a moving `matchScore` lets DB drift (an unflushed
-      // score_update, a deleted log) silently rebase the game and undo the operator's
-      // corrections on the next refresh.
-      //
-      // Only infer a baseline when the log has no scoring rows at all. Once a single
-      // point is logged, the log is the authority for the score and `matchScore -
-      // counted` stops being a safe inference: any disagreement between the DB columns
-      // and the log (a queued point the DB hasn't seen, a failed score sync) would be
-      // absorbed into the baseline and added to every total for the rest of the match.
-      const hasScoreRows = rawA > 0 || rawB > 0;
-      let baseScore;
-      if (matchId && baseScoreRef.current.matchId === matchId) {
-        baseScore = baseScoreRef.current.baseScore;
-      } else if (hasScoreRows) {
-        baseScore = { a: 0, b: 0 };
-        if (matchId) {
-          baseScoreRef.current = { matchId, baseScore };
-        }
-      } else {
-        baseScore = {
-          a: Math.max(matchScore.a, 0),
-          b: Math.max(matchScore.b, 0),
-        };
-        if (matchId) {
-          baseScoreRef.current = { matchId, baseScore };
-        }
-      }
-
-      let runningA = baseScore.a;
-      let runningB = baseScore.b;
+    (rows) => {
+      // The log is the score. Totals are a straight count of scoring rows with no
+      // baseline and no reference to matches.score_a/score_b, so there is nothing to
+      // infer and nothing that can compound. Reading the published columns back in
+      // here is what previously let a re-derive fold the existing total into a new
+      // baseline and double the score on every console remount.
+      let runningA = 0;
+      let runningB = 0;
       let scoreOrderIndexCounter = 0;
 
       const mappedLogs = rows.map((row) => {
@@ -2863,7 +2806,6 @@ const replaceSecondaryTimer = useCallback(
       });
 
       return {
-        baseScore,
         totals: { a: runningA, b: runningB },
         logs: mappedLogs,
       };
@@ -2872,16 +2814,23 @@ const replaceSecondaryTimer = useCallback(
   );
 
   const refreshMatchLogs = useCallback(
-    async (targetMatchId = matchLogMatchId, matchScore = { a: 0, b: 0 }) => {
+    async (targetMatchId = matchLogMatchId) => {
       if (!targetMatchId) {
         setLogs([]);
+        return null;
+      }
+      // Team ids arrive from the match record independently of the log rows. Rows are
+      // attributed to a side by matching row.team_id against them, so deriving while
+      // either is still null maps every scoring row to no team, counts 0-0, and would
+      // publish that over a real score. Refuse to count instead: the effect that owns
+      // these ids re-runs refreshMatchLogs once they resolve.
+      if (!teamAId || !teamBId) {
         return null;
       }
       setLogsLoading(true);
       try {
         const rows = await getMatchLogs(targetMatchId);
-        const derived = deriveLogsFromRows(rows, matchScore, { matchId: targetMatchId });
-        initialScoreRef.current = derived.baseScore;
+        const derived = deriveLogsFromRows(rows);
         const serverOptimisticIds = new Set(
           derived.logs
             .map((log) => log.optimisticId)
@@ -2913,6 +2862,11 @@ const replaceSecondaryTimer = useCallback(
         });
 
         const queuedScores = countQueuedScores(targetMatchId, serverOptimisticIds);
+        // An empty log means 0-0, including after the last point is deleted. Untracked
+        // matches that hold a real score in the columns are not reachable here: the
+        // match picker requests includeFinished: false and keeps only
+        // SETUP_MATCH_STATUSES, so finished/completed matches never load into the
+        // console and there is nothing to preserve a published score for.
         const totals = {
           a: derived.totals.a + queuedScores.a,
           b: derived.totals.b + queuedScores.b,
@@ -2955,6 +2909,9 @@ const replaceSecondaryTimer = useCallback(
       selectedMatch?.status,
       rules.matchDuration,
       countQueuedScores,
+      commitPrimaryTimerState,
+      teamAId,
+      teamBId,
     ]
   );
 
@@ -3099,10 +3056,7 @@ const replaceSecondaryTimer = useCallback(
       await Promise.all([
         rosterPromise,
         loadMatchEventDefinitions(),
-        refreshMatchLogs(targetMatch.id, {
-          a: targetMatch.score_a ?? 0,
-          b: targetMatch.score_b ?? 0,
-        }),
+        refreshMatchLogs(targetMatch.id),
       ]);
 
       appliedEventRulesRef.current = snapshot.eventId || selectedEventId || null;
@@ -3301,7 +3255,6 @@ const replaceSecondaryTimer = useCallback(
     loadMatches,
     handleResumeSession,
     handleDiscardResume,
-    initialScoreRef,
     currentMatchScoreRef,
     matchIdRef,
     refreshMatchLogsRef,

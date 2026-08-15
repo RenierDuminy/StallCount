@@ -18,10 +18,10 @@ const MATCH_LIMIT = 200;
 const LIVE_STATUSES = new Set(["live", "halftime"]);
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const TEAM_STANDINGS_GRID_STYLE = {
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 14rem), 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
 };
 const FINAL_STANDINGS_GRID_STYLE = {
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 18rem), 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(18rem, 1fr))",
 };
 const FINAL_STANDINGS = [
   {
@@ -56,9 +56,9 @@ const FINAL_STANDINGS = [
 const VENUE_GRID_CLASS =
   "flex flex-wrap gap-2";
 const MATCH_GRID_CLASS =
-  "grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr))]";
+  "grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(14rem,1fr))]";
 const FRIDAY_MATCH_GRID_CLASS =
-  "grid justify-start gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),18rem))]";
+  "grid justify-start gap-2 [grid-template-columns:repeat(auto-fit,minmax(18rem,18rem))]";
 const SCHEDULE_TIMEZONE = "Africa/Johannesburg";
 const SCHEDULE_DAY_KEYS = {
   day0: "2026-04-24",

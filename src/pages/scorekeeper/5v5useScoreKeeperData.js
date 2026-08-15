@@ -203,6 +203,13 @@ function normalizeHardCapEndMode(input) {
   return "afterPoint";
 }
 
+function normalizeHalftimeTriggerType(input) {
+  if (input === "manual" || input === "pointCap" || input === "timeCap") {
+    return input;
+  }
+  return "unknown";
+}
+
 const getGameTimeCapMinutes = (rules) =>
   rules?.game?.timeCapMinutes ?? rules?.game?.hardCapMinutes;
 const getGameTimeCapEndMode = (rules) =>
@@ -354,7 +361,6 @@ function normalizeEventRules(rawRules) {
 
   const gamePointTarget = coerceOptionalNumber(mergedRaw.game?.pointTarget);
   const gameSoftCapMinutes = coerceOptionalNumber(mergedRaw.game?.softCapMinutes);
-  const gameSoftCapMode = normalizeSoftCapMode(mergedRaw.game?.softCapMode);
   const gameHardCapMinutes =
     coerceOptionalNumber(getGameTimeCapMinutes(mergedRaw)) ??
     coerceRuleNumber(getGameTimeCapMinutes(baseRaw), DEFAULT_DURATION);
@@ -671,6 +677,7 @@ const [secondaryFlashRateMs, setSecondaryFlashRateMs] = useState(400);
 const [possessionTeam, setPossessionTeam] = useState(null);
 const [halftimeTriggered, setHalftimeTriggered] = useState(false);
 const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
+const [halftimeTriggerType, setHalftimeTriggerType] = useState("unknown");
 const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
 const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
   const [resumeCandidate, setResumeCandidate] = useState(null);
@@ -813,11 +820,7 @@ const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
     [selectedEventId, selectedMatchId]
   );
 
-const initialScoreRef = useRef({ a: 0, b: 0 });
 const currentMatchScoreRef = useRef({ a: 0, b: 0 });
-// Pins the pre-logging baseline per match so it is inferred once, not recomputed from a
-// moving DB score on every refresh. See deriveLogsFromRows.
-const baseScoreRef = useRef({ matchId: null, baseScore: { a: 0, b: 0 } });
 // Mirrors `pendingEntries` so score derivation can read the live queue without taking
 // it as a dependency (which would rebuild refreshMatchLogs on every queue change).
 const pendingEntriesRef = useRef([]);
@@ -996,6 +999,7 @@ const clearLocalMatchState = useCallback(() => {
     setPossessionTeam(null);
     setHalftimeTriggered(false);
     setHalftimeBreakActive(false);
+    setHalftimeTriggerType("unknown");
     setHalftimeTimeCapArmed(false);
     halftimeTimeCapSuppressedRef.current = false;
     setStoppageActive(false);
@@ -1015,7 +1019,6 @@ const clearLocalMatchState = useCallback(() => {
     secondaryResetTriggeredRef.current = false;
     setTrackedSecondaryEvent(null);
     matchIdRef.current = null;
-    baseScoreRef.current = { matchId: null, baseScore: { a: 0, b: 0 } };
     if (userId) {
       clearScorekeeperSession(userId);
     }
@@ -1164,7 +1167,7 @@ useEffect(() => {
         }
       });
 
-    refreshMatchLogsRef.current?.(targetMatchId, currentMatchScoreRef.current);
+    refreshMatchLogsRef.current?.(targetMatchId);
 
     return () => {
       ignore = true;
@@ -1459,36 +1462,31 @@ useEffect(() => {
 useEffect(() => {
   if (!consoleReady && !resumeHydrationRef.current) {
     setHalftimeTriggered(false);
+    setHalftimeTriggerType("unknown");
   }
 }, [consoleReady]);
 
 useEffect(() => {
   if (resumeHydrationRef.current) return;
   setHalftimeTriggered(false);
+  setHalftimeTriggerType("unknown");
   halftimeTimeCapSuppressedRef.current = false;
 }, [activeMatch?.id]);
 
   useEffect(() => {
     if (!activeMatch) {
       matchIdRef.current = null;
-      initialScoreRef.current = { a: 0, b: 0 };
       setScore({ a: 0, b: 0 });
       setLogs([]);
       return;
     }
 
     const activeId = activeMatch.id;
-    const nextScore = {
-      a: activeMatch.score_a ?? 0,
-      b: activeMatch.score_b ?? 0,
-    };
     const hydrating = resumeHydrationRef.current;
     const isMatchSwitch = matchIdRef.current !== activeId;
 
     if (isMatchSwitch) {
       matchIdRef.current = activeId;
-      initialScoreRef.current = nextScore;
-      baseScoreRef.current = { matchId: null, baseScore: { a: 0, b: 0 } };
       setLogs([]);
       if (!hydrating) {
         setTimeoutUsage({ A: 0, B: 0 });
@@ -1497,12 +1495,13 @@ useEffect(() => {
       }
     }
 
-    // Only seed the score from the match row when switching matches. This effect also
-    // runs whenever `activeMatch` is mutated in place (syncActiveMatchScore rewrites
-    // score_a/score_b after every point), and re-seeding there would let the DB columns
-    // overwrite log-derived totals — reverting queued points the operator can still see.
+    // Start a newly selected match from 0-0 and let refreshMatchLogs fill in the counted
+    // total. Seeding from score_a/score_b here would put a stale or already-inflated
+    // published value on screen, and this effect also re-runs whenever activeMatch is
+    // mutated in place (syncActiveMatchScore rewrites those columns after every point),
+    // so seeding at all risks the columns overwriting the log-derived count.
     if (!hydrating && isMatchSwitch) {
-      setScore(nextScore);
+      setScore({ a: 0, b: 0 });
     }
   }, [activeMatch, rules.matchDuration, rules.timeoutSeconds, commitPrimaryTimerState, commitSecondaryTimerState]);
 
@@ -1682,6 +1681,8 @@ useEffect(() => {
       possessionTeam,
       halftimeTriggered,
       halftimeBreakActive,
+      halftimeTriggerType,
+      halftimeTimeCapArmed,
       stoppageActive,
       scoreTarget,
       softCapApplied,
@@ -1708,6 +1709,8 @@ useEffect(() => {
     possessionTeam,
     halftimeTriggered,
     halftimeBreakActive,
+    halftimeTriggerType,
+    halftimeTimeCapArmed,
     stoppageActive,
     secondaryTotalSeconds,
     scoreTarget,
@@ -1878,7 +1881,7 @@ const recordPendingEntry = useCallback(
         await refreshPendingEntries();
         const refresh = refreshMatchLogsRef.current;
         if (refresh) {
-          void refresh(matchId, currentMatchScoreRef.current);
+          void refresh(matchId);
         }
       } catch (err) {
         console.error("[5v5ScoreKeeper] Failed to persist match log entry:", err);
@@ -2524,14 +2527,16 @@ const rosterNameLookup = useMemo(() => {
       entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
   );
 
-  const triggerHalftime = useCallback(async () => {
+  const triggerHalftime = useCallback(async (triggerType = "unknown") => {
     if (halftimeTriggerLockRef.current || halftimeTriggered || !matchStarted || halftimeLogged) {
       setHalftimeTimeCapArmed(false);
       return false;
     }
+    const normalizedTriggerType = normalizeHalftimeTriggerType(triggerType);
     halftimeTriggerLockRef.current = true;
     setHalftimeTriggered(true);
     setHalftimeBreakActive(true);
+    setHalftimeTriggerType(normalizedTriggerType);
     setHalftimeTimeCapArmed(false);
     const breakSeconds = Math.max(1, (rules.halftimeBreakMinutes || 0) * 60);
     try {
@@ -2655,7 +2660,7 @@ const rosterNameLookup = useMemo(() => {
       },
     });
     if (shouldRefreshLogs && refreshMatchLogsRef.current) {
-      void refreshMatchLogsRef.current(matchLogMatchId, currentMatchScoreRef.current);
+      void refreshMatchLogsRef.current(matchLogMatchId);
     }
     await refreshPendingEntries();
   }, [matchLogMatchId, refreshPendingEntries]);
@@ -2673,53 +2678,14 @@ const rosterNameLookup = useMemo(() => {
   }, [processQueueAndRefresh]);
 
   const deriveLogsFromRows = useCallback(
-    (rows, matchScore, options = {}) => {
-      const { matchId = null } = options;
-      let rawA = 0;
-      let rawB = 0;
-      rows.forEach((row) => {
-        const teamKey =
-          row.team_id && row.team_id === teamBId
-            ? "B"
-            : row.team_id && row.team_id === teamAId
-              ? "A"
-              : null;
-        const isScoreEvent =
-          row.event?.code === MATCH_LOG_EVENT_CODES.SCORE ||
-          row.event?.code === MATCH_LOG_EVENT_CODES.CALAHAN;
-        if (isScoreEvent) {
-          if (teamKey === "A") {
-            rawA += 1;
-          } else if (teamKey === "B") {
-            rawB += 1;
-          }
-        }
-      });
-
-      // The baseline covers points scored before logging began — a scorekeeper taking
-      // over a match already in progress. Only infer it when the log has no scoring rows
-      // at all: once a single point is logged the log is the authority for the score, and
-      // `matchScore - counted` stops being a safe inference. Any disagreement between the
-      // DB columns and the log (a queued point the DB hasn't seen, a failed score sync)
-      // would otherwise be absorbed into the baseline and added to every later total.
-      const hasScoreRows = rawA > 0 || rawB > 0;
-      let baseScore;
-      if (matchId && baseScoreRef.current.matchId === matchId) {
-        baseScore = baseScoreRef.current.baseScore;
-      } else {
-        baseScore = hasScoreRows
-          ? { a: 0, b: 0 }
-          : {
-              a: Math.max(matchScore.a, 0),
-              b: Math.max(matchScore.b, 0),
-            };
-        if (matchId) {
-          baseScoreRef.current = { matchId, baseScore };
-        }
-      }
-
-      let runningA = baseScore.a;
-      let runningB = baseScore.b;
+    (rows) => {
+      // The log is the score. Totals are a straight count of scoring rows with no
+      // baseline and no reference to matches.score_a/score_b, so there is nothing to
+      // infer and nothing that can compound. Reading the published columns back in
+      // here is what previously let a re-derive fold the existing total into a new
+      // baseline and double the score on every console remount.
+      let runningA = 0;
+      let runningB = 0;
       let scoreOrderIndexCounter = 0;
 
       const mappedLogs = rows.map((row) => {
@@ -2774,7 +2740,6 @@ const rosterNameLookup = useMemo(() => {
       });
 
       return {
-        baseScore,
         totals: { a: runningA, b: runningB },
         logs: mappedLogs,
       };
@@ -2783,16 +2748,23 @@ const rosterNameLookup = useMemo(() => {
   );
 
   const refreshMatchLogs = useCallback(
-    async (targetMatchId = matchLogMatchId, matchScore = { a: 0, b: 0 }) => {
+    async (targetMatchId = matchLogMatchId) => {
       if (!targetMatchId) {
         setLogs([]);
+        return null;
+      }
+      // Team ids arrive from the match record independently of the log rows. Rows are
+      // attributed to a side by matching row.team_id against them, so deriving while
+      // either is still null maps every scoring row to no team, counts 0-0, and would
+      // publish that over a real score. Refuse to count instead: the effect that owns
+      // these ids re-runs refreshMatchLogs once they resolve.
+      if (!teamAId || !teamBId) {
         return null;
       }
       setLogsLoading(true);
       try {
         const rows = await getMatchLogs(targetMatchId);
-        const derived = deriveLogsFromRows(rows, matchScore, { matchId: targetMatchId });
-        initialScoreRef.current = derived.baseScore;
+        const derived = deriveLogsFromRows(rows);
         const serverOptimisticIds = new Set(
           derived.logs
             .map((log) => log.optimisticId)
@@ -2824,6 +2796,11 @@ const rosterNameLookup = useMemo(() => {
         });
 
         const queuedScores = countQueuedScores(targetMatchId, serverOptimisticIds);
+        // An empty log means 0-0, including after the last point is deleted. Untracked
+        // matches that hold a real score in the columns are not reachable here: the
+        // match picker requests includeFinished: false and keeps only
+        // SETUP_MATCH_STATUSES, so finished/completed matches never load into the
+        // console and there is nothing to preserve a published score for.
         const totals = {
           a: derived.totals.a + queuedScores.a,
           b: derived.totals.b + queuedScores.b,
@@ -2869,6 +2846,8 @@ const rosterNameLookup = useMemo(() => {
       rules.matchDuration,
       commitPrimaryTimerState,
       countQueuedScores,
+      teamAId,
+      teamBId,
     ]
   );
 
@@ -2970,10 +2949,7 @@ const rosterNameLookup = useMemo(() => {
 
         await Promise.all([
           loadMatchEventDefinitions(),
-          refreshMatchLogs(targetMatch.id, {
-            a: targetMatch.score_a ?? 0,
-            b: targetMatch.score_b ?? 0,
-          }),
+          refreshMatchLogs(targetMatch.id),
         ]);
 
         appliedEventRulesRef.current = `match-${targetMatch.id}`;
@@ -3043,6 +3019,8 @@ const rosterNameLookup = useMemo(() => {
     setPossessionTeam(snapshot.possessionTeam ?? null);
     setHalftimeTriggered(Boolean(snapshot.halftimeTriggered));
     setHalftimeBreakActive(Boolean(snapshot.halftimeBreakActive));
+    setHalftimeTriggerType(normalizeHalftimeTriggerType(snapshot.halftimeTriggerType));
+    setHalftimeTimeCapArmed(Boolean(snapshot.halftimeTimeCapArmed));
     setStoppageActive(Boolean(snapshot.stoppageActive));
     setMatchStarted(resumeWasStarted);
     setScoreTarget(
@@ -3141,10 +3119,7 @@ const rosterNameLookup = useMemo(() => {
       await Promise.all([
         rosterPromise,
         loadMatchEventDefinitions(),
-        refreshMatchLogs(targetMatch.id, {
-          a: targetMatch.score_a ?? 0,
-          b: targetMatch.score_b ?? 0,
-        }),
+        refreshMatchLogs(targetMatch.id),
       ]);
 
       appliedEventRulesRef.current = snapshot.eventId || selectedEventId || null;
@@ -3270,6 +3245,8 @@ const rosterNameLookup = useMemo(() => {
     halftimeTriggered,
     setHalftimeTriggered,
     halftimeBreakActive,
+    halftimeTriggerType,
+    setHalftimeTriggerType,
     halftimeTimeCapArmed,
     setHalftimeTimeCapArmed,
     halftimeCapTargetScore,
@@ -3340,7 +3317,6 @@ const rosterNameLookup = useMemo(() => {
     loadMatches,
     handleResumeSession,
     handleDiscardResume,
-    initialScoreRef,
     currentMatchScoreRef,
     matchIdRef,
     refreshMatchLogsRef,

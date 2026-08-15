@@ -131,10 +131,7 @@ export function useScoreKeeperActions(controller) {
       await Promise.all([
         rosterPromise,
         controller.loadMatchEventDefinitions(),
-        controller.refreshMatchLogs(updated.id, {
-          a: updated.score_a ?? 0,
-          b: updated.score_b ?? 0,
-        }),
+        controller.refreshMatchLogs(updated.id),
       ]);
 
       await controller.loadMatches(undefined, { preferredMatchId: updated.id });
@@ -350,15 +347,19 @@ export function useScoreKeeperActions(controller) {
     if (receivingTeam) {
       void controller.updatePossession(receivingTeam, { logTurnover: false });
     }
+    const halftimeTarget =
+      controller.halftimeCapTargetScore ??
+      controller.rules.halftimeScoreThreshold ??
+      HALFTIME_SCORE_THRESHOLD;
     const reachedHalftimeScore =
-      Math.max(nextTotals.a, nextTotals.b) >=
-      (controller.rules.halftimeScoreThreshold || HALFTIME_SCORE_THRESHOLD);
+      Math.max(nextTotals.a, nextTotals.b) >= halftimeTarget;
     let halftimeStarted = false;
     if (
       !controller.halftimeTriggered &&
       (reachedHalftimeScore || controller.halftimeTimeCapArmed)
     ) {
-      halftimeStarted = Boolean(await controller.triggerHalftime());
+      const halftimeTriggerType = controller.halftimeTimeCapArmed ? "timeCap" : "pointCap";
+      halftimeStarted = Boolean(await controller.triggerHalftime(halftimeTriggerType));
     }
     if (!halftimeStarted) {
       controller.startSecondaryTimer(
@@ -575,10 +576,7 @@ export function useScoreKeeperActions(controller) {
         }
         await updateMatchLogEntryByTimestamp(matchId, createdAt, payload);
       }
-      const totals = await controller.refreshMatchLogs(
-        controller.matchLogMatchId,
-        controller.currentMatchScoreRef.current
-      );
+      const totals = await controller.refreshMatchLogs(controller.matchLogMatchId);
       if (totals) {
         await syncActiveMatchScore(totals);
       }
@@ -707,14 +705,9 @@ export function useScoreKeeperActions(controller) {
       for (const id of serverIds) {
         await deleteMatchLogEntry(id);
       }
-      // Pass the score through unchanged. It only seeds the pre-logging baseline
-      // (`matchScore - countedRows`), and the deleted row is already absent from that
-      // count — subtracting it here too would remove the same point twice.
-      const currentScore = controller.currentMatchScoreRef.current || { a: 0, b: 0 };
-      const totals = await controller.refreshMatchLogs(
-        controller.matchLogMatchId,
-        currentScore
-      );
+      // The deleted row is gone from the log, so the recount below returns the score
+      // without it and publishing that total is what makes the deletion stick.
+      const totals = await controller.refreshMatchLogs(controller.matchLogMatchId);
       if (totals) {
         await syncActiveMatchScore(totals);
       }
@@ -732,6 +725,7 @@ export function useScoreKeeperActions(controller) {
         // "past the cap, halftime not triggered" and immediately re-add what was deleted.
         controller.suppressHalftimeTimeCap?.();
         controller.setHalftimeTriggered(false);
+        controller.setHalftimeTriggerType("unknown");
         controller.setHalftimeTimeCapArmed(false);
         controller.setHalftimeCapTargetScore(null);
       }
@@ -779,7 +773,7 @@ export function useScoreKeeperActions(controller) {
   }
 
   async function handleHalfTimeTrigger() {
-    await controller.triggerHalftime();
+    await controller.triggerHalftime("manual");
     if (!controller.stoppageActive) {
       controller.setTimeModalOpen(false);
     }

@@ -1883,7 +1883,7 @@ export default function PlayoffStructurePage() {
             }
           />
 
-          <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))]">
+          <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(16rem,1fr))]">
             <Field label="Event" hint="Choose the event whose brackets you want to manage.">
               <Select
                 value={selectedEventId}
@@ -1958,7 +1958,7 @@ export default function PlayoffStructurePage() {
               }
             />
 
-            <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr))]">
+            <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(16rem,1fr))]">
               <Field label="Template">
                 <Select
                   value={templateId}
@@ -2214,7 +2214,7 @@ export default function PlayoffStructurePage() {
               ) : null}
             </Panel>
 
-            <div className="grid items-start gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))] xl:grid-cols-[minmax(17rem,19rem)_minmax(0,1fr)]">
+            <div className="grid items-start gap-2 [grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))] xl:grid-cols-[minmax(17rem,19rem)_minmax(0,1fr)]">
               <Panel variant="default" className="self-start space-y-2 border-white/20 p-2">
                 <SectionHeader
                   title="Nodes"
@@ -2400,7 +2400,7 @@ export default function PlayoffStructurePage() {
                         tone="linked"
                         className="bg-sky-500/12"
                       >
-                        <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr))]">
+                        <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(12rem,1fr))]">
                           <Field label="Division">
                             <Select
                               value={createMatchForm.divisionId}
@@ -2533,7 +2533,7 @@ export default function PlayoffStructurePage() {
                       tone="participants"
                       className="p-2"
                     >
-                      <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))]">
+                      <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))]">
                         <SourceEditor
                           label="Source A"
                           value={nodeForm.sourceA}
@@ -2571,7 +2571,7 @@ export default function PlayoffStructurePage() {
                         filled in for you. The fields below are a manual override for unusual structures.
                       </p>
 
-                      <div className="mt-2 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr))]">
+                      <div className="mt-2 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(10rem,1fr))]">
                         <Field label="Round" hint="Bracket column (auto-set).">
                           <Input
                             type="number"
@@ -2592,7 +2592,7 @@ export default function PlayoffStructurePage() {
                         </Field>
                       </div>
 
-                      <div className="mt-2 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))]">
+                      <div className="mt-2 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))]">
                         <div className="space-y-2 rounded-2xl border border-white/15 bg-surface/60 p-2">
                           <div className="space-y-0.5">
                             <p className="text-sm font-semibold text-ink">Winner advancement</p>

@@ -434,7 +434,7 @@ export default function TournamentDirectorPage() {
                 className={LIGHT_INPUT_CLASS}
               />
             </div>
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2">
               <Panel variant="light" className="p-2.5 shadow-sm shadow-[rgba(8,25,21,0.04)]">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Active</p>
                 <p className="truncate text-base font-semibold">{selectedTable || "None"}</p>
@@ -479,7 +479,7 @@ export default function TournamentDirectorPage() {
           </Card>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-4">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(24rem,1fr))] gap-4">
               <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
               <SectionHeader
                 title="Create a match"
@@ -600,7 +600,7 @@ export default function TournamentDirectorPage() {
                 </div>
               </div>
               {(matchError || matchMessage) && (
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
                   {matchError && (
                     <Panel variant="light" className="border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
                       {matchError}
@@ -724,7 +724,7 @@ export default function TournamentDirectorPage() {
                 {columns.length === 0 ? (
                   <p className="mt-2 text-xs text-[var(--sc-surface-light-ink)]/70">No columns detected.</p>
                 ) : (
-                  <div className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2 text-xs">
+                  <div className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2 text-xs">
                     {columns.map((col) => (
                       <div key={col} className="rounded border border-[var(--sc-surface-light-border)] bg-white px-2 py-1 font-semibold">
                         {col}
@@ -796,7 +796,7 @@ export default function TournamentDirectorPage() {
               </div>
             </Card>
 
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-4">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(24rem,1fr))] gap-4">
               <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
                 <SectionHeader
                   title="Insert JSON payload"

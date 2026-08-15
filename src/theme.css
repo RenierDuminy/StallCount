@@ -241,7 +241,7 @@ a:focus-visible {
 }
 
 .home-two-col__sidebar .home-timeline-list--grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
 }
 
 .home-page {
@@ -371,7 +371,7 @@ a:focus-visible {
 }
 
 .home-timeline-list--grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   align-items: stretch;
 }
 
@@ -823,7 +823,7 @@ a:focus-visible {
 .sc-match-card-grid {
   display: grid;
   gap: 0.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), min(100%, 500px)));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 500px));
   justify-content: start;
 }
 
@@ -832,7 +832,7 @@ a:focus-visible {
 }
 
 .sc-match-card-grid-compact {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 260px));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 260px));
 }
 
 .sc-match-card-score-wrap {
@@ -912,15 +912,15 @@ a:focus-visible {
 
 @media (min-width: 640px) {
   .sc-match-card-grid {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), min(100%, 500px)));
+    grid-template-columns: repeat(auto-fit, minmax(150px, 500px));
   }
 
   .sc-match-card-grid-compact {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 260px));
+    grid-template-columns: repeat(auto-fit, minmax(150px, 260px));
   }
 
   .sc-match-card-grid-wide {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 18rem));
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 18rem));
   }
 }
 
@@ -1697,7 +1697,7 @@ details[open] > summary.wizard-cursor-pointer::before {
 /* Dynamic grid that fits as many team chips per row as the width allows. */
 .wizard-team-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: 0.5rem;
 }
 

@@ -19,7 +19,7 @@ const MATCH_LIMIT = 200;
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const CANCELED_STATUSES = new Set(["canceled", "cancelled"]);
 const TEAM_STANDINGS_GRID_STYLE = {
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 14rem), 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
 };
 const VENUE_GRID_CLASS =
   "flex flex-wrap gap-2";

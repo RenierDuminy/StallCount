@@ -1387,7 +1387,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
           </div>
         </div>
         {selectedEvent ? (
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-3">
             <Panel variant="light" className="p-3 shadow-sm shadow-[rgba(8,25,21,0.04)]">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Tournament</p>
               <p className="mt-1 text-lg font-semibold text-[var(--sc-surface-light-ink)]">{selectedEvent.name}</p>
@@ -1697,7 +1697,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
               </div>
             </div>
 
-            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3">
+            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Event</span>
                 <select value={selectedEventId} disabled className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}>
@@ -1881,7 +1881,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
               </label>
             </div>
 
-            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-3 rounded-lg border border-[var(--sc-surface-light-border)] bg-white p-3">
+            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3 rounded-lg border border-[var(--sc-surface-light-border)] bg-white p-3">
               <label className="flex items-center gap-3 text-sm font-semibold text-[var(--sc-surface-light-ink)]">
                 <input
                   type="checkbox"
@@ -1925,7 +1925,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
                 />
                 Has media
               </label>
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-3">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3">
                 <label className="block">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Media provider</span>
                   <input
@@ -2044,7 +2044,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
               </div>
             </div>
 
-            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3">
+            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3">
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Event</span>
                 <select value={selectedEventId} disabled className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}>
@@ -2230,7 +2230,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
               </label>
             </div>
 
-            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-3 rounded-lg border border-[var(--sc-surface-light-border)] bg-white p-3">
+            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3 rounded-lg border border-[var(--sc-surface-light-border)] bg-white p-3">
               <label className="flex items-center gap-3 text-sm font-semibold text-[var(--sc-surface-light-ink)]">
                 <input
                   type="checkbox"
@@ -2274,7 +2274,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
                 />
                 Has media
               </label>
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-3">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3">
                 <label className="block">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Media provider</span>
                   <input

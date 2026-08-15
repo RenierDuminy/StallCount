@@ -314,7 +314,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
         ) : null}
       </Card>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-2">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2">
         {groupedUsers.map((group) => (
           <Panel
             key={group.key}
@@ -334,7 +334,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
         ))}
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] gap-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(22rem,1fr))] gap-4">
         {groupedUsers.map((group) => (
           <Card key={group.key} variant="light" className="space-y-2.5 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
             <div className="flex items-center justify-between gap-3 border-b border-[var(--sc-surface-light-border)] pb-2">
