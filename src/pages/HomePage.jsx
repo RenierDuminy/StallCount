@@ -111,7 +111,9 @@ function LazyHomeSection({
 }
 
 export default function HomePage() {
-  const [featuredTeams, setFeaturedTeams] = useState([]);
+  // Value is currently unread; the setter still runs so the fetch keeps its
+  // shape and the data is one line away if a teams section returns.
+  const [_featuredTeams, setFeaturedTeams] = useState([]);
   const [events, setEvents] = useState([]);
   const [latestMatches, setLatestMatches] = useState([]);
   const [openMatches, setOpenMatches] = useState([]);
@@ -125,7 +127,8 @@ export default function HomePage() {
   const [belowFoldError, setBelowFoldError] = useState(null);
   const [heroActionStatus, setHeroActionStatus] = useState(null);
 
-  const [profile, setProfile] = useState(null);
+  // As above: written by the personalisation effect, not currently rendered.
+  const [_profile, setProfile] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
   const [personalizedLoading, setPersonalizedLoading] = useState(false);
   const [personalizedError, setPersonalizedError] = useState(null);

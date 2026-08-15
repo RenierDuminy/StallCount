@@ -335,8 +335,6 @@ export default function SysAdminPage() {
       .filter(Boolean);
     return fromInput.length ? fromInput : ["id"];
   }, [primaryKey, primaryKeyColumns]);
-  const selectedRowId =
-    selectedRow && deleteKeyColumns.length === 1 ? selectedRow[deleteKeyColumns[0]] ?? "" : "";
   const deleteKeyEntries = useMemo(
     () =>
       deleteKeyColumns.map((column) => ({
@@ -711,7 +709,8 @@ export default function SysAdminPage() {
       }
       setDeleteMessage("Record deleted. Database cascade rules applied.");
       setDeleteConfirm(false);
-      setDeleteKeyValues((prev) =>
+      // Reset every key field; the previous values are deliberately discarded.
+      setDeleteKeyValues(
         deleteKeyColumns.reduce((acc, col) => ({ ...acc, [col]: "" }), {}),
       );
       setCascadePreview([]);

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
-import { formatClock } from "./scrimmageUtils";
 import { useScrimmageData } from "./useScrimmageData";
 import { useScrimmageActions } from "./useScrimmageActions";
 import { deriveScrimmageReport } from "./scrimmageReport";
@@ -67,13 +66,10 @@ export default function ScrimmageView() {
     logs,
     logsLoading,
     matchEventsError,
-    pendingEntries,
-    timerRunning,
     secondaryRunning,
     secondaryLabel,
     timerLabel,
     consoleError,
-    rosters,
     rostersLoading,
     rostersError,
     setRosters,
@@ -84,7 +80,6 @@ export default function ScrimmageView() {
     scoreModalState,
     scoreForm,
     setScoreForm,
-    timeoutUsage,
     possessionTeam,
     stoppageActive,
     matchStarted,
@@ -93,11 +88,8 @@ export default function ScrimmageView() {
     displayTeamB,
     displayTeamAShort,
     displayTeamBShort,
-    kickoffLabel,
     teamAId,
     teamBId,
-    venueName,
-    statusLabel,
     getAbbaDescriptor,
     matchStartingTeamKey,
     remainingTimeouts,
@@ -124,8 +116,7 @@ export default function ScrimmageView() {
     setSecondaryLabel,
     setSecondaryFlashActive,
     setSecondaryFlashPulse,
-    updatePossession,
-    handleDiscardResume
+    updatePossession
   } = data;
 
   // Defer automatic PWA reloads while a scrimmage is actively being scored.
@@ -153,20 +144,6 @@ export default function ScrimmageView() {
   const timeoutsTotal = getRuleTimeoutsTotal(rules);
   const timeoutsPerHalf = getRuleTimeoutsPerHalf(rules);
   const abbaPattern = getRuleAbbaPattern(rules);
-  const formatTeamLabel = (teamKey) => {
-    if (teamKey === "A") return safeTeamAName;
-    if (teamKey === "B") return safeTeamBName;
-    return null;
-  };
-  const possessionDisplay =
-    formatTeamLabel(possessionTeam) || possessionLeader || "Unassigned";
-
-  const formatPlayerSelectLabel = (player) => {
-    if (!player) return "Unassigned";
-    const jersey = player.jersey_number ?? "-";
-    const name = player.name || "Player";
-    return `${jersey} ${name}`;
-  };
   const renderPlayerGridLabel = (player) => {
     const jerseyValue = player?.jersey_number;
     const jerseyText = `${jerseyValue ?? ""}`.trim();
@@ -477,12 +454,7 @@ export default function ScrimmageView() {
     startSecondaryHoldReset,
     handleInitialiseMatch,
     handleToggleTimer,
-    handleSecondaryToggle,
-    handleSecondaryReset,
     handleStartMatch,
-    handleAddScore,
-    syncActiveMatchScore,
-    handleRuleChange,
     openScoreModal,
     closeScoreModal,
     handleScoreModalSubmit,
@@ -491,8 +463,7 @@ export default function ScrimmageView() {
     handleTimeoutTrigger,
     handleHalfTimeTrigger,
     handleGameStoppage,
-    handleEndMatchNavigation,
-    logMatchStartEvent
+    handleEndMatchNavigation
   } = actions;
 
   const POSSESSION_DRAG_THRESHOLD = 24;
@@ -510,7 +481,8 @@ export default function ScrimmageView() {
   const possessionPointerIdRef = useRef(null);
   const possessionDragStateRef = useRef({ startX: null, moved: false });
   const possessionConfirmTimeoutRef = useRef(null);
-  const [possessionEventReady, setPossessionEventReady] = useState(false);
+  // Only the setter is used; the flag is written for future gating.
+  const [_possessionEventReady, setPossessionEventReady] = useState(false);
   const [possessionResult, setPossessionResult] = useState("throwaway"); // "throwaway" | "block"
   const [possessionActorId, setPossessionActorId] = useState("");
   const [possessionModalOpen, setPossessionModalOpen] = useState(false);
@@ -530,9 +502,6 @@ export default function ScrimmageView() {
     const nextTeam = clamped >= 0.5 ? "B" : "A";
     if (nextTeam === possessionTeam && !possessionPreviewTeam) return;
 
-    const blockTeam = nextTeam === "A" ? "B" : "A";
-    const rosterSourceTeam = possessionResult === "block" ? nextTeam : blockTeam;
-    const options = getRosterOptionsForTeam(rosterSourceTeam);
     setPendingPossessionTeam(nextTeam);
     setPossessionPreviewTeam(nextTeam);
     setPossessionActorId("");
@@ -820,10 +789,6 @@ const handleStartDiscussionTimer = () => {
     setSecondaryLabel("Discussion");
     setSecondaryFlashActive(false);
     setSecondaryFlashPulse(false);
-  };
-
-  const handleScorePopupSelection = (teamKey) => {
-    openScoreModal(teamKey);
   };
 
   const scrimmageReport = useMemo(
@@ -1414,8 +1379,6 @@ const handleStartDiscussionTimer = () => {
                   checked={possessionResult === "block"}
                   onChange={() => {
                     setPossessionResult("block");
-                    const blockTeam =
-                      pendingPossessionTeam === "A" ? "B" : pendingPossessionTeam === "B" ? "A" : null;
                   }}
                 />
                 <span>Block</span>

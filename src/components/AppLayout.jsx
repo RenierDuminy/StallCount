@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import { Outlet, Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 import SiteHeader from "./SiteHeader";
 import AdminErrorBanner from "./AdminErrorBanner";
 import { SilentErrorBoundary } from "./ErrorBoundary";
@@ -12,8 +11,6 @@ const routeFallback = (
 );
 
 export default function AppLayout() {
-  const { session } = useAuth();
-
   return (
     <div className="sc-page flex min-h-screen flex-col">
       {/* A component whose job is announcing errors must never cause one. */}

@@ -492,7 +492,7 @@ export default function MatchesPage() {
 
             <section className="sc-card-base space-y-3 p-4 sm:p-6">
               <h2 className="text-lg font-semibold text-ink">Point-by-point log</h2>
-              <PointLogTable rows={derived.logRows} teamAName={selectedMatch?.team_a?.name} teamBName={selectedMatch?.team_b?.name} />
+              <PointLogTable rows={derived.logRows} />
             </section>
           </>
         )}
@@ -562,7 +562,6 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
   const width = 900;
   const baseHeight = 300;
   const possessionSegments = possessionTimeline?.segments || [];
-  const possessionScores = possessionTimeline?.scores || [];
   const possessionBandHeight = possessionSegments.length ? (isMobile ? 18 : 14) : 0;
   const possessionBandGap = possessionSegments.length ? 24 : 0;
   const chartCanvasHeight = isMobile ? baseHeight * 1.35 : baseHeight;
@@ -753,7 +752,7 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
     </div>
   );
 }
-function PossessionTimeline({ timeline, teamAName, teamBName }) {
+function PossessionTimeline({ timeline }) {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -775,7 +774,6 @@ function PossessionTimeline({ timeline, teamAName, teamBName }) {
   }
 
   const segments = timeline.segments || [];
-  const turnovers = timeline.turnovers || [];
   const scoreMarkers = timeline.scores || [];
   const timeTicks = timeline.timeTicks || [];
   const width = 900;
@@ -1032,7 +1030,6 @@ function buildSpiritReport(scores, match) {
 }
 
 function SpiritRadarCard({ title, data, tone }) {
-  const toneColor = tone === "teamB" ? SERIES_COLORS.teamB : SERIES_COLORS.teamA;
   const totalLabel =
     Number.isFinite(data?.total) && Number.isFinite(data?.maxTotal)
       ? Math.round(data.total).toString()
@@ -1288,7 +1285,7 @@ function SpiritRadarChart({ values, tone, title, totalLabel }) {
   );
 }
 
-function PointLogTable({ rows, teamAName, teamBName }) {
+function PointLogTable({ rows }) {
   if (!rows.length) {
     return (
       <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">No match events recorded yet.</div>
