@@ -17,7 +17,9 @@ export default defineConfig([
     files: ['**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
-      reactHooks.configs['recommended-latest'],
+      // react-hooks v7 nests the flat-config variants under `flat`;
+      // the top-level `recommended-latest` is the legacy eslintrc shape.
+      reactHooks.configs.flat.recommended,
       reactRefresh.configs.vite,
     ],
     languageOptions: {
