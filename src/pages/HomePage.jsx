@@ -5,7 +5,6 @@ import {
   getMatchesByIds,
 } from "../services/matchService";
 import { getSubscriptions } from "../services/subscriptionService";
-import { getCurrentUser } from "../services/userService";
 import { useAuth } from "../context/AuthContext";
 import {
   getHomeBelowFoldSummary,
@@ -25,7 +24,6 @@ const FINISHED_STATUSES = new Set(["finished", "completed"]);
 const MAX_MY_TEAMS = 2;
 const MAX_MY_MATCHES = 3;
 const DESKTOP_HOME_LIMITS = {
-  teams: 8,
   events: 40,
   recentMatches: 50,
   openMatches: 20,
@@ -38,7 +36,6 @@ const DESKTOP_HOME_LIMITS = {
   upcomingMatches: 10,
 };
 const MOBILE_HOME_LIMITS = {
-  teams: 6,
   events: 12,
   recentMatches: 12,
   openMatches: 8,
@@ -111,9 +108,6 @@ function LazyHomeSection({
 }
 
 export default function HomePage() {
-  // Value is currently unread; the setter still runs so the fetch keeps its
-  // shape and the data is one line away if a teams section returns.
-  const [_featuredTeams, setFeaturedTeams] = useState([]);
   const [events, setEvents] = useState([]);
   const [latestMatches, setLatestMatches] = useState([]);
   const [openMatches, setOpenMatches] = useState([]);
@@ -127,8 +121,6 @@ export default function HomePage() {
   const [belowFoldError, setBelowFoldError] = useState(null);
   const [heroActionStatus, setHeroActionStatus] = useState(null);
 
-  // As above: written by the personalisation effect, not currently rendered.
-  const [_profile, setProfile] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
   const [personalizedLoading, setPersonalizedLoading] = useState(false);
   const [personalizedError, setPersonalizedError] = useState(null);
@@ -241,14 +233,12 @@ export default function HomePage() {
       try {
         const summary = await getHomeBelowFoldSummary({
           limits: {
-            teams: homeLimits.teams,
             events: homeLimits.events,
           },
         });
 
         if (ignore) return;
 
-        setFeaturedTeams(summary.teams);
         setEvents(summary.events);
         setStats(summary.stats);
 
@@ -277,7 +267,7 @@ export default function HomePage() {
     return () => {
       ignore = true;
     };
-  }, [homeLimits.events, homeLimits.teams, renderEventTimeline]);
+  }, [homeLimits.events, renderEventTimeline]);
 
   useEffect(() => {
     if (!renderStreaming) return undefined;
@@ -360,7 +350,6 @@ export default function HomePage() {
     const profileId = session?.user?.id ?? null;
 
     if (!profileId) {
-      setProfile(null);
       setSubscriptions([]);
       setMyTeamInsights([]);
       setMyMatchInsights([]);
@@ -379,16 +368,9 @@ export default function HomePage() {
     setPersonalizedLoading(true);
     setPersonalizedError(null);
 
-    Promise.all([toSettled(getCurrentUser()), toSettled(getSubscriptions(profileId))])
-      .then(([profileResult, subscriptionsResult]) => {
+    toSettled(getSubscriptions(profileId))
+      .then((subscriptionsResult) => {
         if (ignore) return;
-
-        if (profileResult.status === "fulfilled") {
-          setProfile(profileResult.value);
-        } else {
-          setProfile(null);
-          console.error("[HomePage] Failed to load profile:", profileResult.reason);
-        }
 
         if (subscriptionsResult.status === "fulfilled") {
           setSubscriptions(subscriptionsResult.value);

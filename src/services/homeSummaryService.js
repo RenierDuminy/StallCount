@@ -7,7 +7,6 @@ import {
 } from "./matchService";
 import { getRecentLiveEvents } from "./liveEventService";
 import { getTableCount } from "./statsService";
-import { getAllTeams } from "./teamService";
 import { getCachedQuery } from "../utils/queryCache";
 
 const HOME_HERO_SUMMARY_CACHE_TTL_MS = 30 * 1000;
@@ -21,7 +20,6 @@ const DEFAULT_HOME_HERO_LIMITS = {
 };
 
 const DEFAULT_HOME_BELOW_FOLD_LIMITS = {
-  teams: 8,
   events: 16,
 };
 
@@ -47,7 +45,6 @@ function normalizeHomeHeroLimits(limits = {}) {
 
 function normalizeHomeBelowFoldLimits(limits = {}) {
   return {
-    teams: normalizeLimit(limits.teams, DEFAULT_HOME_BELOW_FOLD_LIMITS.teams),
     events: normalizeLimit(limits.events, DEFAULT_HOME_BELOW_FOLD_LIMITS.events),
   };
 }
@@ -76,7 +73,6 @@ function buildHomeHeroSummaryCacheKey(limits) {
 function buildHomeBelowFoldSummaryCacheKey(limits) {
   return [
     "home-summary:below-fold",
-    `teams=${limits.teams}`,
     `events=${limits.events}`,
   ].join(":");
 }
@@ -167,7 +163,6 @@ export async function getHomeBelowFoldSummary(options = {}) {
     cacheKey,
     async () => {
       const results = await Promise.all([
-        toSettled(getAllTeams(limits.teams)),
         toSettled(getEventsList(limits.events)),
         toSettled(getTableCount("player")),
         toSettled(getTableCount("teams")),
@@ -175,7 +170,6 @@ export async function getHomeBelowFoldSummary(options = {}) {
       ]);
 
       const [
-        teamsResult,
         eventsResult,
         playersCountResult,
         teamsCountResult,
@@ -183,7 +177,6 @@ export async function getHomeBelowFoldSummary(options = {}) {
       ] = results;
 
       return {
-        teams: getFulfilledValue(teamsResult, []),
         events: getFulfilledValue(eventsResult, []),
         stats: {
           players: getFulfilledValue(playersCountResult, 0),
@@ -191,7 +184,6 @@ export async function getHomeBelowFoldSummary(options = {}) {
           events: getFulfilledValue(eventsCountResult, 0),
         },
         failures: collectHomeSummaryFailures(results, [
-          "teams",
           "events",
           "players count",
           "teams count",
