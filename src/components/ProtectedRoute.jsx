@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { getRoleCatalog } from "../services/userService";
 import {
   ADMIN_OVERRIDE_PERMISSIONS,
   normalisePermissionList,
@@ -16,9 +14,7 @@ export default function ProtectedRoute({
   allowedPermissions,
   requireNonViewer = false,
 }) {
-  const { session, loading, roles, rolesLoading } = useAuth();
-  const [roleCatalog, setRoleCatalog] = useState(null);
-  const [roleCatalogLoading, setRoleCatalogLoading] = useState(false);
+  const { session, loading, roles, rolesLoading, roleCatalog, roleCatalogLoading } = useAuth();
 
   const shouldCheckRoles = Array.isArray(allowedRoles) ? allowedRoles.length > 0 : Boolean(allowedRoles);
   const shouldCheckPermissions = Array.isArray(allowedPermissions)
@@ -44,41 +40,6 @@ export default function ProtectedRoute({
       : null,
     shouldCheckNonViewer ? "Role: Non-viewer (any elevated role)" : null,
   ].filter(Boolean);
-
-  useEffect(() => {
-    let isActive = true;
-
-    if (!shouldCheckAdminOverride || !session) {
-      setRoleCatalog(null);
-      setRoleCatalogLoading(false);
-      return () => {
-        isActive = false;
-      };
-    }
-
-    setRoleCatalogLoading(true);
-    getRoleCatalog()
-      .then((catalog) => {
-        if (isActive) {
-          setRoleCatalog(Array.isArray(catalog) ? catalog : []);
-        }
-      })
-      .catch((error) => {
-        if (isActive) {
-          console.error("[ProtectedRoute] Unable to load role catalog:", error);
-          setRoleCatalog([]);
-        }
-      })
-      .finally(() => {
-        if (isActive) {
-          setRoleCatalogLoading(false);
-        }
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [session, shouldCheckAdminOverride]);
 
   if (loading) return <div className="p-8 text-gray-500">Loading...</div>;
   if (!session) return <Navigate to="/login" replace />;

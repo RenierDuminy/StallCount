@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 import {
   insertTableRow,
   queryTableRows,
@@ -12,7 +11,8 @@ import { listSchemaTables, listTableColumns, pickRecencyColumn } from "../servic
 import { invalidateTournamentOverview } from "../services/tournamentDirectorService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
 import usePersistentState from "../hooks/usePersistentState";
-import { roleAssignmentsIncludeAdmin } from "../utils/accessControl";
+import useAccessScope from "../hooks/useAccessScope";
+import { TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS } from "../utils/accessControl";
 import TournamentOverviewPanel from "./tournamentDirector/TournamentOverviewPanel";
 import LinkedUsersPanel from "./tournamentDirector/LinkedUsersPanel";
 
@@ -108,7 +108,9 @@ function normalizeMatchForm(value) {
 }
 
 export default function TournamentDirectorPage() {
-  const { roles, rolesLoading } = useAuth();
+  const { filterEvents, ready: accessReady } = useAccessScope(
+    TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS,
+  );
   const tables = useMemo(
     () => listSchemaTables().filter((table) => ALLOWED_TABLE_SET.has(table)),
     []
@@ -153,33 +155,10 @@ export default function TournamentDirectorPage() {
     return tables.filter((t) => t.toLowerCase().includes(q));
   }, [tableSearch, tables]);
 
-  const accessibleEvents = useMemo(() => {
-    if (!Array.isArray(eventsList) || eventsList.length === 0) {
-      return [];
-    }
-
-    if (!Array.isArray(roles)) {
-      return [];
-    }
-
-    if (roleAssignmentsIncludeAdmin(roles)) {
-      return eventsList;
-    }
-
-    // Deliberately event-scoped only: a team-scoped grant (captain, team
-    // manager) does not unlock the tournament director workspace.
-    const allowedEventIds = new Set(
-      roles
-        .filter((assignment) => assignment?.scope === "event" && typeof assignment?.eventId === "string")
-        .map((assignment) => assignment.eventId),
-    );
-
-    if (allowedEventIds.size === 0) {
-      return [];
-    }
-
-    return eventsList.filter((event) => allowedEventIds.has(event.id));
-  }, [eventsList, roles]);
+  const accessibleEvents = useMemo(
+    () => filterEvents(eventsList),
+    [filterEvents, eventsList],
+  );
 
   useEffect(() => {
     if (!WORKSPACE_OPTIONS.has(workspace)) {
@@ -411,10 +390,12 @@ export default function TournamentDirectorPage() {
       </SectionShell>
 
       <SectionShell as="main" className="pb-8">
+        {/* The panels apply their own access filter via useAccessScope, so they
+            receive the raw event list and only need to know when it has loaded. */}
         {workspace === "overview" ? (
-          <TournamentOverviewPanel eventsList={accessibleEvents} eventOptionsReady={referenceDataLoaded && !rolesLoading} />
+          <TournamentOverviewPanel eventsList={eventsList} eventsReady={referenceDataLoaded} />
         ) : workspace === "users" ? (
-          <LinkedUsersPanel eventsList={accessibleEvents} eventOptionsReady={referenceDataLoaded && !rolesLoading} />
+          <LinkedUsersPanel eventsList={eventsList} eventsReady={referenceDataLoaded} />
         ) : (
         <div className="grid gap-4 xl:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]">
           <Card variant="light" className="space-y-3 p-4 xl:sticky xl:top-4">
@@ -511,7 +492,11 @@ export default function TournamentDirectorPage() {
                     className={`${LIGHT_INPUT_CLASS} appearance-none`}
                   >
                     <option value="">
-                      {rolesLoading ? "Loading access..." : accessibleEvents.length ? "Select event (optional)" : "No accessible events"}
+                      {!accessReady
+                        ? "Loading access..."
+                        : accessibleEvents.length
+                          ? "Select event (optional)"
+                          : "No accessible events"}
                     </option>
                     {accessibleEvents.map((event) => (
                       <option key={event.id} value={event.id}>

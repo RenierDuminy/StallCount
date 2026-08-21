@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
 import usePersistentState from "../../hooks/usePersistentState";
+import useAccessScope from "../../hooks/useAccessScope";
 import { Card, Panel, SectionHeader, Chip } from "../../components/ui/primitives";
 import { getEventLinkedUsers, getTeamLinkedUsers } from "../../services/userService";
-import { normaliseRoleList, roleAssignmentsIncludeAdmin } from "../../utils/accessControl";
-import { assignmentScopeOf } from "../../utils/roleScope";
+import {
+  normaliseRoleList,
+  TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS,
+} from "../../utils/accessControl";
 import { TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY } from "./persistenceKeys";
 
 const LIGHT_INPUT_CLASS =
@@ -65,8 +67,10 @@ async function loadLinkedCrew(eventId) {
   );
 }
 
-export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = true }) {
-  const { roles, rolesLoading } = useAuth();
+export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }) {
+  const { filterEvents, ready: accessReady } = useAccessScope(
+    TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS,
+  );
   const [selectedEventId, setSelectedEventId] = usePersistentState(
     TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY,
     "",
@@ -75,36 +79,14 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const accessibleEvents = useMemo(() => {
-    if (!Array.isArray(eventsList) || eventsList.length === 0) {
-      return [];
-    }
+  // Team grants carry their parent event, so resolveAccessScope widens event
+  // access to cover them (see roleScope.js).
+  const accessibleEvents = useMemo(
+    () => filterEvents(eventsList),
+    [filterEvents, eventsList],
+  );
 
-    if (!Array.isArray(roles)) {
-      return [];
-    }
-
-    if (roleAssignmentsIncludeAdmin(roles)) {
-      return eventsList;
-    }
-
-    // Team grants carry their parent event, so they widen event access too.
-    const allowedEventIds = new Set(
-      roles
-        .filter((assignment) => {
-          const scope = assignmentScopeOf(assignment);
-          if (scope !== "event" && scope !== "team") return false;
-          return typeof assignment?.eventId === "string";
-        })
-        .map((assignment) => assignment.eventId),
-    );
-
-    if (allowedEventIds.size === 0) {
-      return [];
-    }
-
-    return eventsList.filter((event) => allowedEventIds.has(event.id));
-  }, [eventsList, roles]);
+  const eventOptionsReady = eventsReady && accessReady;
 
   useEffect(() => {
     if (!eventOptionsReady) {
@@ -277,8 +259,10 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
               onChange={(event) => setSelectedEventId(event.target.value)}
               className={`${LIGHT_INPUT_CLASS} mt-2 w-full appearance-none`}
             >
-              {rolesLoading ? <option value="">Loading access...</option> : null}
-              {!rolesLoading && accessibleEvents.length === 0 ? <option value="">No accessible events</option> : null}
+              {!eventOptionsReady ? <option value="">Loading access...</option> : null}
+              {eventOptionsReady && accessibleEvents.length === 0 ? (
+                <option value="">No accessible events</option>
+              ) : null}
               {accessibleEvents.map((event) => (
                 <option key={event.id} value={event.id}>
                   {event.name}

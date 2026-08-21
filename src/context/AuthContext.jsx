@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { setSupabaseAuthState, supabase } from "../services/supabaseClient";
-import { getUserAccessRoleAssignments } from "../services/userService";
+import { getRoleCatalog, getUserAccessRoleAssignments } from "../services/userService";
 
 const AuthContext = createContext();
 
@@ -10,6 +10,11 @@ export function AuthProvider({ children }) {
   const [roles, setRoles] = useState(null);
   const [rolesLoading, setRolesLoading] = useState(false);
   const [rolesError, setRolesError] = useState(null);
+  // The role catalog (roles + the permissions each grants) is global and rarely
+  // changes, so it is fetched once here instead of by every page that needs it
+  // to resolve access. `null` means "not loaded yet", matching `roles`.
+  const [roleCatalog, setRoleCatalog] = useState(null);
+  const [roleCatalogLoading, setRoleCatalogLoading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -116,20 +121,64 @@ export function AuthProvider({ children }) {
     };
   }, [session?.user?.id]);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        session,
-        loading,
-        roles,
-        rolesLoading,
-        rolesError,
-        refreshRoles,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  // Signed-out visitors never need the catalog: every permission check that uses
+  // it is behind a session. Keyed on the user id (not the session object) so a
+  // token refresh doesn't trigger a refetch.
+  const userId = session?.user?.id ?? null;
+  useEffect(() => {
+    let isSubscribed = true;
+
+    if (!userId) {
+      setRoleCatalog(null);
+      setRoleCatalogLoading(false);
+      return undefined;
+    }
+
+    setRoleCatalogLoading(true);
+    getRoleCatalog()
+      .then((catalog) => {
+        if (!isSubscribed) return;
+        setRoleCatalog(Array.isArray(catalog) ? catalog : []);
+      })
+      .catch((error) => {
+        if (!isSubscribed) return;
+        console.error("[AuthProvider] Failed to load role catalog:", error);
+        setRoleCatalog([]);
+      })
+      .finally(() => {
+        if (!isSubscribed) return;
+        setRoleCatalogLoading(false);
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [userId]);
+
+  const value = useMemo(
+    () => ({
+      session,
+      loading,
+      roles,
+      rolesLoading,
+      rolesError,
+      refreshRoles,
+      roleCatalog,
+      roleCatalogLoading,
+    }),
+    [
+      session,
+      loading,
+      roles,
+      rolesLoading,
+      rolesError,
+      refreshRoles,
+      roleCatalog,
+      roleCatalogLoading,
+    ],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

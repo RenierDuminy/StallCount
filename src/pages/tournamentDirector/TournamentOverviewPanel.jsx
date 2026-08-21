@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
 import usePersistentState from "../../hooks/usePersistentState";
+import useAccessScope from "../../hooks/useAccessScope";
 import { Card, Panel, SectionHeader, Chip } from "../../components/ui/primitives";
 import { getEventHierarchy } from "../../services/leagueService";
 import { getTournamentOverview, invalidateTournamentOverview } from "../../services/tournamentDirectorService";
 import { createMatch, deleteMatch, updateMatch } from "../../services/matchService";
 import { saveTournamentDirectorSpiritScores } from "../../services/spiritScoreService";
 import { getEventLinkedUsers } from "../../services/userService";
-import { roleAssignmentsIncludeAdmin } from "../../utils/accessControl";
+import { TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS } from "../../utils/accessControl";
 import {
   TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY,
   getScheduleFiltersStorageKey,
@@ -607,9 +607,11 @@ function SummaryMetric({ label, value, detail }) {
   );
 }
 
-export default function TournamentOverviewPanel({ eventsList = [], eventOptionsReady = true }) {
+export default function TournamentOverviewPanel({ eventsList = [], eventsReady = true }) {
   const navigate = useNavigate();
-  const { roles, rolesLoading } = useAuth();
+  const { filterEvents, ready: accessReady } = useAccessScope(
+    TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS,
+  );
   const [selectedEventId, setSelectedEventId] = usePersistentState(TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY, "");
   const [eventSummary, setEventSummary] = useState(null);
   const [overview, setOverview] = useState({ matches: [], summary: null });
@@ -630,41 +632,22 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
   );
   const [openFilterKey, setOpenFilterKey] = useState("");
 
-  const accessibleEvents = useMemo(() => {
-    if (!Array.isArray(eventsList) || eventsList.length === 0) {
-      return [];
-    }
-
-    if (!Array.isArray(roles)) {
-      return [];
-    }
-
-    const sortByRecency = (events) =>
-      [...events].sort((a, b) => {
+  // Most-recent event first, so the default selection is the one a director is
+  // most likely to be running right now.
+  const accessibleEvents = useMemo(
+    () =>
+      [...filterEvents(eventsList)].sort((a, b) => {
         const aDate = a?.start_date || "";
         const bDate = b?.start_date || "";
         if (aDate && bDate) return bDate.localeCompare(aDate);
         if (aDate) return -1;
         if (bDate) return 1;
         return (a?.name || "").localeCompare(b?.name || "", undefined, { sensitivity: "base" });
-      });
+      }),
+    [filterEvents, eventsList],
+  );
 
-    if (roleAssignmentsIncludeAdmin(roles)) {
-      return sortByRecency(eventsList);
-    }
-
-    const allowedEventIds = new Set(
-      roles
-        .filter((assignment) => assignment?.scope === "event" && typeof assignment?.eventId === "string")
-        .map((assignment) => assignment.eventId),
-    );
-
-    if (allowedEventIds.size === 0) {
-      return [];
-    }
-
-    return sortByRecency(eventsList.filter((event) => allowedEventIds.has(event.id)));
-  }, [eventsList, roles]);
+  const eventOptionsReady = eventsReady && accessReady;
 
   useEffect(() => {
     if (!eventOptionsReady) {
@@ -1373,8 +1356,10 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
               onChange={(event) => setSelectedEventId(event.target.value)}
               className={`${LIGHT_INPUT_CLASS} mt-2 w-full appearance-none`}
             >
-              {rolesLoading ? <option value="">Loading access...</option> : null}
-              {!rolesLoading && accessibleEvents.length === 0 ? <option value="">No accessible events</option> : null}
+              {!eventOptionsReady ? <option value="">Loading access...</option> : null}
+              {eventOptionsReady && accessibleEvents.length === 0 ? (
+                <option value="">No accessible events</option>
+              ) : null}
               {accessibleEvents.map((event) => (
                 <option key={event.id} value={event.id}>
                   {event.name}

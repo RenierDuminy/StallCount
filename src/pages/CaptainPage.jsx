@@ -10,17 +10,11 @@ import {
 } from "../services/playerService";
 import { getTeamsLinkedToEvent } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
-import { getRoleCatalog } from "../services/userService";
 import { SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
 import usePersistentState from "../hooks/usePersistentState";
-import { useAuth } from "../context/AuthContext";
+import useAccessScope from "../hooks/useAccessScope";
 import { CAPTAIN_ACCESS_PERMISSIONS } from "../utils/accessControl";
-import {
-  allowedTeamIdsForEvent,
-  filterByScope,
-  resolveAccessScope,
-  scopeIsEmpty,
-} from "../utils/roleScope";
+import { filterByScope } from "../utils/roleScope";
 
 const EMPTY_PLAYER_FORM = {
   id: "",
@@ -174,8 +168,6 @@ function CheckIcon() {
 }
 
 export default function CaptainPage() {
-  const { session, roles, rolesLoading } = useAuth();
-  const [roleCatalog, setRoleCatalog] = useState(null);
   const [playerDirectory, setPlayerDirectory] = useState([]);
   const [playerForm, setPlayerForm] = usePersistentState(CAPTAIN_PLAYER_FORM_KEY, EMPTY_PLAYER_FORM);
   const [playerSaving, setPlayerSaving] = useState(false);
@@ -201,42 +193,29 @@ export default function CaptainPage() {
     getEventsList(50)
       .then((data) => setEvents(data ?? []))
       .catch(() => setEvents([]));
-    getRoleCatalog()
-      .then((catalog) => setRoleCatalog(Array.isArray(catalog) ? catalog : []))
-      .catch(() => setRoleCatalog([]));
   }, []);
 
   // Which events/teams this user may manage. Admin, tournament director and
   // field assistant bypass scoping entirely (see roleScope.js).
-  const accessScope = useMemo(
-    () =>
-      resolveAccessScope({
-        user: session?.user,
-        roleAssignments: roles,
-        roleCatalog,
-        permissions: CAPTAIN_ACCESS_PERMISSIONS,
-      }),
-    [session?.user, roles, roleCatalog],
-  );
+  const {
+    scope: accessScope,
+    ready: scopeResolved,
+    isEmpty: hasNoTeamAccess,
+    filterEvents,
+    teamsForEvent,
+  } = useAccessScope(CAPTAIN_ACCESS_PERMISSIONS);
 
-  const scopeResolved = !accessScope.loading && !rolesLoading && roleCatalog !== null;
-
-  const availableEvents = useMemo(
-    () => filterByScope(events, accessScope.eventIds),
-    [events, accessScope],
-  );
+  const availableEvents = useMemo(() => filterEvents(events), [filterEvents, events]);
 
   const allowedTeamIds = useMemo(
-    () => allowedTeamIdsForEvent(accessScope, selectedEventId),
-    [accessScope, selectedEventId],
+    () => teamsForEvent(selectedEventId),
+    [teamsForEvent, selectedEventId],
   );
 
   const availableTeams = useMemo(
     () => filterByScope(eventTeams, allowedTeamIds),
     [eventTeams, allowedTeamIds],
   );
-
-  const hasNoTeamAccess = scopeResolved && scopeIsEmpty(accessScope);
 
   // Clear a persisted selection that is no longer permitted. Gated on
   // scopeResolved so a page load doesn't wipe a valid selection.

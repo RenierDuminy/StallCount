@@ -160,7 +160,18 @@ export default function EventAccessPage() {
   }
 
   // Debounced server-side fetch for the directory table.
+  //
+  // POPIA data minimisation: personal data is only pulled once an event is
+  // actually selected. With no event chosen there is no lawful reason to read
+  // the whole user directory, so we hold off entirely and clear anything a
+  // previous selection loaded.
   useEffect(() => {
+    if (!selectedEventId) {
+      setDirectoryUsers([]);
+      setDirectoryTotal(0);
+      setDirectoryLoading(false);
+      return undefined;
+    }
     let cancelled = false;
     setDirectoryLoading(true);
     const handle = setTimeout(async () => {
@@ -184,7 +195,7 @@ export default function EventAccessPage() {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [search, page]);
+  }, [search, page, selectedEventId]);
 
   // Debounced server-side fetch for the role-manager user dropdown.
   useEffect(() => {
@@ -284,8 +295,14 @@ export default function EventAccessPage() {
     }
   }, [eventTeams, eventTeamsLoading, selectedTeamId, setSelectedTeamId]);
 
-  // Refresh the current directory page (e.g. after a role change).
+  // Refresh the current directory page (e.g. after a role change). Mirrors the
+  // load effect's POPIA guard: no event selected, no personal data pulled.
   async function refreshDirectory() {
+    if (!selectedEventId) {
+      setDirectoryUsers([]);
+      setDirectoryTotal(0);
+      return;
+    }
     try {
       const { users, total } = await searchAccessControlUsers({
         search,
@@ -506,10 +523,30 @@ export default function EventAccessPage() {
 
   // Role filter is applied to the loaded page (PostgREST cross-join filtering
   // is impractical here); paging counts remain search-scoped.
-  const pagedUsers = useMemo(
-    () => directoryUsers.filter((user) => userMatchesRoleFilter(user, roleFilter)),
-    [directoryUsers, roleFilter],
-  );
+  //
+  // Rows are also narrowed to the selected event: each user's event/team roles
+  // are trimmed to that event, and anyone left holding none is dropped, so the
+  // table answers "who has access to THIS event" rather than listing every
+  // profile in the directory.
+  const pagedUsers = useMemo(() => {
+    const matchingRoleFilter = directoryUsers.filter((user) =>
+      userMatchesRoleFilter(user, roleFilter),
+    );
+
+    if (!selectedEventId) return matchingRoleFilter;
+
+    return matchingRoleFilter
+      .map((user) => {
+        const eventRoles = (Array.isArray(user.eventRoles) ? user.eventRoles : []).filter(
+          (entry) => entry.eventId === selectedEventId,
+        );
+        const teamRoles = (Array.isArray(user.teamRoles) ? user.teamRoles : []).filter(
+          (entry) => entry.eventId === selectedEventId,
+        );
+        return { ...user, eventRoles, teamRoles };
+      })
+      .filter((user) => user.eventRoles.length > 0 || user.teamRoles.length > 0);
+  }, [directoryUsers, roleFilter, selectedEventId]);
 
   // Ensure the selected user always appears as an option in the dropdown.
   const matchingUsers = useMemo(() => {
@@ -537,6 +574,11 @@ export default function EventAccessPage() {
           endDate: event.endDate,
         })),
     [events],
+  );
+
+  const selectedEventName = useMemo(
+    () => eventOptions.find((event) => event.id === selectedEventId)?.name || "",
+    [eventOptions, selectedEventId],
   );
 
   const selectedEventRolesForEvent = useMemo(
@@ -605,8 +647,11 @@ export default function EventAccessPage() {
   const totalResults = directoryTotal;
   const pageCount = Math.max(1, Math.ceil(totalResults / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
-  const pageStart = totalResults === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
-  const pageEnd = Math.min(currentPage * PAGE_SIZE, totalResults);
+  // The event narrowing (like the role filter) applies to the loaded page only,
+  // so the server-side total would overstate what the table actually shows.
+  const visibleCountLabel = selectedEventId
+    ? `${pagedUsers.length} linked to this event (page ${currentPage} of ${pageCount})`
+    : "No event selected";
 
   useEffect(() => {
     if (page !== currentPage) {
@@ -962,12 +1007,17 @@ export default function EventAccessPage() {
               <Input
                 type="search"
                 value={search}
-                placeholder="Search profiles"
+                placeholder={selectedEventId ? "Search profiles" : "Select an event first"}
                 onChange={(event) => setSearch(event.target.value)}
+                disabled={!selectedEventId}
               />
             </Field>
             <Field label="Filter by role">
-              <Select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+              <Select
+                value={roleFilter}
+                onChange={(event) => setRoleFilter(event.target.value)}
+                disabled={!selectedEventId}
+              >
                 <option value="all">All roles</option>
                 <option value="none">No role assigned</option>
                 {roles.map((role) => (
@@ -978,11 +1028,9 @@ export default function EventAccessPage() {
               </Select>
             </Field>
             <div className="flex flex-col justify-end gap-0.5 pb-1 text-xs">
-              <span className="text-ink">
-                Showing {pageStart}-{pageEnd} of {totalResults}
-              </span>
+              <span className="text-ink">{visibleCountLabel}</span>
               <span className="text-ink-muted">
-                Page {currentPage} of {pageCount}
+                {selectedEventId ? selectedEventName : `Page ${currentPage} of ${pageCount}`}
               </span>
             </div>
           </div>
@@ -993,7 +1041,11 @@ export default function EventAccessPage() {
             {directoryLoading ? (
               <div className="p-6 text-sm text-ink-muted">Loading access records...</div>
             ) : isEmpty ? (
-              <div className="p-6 text-sm text-ink-muted">No users match the selected filters.</div>
+              <div className="p-6 text-sm text-ink-muted">
+                {selectedEventId
+                  ? "No users on this page hold a role for the selected event."
+                  : "Select an event to load the people linked to it."}
+              </div>
             ) : (
               <div className="max-h-[65vh] overflow-auto">
                 <table className="w-full table-fixed divide-y divide-border text-[11px] sm:text-xs">
@@ -1054,7 +1106,9 @@ export default function EventAccessPage() {
                                     variant="ghost"
                                     className="text-[11px]"
                                   >
-                                    {formatEventRoleLabel(entry)}
+                                    {selectedEventId
+                                      ? entry.roleName || entry.roleId || "Role"
+                                      : formatEventRoleLabel(entry)}
                                   </Chip>
                                 ))}
                                 {teamRoles.map((entry) => (
@@ -1080,9 +1134,7 @@ export default function EventAccessPage() {
           </div>
           {totalResults > 0 ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-xs text-ink-muted">
-                Showing {pageStart}-{pageEnd} of {totalResults}
-              </span>
+              <span className="text-xs text-ink-muted">{visibleCountLabel}</span>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"

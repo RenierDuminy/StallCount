@@ -1,4 +1,9 @@
 import { supabase } from "./supabaseClient";
+import { getCachedQuery } from "../utils/queryCache";
+
+// The role catalog is identical for every user and changes very rarely, so it
+// is cached rather than refetched by each page that needs it.
+const ROLE_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
 
 function mapRoleAssignments(assignments) {
   return (Array.isArray(assignments) ? assignments : []).map((assignment) => ({
@@ -569,10 +574,13 @@ export async function getAccessControlEvents(limit = 500) {
 }
 
 export async function getRoleCatalog() {
-  const { data, error } = await supabase
-    .from("roles")
-    .select(
-      `
+  return getCachedQuery(
+    "roles:catalog:v1",
+    async () => {
+      const { data, error } = await supabase
+        .from("roles")
+        .select(
+          `
         id,
         name,
         scope,
@@ -581,20 +589,23 @@ export async function getRoleCatalog() {
           permission:permissions(id, key, description)
         )
       `,
-    )
-    .order("name", { ascending: true });
+        )
+        .order("name", { ascending: true });
 
-  if (error) {
-    throw new Error(error.message || "Failed to load roles");
-  }
+      if (error) {
+        throw new Error(error.message || "Failed to load roles");
+      }
 
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    name: row.name,
-    scope: row.scope || "event",
-    description: row.description || "",
-    permissions: mapRolePermissions(row.role_permissions),
-  }));
+      return (data ?? []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        scope: row.scope || "event",
+        description: row.description || "",
+        permissions: mapRolePermissions(row.role_permissions),
+      }));
+    },
+    { ttlMs: ROLE_CATALOG_CACHE_TTL_MS },
+  );
 }
 
 export async function updateUserRoleAssignment(userId, nextRoleId) {
@@ -777,6 +788,12 @@ export async function addTeamUserRoleAssignment(userId, roleId, teamId, eventId 
   if (!teamId) {
     throw new Error("Team ID is required to add a team role.");
   }
+  // team_user_roles.event_id is NOT NULL, and the RLS policy resolves a
+  // tournament director's authority through the event. Without one, only a
+  // global admin could ever insert.
+  if (!eventId) {
+    throw new Error("Event ID is required to add a team role.");
+  }
 
   let normalizedRoleId = null;
   if (roleId !== null && roleId !== undefined && roleId !== "") {
@@ -799,7 +816,7 @@ export async function addTeamUserRoleAssignment(userId, roleId, teamId, eventId 
       user_id: userId,
       role_id: normalizedRoleId,
       team_id: teamId,
-      event_id: eventId || null,
+      event_id: eventId,
       granted_by: grantedBy,
     })
     .select(TEAM_ROLE_SELECT)
@@ -842,9 +859,16 @@ export async function removeTeamUserRoleAssignment(
     if (normalizedRoleId === null) {
       throw new Error("Valid role ID is required to remove a team role.");
     }
-    query = query.eq("user_id", userId).eq("team_id", teamId).eq("role_id", normalizedRoleId);
-    // A null event_id needs .is() — .eq("event_id", null) matches nothing.
-    query = eventId ? query.eq("event_id", eventId) : query.is("event_id", null);
+    // event_id is NOT NULL on this table, so without one the identifier trio is
+    // ambiguous: matching on it is the only way to target a single grant.
+    if (!eventId) {
+      throw new Error("Event ID is required to remove a team role by user/team/role.");
+    }
+    query = query
+      .eq("user_id", userId)
+      .eq("team_id", teamId)
+      .eq("role_id", normalizedRoleId)
+      .eq("event_id", eventId);
   }
 
   const { error } = await query;
