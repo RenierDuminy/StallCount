@@ -56,13 +56,21 @@ export default function PlayerProfilePage() {
     const map = new Map();
     rows.forEach((row) => {
       const event = row.match?.event;
-      if (event?.id && !map.has(event.id)) {
-        map.set(event.id, event.name || "Event");
+      if (!event?.id) return;
+      const startTime = row.match?.start_time || null;
+      const existing = map.get(event.id);
+      if (!existing) {
+        map.set(event.id, { id: event.id, name: event.name || "Event", startTime });
+      } else if (startTime && (!existing.startTime || startTime > existing.startTime)) {
+        existing.startTime = startTime;
       }
     });
-    return Array.from(map.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.startTime && b.startTime) return b.startTime.localeCompare(a.startTime);
+      if (a.startTime) return -1;
+      if (b.startTime) return 1;
+      return a.name.localeCompare(b.name);
+    });
   }, [rows]);
 
   const filteredRows = useMemo(() => {
@@ -92,7 +100,7 @@ export default function PlayerProfilePage() {
     );
 
     const games = totals.matches.size || 0;
-    const totalPoints = totals.goals + totals.assists;
+    const totalPoints = totals.goals + totals.assists + totals.callahans;
 
     return {
       name,
@@ -235,7 +243,7 @@ export default function PlayerProfilePage() {
                           <td className="px-3 py-1.5">
                             <Link
                               to={matchHref}
-                              className="font-semibold text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
+                              className="font-semibold text-(--sc-surface-light-ink)! underline decoration-dotted decoration-(--sc-surface-light-border) underline-offset-4 transition hover:text-(--sc-surface-light-ink)/70!"
                             >
                               {buildMatchLabel(row)}
                             </Link>

@@ -546,7 +546,7 @@ export async function getAccessControlEvents(limit = 500) {
   let query = supabase
     .from("events")
     .select("id, name, start_date, end_date, created_at")
-    .order("start_date", { ascending: true })
+    .order("start_date", { ascending: false })
     .order("name", { ascending: true });
 
   if (typeof limit === "number") {

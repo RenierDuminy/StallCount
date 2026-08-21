@@ -51,7 +51,7 @@ const SECTIONS = [
 function SocialLink({ href, label, platform = "web" }) {
   return (
     <a href={href} target={href.startsWith("mailto") ? undefined : "_blank"} rel="noreferrer"
-      className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--cm-chip-bg)] px-2.5 py-1.5 text-xs font-semibold text-[var(--cm-link)] transition-colors hover:bg-[var(--cm-chip-bg-hover)]">
+      className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--cm-chip-bg)] px-2.5 py-1.5 text-xs font-semibold text-(--cm-link)! transition-colors hover:bg-[var(--cm-chip-bg-hover)]">
       {PLATFORM_ICONS[platform]}
       {label}
     </a>
@@ -178,7 +178,7 @@ export default function CommunityPage() {
             <SectionHead
               section={byId.clubs}
               title="Clubs & where to play"
-              lead={<>SAFDA divides the country into four regions — each runs its own tournaments that feed into Nationals. Most clubs welcome beginners at pickup before you commit to a team. For the full list, see <a href="https://safda.org.za/new-clubs/" target="_blank" rel="noreferrer" className="font-semibold text-[var(--cm-link)] underline underline-offset-2 hover:no-underline">SAFDA's clubs page</a>.</>}
+              lead={<>SAFDA divides the country into four regions — each runs its own tournaments that feed into Nationals. Most clubs welcome beginners at pickup before you commit to a team. For the full list, see <a href="https://safda.org.za/new-clubs/" target="_blank" rel="noreferrer" className="font-semibold text-(--cm-link)! underline underline-offset-2 hover:no-underline">SAFDA's clubs page</a>.</>}
             />
             <div className="divide-y sm:grid sm:grid-cols-2 sm:divide-y-0" style={{ borderColor: "var(--cm-line-soft)" }}>
               {[
@@ -256,7 +256,7 @@ export default function CommunityPage() {
                     <p className="font-semibold text-[var(--cm-ink)]">{card.title}</p>
                     <p className="mt-1 text-sm leading-relaxed text-[var(--cm-ink-soft)]">{card.desc}</p>
                   </div>
-                  <a href={card.link.href} target="_blank" rel="noreferrer" className="shrink-0 whitespace-nowrap rounded-lg bg-[var(--cm-chip-bg)] px-3 py-2 text-sm font-bold text-[var(--cm-link)] transition-colors hover:bg-[var(--cm-chip-bg-hover)]">{card.link.label}</a>
+                  <a href={card.link.href} target="_blank" rel="noreferrer" className="shrink-0 whitespace-nowrap rounded-lg bg-[var(--cm-chip-bg)] px-3 py-2 text-sm font-bold text-(--cm-link)! transition-colors hover:bg-[var(--cm-chip-bg-hover)]">{card.link.label}</a>
                 </div>
               ))}
               <div className="px-5 py-4 sm:px-8 sm:py-5" style={{ background: "var(--cm-dark)" }}>
@@ -270,7 +270,7 @@ export default function CommunityPage() {
             <SectionHead
               section={byId.season}
               title="The season & major events"
-              lead={<>The competitive year splits into two halves. Regional tournaments qualify teams for Nationals. Exact dates and venues change each year — check <a href="https://safda.org.za/new-safda-events/" target="_blank" rel="noreferrer" className="font-semibold text-[var(--cm-link)] underline underline-offset-2 hover:no-underline">SAFDA's events page</a> for the current calendar.</>}
+              lead={<>The competitive year splits into two halves. Regional tournaments qualify teams for Nationals. Exact dates and venues change each year — check <a href="https://safda.org.za/new-safda-events/" target="_blank" rel="noreferrer" className="font-semibold text-(--cm-link)! underline underline-offset-2 hover:no-underline">SAFDA's events page</a> for the current calendar.</>}
             />
             <div className="px-5 py-5 sm:px-8 sm:py-6">
               {[

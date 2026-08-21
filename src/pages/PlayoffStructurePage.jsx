@@ -10,6 +10,8 @@ import {
   Select,
 } from "../components/ui/primitives";
 import usePersistentState from "../hooks/usePersistentState";
+import { useAuth } from "../context/AuthContext";
+import { roleAssignmentsIncludeAdmin } from "../utils/accessControl";
 import { getEventHierarchy, getEventsList } from "../services/leagueService";
 import { createMatch, getMatchesByEvent, updateMatch } from "../services/matchService";
 import {
@@ -890,6 +892,7 @@ function BracketSummaryNodeCard({ node, lookups }) {
 }
 
 export default function PlayoffStructurePage() {
+  const { roles } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -944,9 +947,6 @@ export default function PlayoffStructurePage() {
         const rows = await getEventsList(120);
         if (!active) return;
         setEvents(Array.isArray(rows) ? rows : []);
-        if (!selectedEventId && rows?.[0]?.id) {
-          setSelectedEventId(rows[0].id);
-        }
       } catch (loadError) {
         if (!active) return;
         setError(loadError?.message || "Failed to load events.");
@@ -961,7 +961,41 @@ export default function PlayoffStructurePage() {
     return () => {
       active = false;
     };
-  }, [selectedEventId, setSelectedEventId]);
+  }, []);
+
+  // Scope the event dropdown to events the user is actually linked to, same
+  // as the other admin tools — admins/admin_override see everything, everyone
+  // else only sees events where they hold an event-scoped role assignment.
+  const accessibleEvents = useMemo(() => {
+    if (!Array.isArray(events) || events.length === 0) {
+      return [];
+    }
+    if (!Array.isArray(roles)) {
+      return [];
+    }
+    if (roleAssignmentsIncludeAdmin(roles)) {
+      return events;
+    }
+    const allowedEventIds = new Set(
+      roles
+        .filter((assignment) => assignment?.scope === "event" && typeof assignment?.eventId === "string")
+        .map((assignment) => assignment.eventId),
+    );
+    if (allowedEventIds.size === 0) {
+      return [];
+    }
+    return events.filter((event) => allowedEventIds.has(event.id));
+  }, [events, roles]);
+
+  // Auto-select the first event once we know which events this user can
+  // actually access (accessibleEvents depends on roles, which may still be
+  // loading when the event list itself resolves).
+  useEffect(() => {
+    if (selectedEventId || !Array.isArray(roles) || accessibleEvents.length === 0) {
+      return;
+    }
+    setSelectedEventId(accessibleEvents[0].id);
+  }, [accessibleEvents, roles, selectedEventId, setSelectedEventId]);
 
   const loadSelectedEventData = useCallback(async () => {
     if (!selectedEventId) {
@@ -999,8 +1033,8 @@ export default function PlayoffStructurePage() {
   }, [loadSelectedEventData]);
 
   const selectedEvent = useMemo(
-    () => events.find((event) => event.id === selectedEventId) || eventData || null,
-    [eventData, events, selectedEventId],
+    () => accessibleEvents.find((event) => event.id === selectedEventId) || eventData || null,
+    [accessibleEvents, eventData, selectedEventId],
   );
 
   useEffect(() => {
@@ -1896,7 +1930,7 @@ export default function PlayoffStructurePage() {
                 }}
               >
                 <option value="">Select event</option>
-                {events.map((event) => (
+                {accessibleEvents.map((event) => (
                   <option key={event.id} value={event.id}>
                     {event.name}
                   </option>

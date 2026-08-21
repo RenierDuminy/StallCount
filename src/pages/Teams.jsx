@@ -143,7 +143,7 @@ export default function TeamsPage() {
               <Link
                 key={team.id}
                 to={`/teams/${team.id}`}
-                className="flex min-w-0 items-center justify-between gap-4 border-b border-border px-1 py-3 text-ink transition hover:border-accent hover:text-accent sm:px-2"
+                className="flex min-w-0 items-center justify-between gap-4 border-b border-border px-1 py-3 text-ink! transition hover:border-accent hover:text-accent! sm:px-2"
               >
                 <div className="min-w-0">
                   <h3 className="truncate text-base font-semibold sm:text-lg">{team.name}</h3>

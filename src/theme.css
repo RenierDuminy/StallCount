@@ -635,6 +635,32 @@ a:focus-visible {
   padding-bottom: 0.7rem;
 }
 
+.sc-button.is-google {
+  background: #ffffff;
+  color: #3c4043;
+  border: 1px solid #dadce0;
+  box-shadow: none;
+  font-weight: 500;
+}
+
+.sc-button.is-google:hover {
+  background: #f8f9fa;
+  box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+}
+
+.sc-button.is-google:active {
+  background: #f1f3f4;
+}
+
+.sc-button.is-google:focus-visible {
+  outline: 2px solid #4285f4;
+  outline-offset: 2px;
+}
+
+.sc-button.is-google:disabled {
+  opacity: 0.6;
+}
+
 .sc-chip {
   display: inline-flex;
   align-items: center;

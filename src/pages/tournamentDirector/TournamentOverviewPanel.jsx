@@ -639,13 +639,18 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
       return [];
     }
 
-    const sortByName = (events) =>
-      [...events].sort((a, b) =>
-        (a?.name || "").localeCompare(b?.name || "", undefined, { sensitivity: "base" }),
-      );
+    const sortByRecency = (events) =>
+      [...events].sort((a, b) => {
+        const aDate = a?.start_date || "";
+        const bDate = b?.start_date || "";
+        if (aDate && bDate) return bDate.localeCompare(aDate);
+        if (aDate) return -1;
+        if (bDate) return 1;
+        return (a?.name || "").localeCompare(b?.name || "", undefined, { sensitivity: "base" });
+      });
 
     if (roleAssignmentsIncludeAdmin(roles)) {
-      return sortByName(eventsList);
+      return sortByRecency(eventsList);
     }
 
     const allowedEventIds = new Set(
@@ -658,7 +663,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventOptionsR
       return [];
     }
 
-    return sortByName(eventsList.filter((event) => allowedEventIds.has(event.id)));
+    return sortByRecency(eventsList.filter((event) => allowedEventIds.has(event.id)));
   }, [eventsList, roles]);
 
   useEffect(() => {

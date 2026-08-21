@@ -205,7 +205,7 @@ export default function PlayersPage() {
 
     return Array.from(map.values()).map((entry) => {
       const games = entry.matchIds.size || 0;
-      const total = entry.goals + entry.assists;
+      const total = entry.goals + entry.assists + entry.callahans;
       const primaryTeam =
         Array.from(entry.teamOptions.values()).sort((a, b) => {
           if (b.total !== a.total) return b.total - a.total;
@@ -467,21 +467,21 @@ export default function PlayersPage() {
                       </td>
                       <td className="px-3 py-1.5">
                         <div className="flex items-center gap-2">
-                          {row.jerseyNumber != null && (
-                            <span className="w-6 shrink-0 text-right text-xs font-semibold text-[var(--sc-surface-light-ink)]/40">
-                              {row.jerseyNumber}
-                            </span>
-                          )}
                           <Link
                             to={
                               eventFilter
                                 ? `/players/${row.playerId}?eventId=${encodeURIComponent(eventFilter)}`
                                 : `/players/${row.playerId}`
                             }
-                            className="font-semibold text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
+                            className="font-semibold text-(--sc-surface-light-ink)! underline decoration-dotted decoration-(--sc-surface-light-border) underline-offset-4 transition hover:text-(--sc-surface-light-ink)/70!"
                           >
                             {row.playerName}
                           </Link>
+                          {row.jerseyNumber != null && (
+                            <span className="shrink-0 text-xs font-semibold text-(--sc-surface-light-ink)/40">
+                              #{row.jerseyNumber}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-3 py-1.5">
@@ -489,7 +489,7 @@ export default function PlayersPage() {
                           row.teamId ? (
                             <Link
                               to={`/teams/${row.teamId}`}
-                              className="text-[var(--sc-surface-light-ink)]/70 underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]"
+                              className="text-(--sc-surface-light-ink)/70! underline decoration-dotted decoration-(--sc-surface-light-border) underline-offset-4 transition hover:text-(--sc-surface-light-ink)!"
                             >
                               {row.teamName}
                             </Link>

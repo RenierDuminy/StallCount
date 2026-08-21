@@ -15,10 +15,10 @@ import { getEventRosters } from "../services/playerService";
 import { getRoleCatalog, getUserEventRoleAssignments } from "../services/userService";
 import {
   ADMIN_OVERRIDE_PERMISSIONS,
-  normalisePermissionList,
   normaliseRoleList,
-  SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS,
+  TOURNAMENT_DIRECTOR_ACCESS_ROLES,
   userHasAnyPermission,
+  userHasAnyRole,
 } from "../utils/accessControl";
 import usePersistentState from "../hooks/usePersistentState";
 
@@ -137,22 +137,11 @@ export default function SignupManagementPage() {
     [session?.user, roles, roleCatalog],
   );
   const hasSignupManagementPermission = useMemo(
-    () =>
-      userHasAnyPermission(
-        session?.user || null,
-        SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS,
-        roles,
-        roleCatalog,
-      ),
-    [session?.user, roles, roleCatalog],
+    () => userHasAnyRole(session?.user || null, TOURNAMENT_DIRECTOR_ACCESS_ROLES, roles),
+    [session?.user, roles],
   );
-  const scopedSignupPermissionKeys = useMemo(
-    () =>
-      new Set(
-        normalisePermissionList(SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS).filter(
-          (key) => key !== "admin_override",
-        ),
-      ),
+  const scopedSignupRoleSlugs = useMemo(
+    () => new Set(normaliseRoleList(TOURNAMENT_DIRECTOR_ACCESS_ROLES)),
     [],
   );
 
@@ -214,16 +203,10 @@ export default function SignupManagementPage() {
               const roleSlug = normaliseRoleList(role?.name || "")[0] || "";
               return assignmentRoleSlug && roleSlug && assignmentRoleSlug === roleSlug;
             });
-            if (!roleFromCatalog) return false;
-            const rolePermissionKeys = normalisePermissionList(
-              (Array.isArray(roleFromCatalog.permissions) ? roleFromCatalog.permissions : []).map(
-                (permission) =>
-                  (typeof permission === "string"
-                    ? permission
-                    : permission?.key || permission?.name || permission?.value || ""),
-              ),
-            );
-            return rolePermissionKeys.some((key) => scopedSignupPermissionKeys.has(key));
+            const roleSlug = normaliseRoleList(
+              roleFromCatalog?.name || assignment?.roleName || "",
+            )[0];
+            return Boolean(roleSlug) && scopedSignupRoleSlugs.has(roleSlug);
           })
           .forEach((assignment) => {
             const eventId = assignment.eventId;
@@ -264,7 +247,7 @@ export default function SignupManagementPage() {
   }, [
     hasAdminAccess,
     roleCatalog,
-    scopedSignupPermissionKeys,
+    scopedSignupRoleSlugs,
     setSelectedEventId,
     userId,
   ]);
@@ -378,7 +361,7 @@ export default function SignupManagementPage() {
     return (
       <SectionShell className="py-10">
         <Panel className="border border-rose-300/40 bg-rose-50 p-4 text-sm text-rose-700">
-          Access restricted. Signup management requires roster or player permissions.
+          Access restricted. Signup management requires the tournament director role.
         </Panel>
       </SectionShell>
     );

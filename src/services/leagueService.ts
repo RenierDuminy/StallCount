@@ -179,7 +179,7 @@ export async function getEventsList(limit = 12, options: GetEventsListOptions = 
       let query = supabase
         .from("events")
         .select('id, name, type, start_date, end_date, location, created_at, status:Status, rules')
-        .order("start_date", { ascending: true })
+        .order("start_date", { ascending: false })
         .limit(limit);
 
       if (normalizedStatus) {

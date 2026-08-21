@@ -84,7 +84,7 @@ const QUICK_ACCESS_TOOLS = [
     roles: SCOREKEEPER_ACCESS_ROLES,
     Icon: IconScorekeeper,
     accent:
-      "border-2 border-live-border bg-[rgba(251,113,133,0.22)] text-live-ink shadow-[0_8px_22px_rgba(251,113,133,0.14)]",
+      "border-2 border-live-border bg-[rgba(251,113,133,0.22)] text-white! shadow-[0_8px_22px_rgba(251,113,133,0.14)]",
   },
   {
     key: "captain",
@@ -94,7 +94,7 @@ const QUICK_ACCESS_TOOLS = [
     roles: CAPTAIN_ACCESS_ROLES,
     Icon: IconCaptain,
     accent:
-      "border-2 border-warning-border bg-[rgba(251,191,36,0.22)] text-warning-ink shadow-[0_8px_22px_rgba(251,191,36,0.14)]",
+      "border-2 border-warning-border bg-[rgba(251,191,36,0.22)] text-white! shadow-[0_8px_22px_rgba(251,191,36,0.14)]",
   },
   {
     key: "tournament-director",
@@ -104,7 +104,7 @@ const QUICK_ACCESS_TOOLS = [
     roles: TOURNAMENT_DIRECTOR_ACCESS_ROLES,
     Icon: IconTournamentDirector,
     accent:
-      "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-admin-ink shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
+      "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-white! shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
   },
   {
     key: "admin-tools",
@@ -114,7 +114,7 @@ const QUICK_ACCESS_TOOLS = [
     requireElevated: true,
     Icon: IconAdminTools,
     accent:
-      "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-admin-ink shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
+      "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-white! shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
   },
   {
     key: "event-access-control",
@@ -124,7 +124,7 @@ const QUICK_ACCESS_TOOLS = [
     permissions: EVENT_ACCESS_PERMISSIONS,
     Icon: IconEventAccess,
     accent:
-      "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-admin-ink shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
+      "border-2 border-admin-border bg-[rgba(192,132,252,0.22)] text-white! shadow-[0_8px_22px_rgba(192,132,252,0.14)]",
   },
 ];
 

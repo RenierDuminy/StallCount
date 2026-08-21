@@ -125,7 +125,7 @@ export default function SiteHeader() {
           })}
         </nav>
 
-        <div className="hidden items-center gap-3 border-l border-[var(--sc-border)]/70 pl-4 text-xs font-semibold text-[var(--sc-ink-muted)] lg:flex">
+        <div className="hidden items-center gap-3 border-l-2 border-(--sc-accent)/70 pl-4 text-xs font-semibold text-(--sc-ink-muted) lg:flex">
           {roleLinks.map((role) => {
             const active = isLinkActive(role.to, location);
             const activeToneClass = isAdminToneLink(role.to)
@@ -156,15 +156,7 @@ export default function SiteHeader() {
           >
             Install app
           </button>
-          {user ? (
-            <Link
-              to="/user"
-              aria-current={isLinkActive("/user", location) ? "page" : undefined}
-              className="hidden rounded-md border border-[var(--sc-border)] px-3 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08] lg:inline-flex"
-            >
-              Account
-            </Link>
-          ) : (
+          {!user && (
             <Link
               to="/login"
               className="hidden rounded-md border border-[var(--sc-border)] px-3 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08] lg:inline-flex"
@@ -239,14 +231,7 @@ export default function SiteHeader() {
               >
                 Install app
               </button>
-              {user ? (
-                <Link
-                  to="/user"
-                  className="rounded-md border border-[var(--sc-border)] px-4 py-2 text-center text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08]"
-                >
-                  Account
-                </Link>
-              ) : (
+              {!user && (
                 <Link
                   to="/login"
                   className="rounded-md border border-[var(--sc-border)] px-4 py-2 text-center text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08]"

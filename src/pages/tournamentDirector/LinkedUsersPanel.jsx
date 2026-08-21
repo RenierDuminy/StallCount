@@ -65,17 +65,6 @@ async function loadLinkedCrew(eventId) {
   );
 }
 
-function formatGrantedAt(value) {
-  if (!value) return "Grant date unknown";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "Grant date unknown";
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(parsed);
-}
-
 export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = true }) {
   const { roles, rolesLoading } = useAuth();
   const [selectedEventId, setSelectedEventId] = usePersistentState(
@@ -367,21 +356,13 @@ export default function LinkedUsersPanel({ eventsList = [], eventOptionsReady = 
                           {entry.teamName || "Event-wide"}
                         </p>
                       ) : null}
-                      <div className="grid grid-cols-[minmax(0,1fr),auto] items-center gap-3 border-b border-[var(--sc-surface-light-border)] px-3 py-2 last:border-b-0">
+                      <div className="border-b border-[var(--sc-surface-light-border)] px-3 py-2 last:border-b-0">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-[var(--sc-surface-light-ink)]">
                             {entry.fullName || "Unnamed user"}
                           </p>
                           <p className="truncate text-xs text-[var(--sc-surface-light-ink)]/65">
                             {entry.email || "No email recorded"}
-                          </p>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/50">
-                            Linked
-                          </p>
-                          <p className="text-xs font-medium text-[var(--sc-surface-light-ink)]">
-                            {formatGrantedAt(entry.matchingAssignments[0]?.grantedAt)}
                           </p>
                         </div>
                       </div>

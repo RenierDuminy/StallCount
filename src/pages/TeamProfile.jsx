@@ -149,13 +149,21 @@ export default function TeamProfilePage() {
     const options = new Map();
     state.matches.forEach((match) => {
       const eventId = match.event?.id;
-      if (eventId && !options.has(eventId)) {
-        options.set(eventId, match.event?.name || "Event");
+      if (!eventId) return;
+      const startTime = match.start_time || null;
+      const existing = options.get(eventId);
+      if (!existing) {
+        options.set(eventId, { id: eventId, name: match.event?.name || "Event", startTime });
+      } else if (startTime && (!existing.startTime || startTime > existing.startTime)) {
+        existing.startTime = startTime;
       }
     });
-    return Array.from(options.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(options.values()).sort((a, b) => {
+      if (a.startTime && b.startTime) return b.startTime.localeCompare(a.startTime);
+      if (a.startTime) return -1;
+      if (b.startTime) return 1;
+      return a.name.localeCompare(b.name);
+    });
   }, [state.matches]);
 
   const filteredMatches = useMemo(() => {

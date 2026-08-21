@@ -6,16 +6,14 @@ import ErrorBoundary from "./components/ErrorBoundary";
 
 import AppLayout from "./components/AppLayout";
 import {
-  ADMIN_ACCESS_PERMISSIONS,
+  ADMIN_ACCESS_ACCESS_ROLES,
   CAPTAIN_ACCESS_PERMISSIONS,
   EVENT_ACCESS_PERMISSIONS,
-  EVENT_SETUP_ACCESS_PERMISSIONS,
   MEDIA_ACCESS_PERMISSIONS,
-  SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS,
   SPIRIT_SCORES_ACCESS_PERMISSIONS,
   SCOREKEEPER_ACCESS_PERMISSIONS,
   SYS_ADMIN_ACCESS_PERMISSIONS,
-  TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS,
+  TOURNAMENT_DIRECTOR_ACCESS_ROLES,
 } from "./utils/accessControl";
 import { eventWorkspaces } from "./pages/eventWorkspaces";
 
@@ -132,7 +130,7 @@ export default function AppRoutes() {
           <Route
             path="/admin/access"
             element={
-              <ProtectedRoute allowedPermissions={ADMIN_ACCESS_PERMISSIONS}>
+              <ProtectedRoute allowedRoles={ADMIN_ACCESS_ACCESS_ROLES}>
                 <Guarded name="Access control"><AdminAccessPage /></Guarded>
               </ProtectedRoute>
             }
@@ -148,7 +146,7 @@ export default function AppRoutes() {
           <Route
             path="/admin/signup-management"
             element={
-              <ProtectedRoute allowedPermissions={SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS}>
+              <ProtectedRoute allowedRoles={TOURNAMENT_DIRECTOR_ACCESS_ROLES}>
                 <Guarded name="Signup management"><SignupManagementPage /></Guarded>
               </ProtectedRoute>
             }
@@ -164,7 +162,7 @@ export default function AppRoutes() {
           <Route
             path="/tournament-director"
             element={
-              <ProtectedRoute allowedPermissions={TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS}>
+              <ProtectedRoute allowedRoles={TOURNAMENT_DIRECTOR_ACCESS_ROLES}>
                 <Guarded name="Tournament director"><TournamentDirectorPage /></Guarded>
               </ProtectedRoute>
             }
@@ -188,7 +186,7 @@ export default function AppRoutes() {
           <Route
             path="/admin/event-setup"
             element={
-              <ProtectedRoute allowedPermissions={EVENT_SETUP_ACCESS_PERMISSIONS}>
+              <ProtectedRoute allowedRoles={TOURNAMENT_DIRECTOR_ACCESS_ROLES}>
                 <Guarded name="Event setup"><EventSetupWizardPage /></Guarded>
               </ProtectedRoute>
             }
