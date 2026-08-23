@@ -696,6 +696,56 @@ export default function AdminAccessPage() {
       </SectionShell>
 
       <SectionShell as="main" className="space-y-5 pb-16">
+        {/* Reference material rather than a task: collapsed by default so it
+            doesn't push the role manager below the fold. */}
+        <details className="group rounded-2xl border border-border/70 bg-surface">
+          <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden">
+            <div>
+              <p className="text-sm font-semibold text-ink">Role permissions</p>
+              <p className="text-xs text-ink-muted">
+                Each role grants these permissions to users who hold it.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Chip variant="ghost" className="text-xs text-ink-muted">
+                Permissions mapped: {rolesWithPermissions.length}
+              </Chip>
+              <span
+                aria-hidden="true"
+                className="text-ink-muted transition-transform group-open:rotate-180"
+              >
+                ▾
+              </span>
+            </div>
+          </summary>
+          <div className="border-t border-border/60 p-4">
+            {rolesWithPermissions.length === 0 ? (
+              <p className="text-xs text-ink-muted">No role catalog loaded yet.</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {rolesWithPermissions.map((role) => (
+                  <div key={role.id} className="rounded-xl border border-border/60 p-3">
+                    <p className="text-sm font-semibold text-ink">{role.name}</p>
+                    <p className="text-xs text-ink-muted">{role.description || "No description"}</p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {role.permissions.length === 0 ? (
+                        <Chip variant="ghost" className="text-[11px] text-ink-muted">
+                          No permissions assigned
+                        </Chip>
+                      ) : (
+                        role.permissions.map((permission) => (
+                          <Chip key={permission.key} variant="tag" className="text-[11px]">
+                            {formatPermissionLabel(permission)}
+                          </Chip>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
         <Card className="space-y-5 p-5">
           <Panel className="space-y-4 border border-border/70 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1052,44 +1102,6 @@ export default function AdminAccessPage() {
               </div>
             ) : (
               <p className="text-xs text-ink-muted">Search for a user to manage their roles.</p>
-            )}
-          </Panel>
-          <Panel className="space-y-3 border border-border/70 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-ink">Role permissions</p>
-                <p className="text-xs text-ink-muted">
-                  Each role grants these permissions to users who hold it.
-                </p>
-              </div>
-              <Chip variant="ghost" className="text-xs text-ink-muted">
-                Permissions mapped: {rolesWithPermissions.length}
-              </Chip>
-            </div>
-            {rolesWithPermissions.length === 0 ? (
-              <p className="text-xs text-ink-muted">No role catalog loaded yet.</p>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {rolesWithPermissions.map((role) => (
-                  <div key={role.id} className="rounded-xl border border-border/60 p-3">
-                    <p className="text-sm font-semibold text-ink">{role.name}</p>
-                    <p className="text-xs text-ink-muted">{role.description || "No description"}</p>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {role.permissions.length === 0 ? (
-                        <Chip variant="ghost" className="text-[11px] text-ink-muted">
-                          No permissions assigned
-                        </Chip>
-                      ) : (
-                        role.permissions.map((permission) => (
-                          <Chip key={permission.key} variant="tag" className="text-[11px]">
-                            {formatPermissionLabel(permission)}
-                          </Chip>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
             )}
           </Panel>
           <SectionHeader

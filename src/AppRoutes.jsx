@@ -12,6 +12,7 @@ import {
   MEDIA_ACCESS_PERMISSIONS,
   SPIRIT_SCORES_ACCESS_PERMISSIONS,
   SCOREKEEPER_ACCESS_PERMISSIONS,
+  SCOREKEEPER_ACCESS_ROLES,
   SYS_ADMIN_ACCESS_PERMISSIONS,
   TOURNAMENT_DIRECTOR_ACCESS_ROLES,
 } from "./utils/accessControl";
@@ -219,7 +220,10 @@ export default function AppRoutes() {
         <Route
           path="/score-keeper"
           element={
-            <ProtectedRoute allowedPermissions={SCOREKEEPER_ACCESS_PERMISSIONS}>
+            <ProtectedRoute
+              allowedRoles={SCOREKEEPER_ACCESS_ROLES}
+              allowedPermissions={SCOREKEEPER_ACCESS_PERMISSIONS}
+            >
               <Guarded name="Score keeper"><ScoreKeeperPage /></Guarded>
             </ProtectedRoute>
           }
@@ -227,7 +231,10 @@ export default function AppRoutes() {
         <Route
           path="/score-keeper-5v5"
           element={
-            <ProtectedRoute allowedPermissions={SCOREKEEPER_ACCESS_PERMISSIONS}>
+            <ProtectedRoute
+              allowedRoles={SCOREKEEPER_ACCESS_ROLES}
+              allowedPermissions={SCOREKEEPER_ACCESS_PERMISSIONS}
+            >
               <Guarded name="Score keeper 5v5"><ScoreKeeper5v5Page /></Guarded>
             </ProtectedRoute>
           }

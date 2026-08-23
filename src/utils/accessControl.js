@@ -6,7 +6,13 @@ const ROLE_NAME_BY_ID = {
 };
 
 const ADMIN_TOOL_ACCESS_ROLES = ["admin", "tournament_director", "media", "captain"];
-const SCOREKEEPER_ACCESS_ROLES = ["tournament_director", "field_assistant", "scorekeeper"];
+const SCOREKEEPER_ACCESS_ROLES = [
+  "scorekeeper",
+  "captain",
+  "team_manager",
+  "field_assistant",
+  "tournament_director",
+];
 const CAPTAIN_ACCESS_ROLES = ["captain"];
 // Roles that are granted per team via team_user_roles.
 const TEAM_MANAGEMENT_ACCESS_ROLES = ["captain", "team_manager"];

@@ -12,6 +12,8 @@ import { TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY } from "./persistenceKeys";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
+// Display order: cards render in this sequence, so the roles a TD needs most
+// sit first and lower-priority roles fill in around them.
 const LINKED_ROLE_GROUPS = [
   {
     key: "tournament_director",
@@ -24,6 +26,13 @@ const LINKED_ROLE_GROUPS = [
   {
     key: "captain",
     title: "Captains",
+  },
+  {
+    key: "scorekeeper",
+    title: "Scorekeepers",
+    // normaliseRoleList turns "Score keeper" into score_keeper, so the DB's
+    // display spelling decides the slug. Match both rather than depend on it.
+    aliases: ["score_keeper"],
   },
   {
     key: "team_manager",
@@ -151,6 +160,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
     () =>
       LINKED_ROLE_GROUPS.map((group) => {
         const entries = [];
+        const groupSlugs = new Set([group.key, ...(group.aliases ?? [])]);
 
         users.forEach((user) => {
           const allAssignments = [
@@ -158,7 +168,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
             ...(Array.isArray(user.teamRoles) ? user.teamRoles : []),
           ];
           const matchingAssignments = allAssignments.filter((assignment) =>
-            normaliseRoleList(assignment?.roleName).includes(group.key),
+            normaliseRoleList(assignment?.roleName).some((slug) => groupSlugs.has(slug)),
           );
 
           if (!matchingAssignments.length) return;

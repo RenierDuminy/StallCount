@@ -979,6 +979,11 @@ export default function ScoreKeeperView() {
                   <div className="mt-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
                     {eventsError}
                   </div>
+                ) : events.length === 0 ? (
+                  <div className="mt-1 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-500">
+                    You are not linked to any live events. Ask a tournament director to assign you
+                    to an event.
+                  </div>
                 ) : (
                   <select
                     value={selectedEventId || ""}

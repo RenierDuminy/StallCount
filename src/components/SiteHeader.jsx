@@ -113,7 +113,7 @@ export default function SiteHeader() {
                 key={link.to}
                 to={link.to}
                 aria-current={active ? "page" : undefined}
-                className={`rounded-md border-b-2 px-3 py-2 transition ${
+                className={`rounded-md border-b-2 px-3 py-2 text-center transition ${
                   active
                     ? "border-[var(--sc-accent)] text-[var(--sc-ink)]"
                     : "border-transparent hover:bg-white/[0.06] hover:text-[var(--sc-ink)]"
@@ -136,7 +136,7 @@ export default function SiteHeader() {
                 key={role.to}
                 to={role.to}
                 aria-current={active ? "page" : undefined}
-                className={`border-b-2 py-1 transition ${
+                className={`border-b-2 py-1 text-center transition ${
                   active
                     ? activeToneClass
                     : "border-transparent hover:border-[var(--sc-border-strong)] hover:text-[var(--sc-ink)]"

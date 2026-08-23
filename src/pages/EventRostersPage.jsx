@@ -161,6 +161,7 @@ export default function EventRostersPage() {
       const roster = map.get(teamId);
       roster.players.push({
         id: entry.id,
+        playerId: entry.player?.id || entry.player_id || null,
         name: entry.player?.name || "Player",
         jersey: entry.player?.jersey_number ?? null,
         gender: entry.player?.gender_code ?? null,
@@ -309,12 +310,19 @@ export default function EventRostersPage() {
                   <tr className="bg-surface-muted text-xs font-semibold uppercase tracking-wide text-ink-muted">
                     {groupedTeams.map((team) => (
                       <th key={team.teamId} className="border-b border-border px-3 py-2 text-center whitespace-nowrap">
-                        <div className="text-sm font-semibold text-ink">{team.name}</div>
+                        <div className="text-sm font-semibold text-ink">
+                          <Link to={`/teams/${team.teamId}`} className="text-inherit! hover:text-inherit!">
+                            {team.name}
+                          </Link>
+                        </div>
                         {team.shortName && (
                           <div className="text-[11px] uppercase tracking-wide text-ink-muted">
                             {team.shortName}
                           </div>
                         )}
+                        <div className="text-[11px] font-normal normal-case tracking-normal text-ink-muted">
+                          {team.players.length} {team.players.length === 1 ? "player" : "players"}
+                        </div>
                       </th>
                     ))}
                   </tr>
@@ -330,7 +338,7 @@ export default function EventRostersPage() {
                             className="border-x border-border px-3 py-1.5 align-top whitespace-nowrap"
                           >
                             {player ? (
-                              <RosterPlayerCard player={player} />
+                              <RosterPlayerCard player={player} eventId={selectedEventId} />
                             ) : (
                               <span className="text-xs text-ink-muted"></span>
                             )}
@@ -349,8 +357,13 @@ export default function EventRostersPage() {
   );
 }
 
-function RosterPlayerCard({ player }) {
+function RosterPlayerCard({ player, eventId }) {
   const jerseyLabel = typeof player.jersey === "number" ? `#${player.jersey}` : null;
+  const profilePath = player.playerId
+    ? eventId
+      ? `/players/${player.playerId}?eventId=${encodeURIComponent(eventId)}`
+      : `/players/${player.playerId}`
+    : null;
   const genderLabel = player.gender ? player.gender : "--";
   const tags = [];
   if (player.isCaptain) {
@@ -379,7 +392,13 @@ function RosterPlayerCard({ player }) {
           ))}
         </div>
       )}
-      <span>{player.name}</span>
+      {profilePath ? (
+        <Link to={profilePath} className="text-inherit! hover:text-inherit!">
+          {player.name}
+        </Link>
+      ) : (
+        <span>{player.name}</span>
+      )}
       <span className="text-xs text-ink-muted">({genderLabel})</span>
       {jerseyLabel && (
         <span className="text-xs text-ink-muted">{jerseyLabel}</span>

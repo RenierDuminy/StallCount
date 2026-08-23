@@ -1041,15 +1041,18 @@ export default function CaptainPage() {
               </div>
             ) : (
               <ul className="divide-y divide-border">
-                {sortedRosterEntries.map((entry) => {
+                {sortedRosterEntries.map((entry, index) => {
                   const isEditing = editingRosterEntryId === entry.id;
                   const playerName = entry.player?.name || "Unnamed player";
 
                   return (
                     <li key={entry.id} className="px-3 py-1 text-sm sm:px-4">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="flex flex-nowrap items-center gap-1.5 font-semibold text-ink">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="w-5 shrink-0 text-right text-xs font-semibold tabular-nums text-ink-muted">
+                            {index + 1}
+                          </span>
+                          <p className="flex min-w-0 flex-nowrap items-center gap-1.5 font-semibold text-ink">
                             {getRosterRoleTags(entry).length > 0 ? (
                               <span className="flex flex-nowrap gap-1">
                                 {getRosterRoleTags(entry).map((tag) => (

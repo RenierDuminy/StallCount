@@ -473,22 +473,33 @@ function GamesTable({ matches, teamId, venueLookup }) {
               <tr key={match.id} className="align-top">
                 <td className="whitespace-nowrap px-3 py-2 text-[var(--sc-surface-light-ink)]/70 sm:px-4 sm:py-3">
                   <div className="flex items-center gap-2">
-                    <span>{formatMatchTime(match.start_time)}</span>
+                    {match.id ? (
+                      <Link
+                        to={`/matches?matchId=${encodeURIComponent(match.id)}`}
+                        className="text-inherit! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]!"
+                      >
+                        {formatMatchTime(match.start_time)}
+                      </Link>
+                    ) : (
+                      <span>{formatMatchTime(match.start_time)}</span>
+                    )}
                     {mediaDetails ? (
                       <MatchMediaButton media={mediaDetails} />
                     ) : null}
                   </div>
                 </td>
                 <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)] sm:px-4 sm:py-3">
-                  {leftTeam ? (
+                  {!leftTeam ? (
+                    "TBD"
+                  ) : leftTeam.id === teamId ? (
+                    <span>{leftTeam.name}</span>
+                  ) : (
                     <Link
                       to={`/teams/${leftTeam.id}`}
-                      className="text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
+                      className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                     >
                       {leftTeam.name}
                     </Link>
-                  ) : (
-                    "TBD"
                   )}
                 </td>
                 <td className={`px-3 py-2 text-center text-base font-semibold sm:px-4 sm:py-3 ${scoreClass}`}>
@@ -497,15 +508,17 @@ function GamesTable({ matches, teamId, venueLookup }) {
                     : "TBD"}
                 </td>
                 <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)] sm:px-4 sm:py-3">
-                  {rightTeam ? (
+                  {!rightTeam ? (
+                    "TBD"
+                  ) : rightTeam.id === teamId ? (
+                    <span>{rightTeam.name}</span>
+                  ) : (
                     <Link
                       to={`/teams/${rightTeam.id}`}
-                      className="text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
+                      className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                     >
                       {rightTeam.name}
                     </Link>
-                  ) : (
-                    "TBD"
                   )}
                 </td>
                 <td className="px-3 py-2 text-[var(--sc-surface-light-ink)]/70 sm:px-4 sm:py-3">
@@ -615,7 +628,7 @@ function PlayersTable({ stats, rosterCount }) {
                       )}
                       <Link
                         to={`/players/${stat.playerId}`}
-                        className="font-semibold text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
+                        className="font-semibold text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                       >
                         {stat.playerName}
                       </Link>
@@ -716,15 +729,17 @@ function SpiritTable({ entries, emptyLabel, teamId, variant = "received" }) {
                       : "TBD"}
                   </td>
                   <td className="px-3 py-2 text-[var(--sc-surface-light-ink)]/80">
-                    {opponent ? (
+                    {!opponent ? (
+                      "TBD"
+                    ) : opponent.id === teamId ? (
+                      <span>{opponent.name}</span>
+                    ) : (
                       <Link
                         to={`/teams/${opponent.id}`}
-                        className="text-[var(--sc-surface-light-ink)] underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70"
+                        className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                       >
                         {opponent.name}
                       </Link>
-                    ) : (
-                      "TBD"
                     )}
                   </td>
                   <td className="px-2 py-2 text-center font-semibold text-[var(--sc-surface-light-ink)]">
