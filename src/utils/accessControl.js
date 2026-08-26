@@ -27,6 +27,22 @@ const SPIRIT_SCORES_ACCESS_ROLES = [
   "field_assistant",
   "tournament_director",
 ];
+// Match corrections repairs the point-by-point record after the fact. Field
+// assistants are included because they are the people on the field who witness
+// the mistake; `admin` reaches it through admin_override rather than this list.
+const MATCH_CORRECTIONS_ACCESS_ROLES = [
+  "tournament_director",
+  "field_assistant",
+  "admin",
+];
+// Correcting a log is a match write, so gate on match-write permissions rather
+// than the broad TD bundle. This is also the permission set the panel passes to
+// useAccessScope: a role-gated user still only sees events they are scoped to.
+const MATCH_CORRECTIONS_ACCESS_PERMISSIONS = [
+  "match_insert",
+  "match_update",
+  "admin_override",
+];
 const ADMIN_OVERRIDE_PERMISSIONS = ["admin_override"];
 const MEDIA_ACCESS_PERMISSIONS = ["media_edit", "admin_override"];
 const ADMIN_ACCESS_PERMISSIONS = ["role_edit", "admin_override"];
@@ -321,6 +337,8 @@ export {
   ADMIN_ACCESS_ACCESS_ROLES,
   EVENT_SETUP_ACCESS_ROLES,
   SPIRIT_SCORES_ACCESS_ROLES,
+  MATCH_CORRECTIONS_ACCESS_ROLES,
+  MATCH_CORRECTIONS_ACCESS_PERMISSIONS,
   ADMIN_OVERRIDE_PERMISSIONS,
   ADMIN_ACCESS_PERMISSIONS,
   EVENT_ACCESS_PERMISSIONS,

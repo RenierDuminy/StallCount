@@ -12,6 +12,7 @@ const ADMIN_MODULE_PRIORITY = [
   "Media",
   "Event setup",
   "Tournament director",
+  "Match corrections",
   "Playoff structure",
 ];
 const ADMIN_MODULE_DIVIDER_AFTER = new Set(["Spirit scores", "Playoff structure"]);
@@ -72,6 +73,23 @@ const ADMIN_MODULES = [
       "Desktop command center to view, create, and alter tournament data across every table.",
     to: "/tournament-director",
     accent: "border border-admin-border bg-admin-bg text-admin-ink",
+  },
+  {
+    label: "Match corrections",
+    description:
+      "Audit a match's point-by-point log, find discrepancies, and fix scores, scorers, and assists.",
+    to: "/match-corrections",
+    accent: "border border-admin-border bg-admin-bg text-admin-ink",
+    // Mirrors MATCH_CORRECTIONS_ACCESS_ROLES on the route. `administrator` and
+    // `sys_admin` are included the way the Playoff structure card does it, since
+    // this list matches role names rather than resolving admin_override.
+    allowedRoles: [
+      "admin",
+      "administrator",
+      "sys_admin",
+      "tournament_director",
+      "field_assistant",
+    ],
   },
   {
     label: "Playoff structure",

@@ -15,6 +15,7 @@ import {
   SCOREKEEPER_ACCESS_ROLES,
   SYS_ADMIN_ACCESS_PERMISSIONS,
   TOURNAMENT_DIRECTOR_ACCESS_ROLES,
+  MATCH_CORRECTIONS_ACCESS_ROLES,
 } from "./utils/accessControl";
 import { eventWorkspaces } from "./pages/eventWorkspaces";
 
@@ -42,6 +43,7 @@ const EventAccessPage = lazy(() => import("./pages/EventAccessPage"));
 const SignupManagementPage = lazy(() => import("./pages/SignupManagementPage"));
 const SpiritScoresPage = lazy(() => import("./pages/SpiritScoresPage"));
 const TournamentDirectorPage = lazy(() => import("./pages/TournamentDirectorPage"));
+const MatchCorrectionsPage = lazy(() => import("./pages/MatchCorrectionsPage"));
 const PlayoffStructurePage = lazy(() => import("./pages/PlayoffStructurePage"));
 const MediaAdminPage = lazy(() => import("./pages/MediaAdminPage"));
 const EventRostersPageLazy = lazy(() => import("./pages/EventRostersPage"));
@@ -165,6 +167,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute allowedRoles={TOURNAMENT_DIRECTOR_ACCESS_ROLES}>
                 <Guarded name="Tournament director"><TournamentDirectorPage /></Guarded>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/match-corrections"
+            element={
+              <ProtectedRoute allowedRoles={MATCH_CORRECTIONS_ACCESS_ROLES}>
+                <Guarded name="Match corrections"><MatchCorrectionsPage /></Guarded>
               </ProtectedRoute>
             }
           />

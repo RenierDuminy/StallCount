@@ -15,9 +15,10 @@ import useAccessScope from "../hooks/useAccessScope";
 import { TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS } from "../utils/accessControl";
 import TournamentOverviewPanel from "./tournamentDirector/TournamentOverviewPanel";
 import LinkedUsersPanel from "./tournamentDirector/LinkedUsersPanel";
+import MatchCorrectionsPanel from "./tournamentDirector/MatchCorrectionsPanel";
 
 const LIMIT_OPTIONS = [20, 50, 100, 200];
-const WORKSPACE_OPTIONS = new Set(["overview", "data", "users"]);
+const WORKSPACE_OPTIONS = new Set(["overview", "data", "users", "corrections"]);
 const DEFAULT_MATCH_FORM = {
   eventId: "",
   teamAId: "",
@@ -369,6 +370,13 @@ export default function TournamentDirectorPage() {
                 >
                   Linked users
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setWorkspace("corrections")}
+                  className={`sc-button ${workspace === "corrections" ? "bg-[#0a3d29] text-white" : ""}`}
+                >
+                  Match corrections
+                </button>
                 <Link to="/admin" className="sc-button">
                   Back to admin hub
                 </Link>
@@ -396,6 +404,8 @@ export default function TournamentDirectorPage() {
           <TournamentOverviewPanel eventsList={eventsList} eventsReady={referenceDataLoaded} />
         ) : workspace === "users" ? (
           <LinkedUsersPanel eventsList={eventsList} eventsReady={referenceDataLoaded} />
+        ) : workspace === "corrections" ? (
+          <MatchCorrectionsPanel eventsList={eventsList} eventsReady={referenceDataLoaded} />
         ) : (
         <div className="grid gap-4 xl:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]">
           <Card variant="light" className="space-y-3 p-4 xl:sticky xl:top-4">

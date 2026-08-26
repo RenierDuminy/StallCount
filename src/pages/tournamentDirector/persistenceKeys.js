@@ -1,6 +1,11 @@
 export const TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY =
   "stallcount:tournament-director:selected-event:v1";
 
+// Match corrections remembers the match being repaired, so a mid-edit reload or
+// a hop to another tab returns to the same log rather than the top of the list.
+export const TOURNAMENT_DIRECTOR_CORRECTIONS_MATCH_KEY =
+  "stallcount:tournament-director:corrections-match:v1";
+
 // Schedule filters are stored per event: the excluded values are event-specific
 // (venues, teams, divisions), so restoring one event's exclusions onto another
 // would silently hide rows the user never chose to hide.
