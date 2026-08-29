@@ -48,6 +48,18 @@ function getSpiritCategoryValues(row) {
   };
 }
 
+function getSpiritRowTotal(row) {
+  if (!row) return null;
+
+  return (
+    coerceNumber(row.rules_knowledge) +
+    coerceNumber(row.fouls_contact) +
+    coerceNumber(row.positive_attitude) +
+    coerceNumber(row.communication) +
+    coerceNumber(row.self_control)
+  );
+}
+
 function buildSpiritLookup(rows) {
   const grouped = new Map();
   const latestRows = new Map();
@@ -66,16 +78,8 @@ function buildSpiritLookup(rows) {
       latestRows.set(latestKey, row);
     }
 
-    const total =
-      coerceNumber(row?.rules_knowledge) +
-      coerceNumber(row?.fouls_contact) +
-      coerceNumber(row?.positive_attitude) +
-      coerceNumber(row?.communication) +
-      coerceNumber(row?.self_control);
-
     const matchBucket = grouped.get(matchId) || new Map();
-    const teamBucket = matchBucket.get(ratedTeamId) || { total: 0, count: 0 };
-    teamBucket.total += total;
+    const teamBucket = matchBucket.get(ratedTeamId) || { count: 0 };
     teamBucket.count += 1;
     matchBucket.set(ratedTeamId, teamBucket);
     grouped.set(matchId, matchBucket);
@@ -146,18 +150,12 @@ export async function getTournamentOverview(eventId, options = {}) {
         const spiritSummary = spiritLookup.get(match.id) || null;
         const teamABucket = match?.team_a?.id ? spiritSummary?.get(match.team_a.id) || null : null;
         const teamBBucket = match?.team_b?.id ? spiritSummary?.get(match.team_b.id) || null : null;
-        const spiritScoreA =
-          teamABucket && teamABucket.count > 0
-            ? Number((teamABucket.total / teamABucket.count).toFixed(1))
-            : null;
-        const spiritScoreB =
-          teamBBucket && teamBBucket.count > 0
-            ? Number((teamBBucket.total / teamBBucket.count).toFixed(1))
-            : null;
         const latestSpiritA =
           match?.team_a?.id ? latestSpiritRows.get(`${match.id}:${match.team_a.id}`) || null : null;
         const latestSpiritB =
           match?.team_b?.id ? latestSpiritRows.get(`${match.id}:${match.team_b.id}`) || null : null;
+        const spiritScoreA = getSpiritRowTotal(latestSpiritA);
+        const spiritScoreB = getSpiritRowTotal(latestSpiritB);
 
         return {
           ...match,
@@ -222,7 +220,7 @@ export async function getTournamentOverview(eventId, options = {}) {
           confirmedMatches: summary.confirmedMatches,
           averageSpiritScore:
             summary.spiritScoreCount > 0
-              ? Number((summary.spiritScoreTotal / summary.spiritScoreCount).toFixed(1))
+              ? Math.round(summary.spiritScoreTotal / summary.spiritScoreCount)
               : null,
           uniqueTeamCount: uniqueTeams.size,
         },

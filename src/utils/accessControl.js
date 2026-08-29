@@ -57,7 +57,13 @@ const SIGNUP_MANAGEMENT_ACCESS_PERMISSIONS = [
   "admin_override",
 ];
 const SPIRIT_SCORES_ACCESS_PERMISSIONS = ["match_insert", "match_update", "admin_override"];
-const SCOREKEEPER_ACCESS_PERMISSIONS = ["match_insert", "match_update", "admin_override"];
+// The console's core action is writing match_logs rows, which RLS gates on
+// `match_insert` — not `match_update`. Gating on the OR of both let roles
+// holding only `match_update` open the console, start the match and move
+// matches.score_a/score_b, while every log insert was rejected: the published
+// score advanced and the point-by-point record stayed empty. Require the
+// permission the primary write actually needs.
+const SCOREKEEPER_ACCESS_PERMISSIONS = ["match_insert", "admin_override"];
 const CAPTAIN_ACCESS_PERMISSIONS = [
   "team_update",
   "roster_insert",

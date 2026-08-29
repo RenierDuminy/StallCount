@@ -461,9 +461,27 @@ export async function updateMatchLogEntryByTimestamp(
 }
 
 export async function deleteMatchLogEntry(logId: string) {
-  const { error } = await supabase.from("match_logs").delete().eq("id", logId);
+  // Selecting the deleted row back is load-bearing. A DELETE blocked by RLS is
+  // not an error: it matches zero rows and returns `{ error: null }`. This is
+  // the scorekeeper undo path, so a bare delete() meant a denied undo threw
+  // nothing, the entry disappeared optimistically, and it reappeared on the
+  // next refresh. `match_logs` DELETE requires `match_delete`, which the
+  // console gate does not check for.
+  const { data, error } = await supabase
+    .from("match_logs")
+    .delete()
+    .eq("id", logId)
+    .select("id")
+    .maybeSingle();
+
   if (error) {
     throw fromSupabaseError(error, "Failed to delete match log");
+  }
+
+  if (!data) {
+    throw new Error(
+      "Undo was rejected: you do not have permission to delete match log entries, or the entry no longer exists."
+    );
   }
 }
 

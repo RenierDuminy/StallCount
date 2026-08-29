@@ -389,7 +389,7 @@ function getSpiritScoreTotal(scores) {
   return SPIRIT_CATEGORIES.reduce((total, category) => {
     const value = scores[category.key];
     const numericValue = value === "" || value === null || value === undefined ? 0 : Number(value);
-    return total + (Number.isFinite(numericValue) ? numericValue : 0);
+    return total + (Number.isFinite(numericValue) ? Math.round(numericValue) : 0);
   }, 0);
 }
 
