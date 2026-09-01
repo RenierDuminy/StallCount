@@ -16,6 +16,7 @@ import {
   queryTableRowsByFilters,
   queryTableRowsExact,
   updateTableRow,
+  updateTableRowByFilters,
 } from "../services/adminService";
 import { getAllTeams } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
@@ -280,7 +281,6 @@ function BrokenComponentsPanel() {
 
 export default function SysAdminPage() {
   const tables = listSchemaTables();
-  const [tableSearch, setTableSearch] = useState("");
   const [selectedTable, setSelectedTable] = useState(() => tables[0] || "");
   const [orderBy, setOrderBy] = useState(() => pickRecencyColumn(tables[0] || "") || null);
   const [limit, setLimit] = useState(50);
@@ -357,11 +357,6 @@ export default function SysAdminPage() {
   }, [cascadeError, cascadeLoading, deleteKeysReady, targetRowCount]);
   const deleteBlocked = Boolean(deleteBlockReason);
 
-  const filteredTables = useMemo(() => {
-    if (!tableSearch.trim()) return tables;
-    const q = tableSearch.toLowerCase();
-    return tables.filter((t) => t.toLowerCase().includes(q));
-  }, [tableSearch, tables]);
   const sortedVenues = useMemo(() => {
     if (!Array.isArray(venues) || venues.length === 0) return [];
     return [...venues].sort((a, b) =>
@@ -631,14 +626,32 @@ export default function SysAdminPage() {
     const payload = parseJsonPayload(editPayload || draftPayload, setDraftError);
     if (!payload) return;
 
-    const recordId = selectedRow[primaryKey];
-    if (recordId === undefined) {
-      setDraftError(`Selected row has no value for primary key "${primaryKey}".`);
+    const keyFilters = deleteKeyColumns.map((column) => ({
+      column,
+      value: selectedRow[column],
+    }));
+    const missing = keyFilters.filter(
+      (entry) => entry.value === undefined || entry.value === null,
+    );
+    if (missing.length) {
+      setDraftError(
+        `Selected row has no value for key column${missing.length > 1 ? "s" : ""} "${missing
+          .map((entry) => entry.column)
+          .join(", ")}".`,
+      );
       return;
     }
 
     try {
-      const saved = await updateTableRow(selectedTable, primaryKey, recordId, payload);
+      const saved =
+        keyFilters.length === 1
+          ? await updateTableRow(
+              selectedTable,
+              keyFilters[0].column,
+              keyFilters[0].value,
+              payload,
+            )
+          : await updateTableRowByFilters(selectedTable, keyFilters, payload);
       const nextRow = saved ?? { ...selectedRow, ...payload };
       setSelectedRow(nextRow);
       setEditPayload(JSON.stringify(nextRow, null, 2));
@@ -738,6 +751,9 @@ export default function SysAdminPage() {
                 <Link to="/admin" className="sc-button">
                   Back to admin hub
                 </Link>
+                <Link to="/sys-admin/player-merge" className="sc-button">
+                  Player de-duplication
+                </Link>
                 <button type="button" onClick={loadRows} className="sc-button">
                   Refresh data
                 </button>
@@ -766,63 +782,31 @@ export default function SysAdminPage() {
       </SectionShell>
 
       <SectionShell as="main" className="pb-16">
-        <div className="grid gap-6 lg:gap-8 lg:grid-cols-[280px,minmax(0,1fr)] xl:grid-cols-[320px,minmax(0,1fr)]">
-          <Card className="space-y-5 p-4 sm:p-5 lg:sticky lg:top-6">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-ink">Tables</h2>
+        <div className="space-y-6">
+          <Card className="space-y-4 p-4 sm:p-5">
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="min-w-[220px] flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Table</p>
+                <select
+                  value={selectedTable}
+                  onChange={(event) => setSelectedTable(event.target.value)}
+                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+                >
+                  {tables.length === 0 && <option value="">No tables detected</option>}
+                  {tables.map((table) => (
+                    <option key={table} value={table}>
+                      {getBaseTableName(table)}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <Chip variant="ghost" className="text-xs text-ink-muted">
-                {tables.length} total
+                {tables.length} tables
+              </Chip>
+              <Chip variant="ghost" className="text-xs text-ink-muted">
+                {columns.length} columns
               </Chip>
             </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Search tables</p>
-              <input
-                type="search"
-                value={tableSearch}
-                onChange={(event) => setTableSearch(event.target.value)}
-                placeholder="Filter tables"
-                className={LIGHT_INPUT_CLASS}
-              />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Panel className="p-3 shadow-sm shadow-[rgba(8,25,21,0.04)]">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Active</p>
-                <p className="truncate text-base font-semibold">{selectedTable || "None"}</p>
-              </Panel>
-              <Panel className="p-3 text-center shadow-sm shadow-[rgba(8,25,21,0.04)]">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Columns</p>
-                <p className="text-xl font-bold">{columns.length}</p>
-              </Panel>
-            </div>
-            <Panel className="max-h-[40vh] space-y-1 overflow-y-auto p-2 shadow-inner shadow-[rgba(8,25,21,0.04)] sm:max-h-[50vh] lg:max-h-[60vh]">
-              {filteredTables.map((table) => {
-                const isActive = table === selectedTable;
-                const cols = listTableColumns(table);
-                return (
-                  <button
-                    key={table}
-                    type="button"
-                    onClick={() => setSelectedTable(table)}
-                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold transition ${
-                      isActive ? "bg-accent text-[#03140f] shadow" : "text-ink hover:bg-surface"
-                    }`}
-                  >
-                    <span className="truncate">{table}</span>
-                    <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide ${
-                      isActive ? "bg-surface" : "bg-surface-muted text-ink-muted"
-                    }`}>
-                      {cols.length} cols
-                    </span>
-                  </button>
-                );
-              })}
-            </Panel>
-            <Panel className="border border-dashed border-border bg-surface p-3 text-xs text-ink-muted">
-              <p className="font-semibold text-ink">Workflow tip</p>
-              <p className="mt-1">
-                Focus a table, pick a row in the grid, then edit JSON on the right. Changes write straight to Supabase.
-              </p>
-            </Panel>
           </Card>
 
           <div className="space-y-6">

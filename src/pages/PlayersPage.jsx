@@ -246,6 +246,10 @@ export default function PlayersPage() {
             return row.assists;
           case "goals":
             return row.goals;
+          case "blocks":
+            return row.blocks;
+          case "turnovers":
+            return row.turnovers;
           case "games":
             return row.games;
           case "callahans":
@@ -258,30 +262,30 @@ export default function PlayersPage() {
       const aVal = getValue(a, sortBy);
       const bVal = getValue(b, sortBy);
 
-      if (aVal === bVal) {
-        if (a.total === b.total && a.goals === b.goals) {
-          return a.playerName.localeCompare(b.playerName);
-        }
-        if (a.total !== b.total) {
-          return b.total - a.total;
-        }
-        return b.goals - a.goals;
+      if (aVal !== bVal) {
+        return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
       }
 
-      return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+      // Ties always fall back to the same descending total/goals/name order
+      // so the row order stays stable when only the direction changes.
+      if (a.total !== b.total) {
+        return b.total - a.total;
+      }
+      if (a.goals !== b.goals) {
+        return b.goals - a.goals;
+      }
+      return a.playerName.localeCompare(b.playerName);
     });
     return list;
   }, [filteredAggregated, sortBy, sortDirection]);
 
   const toggleSort = (column) => {
-    setSortBy((current) => {
-      if (current !== column) {
-        setSortDirection("desc");
-        return column;
-      }
+    if (sortBy === column) {
       setSortDirection((dir) => (dir === "desc" ? "asc" : "desc"));
-      return column;
-    });
+      return;
+    }
+    setSortBy(column);
+    setSortDirection("desc");
   };
 
   const statHeaders = [

@@ -62,6 +62,14 @@ import {
   normaliseRoleList,
 } from "../../utils/accessControl";
 
+// End codes that may occur more than once per match, mapped to the start they close.
+// Anything not listed here keeps the strict once-per-match guard in
+// `hasLoggedOrPendingMatchEvent`.
+const REPEATABLE_SECONDARY_EVENT_STARTS = {
+  [MATCH_LOG_EVENT_CODES.TIMEOUT_END]: MATCH_LOG_EVENT_CODES.TIMEOUT_START,
+  [MATCH_LOG_EVENT_CODES.STOPPAGE_END]: MATCH_LOG_EVENT_CODES.STOPPAGE_START,
+};
+
 const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
@@ -2262,6 +2270,45 @@ const replaceSecondaryTimer = useCallback(
     [logs, matchEventOptions, pendingEntries]
   );
 
+  // `hasLoggedOrPendingMatchEvent` asks "has this code EVER been logged in this match",
+  // which is the right question for `halftime_end` but wrong for codes that legitimately
+  // repeat. A match has many timeouts, so a match-wide check let the first `timeout_end`
+  // suppress the end of every later timeout. Here we only look at whether the CURRENT
+  // start has been closed: find the last start row, and report whether an end follows it.
+  // Logs are appended chronologically, so index order is the timeline order.
+  const hasClosedLatestPairedEvent = useCallback(
+    (targetMatchId, startCode, endCode) => {
+      if (!startCode || !endCode) return false;
+      let lastStartIndex = -1;
+      for (let index = logs.length - 1; index >= 0; index -= 1) {
+        if (logs[index]?.eventCode === startCode) {
+          lastStartIndex = index;
+          break;
+        }
+      }
+      // No start on record means nothing to pair with; let the write through so the end
+      // is not silently dropped.
+      if (lastStartIndex === -1) return false;
+      for (let index = lastStartIndex + 1; index < logs.length; index += 1) {
+        if (logs[index]?.eventCode === endCode) return true;
+      }
+      // A queued end has no row in `logs` yet, so check the offline queue too. Pending
+      // entries only exist for writes made this session, all of which are newer than any
+      // start already sitting in `logs`.
+      if (!targetMatchId) return false;
+      return pendingEntries.some((item) => {
+        if (item?.kind !== "match_log") return false;
+        if (item?.payload?.matchId !== targetMatchId) return false;
+        if (item.payload?.eventTypeCode === endCode) return true;
+        if (!Number.isFinite(item.payload?.eventTypeId)) return false;
+        return matchEventOptions.some(
+          (option) => option.id === item.payload.eventTypeId && option.code === endCode
+        );
+      });
+    },
+    [logs, matchEventOptions, pendingEntries]
+  );
+
   const finalizeSecondaryTimerEvent = useCallback(async () => {
     const meta = activeSecondaryEventRef.current;
     secondaryTimerCompletedRef.current = false;
@@ -2271,13 +2318,20 @@ const replaceSecondaryTimer = useCallback(
     setTrackedSecondaryEvent(null);
     setHalftimeBreakActive(false);
     const targetMatchId = activeMatch?.id || selectedMatch?.id || null;
-    if (meta.endCode && !hasLoggedOrPendingMatchEvent(targetMatchId, meta.endCode)) {
-      await logSimpleEvent(meta.endCode, { teamKey: meta.teamKey ?? null });
+    if (meta.endCode) {
+      const pairedStartCode = REPEATABLE_SECONDARY_EVENT_STARTS[meta.endCode];
+      const alreadyClosed = pairedStartCode
+        ? hasClosedLatestPairedEvent(targetMatchId, pairedStartCode, meta.endCode)
+        : hasLoggedOrPendingMatchEvent(targetMatchId, meta.endCode);
+      if (!alreadyClosed) {
+        await logSimpleEvent(meta.endCode, { teamKey: meta.teamKey ?? null });
+      }
     }
     return meta;
   }, [
     activeMatch?.id,
     selectedMatch?.id,
+    hasClosedLatestPairedEvent,
     hasLoggedOrPendingMatchEvent,
     logSimpleEvent,
     setTrackedSecondaryEvent,

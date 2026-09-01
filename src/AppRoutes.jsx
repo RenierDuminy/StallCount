@@ -34,6 +34,7 @@ const ScrimmagePage = lazy(() => import("./pages/ScrimmagePage"));
 const CommunityPage = lazy(() => import("./pages/CommunityPage"));
 const CaptainPage = lazy(() => import("./pages/CaptainPage"));
 const SysAdminPage = lazy(() => import("./pages/SysAdminPage"));
+const PlayerMergePage = lazy(() => import("./pages/PlayerMergePage"));
 const UserPage = lazy(() => import("./pages/UserPage"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
@@ -223,6 +224,16 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute allowedPermissions={SYS_ADMIN_ACCESS_PERMISSIONS}>
                 <Guarded name="Sys admin"><SysAdminPage /></Guarded>
+              </ProtectedRoute>
+            }
+          />
+          {/* Same admin_override gate as /sys-admin: the merge deletes player
+              rows and rewrites every reference to them. */}
+          <Route
+            path="/sys-admin/player-merge"
+            element={
+              <ProtectedRoute allowedPermissions={SYS_ADMIN_ACCESS_PERMISSIONS}>
+                <Guarded name="Player merge"><PlayerMergePage /></Guarded>
               </ProtectedRoute>
             }
           />

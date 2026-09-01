@@ -248,3 +248,32 @@ export async function deleteTableRowByFilters(
 
   return (data ?? []) as Record<string, unknown>[];
 }
+
+export async function updateTableRowByFilters(
+  tableName: string,
+  filters: { column: string; value: string | number }[],
+  payload: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  const columns = listTableColumns(tableName);
+  const validFilters = (filters || []).filter((filter) => filter.column);
+  if (!validFilters.length) {
+    throw new Error("At least one key column is required to update a row.");
+  }
+  validFilters.forEach((filter) => {
+    if (columns.length && !columns.includes(filter.column)) {
+      throw new Error(`Column "${filter.column}" not found on ${tableName}.`);
+    }
+  });
+
+  let query = supabase.from(getBaseTableName(tableName)).update(payload);
+  validFilters.forEach((filter) => {
+    query = query.eq(filter.column, filter.value);
+  });
+
+  const { data, error } = await query.select("*").maybeSingle();
+  if (error) {
+    throw fromSupabaseError(error, `Failed to update row in ${tableName}`);
+  }
+
+  return (data as Record<string, unknown>) ?? null;
+}
