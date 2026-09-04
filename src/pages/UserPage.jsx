@@ -87,7 +87,7 @@ const FRILL_BOTTOM_LEFT_SRC = "/assets/user-access-frill-bottom-left.svg";
 
 function AdminFrill() {
   const common =
-    "pointer-events-none absolute h-[70%] w-[70%] select-none object-contain sm:h-[80%] sm:w-[80%]";
+    "pointer-events-none absolute h-[70%] w-[50%] select-none object-contain sm:h-[80%] sm:w-[50%]";
   return (
     <>
       <img
@@ -693,62 +693,46 @@ export default function UserPage() {
                   </div>
                 ))}
               </div>
-              {/* Full-width featured panel for access levels */}
+              {/* Full-width featured panel for access levels. This is the
+                  standard display for every user — the floral frill, green
+                  panel, and centred roles are not admin-only dressing. Only
+                  the golden Admin badge at the top is conditional on the
+                  admin role. */}
               {profileEntries.filter((e) => e.isAccessGroupedList).map((entry) => (
-                hasAdminRole ? (
-                  // Admins get the same Access levels panel, dressed with the
-                  // floral frill and led by a golden Admin badge.
-                  <Panel
-                    key={entry.label}
-                    variant="tinted"
-                    className="relative isolate overflow-hidden border-2 border-admin-border bg-[#216235] p-4 pb-14 text-sm sm:p-5 sm:pb-12"
-                  >
-                    <AdminFrill />
-                    <div className="relative">
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white">
-                        Your access
-                      </p>
-                      <div className="space-y-3 px-6 pb-4 text-center sm:px-0 sm:pb-0">
+                <Panel
+                  key={entry.label}
+                  variant="tinted"
+                  className="relative isolate overflow-hidden border-2 border-admin-border bg-[#216235] p-4 pb-14 text-sm sm:p-5 sm:pb-12"
+                >
+                  <AdminFrill />
+                  <div className="relative">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white">
+                      Your access
+                    </p>
+                    <div className="space-y-3 px-6 pb-4 text-center sm:px-0 sm:pb-0">
+                      {hasAdminRole ? (
                         <span className="inline-flex items-center rounded-full border border-[#c8901a] bg-gradient-to-b from-[#e8b533] to-[#c8901a] px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm">
                           Admin
                         </span>
-                        {(entry.groups || [])
-                          .map((group) => ({
-                            ...group,
-                            roles: (group.roles || []).filter((role) => !isAdminRoleLabel(role)),
-                          }))
-                          .filter((group) => group.roles.length > 0)
-                          .map((group) => (
-                          <div key={`${entry.label}-${group.topic}`}>
-                            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-white">
-                              {group.topic}
-                            </p>
-                            <div className="flex flex-wrap justify-center gap-2">
-                              {group.roles.map((role) => (
-                                <Chip
-                                  key={`${entry.label}-${group.topic}-${role}`}
-                                  variant="ghost"
-                                  className="border-white/40 bg-white/10 text-xs text-white"
-                                >
-                                  {role}
-                                </Chip>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </Panel>
-                ) : (
-                  <Panel key={entry.label} variant="muted" className="p-4 text-sm sm:p-5">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">{entry.label}</p>
-                    <div className="space-y-3">
-                      {(entry.groups || []).map((group) => (
+                      ) : null}
+                      {(entry.groups || [])
+                        .map((group) => ({
+                          ...group,
+                          roles: (group.roles || []).filter((role) => !isAdminRoleLabel(role)),
+                        }))
+                        .filter((group) => group.roles.length > 0)
+                        .map((group) => (
                         <div key={`${entry.label}-${group.topic}`}>
-                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-accent">{group.topic}</p>
-                          <div className="flex flex-wrap gap-2">
-                            {(group.roles || []).map((role) => (
-                              <Chip key={`${entry.label}-${group.topic}-${role}`} variant="ghost" className="text-xs">
+                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-white">
+                            {group.topic}
+                          </p>
+                          <div className="flex flex-wrap justify-center gap-2">
+                            {group.roles.map((role) => (
+                              <Chip
+                                key={`${entry.label}-${group.topic}-${role}`}
+                                variant="ghost"
+                                className="border-white/40 bg-white/10 text-xs text-white"
+                              >
                                 {role}
                               </Chip>
                             ))}
@@ -756,8 +740,8 @@ export default function UserPage() {
                         </div>
                       ))}
                     </div>
-                  </Panel>
-                )
+                  </div>
+                </Panel>
               ))}            </div>
           )}
         </section>
