@@ -75,6 +75,38 @@ function IconEventAccess({ className }) {
   );
 }
 
+// Decorative floral corner artwork (South African protea / gazania frill),
+// authored in Inkscape and split into its two clusters so each can be pinned to
+// its own corner. Each keeps its natural aspect ratio — it is only scaled and
+// positioned — so the card can be any width without distorting the flowers.
+// Sized to fit inside an 80%-of-width by 80%-of-height box (object-contain),
+// so it is capped by whichever dimension of the panel is smaller and never
+// clips or grows unbounded.
+const FRILL_TOP_RIGHT_SRC = "/assets/user-access-frill-top-right.svg";
+const FRILL_BOTTOM_LEFT_SRC = "/assets/user-access-frill-bottom-left.svg";
+
+function AdminFrill() {
+  const common =
+    "pointer-events-none absolute h-[70%] w-[70%] select-none object-contain sm:h-[80%] sm:w-[80%]";
+  return (
+    <>
+      <img
+        src={FRILL_TOP_RIGHT_SRC}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        className={`${common} right-0 top-0 object-top-right`}
+      />
+      <img
+        src={FRILL_BOTTOM_LEFT_SRC}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        className={`${common} bottom-0 left-0 object-bottom-left`}
+      />
+    </>
+  );
+}
 const QUICK_ACCESS_TOOLS = [
   {
     key: "scorekeeper",
@@ -266,6 +298,12 @@ function getScopedAssignmentRoleLabel(assignment) {
 
 function compareAlphabetical(a, b) {
   return String(a).localeCompare(String(b), undefined, { sensitivity: "base" });
+}
+
+// The admin grant is surfaced as its own golden badge, so it is filtered out of
+// the per-scope chip lists to avoid showing the same role twice.
+function isAdminRoleLabel(roleLabel) {
+  return normaliseRoleList(roleLabel).some((slug) => ADMIN_ROLE_SLUGS.has(slug));
 }
 
 function shouldDisplayAccessRole(roleLabel) {
@@ -569,9 +607,13 @@ export default function UserPage() {
     [recognisedRoles],
   );
 
+  const hasAdminRole = useMemo(
+    () => normalizedRoles.some((role) => ADMIN_ROLE_SLUGS.has(role)),
+    [normalizedRoles],
+  );
+
   const quickAccessTools = useMemo(() => {
     const roleSet = new Set(normalizedRoles);
-    const hasAdminRole = Array.from(roleSet).some((role) => ADMIN_ROLE_SLUGS.has(role));
     return QUICK_ACCESS_TOOLS.filter((tool) => {
       if (hasAdminRole) return true;
       if (tool.requireElevated) return elevatedRoles.length > 0;
@@ -585,7 +627,7 @@ export default function UserPage() {
       }
       return hasAnyRole(roleSet, tool.roles);
     });
-  }, [elevatedRoles.length, normalizedRoles, roleAssignmentsForAccess, roleCatalog, user]);
+  }, [elevatedRoles.length, hasAdminRole, normalizedRoles, roleAssignmentsForAccess, roleCatalog, user]);
 
   const profileEntries = useMemo(() => {
     if (!user) return [];
@@ -653,25 +695,70 @@ export default function UserPage() {
               </div>
               {/* Full-width featured panel for access levels */}
               {profileEntries.filter((e) => e.isAccessGroupedList).map((entry) => (
-                <Panel key={entry.label} variant="muted" className="p-4 text-sm sm:p-5">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">{entry.label}</p>
-                  <div className="space-y-3">
-                    {(entry.groups || []).map((group) => (
-                      <div key={`${entry.label}-${group.topic}`}>
-                        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-accent">{group.topic}</p>
-                        <div className="flex flex-wrap gap-2">
-                          {(group.roles || []).map((role) => (
-                            <Chip key={`${entry.label}-${group.topic}-${role}`} variant="ghost" className="text-xs">
-                              {role}
-                            </Chip>
-                          ))}
-                        </div>
+                hasAdminRole ? (
+                  // Admins get the same Access levels panel, dressed with the
+                  // floral frill and led by a golden Admin badge.
+                  <Panel
+                    key={entry.label}
+                    variant="tinted"
+                    className="relative isolate overflow-hidden border-2 border-admin-border bg-[#216235] p-4 pb-14 text-sm sm:p-5 sm:pb-12"
+                  >
+                    <AdminFrill />
+                    <div className="relative">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white">
+                        Your access
+                      </p>
+                      <div className="space-y-3 px-6 pb-4 text-center sm:px-0 sm:pb-0">
+                        <span className="inline-flex items-center rounded-full border border-[#c8901a] bg-gradient-to-b from-[#e8b533] to-[#c8901a] px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm">
+                          Admin
+                        </span>
+                        {(entry.groups || [])
+                          .map((group) => ({
+                            ...group,
+                            roles: (group.roles || []).filter((role) => !isAdminRoleLabel(role)),
+                          }))
+                          .filter((group) => group.roles.length > 0)
+                          .map((group) => (
+                          <div key={`${entry.label}-${group.topic}`}>
+                            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-white">
+                              {group.topic}
+                            </p>
+                            <div className="flex flex-wrap justify-center gap-2">
+                              {group.roles.map((role) => (
+                                <Chip
+                                  key={`${entry.label}-${group.topic}-${role}`}
+                                  variant="ghost"
+                                  className="border-white/40 bg-white/10 text-xs text-white"
+                                >
+                                  {role}
+                                </Chip>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </Panel>
-              ))}
-            </div>
+                    </div>
+                  </Panel>
+                ) : (
+                  <Panel key={entry.label} variant="muted" className="p-4 text-sm sm:p-5">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">{entry.label}</p>
+                    <div className="space-y-3">
+                      {(entry.groups || []).map((group) => (
+                        <div key={`${entry.label}-${group.topic}`}>
+                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-accent">{group.topic}</p>
+                          <div className="flex flex-wrap gap-2">
+                            {(group.roles || []).map((role) => (
+                              <Chip key={`${entry.label}-${group.topic}-${role}`} variant="ghost" className="text-xs">
+                                {role}
+                              </Chip>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Panel>
+                )
+              ))}            </div>
           )}
         </section>
 
