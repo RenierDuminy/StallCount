@@ -6,6 +6,7 @@ import {
   updateTableRow,
 } from "../services/adminService";
 import { getAllTeams } from "../services/teamService";
+import { ALL_STATUS_CODES } from "../constants/statusCodes";
 import { getEventsList } from "../services/leagueService";
 import { listSchemaTables, listTableColumns, pickRecencyColumn } from "../services/schemaService";
 import { invalidateTournamentOverview } from "../services/tournamentDirectorService";
@@ -578,15 +579,7 @@ export default function TournamentDirectorPage() {
                     }
                     className={`${LIGHT_INPUT_CLASS} appearance-none`}
                   >
-                    {[
-                      "scheduled",
-                      "ready",
-                      "pending",
-                      "live",
-                      "finished",
-                      "completed",
-                      "canceled",
-                    ].map((status) => (
+                    {ALL_STATUS_CODES.map((status) => (
                       <option key={status} value={status}>
                         {status}
                       </option>

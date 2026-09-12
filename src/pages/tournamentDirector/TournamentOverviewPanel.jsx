@@ -13,20 +13,14 @@ import {
   TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY,
   getScheduleFiltersStorageKey,
 } from "./persistenceKeys";
+import { ALL_STATUS_CODES } from "../../constants/statusCodes";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
-const MATCH_STATUS_OPTIONS = [
-  "scheduled",
-  "ready",
-  "pending",
-  "initialized",
-  "live",
-  "halftime",
-  "finished",
-  "completed",
-  "canceled",
-];
+// Straight from match_status(code). These are written to the database, so they
+// must match exactly — "ready"/"pending" were never valid codes, and
+// "initialized" was the wrong case for the stored "Initialized".
+const MATCH_STATUS_OPTIONS = ALL_STATUS_CODES;
 const SPIRIT_CATEGORIES = [
   { key: "rulesKnowledge", label: "Rules knowledge" },
   { key: "foulsContact", label: "Fouls and contact" },

@@ -61,10 +61,29 @@ self.addEventListener("notificationclick", (event) => {
   );
 });
 
+// The browser can rotate or expire a push subscription while the app is
+// closed. Re-subscribe here with the same server key so the device keeps a
+// valid subscription, then tell any open tab to persist it. If no tab is open,
+// `syncPushSubscription()` writes the new endpoint on the next app start, and
+// the dispatcher prunes the dead one when the push service returns 404/410.
 self.addEventListener("pushsubscriptionchange", (event) => {
+  const serverKey =
+    event.oldSubscription?.options?.applicationServerKey ||
+    event.newSubscription?.options?.applicationServerKey ||
+    null;
+  const resubscribe = serverKey
+    ? self.registration.pushManager
+        .subscribe({ userVisibleOnly: true, applicationServerKey: serverKey })
+        .catch((err) => {
+          console.warn("[sw] Failed to renew push subscription", err);
+          return null;
+        })
+    : Promise.resolve(null);
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientsArr) => {
-      clientsArr.forEach((client) => client.postMessage({ type: "PUSH_SUBSCRIPTION_CHANGED" }));
-    }),
+    resubscribe.then(() =>
+      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientsArr) => {
+        clientsArr.forEach((client) => client.postMessage({ type: "PUSH_SUBSCRIPTION_CHANGED" }));
+      }),
+    ),
   );
 });

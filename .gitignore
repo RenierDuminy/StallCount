@@ -49,3 +49,6 @@ supabase/.temp/
 
 # Documentation export (not part of source)
 CLAUDE.md
+
+# Generated season reports
+reports/

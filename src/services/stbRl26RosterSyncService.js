@@ -68,7 +68,13 @@ export async function getStbRl26RosterSyncStatus() {
   return payload?.status || null;
 }
 
-export async function invokeStbRl26RosterSync({ forceFullSync = false } = {}) {
+/**
+ * `forceFullSync` and `force` are different switches:
+ *  - forceFullSync: sync every row instead of only what changed.
+ *  - force: run even though the event is closed (the backend skips it
+ *    otherwise). Only set this from a deliberate operator action.
+ */
+export async function invokeStbRl26RosterSync({ forceFullSync = false, force = false } = {}) {
   const headers = await buildAuthHeaders();
   headers["Content-Type"] = "application/json";
 
@@ -77,6 +83,7 @@ export async function invokeStbRl26RosterSync({ forceFullSync = false } = {}) {
     headers,
     body: JSON.stringify({
       forceFullSync: Boolean(forceFullSync),
+      force: Boolean(force),
     }),
   });
   const payload = await parseJsonResponse(response);

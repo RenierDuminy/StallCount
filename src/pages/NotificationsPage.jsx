@@ -183,6 +183,7 @@ export default function NotificationsPage() {
     permission:
       typeof window !== "undefined" && "Notification" in window ? Notification.permission : "default",
     enabled: false,
+    needsRelink: false,
     busy: false,
     error: null,
   }));
@@ -194,7 +195,6 @@ export default function NotificationsPage() {
       })),
     [],
   );
-  const notifiedEventIdsRef = useRef(new Set());
   const liveEventsChannelRef = useRef(null);
   const prefillAppliedRef = useRef(false);
 
@@ -213,10 +213,6 @@ export default function NotificationsPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    notifiedEventIdsRef.current.clear();
-  }, [profileId]);
-
-  useEffect(() => {
     let cancelled = false;
     Promise.all([getEventsList(200), getDivisions(200)])
       .then(([events, divisions]) => {
@@ -233,36 +229,6 @@ export default function NotificationsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  const showNotificationPayload = useCallback(async (payload) => {
-    if (!payload) throw new Error("No notification payload specified.");
-    if (typeof window === "undefined" || typeof navigator === "undefined") {
-      throw new Error("Browser APIs unavailable.");
-    }
-    if (!("serviceWorker" in navigator)) {
-      throw new Error("Service workers not supported.");
-    }
-    if (!("Notification" in window)) {
-      throw new Error("Notification API unavailable.");
-    }
-    if (Notification.permission !== "granted") {
-      throw new Error("Permission is not granted.");
-    }
-    const ready = await navigator.serviceWorker.ready;
-    const title =
-      typeof payload.title === "string" && payload.title.trim().length
-        ? payload.title.trim()
-        : "StallCount update";
-    const options = {
-      body: payload.body || "New activity detected.",
-      icon: payload.icon || "/icon-192.png",
-      data: payload.data || { url: "/" },
-      vibrate: payload.vibrate || [100, 50, 100],
-      requireInteraction: Boolean(payload.requireInteraction),
-      tag: payload.tag || "stallcount-event",
-    };
-    await ready.showNotification(title, options);
   }, []);
 
   useEffect(() => {
@@ -487,14 +453,16 @@ export default function NotificationsPage() {
     let ignore = false;
     const syncSubscription = async () => {
       try {
-        const { getExistingSubscription } = await loadPushClient();
-        const subscription = await getExistingSubscription();
+        const { getPushStatus } = await loadPushClient();
+        const status = await getPushStatus(profileId);
         if (ignore) return;
         setPushState((prev) => ({
           ...prev,
-          enabled: Boolean(subscription),
-          permission:
-            typeof Notification !== "undefined" ? Notification.permission : prev.permission,
+          enabled: status.enabled,
+          // A browser subscription that is bound to an old key or has no server
+          // row looks "on" to the browser but can never receive a push.
+          needsRelink: status.browserSubscribed && !status.enabled && status.permission === "granted",
+          permission: status.permission,
         }));
       } catch {
         if (ignore) return;
@@ -512,7 +480,7 @@ export default function NotificationsPage() {
       ignore = true;
       navigator.serviceWorker?.removeEventListener("message", handleMessage);
     };
-  }, [pushState.supported]);
+  }, [pushState.supported, profileId]);
 
   useEffect(() => {
     if (!profileId) {
@@ -726,20 +694,6 @@ export default function NotificationsPage() {
     };
   }, [handleRealtimeLiveEvent, profileId, subscriptions.length]);
 
-  useEffect(() => {
-    if (!recentNotifications.length) return;
-    recentNotifications.forEach((event) => {
-      if (!event?.id) return;
-      if (notifiedEventIdsRef.current.has(event.id)) return;
-      notifiedEventIdsRef.current.add(event.id);
-      const payload = buildNotificationPayloadFromEvent(event, getSubscriptionLabel);
-      if (!payload) return;
-      showNotificationPayload(payload).catch((err) => {
-        console.error("[Notifications] Unable to display notification", err);
-      });
-    });
-  }, [recentNotifications, getSubscriptionLabel, showNotificationPayload]);
-
   async function handleDelete(sub) {
     if (!sub?.id || !profileId) return;
     setSaving(true);
@@ -769,6 +723,7 @@ export default function NotificationsPage() {
       setPushState((prev) => ({
         ...prev,
         enabled: true,
+        needsRelink: false,
         busy: false,
         permission:
           typeof Notification !== "undefined" ? Notification.permission : prev.permission,
@@ -793,6 +748,7 @@ export default function NotificationsPage() {
       setPushState((prev) => ({
         ...prev,
         enabled: false,
+        needsRelink: false,
         busy: false,
       }));
     } catch (err) {
@@ -855,6 +811,12 @@ export default function NotificationsPage() {
                       Disable push
                     </button>
                   )}
+                </div>
+              )}
+              {pushState.needsRelink && !pushState.busy && (
+                <div className="border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                  This device has a notification subscription that is no longer linked to your
+                  account. Tap &quot;Enable push&quot; to relink it.
                 </div>
               )}
               {pushState.error && (
@@ -1208,42 +1170,6 @@ export default function NotificationsPage() {
     </div>
   </div>
 );
-}
-
-function buildNotificationPayloadFromEvent(event, labelResolver) {
-  if (!event) return null;
-  const rawData = (event.data && typeof event.data === "object" ? event.data : {}) ?? {};
-
-  const matchLabel =
-    (typeof rawData.target_name === "string" && rawData.target_name.trim()) ||
-    (typeof rawData.match_name === "string" && rawData.match_name.trim()) ||
-    (event.match_id ? labelResolver?.("match", event.match_id) : null);
-
-  const formattedType = (event.event_type || "").replace(/_/g, " ").trim();
-  const title =
-    (typeof rawData.title === "string" && rawData.title.trim()) ||
-    (matchLabel ? `Update for ${matchLabel}` : formattedType || "Match update");
-  const body =
-    (typeof rawData.body === "string" && rawData.body.trim()) ||
-    (typeof rawData.description === "string" && rawData.description.trim()) ||
-    (matchLabel ? `New activity for ${matchLabel}` : "");
-
-  const payload = {
-    title,
-    body,
-    icon: rawData.icon || "/StallCount logo_192_v1.png",
-    data: {
-      ...rawData,
-      url: rawData.url || (event.match_id ? `/matches/${event.match_id}` : "/"),
-      event_type: event.event_type,
-      match_id: event.match_id,
-      event_id: event.id,
-    },
-    tag: rawData.tag || event.event_type || "stallcount-event",
-    requireInteraction: Boolean(rawData.requireInteraction),
-  };
-
-  return payload;
 }
 
 function normalizeLiveEventRow(event) {

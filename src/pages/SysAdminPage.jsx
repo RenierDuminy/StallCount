@@ -6,6 +6,7 @@ import {
   subscribeToErrorLog,
 } from "../components/ErrorBoundary";
 import { BUILD_SHA, BUILD_TIME, checkBuildFreshness } from "../services/buildInfo";
+import { ALL_STATUS_CODES } from "../constants/statusCodes";
 import { describeError } from "../utils/errorMessages";
 import {
   getBaseTableName,
@@ -28,6 +29,7 @@ import {
   pickRecencyColumn,
 } from "../services/schemaService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
+import SeasonReportPanel from "../components/SeasonReportPanel";
 
 const LIMIT_OPTIONS = [20, 50, 100, 200];
 const LIGHT_INPUT_CLASS =
@@ -915,15 +917,7 @@ export default function SysAdminPage() {
                     }
                     className={`${LIGHT_INPUT_CLASS} appearance-none`}
                   >
-                    {[
-                      "scheduled",
-                      "ready",
-                      "pending",
-                      "live",
-                      "finished",
-                      "completed",
-                      "canceled",
-                    ].map((status) => (
+                    {ALL_STATUS_CODES.map((status) => (
                       <option key={status} value={status}>
                         {status}
                       </option>
@@ -1131,6 +1125,8 @@ export default function SysAdminPage() {
                 )}
               </div>
             </Card>
+
+            <SeasonReportPanel events={eventsList} />
 
             <div className="grid gap-6 lg:grid-cols-2">
               <Card className="space-y-4 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">

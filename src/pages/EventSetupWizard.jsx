@@ -8,6 +8,7 @@ import {
   Chip,
 } from "../components/ui/primitives";
 import { createTeam, getAllTeams } from "../services/teamService";
+import { ALL_STATUS_CODES } from "../constants/statusCodes";
 import {
   createEventHierarchy,
   getEventHierarchy,
@@ -181,7 +182,8 @@ const INITIAL_VENUE_FORM = {
   longitude: "",
 };
 
-const matchStatuses = ["scheduled", "ready", "pending", "live", "finished"];
+// Canonical codes from match_status(code); these are written to the database.
+const matchStatuses = ALL_STATUS_CODES;
 const WIZARD_DRAFT_STORAGE_KEY = "stallcount:event-setup-wizard:draft:v1";
 // The loaded-from-DB hierarchy snapshot is immutable between loads, so it is
 // persisted under its own key and only re-serialized when it actually changes

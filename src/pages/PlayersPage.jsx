@@ -289,7 +289,7 @@ export default function PlayersPage() {
   };
 
   const statHeaders = [
-    { key: "total", label: "G+A" },
+    { key: "total", label: "Tot" },
     { key: "goals", label: "G" },
     { key: "assists", label: "A" },
     { key: "blocks", label: "B" },

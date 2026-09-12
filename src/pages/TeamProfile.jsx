@@ -545,7 +545,7 @@ function PlayersTable({ stats, rosterCount }) {
     const compare = (a, b) => {
       const dir = sortConfig.direction === "asc" ? 1 : -1;
       const getValue = (row) => {
-        if (sortConfig.key === "total") return row.goals + row.assists;
+        if (sortConfig.key === "total") return row.goals + row.assists + (row.callahans ?? 0);
         if (sortConfig.key === "playerName") return row.playerName?.toLowerCase() ?? "";
         if (sortConfig.key === "jerseyNumber") return row.jerseyNumber ?? Number.NEGATIVE_INFINITY;
         return row[sortConfig.key] ?? 0;
@@ -605,20 +605,25 @@ function PlayersTable({ stats, rosterCount }) {
         <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
           <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
             <tr>
+              <th className="px-3 py-1.5 text-center" aria-label="Rank">#</th>
               <th className="px-3 py-1.5">{renderSortLabel("Player", "playerName")}</th>
+              <th className="px-3 py-1.5 text-right">{renderSortLabel("Tot", "total")}</th>
               <th className="px-3 py-1.5 text-right">{renderSortLabel("G", "goals")}</th>
               <th className="px-3 py-1.5 text-right">{renderSortLabel("A", "assists")}</th>
               <th className="px-3 py-1.5 text-right">{renderSortLabel("B", "blocks")}</th>
               <th className="px-3 py-1.5 text-right">{renderSortLabel("TO", "turnovers")}</th>
               <th className="px-3 py-1.5 text-right">{renderSortLabel("GP", "games")}</th>
-              <th className="px-3 py-1.5 text-right">{renderSortLabel("G+A", "total")}</th>
+              <th className="px-3 py-1.5 text-right">{renderSortLabel("Cal", "callahans")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
-            {sortedStats.map((stat) => {
-              const total = stat.goals + stat.assists;
+            {sortedStats.map((stat, index) => {
+              const total = stat.goals + stat.assists + (stat.callahans ?? 0);
               return (
                 <tr key={stat.playerId}>
+                  <td className="px-3 py-1.5 text-center text-xs font-semibold text-[var(--sc-surface-light-ink)]/50">
+                    {index + 1}
+                  </td>
                   <td className="px-3 py-1.5">
                     <div className="flex items-center gap-2">
                       {stat.jerseyNumber != null && (
@@ -634,12 +639,13 @@ function PlayersTable({ stats, rosterCount }) {
                       </Link>
                     </div>
                   </td>
-                  <td className="px-3 py-1.5 text-right font-semibold text-[var(--sc-surface-light-ink)]">{stat.goals}</td>
+                  <td className="px-3 py-1.5 text-right font-semibold text-[var(--sc-surface-light-ink)]">{total}</td>
+                  <td className="px-3 py-1.5 text-right">{stat.goals}</td>
                   <td className="px-3 py-1.5 text-right">{stat.assists}</td>
                   <td className="px-3 py-1.5 text-right">{stat.blocks}</td>
                   <td className="px-3 py-1.5 text-right">{stat.turnovers}</td>
                   <td className="px-3 py-1.5 text-right">{stat.games || 0}</td>
-                  <td className="px-3 py-1.5 text-right">{formatPerGame(total, stat.games)}</td>
+                  <td className="px-3 py-1.5 text-right">{stat.callahans ?? 0}</td>
                 </tr>
               );
             })}
@@ -814,9 +820,4 @@ function formatMatchTime(value) {
   } catch {
     return value;
   }
-}
-
-function formatPerGame(total, games) {
-  if (!games) return "0.00";
-  return (total / games).toFixed(2);
 }

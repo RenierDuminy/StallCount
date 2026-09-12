@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
+import { CONCLUDED_STATUSES, IN_PROGRESS_STATUSES } from "../constants/statusCodes";
 
 const TOURNAMENT_OVERVIEW_CACHE_TTL_MS = 30 * 1000;
 
@@ -139,8 +140,11 @@ export async function getTournamentOverview(eventId, options = {}) {
       }
 
       const { grouped: spiritLookup, latestRows: latestSpiritRows } = buildSpiritLookup(spiritRows);
-      const liveStatuses = new Set(["live", "halftime", "in_progress", "in progress", "initialized"]);
-      const completedStatuses = new Set(["finished", "completed", "final"]);
+      // Canonical codes only. "in_progress"/"in progress"/"final" were never
+      // valid and matched nothing; "initialized" was counted as live, but
+      // Initialized means set up and not yet started.
+      const liveStatuses = new Set(IN_PROGRESS_STATUSES);
+      const completedStatuses = new Set(CONCLUDED_STATUSES);
       const uniqueTeams = new Set();
 
       const rows = matchRows.map((match) => {

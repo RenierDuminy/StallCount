@@ -437,7 +437,7 @@ CREATE TABLE public.team_user_roles (
   user_id uuid NOT NULL,
   role_id bigint NOT NULL,
   team_id uuid NOT NULL,
-  event_id uuid,
+  event_id uuid NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   granted_by uuid,
   CONSTRAINT team_user_roles_pkey PRIMARY KEY (id),

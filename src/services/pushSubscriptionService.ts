@@ -33,6 +33,21 @@ export async function upsertPushSubscriptionRow(payload: PushSubscriptionRow) {
   return data;
 }
 
+export async function hasPushSubscriptionRow(options: { profileId: string; endpoint: string }) {
+  if (!options.profileId || !options.endpoint) return false;
+  const { data, error } = await supabase
+    .from("push_subscriptions")
+    .select("id")
+    .eq("profile_id", options.profileId)
+    .eq("endpoint", options.endpoint)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message || "Failed to verify push subscription.");
+  }
+  return Boolean(data?.id);
+}
+
 export async function deletePushSubscriptionRow(options: { endpoint?: string; profileId?: string }) {
   if (!options.endpoint && !options.profileId) return;
   let query = supabase.from("push_subscriptions").delete();

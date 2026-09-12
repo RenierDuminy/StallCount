@@ -562,10 +562,18 @@ export default function CptOwRegionals2026Page() {
                     {
                       key: "team",
                       label: "Team",
-                      render: (row) =>
-                        row.shortName
+                      render: (row) => {
+                        const label = row.shortName
                           ? `${row.name} (${row.shortName})`
-                          : row.name,
+                          : row.name;
+                        return row.id ? (
+                          <Link to={`/teams/${row.id}`} className="text-inherit! hover:underline">
+                            {label}
+                          </Link>
+                        ) : (
+                          label
+                        );
+                      },
                     },
                     {
                       key: "record",

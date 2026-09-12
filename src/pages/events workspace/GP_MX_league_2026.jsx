@@ -304,9 +304,15 @@ const StandingsTable = ({ rows }) => {
               }}
             >
               <td className="min-w-0 px-1 py-1 align-top" title={row.name}>
-                <span className="block truncate">
-                  {row.name}
-                </span>
+                {row.id ? (
+                  <Link to={`/teams/${row.id}`} className="block truncate text-inherit! hover:underline">
+                    {row.name}
+                  </Link>
+                ) : (
+                  <span className="block truncate">
+                    {row.name}
+                  </span>
+                )}
               </td>
               <td className="whitespace-nowrap px-2 py-1 align-middle">
                 <FormDots form={row.form} className="justify-center" dotClassName="h-[7px] w-[7px]" wrap={false} />

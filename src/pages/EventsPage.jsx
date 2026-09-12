@@ -4,8 +4,37 @@ import { getEventsList } from "../services/leagueService";
 import { getMatchesByEvent } from "../services/matchService";
 import { hydrateVenueLookup } from "../services/venueService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
-import { getMatchMediaDetails } from "../utils/matchMedia";
+import { StandardEventMatchCard } from "../components/StandardEventMatchCard";
 import { getEventWorkspacePath } from "./eventWorkspaces";
+import { CLOSED_STATUSES, IN_PROGRESS_STATUSES, PENDING_STATUSES } from "../constants/statusCodes";
+
+const isMatchLive = (status) => {
+  const normalized = (status || "").toString().trim().toLowerCase();
+  return normalized === "live" || normalized === "halftime";
+};
+
+const isMatchFinal = (status) => {
+  const normalized = (status || "").toString().trim().toLowerCase();
+  return normalized === "finished" || normalized === "completed";
+};
+
+const formatMatchup = (match) => {
+  const teamA = match.team_a?.name || "Team A";
+  const teamB = match.team_b?.name || "Team B";
+  return `${teamA} vs ${teamB}`;
+};
+
+const formatLiveScore = (match) => {
+  const left = typeof match.score_a === "number" ? match.score_a : "-";
+  const right = typeof match.score_b === "number" ? match.score_b : "-";
+  return `${left} - ${right}`;
+};
+
+const formatMatchStatus = (status) => {
+  const normalized = (status || "").toString().trim().toLowerCase();
+  if (!normalized) return "";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
 
 const MATCHES_REFRESH_INTERVAL_MS = 30 * 1000;
 const DIVISION_LABELS = {
@@ -14,27 +43,14 @@ const DIVISION_LABELS = {
   openwomen: "Open/Women",
   women: "Women",
 };
-const EVENT_STATUS_TABS = {
-  current: new Set(["active", "current", "live"]),
-  past: new Set(["completed", "finished", "past"]),
-  upcoming: new Set(["scheduled", "upcoming"]),
-};
-
-const parseDateOnly = (value, endOfDay = false) => {
-  if (!value) return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
-  const date = match
-    ? new Date(
-        Number(match[1]),
-        Number(match[2]) - 1,
-        Number(match[3]),
-        endOfDay ? 23 : 0,
-        endOfDay ? 59 : 0,
-        endOfDay ? 59 : 0,
-        endOfDay ? 999 : 0,
-      )
-    : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+// Tab KEYS are UI groupings; the VALUES are canonical match_status codes,
+// since events.Status is a FK to that table. Kept exactly-cased (not
+// lowercased) because `Initialized` is stored capitalised and getEventsList
+// filters server-side with an exact match against events.Status.
+const EVENT_STATUS_TAB_CODES = {
+  current: IN_PROGRESS_STATUSES,
+  past: CLOSED_STATUSES,
+  upcoming: PENDING_STATUSES,
 };
 
 const parseEventRules = (rawRules) => {
@@ -64,32 +80,18 @@ const normalizeEventStatusTab = (value) => {
   return "current";
 };
 
-const getEventStatusTab = (event) => {
-  const status = (event?.status || "").toString().trim().toLowerCase();
-  if (EVENT_STATUS_TABS.current.has(status)) return "current";
-  if (EVENT_STATUS_TABS.past.has(status)) return "past";
-  if (EVENT_STATUS_TABS.upcoming.has(status)) return "upcoming";
-
-  const startDate = parseDateOnly(event?.start_date);
-  const endDate = parseDateOnly(event?.end_date || event?.start_date, true);
-  const now = new Date();
-
-  if (endDate && endDate < now) return "past";
-  if (startDate && startDate > now) return "upcoming";
-  return "current";
-};
-
-const getEventsForStatusTab = (events, statusTab) =>
-  events.filter((event) => getEventStatusTab(event) === statusTab);
 
 export default function EventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialEventId = searchParams.get("eventId") || null;
   const initialStatusTab = normalizeEventStatusTab(searchParams.get("status"));
-  const [events, setEvents] = useState([]);
+  // Events are fetched per-tab, lazily: only the initial tab is loaded up
+  // front. `null` means "not fetched yet" for that tab (vs. `[]`, fetched
+  // and empty), so tab switches only hit the DB the first time they're used.
+  const [eventsByTab, setEventsByTab] = useState({ current: null, past: null, upcoming: null });
+  const [eventsLoadingTab, setEventsLoadingTab] = useState(null);
   const [eventStatusTab, setEventStatusTab] = useState(initialStatusTab);
   const [selectedEventId, setSelectedEventId] = useState(initialEventId);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [matches, setMatches] = useState([]);
   const [matchesLoading, setMatchesLoading] = useState(false);
@@ -97,31 +99,38 @@ export default function EventsPage() {
   const [matchTab, setMatchTab] = useState("current");
   const [venueLookup, setVenueLookup] = useState({});
 
+  const loading = eventsLoadingTab === eventStatusTab && eventsByTab[eventStatusTab] === null;
+  const events = useMemo(
+    () => Object.values(eventsByTab).flatMap((list) => list || []),
+    [eventsByTab],
+  );
+  const filteredEvents = eventsByTab[eventStatusTab] || [];
+
+  // Fetch a tab's events from the DB the first time it's needed, filtered
+  // server-side to that tab's status codes so switching tabs only ever
+  // loads the events relevant to it.
   useEffect(() => {
+    if (eventsByTab[eventStatusTab] !== null) return undefined;
     let ignore = false;
-    async function loadEvents() {
-      setLoading(true);
-      setError(null);
-      try {
-        const list = await getEventsList(50);
-        if (!ignore) {
-          setEvents(list || []);
-        }
-      } catch (err) {
-        if (!ignore) {
-          setError(err.message || "Unable to load events.");
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-    loadEvents();
+    setEventsLoadingTab(eventStatusTab);
+    setError(null);
+    getEventsList(50, { status: EVENT_STATUS_TAB_CODES[eventStatusTab] })
+      .then((list) => {
+        if (ignore) return;
+        setEventsByTab((prev) => ({ ...prev, [eventStatusTab]: list || [] }));
+      })
+      .catch((err) => {
+        if (ignore) return;
+        setError(err.message || "Unable to load events.");
+        setEventsByTab((prev) => ({ ...prev, [eventStatusTab]: [] }));
+      })
+      .finally(() => {
+        if (!ignore) setEventsLoadingTab(null);
+      });
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [eventStatusTab, eventsByTab]);
 
   const requestedEventId = searchParams.get("eventId") || null;
   const requestedStatusTab = normalizeEventStatusTab(searchParams.get("status"));
@@ -130,41 +139,22 @@ export default function EventsPage() {
     setEventStatusTab(requestedStatusTab);
   }, [requestedStatusTab]);
 
-  const filteredEvents = useMemo(() => {
-    const normalizedTab = normalizeEventStatusTab(eventStatusTab);
-    return getEventsForStatusTab(events, normalizedTab);
-  }, [eventStatusTab, events]);
-
   useEffect(() => {
-    if (!events.length) return;
-    let nextTab = eventStatusTab;
+    if (eventsByTab[eventStatusTab] === null) return; // this tab hasn't loaded yet
     let nextId = requestedEventId;
 
-    if (nextId && !filteredEvents.some((evt) => evt.id === nextId)) {
-      const requestedEvent = events.find((evt) => evt.id === nextId);
-      if (requestedEvent) {
-        nextTab = getEventStatusTab(requestedEvent);
-      }
+    if (!nextId || !filteredEvents.some((evt) => evt.id === nextId)) {
+      nextId = filteredEvents[0]?.id || null;
     }
-
-    const nextFilteredEvents =
-      nextTab === eventStatusTab
-        ? filteredEvents
-        : getEventsForStatusTab(events, nextTab);
-
-    if (!nextId || !nextFilteredEvents.some((evt) => evt.id === nextId)) {
-      nextId = nextFilteredEvents[0]?.id || null;
-    }
-    setEventStatusTab(nextTab);
     setSelectedEventId(nextId);
     if (nextId) {
-      if (requestedEventId !== nextId || requestedStatusTab !== nextTab) {
-        setSearchParams({ eventId: nextId, status: nextTab }, { replace: true });
+      if (requestedEventId !== nextId || requestedStatusTab !== eventStatusTab) {
+        setSearchParams({ eventId: nextId, status: eventStatusTab }, { replace: true });
       }
     } else if (requestedEventId) {
       setSearchParams({}, { replace: true });
     }
-  }, [eventStatusTab, events, filteredEvents, requestedEventId, requestedStatusTab, setSearchParams]);
+  }, [eventStatusTab, eventsByTab, filteredEvents, requestedEventId, requestedStatusTab, setSearchParams]);
 
   const selectedEvent = useMemo(
     () => events.find((evt) => evt.id === selectedEventId) || null,
@@ -242,11 +232,15 @@ export default function EventsPage() {
 
   const handleSelectEventStatusTab = (tabKey) => {
     const nextTab = normalizeEventStatusTab(tabKey);
-    const nextEvents = getEventsForStatusTab(events, nextTab);
-    const nextEventId = nextEvents[0]?.id || null;
+    const cachedEvents = eventsByTab[nextTab];
+    const nextEventId = (cachedEvents && cachedEvents[0]?.id) || null;
 
     setEventStatusTab(nextTab);
-    setSelectedEventId(nextEventId);
+    // If this tab's events aren't loaded yet, leave selection to the effect
+    // above once the fetch resolves and filteredEvents updates - don't guess.
+    if (cachedEvents !== null) {
+      setSelectedEventId(nextEventId);
+    }
     setSearchParams(
       nextEventId ? { eventId: nextEventId, status: nextTab } : { status: nextTab },
       { replace: true },
@@ -429,29 +423,24 @@ export default function EventsPage() {
                 Select an event to view its details.
               </Card>
             ) : (
-              <div className="grid gap-3">
-                <Panel variant="muted" className="p-3">
-                  <p className="text-xs uppercase tracking-wide text-ink-muted">Name</p>
-                  <p className="text-base font-semibold text-ink">{selectedEvent.name}</p>
+              <div className="space-y-2">
+                <h2 className="text-lg font-semibold leading-tight text-ink">{selectedEvent.name}</h2>
+                <Panel variant="muted" className="grid grid-cols-2 gap-x-4 gap-y-2 p-3 lg:grid-cols-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-ink-muted">Dates</p>
+                    <p className="text-sm font-semibold text-ink">
+                      {formatDate(selectedEvent.start_date)} - {formatDate(selectedEvent.end_date)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-ink-muted">Location</p>
+                    <p className="text-sm font-semibold text-ink">{selectedEvent.location || "TBD"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-ink-muted">Division</p>
+                    <p className="text-sm font-semibold text-ink">{divisionLabel || "Not specified"}</p>
+                  </div>
                 </Panel>
-                <Panel variant="muted" className="p-3">
-                  <p className="text-xs uppercase tracking-wide text-ink-muted">Dates</p>
-                  <p className="font-semibold text-ink">
-                    {formatDate(selectedEvent.start_date)} - {formatDate(selectedEvent.end_date)}
-                  </p>
-                </Panel>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Panel variant="muted" className="p-3">
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">Location</p>
-                    <p className="font-semibold text-ink">{selectedEvent.location || "TBD"}</p>
-                  </Panel>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <Panel variant="muted" className="p-3">
-                    <p className="text-xs uppercase tracking-wide text-ink-muted">Division</p>
-                    <p className="font-semibold text-ink">{divisionLabel || "Not specified"}</p>
-                  </Panel>
-                </div>
               </div>
             )}
           </Card>
@@ -492,102 +481,28 @@ export default function EventsPage() {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {activeMatches.map((match) => {
-                const isNavigable =
-                  match.status === "live" ||
-                  match.status === "halftime" ||
-                  match.status === "finished" ||
-                  match.status === "completed";
-                const mediaDetails = getMatchMediaDetails(match);
-                const mediaUrl = mediaDetails?.url || null;
-                const mediaProviderLabel = mediaDetails?.providerLabel || "Stream";
-                const handleMediaClick = (event) => {
-                  event.stopPropagation();
-                  if (isNavigable) {
-                    event.preventDefault();
-                  }
-                  if (mediaUrl && typeof window !== "undefined") {
-                    window.open(mediaUrl, "_blank", "noopener,noreferrer");
-                  }
-                };
-                const handleMediaKeyDown = (event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    handleMediaClick(event);
-                  }
-                };
-                const mediaButton = mediaUrl ? (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={handleMediaClick}
-                    onKeyDown={handleMediaKeyDown}
-                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-media-border bg-media-bg text-media-ink transition hover:-translate-y-0.5 hover:bg-media-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-media"
-                    title={`Watch on ${mediaProviderLabel}`}
-                    aria-label={`Watch on ${mediaProviderLabel}`}
-                  >
-                    <img src="/youtube.png" alt="" className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                ) : null;
-
-                const statusClass =
-                  match.status === "live"
-                    ? "border border-live-border bg-live-bg text-live-ink"
-                    : match.status === "halftime"
-                      ? "border border-live-border bg-live-bg text-live-ink"
-                      : match.status === "scheduled" || match.status === "ready" || match.status === "pending"
-                        ? "border border-border bg-surface-muted text-ink-muted"
-                        : "border border-warning-border bg-warning-bg text-warning-ink";
-
-                const content = (
-                  <>
-                    <div className="flex items-center justify-between text-xs text-ink-muted">
-                      <span>
-                        {formatDate(match.start_time)} at {formatTime(match.start_time)}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        {mediaButton}
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${statusClass}`}
-                        >
-                          {match.status || "Status"}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                      {resolveVenueName(match)}
-                    </p>
-                    <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm font-semibold text-ink">
-                      <div className="min-w-0">
-                        <p className="truncate">{match.team_a?.name || "Team A"}</p>
-                      </div>
-                      <div className="text-center text-base font-bold">
-                        {(match.score_a ?? 0)} : {(match.score_b ?? 0)}
-                      </div>
-                      <div className="min-w-0 text-right">
-                        <p className="truncate">{match.team_b?.name || "Team B"}</p>
-                      </div>
-                    </div>
-                  </>
-                );
-
-                if (isNavigable) {
-                  return (
-                    <Panel
-                      key={match.id}
-                      as={Link}
-                      to={`/matches?matchId=${encodeURIComponent(match.id)}`}
-                      variant="tinted"
-                      className="h-full p-4 text-sm transition hover:-translate-y-0.5"
-                    >
-                      {content}
-                    </Panel>
-                  );
-                }
+                const live = isMatchLive(match.status);
+                const final = isMatchFinal(match.status);
+                const showScore = live || final;
+                const statusLabel = formatMatchStatus(match.status) || (live ? "Live" : "Scheduled");
+                const metaParts = [
+                  `${formatDate(match.start_time)} at ${formatTime(match.start_time)}`,
+                  resolveVenueName(match),
+                ].filter(Boolean);
 
                 return (
-                  <Panel key={match.id} as="article" variant="tinted" className="h-full p-4 text-sm">
-                    {content}
-                  </Panel>
+                  <StandardEventMatchCard
+                    key={match.id}
+                    match={match}
+                    variant="tinted"
+                    className="h-full"
+                    title={formatMatchup(match)}
+                    meta={metaParts.join(" · ")}
+                    score={showScore ? formatLiveScore(match) : null}
+                    status={statusLabel}
+                    compact={false}
+                    hideVenue
+                  />
                 );
               })}
             </div>

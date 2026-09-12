@@ -23,6 +23,7 @@ import {
   SYS_ADMIN_ACCESS_ROLES,
   TOURNAMENT_DIRECTOR_ACCESS_ROLES,
 } from "../../utils/accessControl";
+import { isClosedStatus } from "../../constants/statusCodes";
 
 export const EVENT_ID = "e6a34716-f9d6-4d70-bc1a-b610a04e3eaf";
 export const EVENT_SLUG = "stellenbosch-rl-2026";
@@ -607,7 +608,13 @@ const StandingsTable = ({ rows, showRank = false }) => {
                 </td>
               ) : null}
               <td className="min-w-0 px-1 py-1 align-top" title={row.name}>
-                <span className="block truncate">{row.name}</span>
+                {row.id ? (
+                  <Link to={`/teams/${row.id}`} className="block truncate text-inherit! hover:underline">
+                    {row.name}
+                  </Link>
+                ) : (
+                  <span className="block truncate">{row.name}</span>
+                )}
                 <div className="sc-standings-form-inline">
                   <FormDots form={row.form} className="mt-0.5" />
                 </div>
@@ -978,13 +985,24 @@ export default function StellenboschRl2026WorkspacePage() {
     [roles, rosterUpdateAccessRoles, session?.user],
   );
 
+  // The roster auto-sync only matters while the league is running. Once the
+  // event is completed/canceled there is nothing left to sync, so stop the
+  // 30 s poll rather than having every open tab keep hitting the backend
+  // forever. An unset or unreadable status counts as still running.
+  const isEventClosed = isClosedStatus(eventData?.event?.status);
+
   useEffect(() => {
+    if (isEventClosed) return undefined;
+
     setAutoSyncSchedule(getRosterScriptScheduleSnapshot());
     if (canRunAdminScripts) {
       refreshTimerState().catch(() => {});
     }
 
     const intervalId = window.setInterval(() => {
+      // Skip the tick entirely when the tab is hidden; the next visible tick
+      // catches up and nobody is looking at a countdown they cannot see.
+      if (typeof document !== "undefined" && document.hidden) return;
       setAutoSyncSchedule(getRosterScriptScheduleSnapshot());
       if (canRunAdminScripts) {
         refreshTimerState().catch(() => {});
@@ -994,7 +1012,7 @@ export default function StellenboschRl2026WorkspacePage() {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [canRunAdminScripts, refreshTimerState]);
+  }, [canRunAdminScripts, isEventClosed, refreshTimerState]);
 
   const workspaceTitle = eventData?.name || EVENT_NAME;
   const standingsGroups = useMemo(

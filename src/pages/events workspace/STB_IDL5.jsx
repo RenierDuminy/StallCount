@@ -596,7 +596,13 @@ export default function InternalDraftLeague5Page() {
                         {row.rank}
                       </td>
                       <td className="px-3 py-2 font-semibold">
-                        {row.team.name}
+                        {row.team.id ? (
+                          <Link to={`/teams/${row.team.id}`} className="text-inherit! hover:underline">
+                            {row.team.name}
+                          </Link>
+                        ) : (
+                          row.team.name
+                        )}
                       </td>
                       {row.weekResults.map((result) => (
                         <td

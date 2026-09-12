@@ -14,7 +14,10 @@ export type LiveEventRow = {
   created_at: string;
 };
 
-export async function getRecentLiveEvents(limit = 50): Promise<LiveEventRow[]> {
+export async function getRecentLiveEvents(
+  limit = 50,
+  options: { forceRefresh?: boolean } = {},
+): Promise<LiveEventRow[]> {
   return getCachedQuery(
     `live-events:recent:${limit}`,
     async () => {
@@ -30,6 +33,6 @@ export async function getRecentLiveEvents(limit = 50): Promise<LiveEventRow[]> {
 
       return (data ?? []) as LiveEventRow[];
     },
-    { ttlMs: RECENT_LIVE_EVENTS_CACHE_TTL_MS },
+    { ttlMs: RECENT_LIVE_EVENTS_CACHE_TTL_MS, forceRefresh: Boolean(options.forceRefresh) },
   );
 }

@@ -7,6 +7,7 @@ import { getSpiritScoresForMatches } from "../services/teamService";
 import { MatchMediaButton } from "../components/MatchMediaButton";
 import { getMatchMediaDetails } from "../utils/matchMedia";
 import { supabase } from "../services/supabaseClient";
+import { MATCH_STATUS } from "../constants/statusCodes";
 
 const SERIES_COLORS = {
   teamA: "#1d4ed8",
@@ -34,6 +35,34 @@ const SPIRIT_DIMENSIONS = [
 const SPIRIT_MAX_SCORE = 4;
 
 const isMatchLive = (status) => LIVE_MATCH_STATUSES.has((status || "").toLowerCase());
+
+// Statuses where there is no point-by-point log to show yet (or ever) — the
+// page swaps the analytics/timeline/log sections for a short explanatory
+// card instead. Compared case-sensitively against `MATCH_STATUS` since
+// `Initialized` is stored capitalised in the DB (see constants/statusCodes.js).
+const MATCH_PLACEHOLDER_COPY = {
+  [MATCH_STATUS.SCHEDULED]: {
+    heading: "Match not yet started",
+    body: "This match is still scheduled. Please check back closer to the start time.",
+  },
+  [MATCH_STATUS.INITIALIZED]: {
+    heading: "Match initialized",
+    body: "This match has been initialized and will begin shortly.",
+  },
+  [MATCH_STATUS.POSTPONED]: {
+    heading: "Match postponed",
+    body: "This match has been postponed. A new date and time will be announced soon.",
+  },
+  [MATCH_STATUS.CANCELED]: {
+    heading: "Match canceled",
+    body: "This match was canceled. No match data is available.",
+  },
+};
+
+const hasRecordedScore = (match) =>
+  Number.isFinite(match?.score_a) && Number.isFinite(match?.score_b) && (match.score_a > 0 || match.score_b > 0);
+
+const resolveMatchVenueName = (match) => match?.venue?.name || match?.venue?.city || "Venue TBD";
 
 export default function MatchesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -276,6 +305,13 @@ export default function MatchesPage() {
     () => buildSpiritReport(spiritScores, selectedMatch),
     [spiritScores, selectedMatch],
   );
+  const matchPlaceholder = selectedMatch ? MATCH_PLACEHOLDER_COPY[selectedMatch.status] : null;
+  const isUnloggedFinishedMatch =
+    !matchPlaceholder &&
+    !!selectedMatch &&
+    !logsLoading &&
+    matchLogs.length === 0 &&
+    hasRecordedScore(selectedMatch);
   return (
     <div className="pb-16 text-ink">
       <header className="sc-shell py-4 sm:py-6">
@@ -419,41 +455,49 @@ export default function MatchesPage() {
           <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">
             Loading match intelligence...
           </div>
+        ) : matchPlaceholder ? (
+          <MatchStatusPlaceholder match={selectedMatch} copy={matchPlaceholder} />
         ) : (
           <>
-            {derived.insights && (
-              <section className="sc-card-base space-y-3 p-4 sm:p-6">
-                <h2 className="text-lg font-semibold text-ink">Match analytics</h2>
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <InsightTable title="Match insight" rows={derived.insights.match} />
-                  <InsightTable title="Tempo insight" rows={derived.insights.tempo} />
-                </div>
-              </section>
-            )}
-
-            <section className="sc-card-base space-y-2 p-4 sm:p-6">
-              <h2 className="text-lg font-semibold text-ink">Score progression</h2>
-              <TimelineChart match={selectedMatch} timeline={derived.timeline} possessionTimeline={derived.possessionTimeline} />
-            </section>
-
-            {derived.summaries && (
+            {isUnloggedFinishedMatch ? (
+              <UnloggedMatchCard match={selectedMatch} />
+            ) : (
               <>
-                <section className="sc-card-base space-y-3 p-4 sm:p-6">
-                  <h2 className="text-lg font-semibold text-ink">
-                    {`${selectedMatch?.team_a?.name || "Team A"} overview`}
-                  </h2>
-                  <TeamOverviewCard stats={derived.summaries.teamA} />
+                {derived.insights && (
+                  <section className="sc-card-base space-y-3 p-4 sm:p-6">
+                    <h2 className="text-lg font-semibold text-ink">Match analytics</h2>
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      <InsightTable title="Match insight" rows={derived.insights.match} />
+                      <InsightTable title="Tempo insight" rows={derived.insights.tempo} />
+                    </div>
+                  </section>
+                )}
+
+                <section className="sc-card-base space-y-2 p-4 sm:p-6">
+                  <h2 className="text-lg font-semibold text-ink">Score progression</h2>
+                  <TimelineChart match={selectedMatch} timeline={derived.timeline} possessionTimeline={derived.possessionTimeline} />
                 </section>
-                <section className="sc-card-base space-y-3 p-4 sm:p-6">
-                  <h2 className="text-lg font-semibold text-ink">
-                    {`${selectedMatch?.team_b?.name || "Team B"} overview`}
-                  </h2>
-                  <TeamOverviewCard stats={derived.summaries.teamB} />
-                </section>
+
+                {derived.summaries && (
+                  <>
+                    <section className="sc-card-base space-y-3 p-4 sm:p-6">
+                      <h2 className="text-lg font-semibold text-ink">
+                        {`${selectedMatch?.team_a?.name || "Team A"} overview`}
+                      </h2>
+                      <TeamOverviewCard stats={derived.summaries.teamA} />
+                    </section>
+                    <section className="sc-card-base space-y-3 p-4 sm:p-6">
+                      <h2 className="text-lg font-semibold text-ink">
+                        {`${selectedMatch?.team_b?.name || "Team B"} overview`}
+                      </h2>
+                      <TeamOverviewCard stats={derived.summaries.teamB} />
+                    </section>
+                  </>
+                )}
               </>
             )}
 
-            {spiritReport?.entries?.length ? (
+            {isUnloggedFinishedMatch ? null : spiritReport?.entries?.length ? (
               <section className="sc-card-base space-y-2 px-4 py-2 sm:px-6">
                 <div className="flex flex-wrap items-baseline gap-2">
                   <h2 className="text-lg font-semibold text-ink">Spirit score report</h2>
@@ -490,14 +534,102 @@ export default function MatchesPage() {
               </section>
             ) : null}
 
-            <section className="sc-card-base space-y-3 p-4 sm:p-6">
-              <h2 className="text-lg font-semibold text-ink">Point-by-point log</h2>
-              <PointLogTable rows={derived.logRows} />
-            </section>
+            {!isUnloggedFinishedMatch && (
+              <section className="sc-card-base space-y-3 p-4 sm:p-6">
+                <h2 className="text-lg font-semibold text-ink">Point-by-point log</h2>
+                <PointLogTable rows={derived.logRows} />
+              </section>
+            )}
           </>
         )}
       </main>
     </div>
+  );
+}
+
+function MatchStatusPlaceholder({ match, copy }) {
+  const teamA = match?.team_a?.name || "Team A";
+  const teamB = match?.team_b?.name || "Team B";
+  return (
+    <section className="sc-card-base space-y-2 p-6 text-center sm:p-10">
+      <p className="text-sm font-semibold text-ink-muted">
+        {teamA} vs. {teamB}
+      </p>
+      <h2 className="text-xl font-semibold text-ink">{copy.heading}</h2>
+      <p className="text-sm text-ink-muted">{copy.body}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        {formatKickoff(match?.start_time)} &middot; {resolveMatchVenueName(match)}
+      </p>
+    </section>
+  );
+}
+
+function UnloggedMatchCard({ match }) {
+  const teamA = match?.team_a?.name || "Team A";
+  const teamB = match?.team_b?.name || "Team B";
+  const scoreA = Number.isFinite(match?.score_a) ? match.score_a : null;
+  const scoreB = Number.isFinite(match?.score_b) ? match.score_b : null;
+  const teamAWon = scoreA != null && scoreB != null && scoreA > scoreB;
+  const teamBWon = scoreA != null && scoreB != null && scoreB > scoreA;
+
+  return (
+    <section className="sc-card-base space-y-4 p-4 sm:p-6">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-ink">Match log unavailable</h2>
+        <p className="text-sm text-ink-muted">
+          A point-by-point log was not recorded for this match. The details below reflect the
+          information that is available.
+        </p>
+      </div>
+      <div className="sc-card-muted grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Final score</p>
+          <div className="flex items-center justify-center gap-3 py-1">
+            <span
+              className={
+                teamAWon
+                  ? "text-right text-base font-bold text-ink"
+                  : "text-right text-sm font-semibold text-ink-muted"
+              }
+            >
+              {teamA}
+            </span>
+            <span
+              className={teamAWon ? "text-2xl font-bold text-ink" : "text-lg font-bold text-ink-muted"}
+            >
+              {scoreA ?? "-"}
+            </span>
+            <span className="text-sm font-semibold text-ink-muted">-</span>
+            <span
+              className={teamBWon ? "text-2xl font-bold text-ink" : "text-lg font-bold text-ink-muted"}
+            >
+              {scoreB ?? "-"}
+            </span>
+            <span
+              className={
+                teamBWon
+                  ? "text-left text-base font-bold text-ink"
+                  : "text-left text-sm font-semibold text-ink-muted"
+              }
+            >
+              {teamB}
+            </span>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Date &amp; time</p>
+          <p className="text-sm font-semibold text-ink">{formatKickoff(match?.start_time)}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Venue</p>
+          <p className="text-sm font-semibold text-ink">{resolveMatchVenueName(match)}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Status</p>
+          <p className="text-sm font-semibold text-ink">{match?.status || "Unknown"}</p>
+        </div>
+      </div>
+    </section>
   );
 }
 

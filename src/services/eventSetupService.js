@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { ALL_STATUS_CODES } from "../constants/statusCodes";
 import {
   getBracketsByEvent,
   createBracket,
@@ -54,16 +55,10 @@ const toNullableNumber = (value) => {
 };
 
 const EVENT_TYPES = new Set(["league", "tournament", "season"]);
-const MATCH_STATUS_CODES = new Set([
-  "scheduled",
-  "ready",
-  "pending",
-  "live",
-  "halftime",
-  "finished",
-  "completed",
-  "canceled",
-]);
+// Validation gate for writes, so it must mirror match_status(code) exactly.
+// Previously accepted "ready"/"pending" (not valid codes — the insert would
+// fail the FK) and rejected "Initialized"/"postponed"/"forfeit", which are.
+const MATCH_STATUS_CODES = new Set(ALL_STATUS_CODES);
 
 const normalizeEventType = (value) => {
   const normalized = normalizeText(value).toLowerCase();
@@ -1613,7 +1608,7 @@ export async function getEventHierarchy(eventId) {
 
   const { data: eventRow, error: eventError } = await supabase
     .from("events")
-    .select("id, name, type, start_date, end_date, location, rules")
+    .select("id, name, type, start_date, end_date, location, rules, status:Status")
     .eq("id", normalizedEventId)
     .maybeSingle();
 

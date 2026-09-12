@@ -18,6 +18,8 @@ import {
   saveCustomScriptOverride,
 } from "../services/customScriptService";
 import { invokeStbRl26RosterSync } from "../services/stbRl26RosterSyncService";
+import { getEventLifecycle } from "../services/leagueService";
+import { isClosedStatus } from "../constants/statusCodes";
 
 const SERVER_RUN_ONLY_SCRIPT_SLUGS = new Set(["STB_RL_26_update_rosters"]);
 
@@ -54,6 +56,10 @@ export default function CustomScriptsPage() {
     error: "",
   });
   const [saveMessage, setSaveMessage] = useState("");
+  // Lifecycle of the event the script is pointed at. `null` means unknown (not
+  // yet looked up, no event ID given, or the read failed) — which never blocks
+  // a run, so a lookup failure cannot stop legitimate work.
+  const [targetEvent, setTargetEvent] = useState(null);
 
   useEffect(() => {
     const availableScripts = listCustomScripts();
@@ -77,11 +83,40 @@ export default function CustomScriptsPage() {
     setSaveMessage("");
   }, [selectedSlug]);
 
+  // Look up the target event whenever the ID changes, debounced so typing a
+  // UUID into the field does not fire a request per keystroke.
+  useEffect(() => {
+    const trimmed = eventId.trim();
+    if (!trimmed) {
+      setTargetEvent(null);
+      return undefined;
+    }
+
+    let ignore = false;
+    const timer = setTimeout(() => {
+      getEventLifecycle(trimmed)
+        .then((event) => {
+          if (!ignore) setTargetEvent(event);
+        })
+        .catch(() => {
+          // Unknown beats wrong: leave it null so the run is not blocked.
+          if (!ignore) setTargetEvent(null);
+        });
+    }, 400);
+
+    return () => {
+      ignore = true;
+      clearTimeout(timer);
+    };
+  }, [eventId]);
+
   const selectedScript = useMemo(
     () => scripts.find((script) => script.slug === selectedSlug) || null,
     [scripts, selectedSlug],
   );
   const isServerRunOnlyScript = SERVER_RUN_ONLY_SCRIPT_SLUGS.has(selectedSlug);
+  // Only a known-closed event blocks. An unknown status never does.
+  const isTargetEventClosed = isClosedStatus(targetEvent?.status);
 
   const isDirty = Boolean(selectedScript) && draftSource !== selectedScript.source;
 
@@ -115,14 +150,30 @@ export default function CustomScriptsPage() {
     setSaveMessage("Reset to bundled source.");
   };
 
-  const handleRun = async () => {
+  const handleRun = async ({ force = false } = {}) => {
     if (!selectedScript) return;
+
+    // Running against a finished event burns resources for no benefit, and can
+    // overwrite data that was hand-corrected after the event closed. Blocked by
+    // default; "Run anyway" is there for deliberate late corrections.
+    if (isTargetEventClosed && !force) {
+      setRunState({
+        running: false,
+        output: null,
+        error:
+          `"${targetEvent?.name || eventId}" is ${targetEvent?.status}. ` +
+          "Scripts are blocked on closed events — use Run anyway if this is deliberate.",
+      });
+      return;
+    }
 
     setRunState({ running: true, output: null, error: "" });
     let output;
 
     if (isServerRunOnlyScript) {
-      output = await invokeStbRl26RosterSync();
+      // `force` must reach the backend too: it runs the same closed-event
+      // guard, and would otherwise skip the run the operator just confirmed.
+      output = await invokeStbRl26RosterSync({ force });
 
       const shouldFallbackToBrowserRun =
         import.meta.env.DEV &&
@@ -148,6 +199,7 @@ export default function CustomScriptsPage() {
         source: draftSource,
         context: {
           eventId: eventId || null,
+          force,
         },
       });
     }
@@ -262,14 +314,33 @@ export default function CustomScriptsPage() {
                         This script runs through the backend runner. Local browser overrides are not used when you run it here.
                       </p>
                     ) : null}
+                    {isTargetEventClosed ? (
+                      <p className="rounded-xl border border-warning-border bg-warning-bg p-3 text-xs text-warning-ink">
+                        <span className="font-semibold">
+                          {targetEvent?.name || "This event"} is {targetEvent?.status}.
+                        </span>{" "}
+                        Scripts are blocked to avoid wasting resources and overwriting
+                        post-event corrections.
+                      </p>
+                    ) : null}
                     <button
                       type="button"
                       className="sc-button w-full"
-                      disabled={!selectedScript || runState.running}
-                      onClick={handleRun}
+                      disabled={!selectedScript || runState.running || isTargetEventClosed}
+                      onClick={() => void handleRun()}
                     >
                       {runState.running ? "Running..." : "Run script"}
                     </button>
+                    {isTargetEventClosed ? (
+                      <button
+                        type="button"
+                        className="sc-button is-ghost w-full"
+                        disabled={!selectedScript || runState.running}
+                        onClick={() => void handleRun({ force: true })}
+                      >
+                        Run anyway
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="sc-button is-ghost w-full"

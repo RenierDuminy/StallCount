@@ -4,6 +4,14 @@ import { fileURLToPath } from "node:url";
 
 const EXPECTED_EVENT_ID = "e6a34716-f9d6-4d70-bc1a-b610a04e3eaf";
 const JOB_KEY = "STB_RL_26_update_rosters";
+
+// Mirrors CLOSED_STATUSES in src/constants/statusCodes.js. Duplicated rather
+// than imported because api/_lib runs as a serverless function and must not
+// pull from the Vite client bundle. Keep the two in step.
+//
+// `events.Status` is a FK to match_status(code); these are the codes that mean
+// the event is over and no longer needs syncing.
+const CLOSED_EVENT_STATUSES = new Set(["completed", "finished", "canceled", "forfeit"]);
 const DEFAULT_CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSFcNFojsDqBt5T2oca1kMuHvskIqBKnSP6lx5qdX2780Rlbxsl-_6NDaguRieY1x63OQIjU7M6z-Hy/pub?gid=1391076276&single=true&output=csv";
 const DEFAULT_DOB_MODE = "dmy";
@@ -242,6 +250,38 @@ async function executeRosterScript({ supabase, context, log }) {
   );
 }
 
+/**
+ * Reads an event's lifecycle state so callers can skip work on a closed event.
+ *
+ * Fails OPEN on any error: if the status cannot be read (missing column, RLS,
+ * network), the sync proceeds as before. A transient read failure must not
+ * silently stop a live event's roster updates — the cost of an unnecessary run
+ * is far lower than the cost of a league going unsynced without anyone noticing.
+ */
+async function fetchEventLifecycle(supabase, eventId) {
+  try {
+    const { data, error } = await supabase
+      .from("events")
+      .select("id, name, Status")
+      .eq("id", eventId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return { isClosed: false, status: null, name: null };
+    }
+
+    const status = String(data.Status || "").trim().toLowerCase();
+    return {
+      // An unset status is not a closed status — treat it as still running.
+      isClosed: status ? CLOSED_EVENT_STATUSES.has(status) : false,
+      status: data.Status || null,
+      name: data.name || null,
+    };
+  } catch {
+    return { isClosed: false, status: null, name: null };
+  }
+}
+
 export async function getStbRl26RosterSyncStatus({ supabase }) {
   return fetchAutomationState(supabase);
 }
@@ -261,6 +301,39 @@ export async function runStbRl26RosterSync({
   const log = (...args) => {
     logs.push(args.map(formatLogValue).join(" "));
   };
+
+  // Stop before doing any work if the league is over. This job is on a daily
+  // cron, so without this it keeps pulling the CSV and writing rosters for a
+  // finished event indefinitely — pure waste, and it can overwrite rosters
+  // that were hand-corrected after the event closed.
+  //
+  // `force` lets an admin override deliberately (a late correction on a
+  // closed event); the cron never sets it.
+  if (!context.force) {
+    const eventState = await fetchEventLifecycle(supabase, activeEventId);
+
+    if (eventState.isClosed) {
+      log(
+        `Event ${activeEventId} has status "${eventState.status}" — skipping roster sync.`,
+      );
+      return {
+        ok: true,
+        skipped: true,
+        slug: JOB_KEY,
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        logs,
+        result: {
+          status: "skipped",
+          reason: "event-closed",
+          message:
+            `Roster sync skipped: "${eventState.name || activeEventId}" is ${eventState.status}. ` +
+            "Run with force to sync anyway.",
+          eventStatus: eventState.status,
+        },
+      };
+    }
+  }
 
   const scheduleSlot = context.scheduleSlot || getRosterScriptScheduleSnapshot();
   const slotKey = context.slotKey || scheduleSlot.currentSlotKey;

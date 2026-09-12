@@ -197,7 +197,12 @@ export default async function handler(request, response) {
       log("Reading POST body.");
       const body = await readJsonBody(request);
       const forceFullSync = Boolean(body?.forceFullSync);
-      log(`Starting ${forceFullSync ? "full" : "incremental"} roster sync.`);
+      // Overrides the closed-event guard. Only ever set by an explicit operator
+      // confirmation in the UI; the cron path below never sets it.
+      const force = Boolean(body?.force);
+      log(
+        `Starting ${forceFullSync ? "full" : "incremental"} roster sync${force ? " (forced past closed-event guard)" : ""}.`,
+      );
       const manualSlotKey = buildManualSlotKey();
       const output = await runStbRl26RosterSync({
         supabase,
@@ -205,6 +210,7 @@ export default async function handler(request, response) {
           eventId: EXPECTED_EVENT_ID,
           trigger: forceFullSync ? "manual-full-sync" : "manual",
           forceFullSync,
+          force,
           scheduleSlot: getRosterScriptScheduleSnapshot(),
           slotKey: manualSlotKey,
         },

@@ -91,18 +91,15 @@ export default function SiteHeader() {
   return (
     <>
       <header className="border-b border-[var(--sc-border)]/50 bg-[var(--sc-bg-accent)] text-[var(--sc-ink)]">
-        <div className="sc-shell flex items-center justify-between py-4">
-          <Link to="/" className="flex items-center gap-3 text-[var(--sc-ink)]">
+        <div className="sc-shell flex h-20 items-center justify-between">
+          <Link to="/" className="flex h-full items-center gap-3 text-[var(--sc-ink)]">
             <img
               src="/assets/stallcount-logo.svg"
-              alt="StallCount logo"
-              className="h-11 w-11 rounded-2xl border border-white/10 bg-white/10 object-contain p-1"
+              alt="StallCount"
+              className="h-[80%] w-auto object-contain md:h-[90%]"
               loading="lazy"
             />
-            <div>
-              <p className="text-lg font-semibold leading-tight">StallCount</p>
-              <p className="text-sm text-[var(--sc-ink-muted)]">Ultimate Frisbee League Tracker</p>
-            </div>
+            <p className="text-sm text-[var(--sc-ink-muted)]">Ultimate Frisbee League Tracker</p>
           </Link>
 
         <nav className="hidden items-center gap-1 text-sm font-semibold text-[var(--sc-ink-muted)] md:flex">

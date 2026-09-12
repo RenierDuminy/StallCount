@@ -442,6 +442,7 @@ export type PlayerStatRow = {
   assists: number;
   blocks: number;
   turnovers: number;
+  callahans: number;
   games: number;
   matchIds: string[];
 };
@@ -593,6 +594,12 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
       }
 
       const rows = (data ?? []) as PlayerStatQueryRow[];
+
+      const callahanCounts = await buildCallahanCountMap({
+        matchIds: rows.map((row) => row.match_id).filter(Boolean),
+        playerIds: rows.map((row) => row.player_id).filter(Boolean),
+      });
+
       const statsMap = new Map<
         string,
         PlayerStatRow & {
@@ -613,6 +620,7 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
             assists: 0,
             blocks: 0,
             turnovers: 0,
+            callahans: 0,
             games: 0,
             matchIds: new Set<string>(),
           });
@@ -625,6 +633,7 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
         entry.assists += row.assists ?? 0;
         entry.blocks += row.blocks ?? 0;
         entry.turnovers += row.turnovers ?? 0;
+        entry.callahans += callahanCounts.get(`${row.match_id}:${playerId}`) ?? 0;
         entry.matchIds.add(row.match_id);
       }
 
@@ -636,6 +645,7 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
         assists: entry.assists,
         blocks: entry.blocks,
         turnovers: entry.turnovers,
+        callahans: entry.callahans,
         games: entry.matchIds.size,
         matchIds: Array.from(entry.matchIds),
       }));

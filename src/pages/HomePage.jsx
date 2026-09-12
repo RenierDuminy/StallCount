@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getTeamsByIds, getTeamMatches } from "../services/teamService";
 import {
@@ -13,14 +13,23 @@ import {
   getHomeStreamingSummary,
 } from "../services/homeSummaryService";
 import { getEventWorkspacePath } from "./eventWorkspaces";
+import { useHomeLiveRefresh } from "../hooks/useHomeLiveRefresh";
 import { Card, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
 import { StandardEventMatchCard } from "../components/StandardEventMatchCard";
 import {
   hasMatchMedia,
 } from "../utils/matchMedia";
+import {
+  CLOSED_STATUSES,
+  CONCLUDED_STATUSES,
+  IN_PROGRESS_STATUSES,
+  PENDING_STATUSES,
+  isClosedStatus,
+  isConcludedStatus,
+  isInProgressStatus,
+} from "../constants/statusCodes";
 
-const LIVE_STATUSES = new Set(["live", "halftime"]);
-const FINISHED_STATUSES = new Set(["finished", "completed"]);
+const FINISHED_STATUSES = new Set(CONCLUDED_STATUSES);
 const MAX_MY_TEAMS = 2;
 const MAX_MY_MATCHES = 3;
 const DESKTOP_HOME_LIMITS = {
@@ -32,6 +41,7 @@ const DESKTOP_HOME_LIMITS = {
   liveEvents: 50,
   activeEvents: 5,
   timelineEvents: 8,
+  pastEvents: 10,
   streamMatches: 5,
   upcomingMatches: 10,
 };
@@ -44,6 +54,7 @@ const MOBILE_HOME_LIMITS = {
   liveEvents: 10,
   activeEvents: 5,
   timelineEvents: 4,
+  pastEvents: 10,
   streamMatches: 3,
   upcomingMatches: 6,
 };
@@ -173,21 +184,27 @@ export default function HomePage() {
     query.addListener(handleChange);
     return () => query.removeListener(handleChange);
   }, []);
-  useEffect(() => {
-    let ignore = false;
+  // Shared by the initial load and every live/idle refresh. A background
+  // refresh must not flip the page back into its loading state or clear the
+  // cards already on screen, so `background` suppresses the spinner and keeps
+  // the last good data visible if the refetch fails.
+  const loadHeroData = useCallback(
+    async ({ background = false, signal } = {}) => {
+      if (!background) {
+        setLoading(true);
+        setError(null);
+      }
 
-    async function loadHeroData() {
-      setLoading(true);
-      setError(null);
       try {
         const summary = await getHomeHeroSummary({
           limits: {
             openMatches: homeLimits.openMatches,
             liveEvents: homeLimits.liveEvents,
           },
+          forceRefresh: background,
         });
 
-        if (ignore) return;
+        if (signal?.cancelled) return;
 
         setOpenMatches(summary.openMatches);
         setLiveEvents(summary.liveEvents);
@@ -199,28 +216,36 @@ export default function HomePage() {
           const criticalFailures = summary.failures
             .map((failure) => failure.key)
             .filter((key) => key !== "live events");
-          if (criticalFailures.length > 0) {
+          if (criticalFailures.length > 0 && !background) {
             setError(`Unable to load ${criticalFailures.join(", ")}. Please refresh and try again.`);
           }
+        } else if (background) {
+          // A successful background refresh clears a stale error banner left
+          // over from an earlier failed load.
+          setError(null);
         }
       } catch (err) {
-        if (!ignore) {
-          console.error("[HomePage] Unexpected load error:", err);
+        if (signal?.cancelled) return;
+        console.error("[HomePage] Unexpected load error:", err);
+        if (!background) {
           setError(err?.message || "Unable to load league data.");
         }
       } finally {
-        if (!ignore) {
+        if (!signal?.cancelled && !background) {
           setLoading(false);
         }
       }
-    }
+    },
+    [homeLimits.liveEvents, homeLimits.openMatches],
+  );
 
-    loadHeroData();
-
+  useEffect(() => {
+    const signal = { cancelled: false };
+    void loadHeroData({ signal });
     return () => {
-      ignore = true;
+      signal.cancelled = true;
     };
-  }, [homeLimits.liveEvents, homeLimits.openMatches]);
+  }, [loadHeroData]);
 
   useEffect(() => {
     if (!renderEventTimeline) return undefined;
@@ -526,7 +551,14 @@ export default function HomePage() {
 
   const safeEvents = useMemo(() => events ?? [], [events]);
   const safeLatestMatches = useMemo(() => latestMatches ?? [], [latestMatches]);
-  const safeOpenMatches = useMemo(() => openMatches ?? [], [openMatches]);
+  // Matches on closed events are dropped here rather than at each call site, so
+  // the hero, the "next scheduled" strip and "Live & upcoming" all agree — a
+  // match left in `scheduled` on a wrapped-up event should not be featured
+  // anywhere on the landing page.
+  const safeOpenMatches = useMemo(
+    () => (openMatches ?? []).filter((match) => !isMatchFromClosedEvent(match)),
+    [openMatches],
+  );
   const safeLiveEvents = useMemo(() => liveEvents ?? [], [liveEvents]);
 
   const liveEventLookup = useMemo(() => {
@@ -550,6 +582,22 @@ export default function HomePage() {
   }, [safeOpenMatches]);
 
   const liveNowMatch = liveHeroMatches[0] || null;
+
+  // Drives the live/idle cadence. While any match is live we hold a realtime
+  // channel and poll every 30 s as a backstop; once the last one finishes this
+  // flips false, the channel is torn down and we fall back to a ~10 min poll
+  // that is what eventually notices the next scheduled match kicking off.
+  const hasLiveMatches = liveHeroMatches.length > 0;
+
+  const handleLiveRefresh = useCallback(
+    () => loadHeroData({ background: true }),
+    [loadHeroData],
+  );
+
+  useHomeLiveRefresh({
+    hasLiveMatches,
+    onRefresh: handleLiveRefresh,
+  });
 
   const nextMatchCandidate = useMemo(() => {
     const now = Date.now();
@@ -629,22 +677,20 @@ export default function HomePage() {
     () => filterEventsByStatusGroup(safeEvents, "upcoming"),
     [safeEvents],
   );
-  const homepageEventSections = useMemo(
+  const currentEventSection = useMemo(
+    () => ({
+      key: "active",
+      title: "Current events",
+      events: activeTimelineEvents,
+      limit: homeLimits.activeEvents,
+      emptyMessage: "No current events right now.",
+    }),
+    [activeTimelineEvents, homeLimits.activeEvents],
+  );
+
+  const [expandedEventSections, setExpandedEventSections] = useState({ upcoming: false, past: false });
+  const eventTimelineOptions = useMemo(
     () => [
-      {
-        key: "active",
-        title: "Current events",
-        events: activeTimelineEvents,
-        limit: homeLimits.activeEvents,
-        emptyMessage: "No current events right now.",
-      },
-      {
-        key: "past",
-        title: "Past events",
-        events: pastTimelineEvents,
-        limit: homeLimits.timelineEvents,
-        emptyMessage: "No past events on the calendar.",
-      },
       {
         key: "upcoming",
         title: "Upcoming events",
@@ -652,8 +698,15 @@ export default function HomePage() {
         limit: homeLimits.timelineEvents,
         emptyMessage: "No upcoming events on the calendar.",
       },
+      {
+        key: "past",
+        title: "Past events",
+        events: pastTimelineEvents,
+        limit: homeLimits.pastEvents,
+        emptyMessage: "No past events on the calendar.",
+      },
     ],
-    [activeTimelineEvents, homeLimits.activeEvents, homeLimits.timelineEvents, pastTimelineEvents, upcomingTimelineEvents],
+    [homeLimits.pastEvents, homeLimits.timelineEvents, pastTimelineEvents, upcomingTimelineEvents],
   );
 
   const streamMatches = useMemo(() => {
@@ -958,22 +1011,64 @@ export default function HomePage() {
                 {belowFoldError}
               </p>
             )}
-            {homepageEventSections.map((section) => (
-              <div key={section.key} className="home-timeline-section">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">{section.title}</p>
-                {belowFoldLoading && safeEvents.length === 0 ? (
-                  <div className="home-empty-state">Loading events...</div>
-                ) : section.events.length === 0 ? (
-                  <div className="home-empty-state">{section.emptyMessage}</div>
-                ) : (
-                  <div className="home-timeline-list home-timeline-list--grid">
-                    {section.events.slice(0, section.limit).map((event) => (
-                      <HomeEventCard key={event.id} event={event} eventStatusTab={section.key} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+            <div className="home-timeline-section">
+              <h2 className="mb-3 text-xl font-bold tracking-tight text-ink sm:text-2xl">
+                {currentEventSection.title}
+              </h2>
+              {belowFoldLoading && safeEvents.length === 0 ? (
+                <div className="home-empty-state">Loading events...</div>
+              ) : currentEventSection.events.length === 0 ? (
+                <div className="home-empty-state">{currentEventSection.emptyMessage}</div>
+              ) : (
+                <div className="home-timeline-list home-timeline-list--grid">
+                  {currentEventSection.events.slice(0, currentEventSection.limit).map((event) => (
+                    <HomeEventCard key={event.id} event={event} eventStatusTab={currentEventSection.key} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {eventTimelineOptions.map((section) => {
+              const isOpen = Boolean(expandedEventSections[section.key]);
+              return (
+                <div key={section.key} className="home-timeline-section">
+                  <button
+                    type="button"
+                    className="home-timeline-toggle"
+                    aria-expanded={isOpen}
+                    onClick={() =>
+                      setExpandedEventSections((prev) => ({ ...prev, [section.key]: !prev[section.key] }))
+                    }
+                  >
+                    <svg
+                      className={`home-timeline-toggle__chevron${isOpen ? " is-open" : ""}`}
+                      width="16"
+                      height="16"
+                      viewBox="0 0 12 12"
+                      aria-hidden="true"
+                    >
+                      <path d="M3 4.5 6 8l3-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <span className="text-xl font-bold tracking-tight text-ink sm:text-2xl">
+                      {section.title}
+                    </span>
+                  </button>
+                  {isOpen ? (
+                    belowFoldLoading && safeEvents.length === 0 ? (
+                      <div className="home-empty-state mt-3">Loading events...</div>
+                    ) : section.events.length === 0 ? (
+                      <div className="home-empty-state mt-3">{section.emptyMessage}</div>
+                    ) : (
+                      <div className="home-timeline-list home-timeline-list--grid mt-3">
+                        {section.events.slice(0, section.limit).map((event) => (
+                          <HomeEventCard key={event.id} event={event} eventStatusTab={section.key} />
+                        ))}
+                      </div>
+                    )
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
           )}
         </LazyHomeSection>
@@ -1116,10 +1211,10 @@ const HomeEventCard = memo(function HomeEventCard({ event, eventStatusTab }) {
       className={cardClassName}
     >
       <div className="flex min-w-0 flex-col items-center gap-1 text-center">
-        <h3 className="w-full overflow-hidden text-ellipsis whitespace-nowrap text-base font-semibold leading-snug text-ink">
+        <h3 className="w-full break-words text-base font-semibold leading-snug text-ink">
           {event.name}
         </h3>
-        <p className="w-full overflow-hidden text-ellipsis whitespace-nowrap text-xs font-semibold text-ink-muted">
+        <p className="w-full break-words text-xs font-semibold text-ink-muted">
           {formatDateRange(event.start_date, event.end_date)}
         </p>
       </div>
@@ -1364,11 +1459,32 @@ function formatLiveEventSummary(liveEvent, match) {
   return cap ? `${cap} · ${description}` : description;
 }
 
+// UI buckets for the event timeline. The KEYS (active/past/upcoming) are
+// display groupings, not database values; the VALUES are canonical
+// match_status codes, since events.Status is a FK to that table.
+//
+// `postponed` groups with upcoming: it has no date yet but is still expected.
 const EVENT_STATUS_GROUPS = {
-  active: new Set(["active", "current", "live"]),
-  past: new Set(["completed", "finished", "past"]),
-  upcoming: new Set(["scheduled", "upcoming"]),
+  active: new Set(IN_PROGRESS_STATUSES),
+  past: new Set(CLOSED_STATUSES),
+  upcoming: new Set(PENDING_STATUSES.map((code) => code.toLowerCase())),
 };
+
+/**
+ * True when a match belongs to an event that is over — played out, canceled,
+ * or forfeited.
+ *
+ * Deliberately exclusion-based rather than allowlist-based: only a *known*
+ * closed status hides a match. An event with a missing, null, or unrecognised
+ * status still shows, because wrongly hiding a live match is far worse than
+ * showing a stale one. Matches with no event attached are always kept.
+ *
+ * The query in getOpenMatches already excludes these in SQL; this is the
+ * client-side backstop for data arriving by any other path.
+ */
+function isMatchFromClosedEvent(match) {
+  return isClosedStatus(match?.event?.status);
+}
 
 function filterEventsByStatusGroup(events = [], group) {
   const allowedStatuses = EVENT_STATUS_GROUPS[group] || new Set();
@@ -1394,9 +1510,9 @@ function getMatchCompletionTime(match) {
   return Number.isNaN(ms) ? null : ms;
 }
 function isMatchLive(status) {
-  return LIVE_STATUSES.has((status || "").toLowerCase());
+  return isInProgressStatus(status);
 }
 
 function isMatchFinal(status) {
-  return FINISHED_STATUSES.has((status || "").toLowerCase());
+  return isConcludedStatus(status);
 }

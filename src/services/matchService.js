@@ -1,11 +1,43 @@
 ﻿import { supabase } from "./supabaseClient";
 import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
 import { fromSupabaseError } from "../utils/errorMessages";
+import {
+  ALL_STATUS_CODES,
+  CLOSED_STATUSES,
+  CONCLUDED_STATUSES,
+  OPEN_MATCH_STATUSES,
+} from "../constants/statusCodes";
 
 const RECENT_MATCHES_CACHE_TTL_MS = 30 * 1000;
 const OPEN_MATCHES_CACHE_TTL_MS = 30 * 1000;
 const EVENT_MATCHES_CACHE_TTL_MS = 60 * 1000;
 const MATCH_IDS_CACHE_TTL_MS = 30 * 1000;
+
+// Event statuses that mean "this event is over". `events.Status` is a FK to
+// match_status(code), so events and matches share one status vocabulary and the
+// match-level CLOSED_STATUSES applies unchanged.
+//
+// Stale fixtures on wrapped-up events are a permanent fact of life: a league
+// gets marked `completed` while unplayed matches are still sitting in
+// `scheduled`. Excluding them in SQL rather than in JS matters because the
+// exclusion has to happen BEFORE `limit` — otherwise dead rows sort to the
+// front (they are older) and eat the whole result window, and the caller is
+// left filtering an already-truncated page down to almost nothing.
+
+// PostgREST list literal, e.g. `(completed,finished,...)`.
+const CLOSED_EVENT_STATUS_LIST = `(${CLOSED_STATUSES.join(",")})`;
+
+// Exclude closed events, but keep events whose status is unset.
+//
+// The `Status.is.null` arm is load-bearing: SQL evaluates `NULL NOT IN (...)`
+// to NULL, which filters the row OUT. Without it, a single event created with
+// no status would silently vanish from every open-match surface. Keeping the
+// filter exclusion-based means only a KNOWN-closed event hides its matches —
+// anything unset or unrecognised still shows, because wrongly hiding a live
+// match is far worse than briefly showing a stale one.
+// Note: no surrounding parentheses — supabase-js adds them when building the
+// logic tree, and pre-wrapping produces `((...))`, which PostgREST rejects.
+const OPEN_EVENT_FILTER = `Status.is.null,Status.not.in.${CLOSED_EVENT_STATUS_LIST}`;
 
 const MATCH_FIELDS = `
   id,
@@ -23,7 +55,7 @@ const MATCH_FIELDS = `
   abba_pattern,
   venue_id,
   venue:venues!matches_venue_id_fkey (id, name, city, location),
-  event:events!matches_event_id_fkey (id, name, rules),
+  event:events!matches_event_id_fkey (id, name, rules, status:Status),
   team_a:teams!matches_team_a_fkey (id, name, short_name),
   team_b:teams!matches_team_b_fkey (id, name, short_name),
   media_link,
@@ -53,14 +85,27 @@ export async function getRecentMatches(limit = 4) {
   );
 }
 
-export async function getOpenMatches(limit = 12) {
+// Same shape as MATCH_FIELDS, but the event embed is an INNER join so that
+// `event.Status` can be filtered on. Only getOpenMatches needs this; every
+// other read keeps the LEFT join so a match with no event still comes back.
+const MATCH_FIELDS_WITH_REQUIRED_EVENT = MATCH_FIELDS.replace(
+  "event:events!matches_event_id_fkey (",
+  "event:events!matches_event_id_fkey!inner (",
+);
+
+export async function getOpenMatches(limit = 12, options = {}) {
   return getCachedQuery(
     `matches:open:${limit}`,
     async () => {
       const { data, error } = await supabase
         .from("matches")
-        .select(MATCH_FIELDS)
-        .in("status", ["scheduled", "ready", "pending", "Initialized", "live"])
+        .select(MATCH_FIELDS_WITH_REQUIRED_EVENT)
+        // Canonical codes only. The previous list included "ready" and
+        // "pending", which are not in match_status and matched nothing, and
+        // omitted "halftime", so a match dropped off this surface mid-game.
+        .in("status", OPEN_MATCH_STATUSES)
+        // Applied in SQL so closed-event fixtures never consume the `limit`.
+        .or(OPEN_EVENT_FILTER, { referencedTable: "event" })
         .order("start_time", { ascending: true })
         .limit(limit);
 
@@ -70,7 +115,7 @@ export async function getOpenMatches(limit = 12) {
 
       return data ?? [];
     },
-    { ttlMs: OPEN_MATCHES_CACHE_TTL_MS },
+    { ttlMs: OPEN_MATCHES_CACHE_TTL_MS, forceRefresh: Boolean(options.forceRefresh) },
   );
 }
 
@@ -88,7 +133,7 @@ export async function getMatchesByEvent(eventId, limit = 24, options = {}) {
         .limit(limit);
 
       if (!includeFinished) {
-        query = query.neq("status", "finished").neq("status", "completed");
+        query = query.not("status", "in", `(${CONCLUDED_STATUSES.join(",")})`);
       }
 
       const { data, error } = await query;
@@ -131,7 +176,7 @@ export async function getRecentFinalMatches(limit = 16) {
       const { data, error } = await supabase
         .from("matches")
         .select(MATCH_FIELDS)
-        .in("status", ["finished", "completed"])
+        .in("status", CONCLUDED_STATUSES)
         .order("start_time", { ascending: false })
         .limit(limit);
 
@@ -297,16 +342,10 @@ export async function deleteMatch(matchId) {
   return existing || null;
 }
 
-const MATCH_STATUS_CODES = new Set([
-  "canceled",
-  "completed",
-  "finished",
-  "halftime",
-  "Initialized",
-  "initialized",
-  "live",
-  "scheduled",
-]);
+// Accepts the canonical codes. "initialized" (lowercase) was previously listed
+// alongside "Initialized" and would have been written through verbatim,
+// violating the FK — the DB stores only the capitalised spelling.
+const MATCH_STATUS_CODES = new Set(ALL_STATUS_CODES);
 
 export async function initialiseMatch(matchId, payload) {
   const desiredStatus = MATCH_STATUS_CODES.has(payload.status)

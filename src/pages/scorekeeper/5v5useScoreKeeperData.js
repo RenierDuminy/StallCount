@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { OPEN_MATCH_STATUSES } from "../../constants/statusCodes";
 import { getEventsList } from "../../services/leagueService";
 import { getMatchesByEvent, getMatchById } from "../../services/matchService";
 import { getPlayersByTeam } from "../../services/playerService";
@@ -73,13 +74,12 @@ const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
 const SOFT_CAP_TIMER_LABEL = "Soft Cap";
-const SETUP_MATCH_STATUSES = new Set([
-  "halftime",
-  "initialized",
-  "live",
-  "postponed",
-  "scheduled",
-]);
+// Statuses a match can be in and still be opened in the console. Lowercased
+// because callers compare a lowercased value — note the DB stores the
+// capitalised "Initialized", so the raw code would not have matched here.
+const SETUP_MATCH_STATUSES = new Set(
+  OPEN_MATCH_STATUSES.map((code) => code.toLowerCase()),
+);
 
 const OPTIMISTIC_PREFIX = "local-";
 

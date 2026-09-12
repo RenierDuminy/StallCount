@@ -134,9 +134,13 @@ export async function getHomeHeroSummary(options = {}) {
   return getCachedQuery(
     cacheKey,
     async () => {
+      // Live refreshes pass forceRefresh, so the underlying match/live-event
+      // reads must skip their own caches too — otherwise the hero summary
+      // refetches but gets handed the same cached rows it already had.
+      const readOptions = { forceRefresh: Boolean(options.forceRefresh) };
       const results = await Promise.all([
-        toSettled(getOpenMatches(limits.openMatches)),
-        toSettled(getRecentLiveEvents(limits.liveEvents)),
+        toSettled(getOpenMatches(limits.openMatches, readOptions)),
+        toSettled(getRecentLiveEvents(limits.liveEvents, readOptions)),
       ]);
 
       const [
@@ -151,7 +155,11 @@ export async function getHomeHeroSummary(options = {}) {
         loadedAt: new Date().toISOString(),
       };
     },
-    { ttlMs: HOME_HERO_SUMMARY_CACHE_TTL_MS, refreshOnPageReload: false },
+    {
+      ttlMs: HOME_HERO_SUMMARY_CACHE_TTL_MS,
+      refreshOnPageReload: false,
+      forceRefresh: Boolean(options.forceRefresh),
+    },
   );
 }
 

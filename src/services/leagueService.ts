@@ -31,7 +31,7 @@ export type EventRow = {
 };
 
 type GetEventsListOptions = {
-  status?: string | null;
+  status?: string | string[] | null;
 };
 
 export type EventPoolTeam = {
@@ -169,12 +169,22 @@ export async function getRecentEvents(limit = 4): Promise<EventRow[]> {
 }
 
 export async function getEventsList(limit = 12, options: GetEventsListOptions = {}): Promise<EventRow[]> {
-  const normalizedStatus =
-    typeof options.status === "string" && options.status.trim().length > 0
-      ? options.status.trim().toLowerCase()
+  // NOTE: `events.Status` is case-sensitive in Postgres and `Initialized` is
+  // stored capitalised (see constants/statusCodes.js) — status codes are
+  // passed through verbatim here, not lowercased. Callers must pass the
+  // constants rather than retyping literals.
+  const normalizedStatus = Array.isArray(options.status)
+    ? options.status.filter((code): code is string => typeof code === "string" && code.trim().length > 0).map((code) => code.trim())
+    : typeof options.status === "string" && options.status.trim().length > 0
+      ? options.status.trim()
       : null;
+  const cacheKey = Array.isArray(normalizedStatus)
+    ? normalizedStatus.length
+      ? [...normalizedStatus].sort().join(",")
+      : "all"
+    : normalizedStatus || "all";
   return getCachedQuery(
-    `events:list:${limit}:${normalizedStatus || "all"}`,
+    `events:list:${limit}:${cacheKey}`,
     async () => {
       let query = supabase
         .from("events")
@@ -182,7 +192,11 @@ export async function getEventsList(limit = 12, options: GetEventsListOptions = 
         .order("start_date", { ascending: false })
         .limit(limit);
 
-      if (normalizedStatus) {
+      if (Array.isArray(normalizedStatus)) {
+        if (normalizedStatus.length > 0) {
+          query = query.in("Status", normalizedStatus);
+        }
+      } else if (normalizedStatus) {
         query = query.eq("Status", normalizedStatus);
       }
 
@@ -196,6 +210,35 @@ export async function getEventsList(limit = 12, options: GetEventsListOptions = 
     },
     { ttlMs: EVENTS_CACHE_TTL_MS },
   );
+}
+
+export type EventLifecycle = {
+  id: string;
+  name: string | null;
+  status: string | null;
+};
+
+/**
+ * Reads one event's identity and status. Used to decide whether work targeting
+ * that event is still worth doing.
+ *
+ * Returns null when the event cannot be read, which callers should treat as
+ * "unknown, proceed" rather than "closed" — failing closed on a transient read
+ * error would silently stop automation for a live event.
+ */
+export async function getEventLifecycle(eventId: string): Promise<EventLifecycle | null> {
+  const trimmed = (eventId || "").trim();
+  if (!trimmed) return null;
+
+  const { data, error } = await supabase
+    .from("events")
+    .select("id, name, status:Status")
+    .eq("id", trimmed)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  return data as EventLifecycle;
 }
 
 export async function getEventsByIds(ids: string[]): Promise<EventRow[]> {
