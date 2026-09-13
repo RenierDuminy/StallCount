@@ -7,7 +7,7 @@ import { getSpiritScoresForMatches } from "../services/teamService";
 import { MatchMediaButton } from "../components/MatchMediaButton";
 import { getMatchMediaDetails } from "../utils/matchMedia";
 import { supabase } from "../services/supabaseClient";
-import { MATCH_STATUS } from "../constants/statusCodes";
+import { MATCH_STATUS, getDisplayStatus } from "../constants/statusCodes";
 
 const SERIES_COLORS = {
   teamA: "#1d4ed8",
@@ -38,8 +38,8 @@ const isMatchLive = (status) => LIVE_MATCH_STATUSES.has((status || "").toLowerCa
 
 // Statuses where there is no point-by-point log to show yet (or ever) — the
 // page swaps the analytics/timeline/log sections for a short explanatory
-// card instead. Compared case-sensitively against `MATCH_STATUS` since
-// `Initialized` is stored capitalised in the DB (see constants/statusCodes.js).
+// card instead. Keyed off `MATCH_STATUS` rather than retyped literals so this
+// tracks the canonical codes in constants/statusCodes.js automatically.
 const MATCH_PLACEHOLDER_COPY = {
   [MATCH_STATUS.SCHEDULED]: {
     heading: "Match not yet started",
@@ -305,7 +305,11 @@ export default function MatchesPage() {
     () => buildSpiritReport(spiritScores, selectedMatch),
     [spiritScores, selectedMatch],
   );
-  const matchPlaceholder = selectedMatch ? MATCH_PLACEHOLDER_COPY[selectedMatch.status] : null;
+  // Forfeits (forfeit / forfeit_teamA / forfeit_teamB) render as a canceled
+  // match card for now — see getDisplayStatus.
+  const matchPlaceholder = selectedMatch
+    ? MATCH_PLACEHOLDER_COPY[getDisplayStatus(selectedMatch.status)]
+    : null;
   const isUnloggedFinishedMatch =
     !matchPlaceholder &&
     !!selectedMatch &&

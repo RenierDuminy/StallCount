@@ -47,7 +47,17 @@ const MATCH_CARD_PHASE_DEFAULT_LABELS = {
 
 const MATCH_CARD_LIVE_STATUSES = new Set(["live", "halftime", "in_progress", "in progress"]);
 const MATCH_CARD_FINISHED_STATUSES = new Set(["finished", "completed", "final"]);
-const MATCH_CARD_CANCELED_STATUSES = new Set(["canceled", "cancelled"]);
+// Forfeits (forfeit / forfeit_teamA / forfeit_teamB) render as a canceled
+// match card for now — team-level forfeit statistics are future work. Compared
+// lowercase, same as every other status here, so "forfeit_teamA" still matches
+// via its lowercased form "forfeit_teama".
+const MATCH_CARD_CANCELED_STATUSES = new Set([
+  "canceled",
+  "cancelled",
+  "forfeit",
+  "forfeit_teama",
+  "forfeit_teamb",
+]);
 
 const MATCH_CARD_PHASE_STYLES = {
   [MATCH_CARD_PHASES.scheduled]: {

@@ -16,6 +16,55 @@ export const SEVERITY = {
   INFO: "info",
 };
 
+// The four sections the checks below are written in, in the order a director
+// should read them: is there a timeline at all, is it internally consistent,
+// does it add up to the right score, then does it match the event's rules.
+// Every finding is tagged with one of these via makeFinding's default, so the
+// checklist UI can show "no problems found" for a section with zero findings
+// instead of only ever listing failures.
+export const CHECK_GROUPS = [
+  { key: "structural", label: "Structural integrity" },
+  { key: "timeline", label: "Timeline sanity" },
+  { key: "score", label: "Score & attribution" },
+  { key: "caps", label: "Cap & rules" },
+];
+
+// Maps a finding's code to the section it was raised in, mirroring the four
+// comment banners in analyseMatchLogs below. Keyed on the code prefix rather
+// than the templated pair codes (`unclosed_${start}` / `unopened_${end}`) so a
+// new PAIRED_CODES entry doesn't need a matching map entry here.
+const GROUP_BY_CODE_PREFIX = [
+  ["unclosed_", "structural"],
+  ["unopened_", "structural"],
+  ["no_logs", "structural"],
+  ["missing_match_start", "structural"],
+  ["duplicate_match_start", "structural"],
+  ["missing_match_end", "structural"],
+  ["duplicate_match_end", "structural"],
+  ["events_after_match_end", "structural"],
+  ["out_of_order", "timeline"],
+  ["duplicate_timestamps", "timeline"],
+  ["rapid_scores", "timeline"],
+  ["events_before_match_start", "timeline"],
+  ["score_mismatch", "score"],
+  ["orphan_score_team", "score"],
+  ["missing_scorer", "score"],
+  ["self_assist", "score"],
+  ["callahan_with_assist", "score"],
+  ["scorer_off_roster", "score"],
+  ["no_event_rules", "caps"],
+  ["below_point_target", "caps"],
+  ["above_point_target", "caps"],
+  ["tied_final", "caps"],
+  ["halftime_score_mismatch", "caps"],
+  ["timeouts_exceeded", "caps"],
+];
+
+function resolveGroup(code) {
+  const match = GROUP_BY_CODE_PREFIX.find(([prefix]) => code.startsWith(prefix));
+  return match ? match[1] : "structural";
+}
+
 const FINISHED_STATUSES = new Set(["finished", "completed"]);
 
 // `events.rules` has two naming generations in the wild (older events were
@@ -65,6 +114,7 @@ function makeFinding(finding) {
     severity: SEVERITY.WARNING,
     logIds: [],
     ...finding,
+    group: finding.group || resolveGroup(finding.code),
   };
 }
 
@@ -532,4 +582,33 @@ export function summariseFindings(findings) {
     info: list.filter((finding) => finding.severity === SEVERITY.INFO).length,
     total: list.length,
   };
+}
+
+/**
+ * Turn a flat findings array into the full checklist: every group in
+ * CHECK_GROUPS gets one row, "passed" when it raised nothing and "failed" with
+ * its findings nested underneath when it did. Failed groups sort first so a
+ * director sees defects before wading past a page of checkmarks.
+ */
+export function buildChecklist(findings) {
+  const list = Array.isArray(findings) ? findings : [];
+  const byGroup = new Map();
+  list.forEach((finding) => {
+    const key = finding.group || "structural";
+    const bucket = byGroup.get(key) || [];
+    bucket.push(finding);
+    byGroup.set(key, bucket);
+  });
+
+  return CHECK_GROUPS.map((group) => {
+    const groupFindings = (byGroup.get(group.key) || [])
+      .slice()
+      .sort((a, b) => (SEVERITY_RANK[a.severity] ?? 3) - (SEVERITY_RANK[b.severity] ?? 3));
+    return {
+      key: group.key,
+      label: group.label,
+      passed: groupFindings.length === 0,
+      findings: groupFindings,
+    };
+  }).sort((a, b) => Number(a.passed) - Number(b.passed));
 }

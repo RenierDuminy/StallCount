@@ -7,6 +7,8 @@ import {
   SectionShell,
   Chip,
 } from "../components/ui/primitives";
+import { useAuth } from "../context/AuthContext";
+import { roleAssignmentsIncludeAdmin } from "../utils/accessControl";
 import { createTeam, getAllTeams } from "../services/teamService";
 import { ALL_STATUS_CODES } from "../constants/statusCodes";
 import {
@@ -673,6 +675,11 @@ const EyeOffIcon = () => (
 );
 
 export default function EventSetupWizardPage() {
+  const { roles } = useAuth();
+  // Creating a brand-new event is admin-only; tournament directors (who can
+  // reach this page at all) may still edit or duplicate existing events.
+  const isAdmin = roleAssignmentsIncludeAdmin(roles);
+
   const persistedDraftRef = useRef(null);
   if (persistedDraftRef.current === null) {
     persistedDraftRef.current = readPersistedWizardDraft() || {};
@@ -833,9 +840,12 @@ export default function EventSetupWizardPage() {
     eventId: null,
     summary: null,
   });
-  const [eventMode, setEventMode] = useState(() =>
-    persistedDraft.eventMode === "edit" ? "edit" : "create",
-  );
+  const [eventMode, setEventMode] = useState(() => {
+    if (persistedDraft.eventMode === "edit" || persistedDraft.eventMode === "duplicate") {
+      return persistedDraft.eventMode;
+    }
+    return "create";
+  });
   const [existingEvents, setExistingEvents] = useState([]);
   const [existingEventsLoading, setExistingEventsLoading] = useState(false);
   const [existingEventsError, setExistingEventsError] = useState(null);
@@ -959,6 +969,15 @@ export default function EventSetupWizardPage() {
       setExistingEventsLoading(false);
     }
   }, []);
+
+  // Creating a brand-new event is admin-only. If a non-admin lands here in
+  // "create" mode (default state, or a stale persisted draft from before they
+  // lost admin), bump them to "edit" instead of leaving a disabled flow active.
+  useEffect(() => {
+    if (!isAdmin && eventMode === "create") {
+      setEventMode("edit");
+    }
+  }, [isAdmin, eventMode]);
 
   useEffect(() => {
     if (
@@ -1218,6 +1237,11 @@ export default function EventSetupWizardPage() {
       if (nextMode === eventMode) {
         return;
       }
+      if (nextMode === "create" && !isAdmin) {
+        // Creating a brand-new event is admin-only; the option is disabled in
+        // the UI, but guard the handler too in case it's ever reached another way.
+        return;
+      }
       setEventMode(nextMode);
       setSelectedEventId("");
       setPrefillState({ status: "idle", error: null });
@@ -1230,7 +1254,7 @@ export default function EventSetupWizardPage() {
         loadExistingEvents();
       }
     },
-    [eventMode, existingEvents.length, existingEventsLoading, loadExistingEvents, resetWizardState],
+    [eventMode, existingEvents.length, existingEventsLoading, isAdmin, loadExistingEvents, resetWizardState],
   );
 
   const handleExistingEventSelection = useCallback(
@@ -2389,13 +2413,20 @@ export default function EventSetupWizardPage() {
             },
           ].map((option) => {
             const isSelected = eventMode === option.key;
+            const isRestricted = option.key === "create" && !isAdmin;
             return (
               <label
                 key={option.key}
                 className={mergeClassNames(
                   "wizard-option",
                   isSelected && "is-selected",
+                  isRestricted && "is-disabled",
                 )}
+                title={
+                  isRestricted
+                    ? "Only admins can create new events."
+                    : undefined
+                }
               >
                 <div className="wizard-flex wizard-items-center wizard-gap-sm">
                   <input
@@ -2403,10 +2434,16 @@ export default function EventSetupWizardPage() {
                     name="event-mode"
                     value={option.key}
                     checked={isSelected}
+                    disabled={isRestricted}
                     onChange={() => handleModeChange(option.key)}
                   />
                   <div>
-                    <p className="wizard-text-strong">{option.title}</p>
+                    <p className="wizard-flex wizard-items-center wizard-gap-sm wizard-text-strong">
+                      {option.title}
+                      {isRestricted && (
+                        <Chip variant="admin">Restricted to Admins</Chip>
+                      )}
+                    </p>
                     <p className="wizard-text-muted-xs">
                       {option.description}
                     </p>

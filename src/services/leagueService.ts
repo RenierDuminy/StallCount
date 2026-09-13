@@ -169,10 +169,9 @@ export async function getRecentEvents(limit = 4): Promise<EventRow[]> {
 }
 
 export async function getEventsList(limit = 12, options: GetEventsListOptions = {}): Promise<EventRow[]> {
-  // NOTE: `events.Status` is case-sensitive in Postgres and `Initialized` is
-  // stored capitalised (see constants/statusCodes.js) — status codes are
+  // NOTE: `events.Status` is case-sensitive in Postgres — status codes are
   // passed through verbatim here, not lowercased. Callers must pass the
-  // constants rather than retyping literals.
+  // constants (see constants/statusCodes.js) rather than retyping literals.
   const normalizedStatus = Array.isArray(options.status)
     ? options.status.filter((code): code is string => typeof code === "string" && code.trim().length > 0).map((code) => code.trim())
     : typeof options.status === "string" && options.status.trim().length > 0

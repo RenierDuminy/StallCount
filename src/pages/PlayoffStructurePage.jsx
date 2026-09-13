@@ -42,14 +42,20 @@ import {
 
 const PLAYOFF_STRUCTURE_EVENT_KEY = "stallcount.playoffStructure.eventId";
 const MATCH_LIMIT = 400;
-// Canceled matches keep the score line recorded against them (e.g. a forfeit),
-// so they count as a decided result for standings and seeding.
+// Canceled matches keep the score line recorded against them (e.g. a forfeit
+// recorded under the old convention), so they count as a decided result for
+// standings and seeding. The explicit forfeit codes (forfeit / forfeit_teamA
+// / forfeit_teamB) count the same way — any form of forfeit is a decided
+// result here, same as a canceled match card elsewhere.
 const FINISHED_MATCH_STATUSES = new Set([
   "finished",
   "completed",
   "final",
   "canceled",
   "cancelled",
+  "forfeit",
+  "forfeit_teama",
+  "forfeit_teamb",
 ]);
 const BRACKET_TYPES = [
   { value: "placement", label: "Placement" },

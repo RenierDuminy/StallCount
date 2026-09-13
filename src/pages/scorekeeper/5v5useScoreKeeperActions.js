@@ -3,6 +3,7 @@ import { initialiseMatch, updateMatchStatus } from "../../services/matchService"
 import { removeOfflineQueueItem } from "../../services/offlineQueue";
 import { updateScore } from "../../services/realtimeService";
 import { describeError } from "../../utils/errorMessages";
+import { MATCH_STATUS } from "../../constants/statusCodes";
 import {
   MATCH_LOG_EVENT_CODES,
   createMatchLogOptimisticId,
@@ -83,8 +84,8 @@ export function useScoreKeeperActions(controller) {
     try {
       const nextStatus =
         normalizedStatus === "scheduled"
-          ? "Initialized"
-          : controller.selectedMatch.status || "Initialized";
+          ? MATCH_STATUS.INITIALIZED
+          : controller.selectedMatch.status || MATCH_STATUS.INITIALIZED;
       const payload = {
         start_time: controller.setupForm.startTime
           ? new Date(controller.setupForm.startTime).toISOString()

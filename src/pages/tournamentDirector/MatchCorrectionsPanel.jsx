@@ -16,7 +16,12 @@ import {
   buildEventCodeMap,
   buildPointLogRows,
 } from "../../services/matchLogDerivation";
-import { analyseMatchLogs, summariseFindings, SEVERITY } from "../../services/matchCorrectionChecks";
+import {
+  analyseMatchLogs,
+  summariseFindings,
+  buildChecklist,
+  SEVERITY,
+} from "../../services/matchCorrectionChecks";
 import {
   applyLogInsert,
   applyLogUpdate,
@@ -56,10 +61,10 @@ function formatClock(timestamp) {
 }
 
 function describeMatch(match) {
-  const teamA = match.team_a?.name || "TBC";
-  const teamB = match.team_b?.name || "TBC";
+  const teamA = match.team_a?.short_name || match.team_a?.name || "TBC";
+  const teamB = match.team_b?.short_name || match.team_b?.name || "TBC";
   const status = match.status || "unknown";
-  return `${teamA} v ${teamB} — ${status} — ${match.score_a ?? 0}-${match.score_b ?? 0}`;
+  return `${status} · ${teamA} ${match.score_a ?? 0} – ${match.score_b ?? 0} ${teamB}`;
 }
 
 // Row tints copied from PointLogTable in MatchesPage. `turnoverA`/`turnoverB`
@@ -111,6 +116,71 @@ function rendersAsLabel(row) {
     !row.isScore
   );
 }
+
+// Icon buttons, matching the pencil/trash glyphs used for match edit/delete in
+// TournamentOverviewPanel — corrections gets a plus for "insert after" to match.
+function EditIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4" fill="none">
+      <path
+        d="M4 14.5V16h1.5l8.85-8.85-1.5-1.5L4 14.5Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m12.4 4.6 1-1a1.4 1.4 0 0 1 2 2l-1 1"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function InsertIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+    >
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function DeleteIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  );
+}
+
+const ICON_BUTTON_CLASS =
+  "inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] shadow-sm transition hover:bg-[#edf7f0] focus:outline-none focus:ring-2 focus:ring-[#0a3d29]/40 disabled:cursor-not-allowed disabled:opacity-40";
+const DELETE_ICON_BUTTON_CLASS =
+  "inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-700 bg-red-600 text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-40";
 
 export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = true }) {
   // Match-write permissions, not the broad TD bundle: this panel is reachable by
@@ -329,6 +399,7 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
   }, [selectedMatch, logRows, derived, selectedEvent, rosters, eventCodeById]);
 
   const summary = useMemo(() => summariseFindings(findings), [findings]);
+  const checklist = useMemo(() => buildChecklist(findings), [findings]);
 
   // Render-ready rows replicating the matches page log (possession-aware turnover
   // attribution, labels, meta lines). Each row keeps its log id so it stays editable.
@@ -441,9 +512,29 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
     setEditorState({
       mode: "insert",
       createdAt,
+      // The time input must not let the operator drag the new entry past its
+      // neighbours — that would silently reorder the log it is meant to slot into.
+      minTime: anchorLog?.timestamp ?? null,
+      maxTime: next?.timestamp ?? null,
       anchorLabel: anchorLog
         ? `after ${anchorLog.eventDescription} at ${formatClock(anchorLog.timestamp)}`
         : "at the start of the match",
+    });
+  };
+
+  const openEditEditor = (log) => {
+    const ordered = derived.logs;
+    const index = ordered.findIndex((entry) => entry.id === log.id);
+    const previous = index > 0 ? ordered[index - 1] : null;
+    const next = index >= 0 ? ordered[index + 1] : null;
+    setEditorState({
+      mode: "edit",
+      log,
+      createdAt: log.timestamp,
+      // Bounded by this entry's own neighbours so an edit can't jump it out of
+      // its slot in the timeline — the log's order has no other record of it.
+      minTime: previous?.timestamp ?? null,
+      maxTime: next?.timestamp ?? null,
     });
   };
 
@@ -587,52 +678,85 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
             ) : null}
           </Card>
 
-          {/* Desktop puts the findings beside the log so a director can read an
+          {/* Desktop puts the checklist beside the log so a director can read an
               issue and act on the offending row without scrolling between them.
-              Below xl they stack, findings first. */}
+              Below xl they stack, checklist first. */}
           <div className="grid gap-4 xl:grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)] xl:items-start">
-            {findings.length ? (
-              <Card
-                variant="light"
-                className="space-y-2 p-4 shadow-md shadow-[rgba(8,25,21,0.06)] xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto"
-              >
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">
-                  Detected issues
-                </p>
-                {findings.map((finding) => (
-                  <Panel
-                    key={finding.id}
-                    variant="light"
-                    className={`border p-3 text-sm ${SEVERITY_STYLES[finding.severity] || SEVERITY_STYLES[SEVERITY.INFO]}`}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-semibold">{finding.title}</p>
-                        <p className="mt-1 text-xs opacity-90">{finding.detail}</p>
-                      </div>
-                      {finding.logIds?.length ? (
-                        <button
-                          type="button"
-                          className="sc-button shrink-0 text-xs"
-                          onClick={() => setHighlightedLogId(finding.logIds[0])}
+            <Card
+              variant="light"
+              className="space-y-2 p-4 shadow-md shadow-[rgba(8,25,21,0.06)] xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto"
+            >
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">
+                Detected issues
+              </p>
+              {loading ? (
+                <p className="text-sm text-[var(--sc-surface-light-ink)]/80">Checking match log...</p>
+              ) : (
+                // Every check runs and gets a row, checked off when it raised nothing
+                // — buildChecklist has already sorted failed checks to the top so a
+                // director sees defects before wading past a page of checkmarks.
+                <ul className="space-y-1.5">
+                  {checklist.map((check) => (
+                    <li key={check.key}>
+                      <div className="flex items-center gap-2 text-sm font-semibold">
+                        <span
+                          aria-hidden="true"
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${
+                            check.passed
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-rose-100 text-rose-700"
+                          }`}
                         >
-                          Show {finding.logIds.length} entr{finding.logIds.length === 1 ? "y" : "ies"}
-                        </button>
+                          {check.passed ? "✓" : "✗"}
+                        </span>
+                        <span className={check.passed ? "text-[var(--sc-surface-light-ink)]" : "text-rose-800"}>
+                          {check.label}
+                        </span>
+                        {!check.passed ? (
+                          <span className="text-xs font-normal text-[var(--sc-surface-light-ink)]/60">
+                            ({check.findings.length})
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {!check.passed ? (
+                        // Indented under the group heading, most severe first
+                        // (buildChecklist already sorted these).
+                        <ul className="ml-7 mt-1 space-y-1.5 border-l border-[var(--sc-surface-light-border)] pl-3">
+                          {check.findings.map((finding) => (
+                            <li key={finding.id}>
+                              <Panel
+                                variant="light"
+                                className={`border p-2.5 text-sm ${
+                                  SEVERITY_STYLES[finding.severity] || SEVERITY_STYLES[SEVERITY.INFO]
+                                }`}
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="font-semibold">{finding.title}</p>
+                                    <p className="mt-1 text-xs opacity-90">{finding.detail}</p>
+                                  </div>
+                                  {finding.logIds?.length ? (
+                                    <button
+                                      type="button"
+                                      className="sc-button shrink-0 text-xs"
+                                      onClick={() => setHighlightedLogId(finding.logIds[0])}
+                                    >
+                                      Show {finding.logIds.length} entr
+                                      {finding.logIds.length === 1 ? "y" : "ies"}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </Panel>
+                            </li>
+                          ))}
+                        </ul>
                       ) : null}
-                    </div>
-                  </Panel>
-                ))}
-              </Card>
-            ) : (
-              <Card
-                variant="light"
-                className="p-4 shadow-md shadow-[rgba(8,25,21,0.06)] xl:sticky xl:top-4"
-              >
-                <p className="text-sm text-[var(--sc-surface-light-ink)]/80">
-                  {loading ? "Checking match log..." : "No discrepancies detected in this match log."}
-                </p>
-              </Card>
-            )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
 
             <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -738,36 +862,36 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                           {row.gap}
                         </td>
                         <td className="px-1 py-0.5 sm:px-2 sm:py-1.5">
-                          <div className="flex justify-end gap-1">
+                          <div className="flex justify-end gap-2">
                             <button
                               type="button"
-                              className="sc-button text-xs"
+                              className={ICON_BUTTON_CLASS}
                               disabled={saving || editingLocked}
-                              onClick={() =>
-                                setEditorState({
-                                  mode: "edit",
-                                  log: row.log,
-                                  createdAt: row.timestamp,
-                                })
-                              }
+                              onClick={() => openEditEditor(row.log)}
+                              aria-label="Edit entry"
+                              title="Edit entry"
                             >
-                              Edit
+                              <EditIcon />
                             </button>
                             <button
                               type="button"
-                              className="sc-button text-xs"
+                              className={ICON_BUTTON_CLASS}
                               disabled={saving || editingLocked}
                               onClick={() => openInsertEditor(row.log)}
+                              aria-label="Insert after"
+                              title="Insert after"
                             >
-                              Insert after
+                              <InsertIcon />
                             </button>
                             <button
                               type="button"
-                              className="sc-button text-xs"
+                              className={DELETE_ICON_BUTTON_CLASS}
                               disabled={saving || editingLocked}
                               onClick={() => handleDelete(row.log)}
+                              aria-label="Delete entry"
+                              title="Delete entry"
                             >
-                              Delete
+                              <DeleteIcon />
                             </button>
                           </div>
                         </td>
@@ -830,32 +954,36 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                       <p className="mt-2 text-[11px] text-black/70">{row.metaDetails}</p>
                     ) : null}
 
-                    <div className="mt-3 flex flex-wrap gap-1">
+                    <div className="mt-3 flex flex-wrap gap-3">
                       <button
                         type="button"
-                        className="sc-button text-xs"
+                        className={ICON_BUTTON_CLASS}
                         disabled={saving || editingLocked}
-                        onClick={() =>
-                          setEditorState({ mode: "edit", log: row.log, createdAt: row.timestamp })
-                        }
+                        onClick={() => openEditEditor(row.log)}
+                        aria-label="Edit entry"
+                        title="Edit entry"
                       >
-                        Edit
+                        <EditIcon />
                       </button>
                       <button
                         type="button"
-                        className="sc-button text-xs"
+                        className={ICON_BUTTON_CLASS}
                         disabled={saving || editingLocked}
                         onClick={() => openInsertEditor(row.log)}
+                        aria-label="Insert after"
+                        title="Insert after"
                       >
-                        Insert after
+                        <InsertIcon />
                       </button>
                       <button
                         type="button"
-                        className="sc-button text-xs"
+                        className={DELETE_ICON_BUTTON_CLASS}
                         disabled={saving || editingLocked}
                         onClick={() => handleDelete(row.log)}
+                        aria-label="Delete entry"
+                        title="Delete entry"
                       >
-                        Delete
+                        <DeleteIcon />
                       </button>
                     </div>
                   </li>

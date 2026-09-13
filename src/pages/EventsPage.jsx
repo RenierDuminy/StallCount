@@ -6,7 +6,7 @@ import { hydrateVenueLookup } from "../services/venueService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
 import { StandardEventMatchCard } from "../components/StandardEventMatchCard";
 import { getEventWorkspacePath } from "./eventWorkspaces";
-import { CLOSED_STATUSES, IN_PROGRESS_STATUSES, PENDING_STATUSES } from "../constants/statusCodes";
+import { CLOSED_STATUSES, IN_PROGRESS_STATUSES, PENDING_STATUSES, isForfeitStatus } from "../constants/statusCodes";
 
 const isMatchLive = (status) => {
   const normalized = (status || "").toString().trim().toLowerCase();
@@ -45,8 +45,8 @@ const DIVISION_LABELS = {
 };
 // Tab KEYS are UI groupings; the VALUES are canonical match_status codes,
 // since events.Status is a FK to that table. Kept exactly-cased (not
-// lowercased) because `Initialized` is stored capitalised and getEventsList
-// filters server-side with an exact match against events.Status.
+// lowercased) because getEventsList filters server-side with an exact match
+// against events.Status — pass the constants through verbatim.
 const EVENT_STATUS_TAB_CODES = {
   current: IN_PROGRESS_STATUSES,
   past: CLOSED_STATUSES,
@@ -294,7 +294,9 @@ export default function EventsPage() {
         buckets.current.push(match);
         return;
       }
-      if (status === "finished" || status === "completed" || status === "canceled") {
+      // Forfeits (forfeit / forfeit_teamA / forfeit_teamB) are treated as
+      // canceled matches for display — see getDisplayStatus.
+      if (status === "finished" || status === "completed" || status === "canceled" || isForfeitStatus(status)) {
         buckets.past.push(match);
         return;
       }
@@ -390,7 +392,11 @@ export default function EventsPage() {
                       <button
                         type="button"
                         onClick={() => handleSelectEvent(event.id)}
-                        className="flex min-h-[88px] flex-1 items-center justify-start bg-transparent px-4 text-left text-inherit transition hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50"
+                        className={`flex min-h-[88px] flex-1 items-center justify-start bg-transparent px-4 text-left text-inherit transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${
+                          isActive
+                            ? "hover:bg-black/[0.06] focus-visible:ring-black/40"
+                            : "hover:bg-white/[0.06] focus-visible:ring-white/50"
+                        }`}
                         aria-pressed={isActive}
                       >
                         <span className="text-base font-semibold leading-tight">{event.name}</span>
@@ -398,14 +404,35 @@ export default function EventsPage() {
                       {eventWorkspacePath ? (
                         <Link
                           to={eventWorkspacePath}
-                          className="flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l border-white/30 bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-inherit transition hover:bg-white/[0.10] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/50"
+                          // A selected card swaps to the light-green button
+                          // background, so the white divider/hover/ring used on
+                          // ghost cards would vanish against it — invert them to
+                          // dark so "Open" stays legible either way.
+                          //
+                          // text-inherit! (not plain text-inherit): theme.css sets
+                          // `a { color: var(--sc-accent-strong) }` unlayered, which
+                          // outranks Tailwind's layered utilities. The !important
+                          // flips that precedence and covers a:hover too; without
+                          // it the link renders bright green and vanishes against
+                          // a selected card.
+                          className={`flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-inherit! transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${
+                            isActive
+                              ? "border-black/25 hover:bg-black/[0.10] focus-visible:ring-black/40"
+                              : "border-white/30 hover:bg-white/[0.10] focus-visible:ring-white/50"
+                          }`}
                           aria-label={`Open ${event.name}`}
                           title={`Open ${event.name}`}
                         >
                           Open
                         </Link>
                       ) : (
-                        <span className="flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l border-white/10 px-3 text-sm font-semibold uppercase tracking-[0.18em] text-ink-muted/40 select-none">
+                        <span
+                          className={`flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l px-3 text-sm font-semibold uppercase tracking-[0.18em] select-none ${
+                            isActive
+                              ? "border-black/15 text-black/30"
+                              : "border-white/10 text-ink-muted/40"
+                          }`}
+                        >
                           Open
                         </span>
                       )}

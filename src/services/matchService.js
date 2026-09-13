@@ -5,6 +5,7 @@ import {
   ALL_STATUS_CODES,
   CLOSED_STATUSES,
   CONCLUDED_STATUSES,
+  MATCH_STATUS,
   OPEN_MATCH_STATUSES,
 } from "../constants/statusCodes";
 
@@ -342,15 +343,16 @@ export async function deleteMatch(matchId) {
   return existing || null;
 }
 
-// Accepts the canonical codes. "initialized" (lowercase) was previously listed
-// alongside "Initialized" and would have been written through verbatim,
-// violating the FK — the DB stores only the capitalised spelling.
+// Accepts the canonical codes. The match_status lookup table's "Initialized"
+// row was renamed to lowercase "initialized" — any write of the old
+// capitalised literal now violates the FK, so always fall back to the
+// MATCH_STATUS constant rather than a hardcoded string.
 const MATCH_STATUS_CODES = new Set(ALL_STATUS_CODES);
 
 export async function initialiseMatch(matchId, payload) {
   const desiredStatus = MATCH_STATUS_CODES.has(payload.status)
     ? payload.status
-    : "Initialized";
+    : MATCH_STATUS.INITIALIZED;
 
   const updatePayload = {
     start_time: payload.start_time,

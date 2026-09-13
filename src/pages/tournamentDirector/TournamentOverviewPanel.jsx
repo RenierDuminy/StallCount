@@ -13,13 +13,14 @@ import {
   TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY,
   getScheduleFiltersStorageKey,
 } from "./persistenceKeys";
-import { ALL_STATUS_CODES } from "../../constants/statusCodes";
+import { ALL_STATUS_CODES, isForfeitStatus } from "../../constants/statusCodes";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
 // Straight from match_status(code). These are written to the database, so they
-// must match exactly — "ready"/"pending" were never valid codes, and
-// "initialized" was the wrong case for the stored "Initialized".
+// must match exactly — "ready"/"pending" were never valid codes. (The
+// "Initialized" row was capitalised in the DB; it has since been renamed to
+// lowercase "initialized" to match every other code.)
 const MATCH_STATUS_OPTIONS = ALL_STATUS_CODES;
 const SPIRIT_CATEGORIES = [
   { key: "rulesKnowledge", label: "Rules knowledge" },
@@ -411,7 +412,7 @@ function getStatusBadgeClass(status) {
   if (normalized === "finished") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
-  if (normalized === "canceled") {
+  if (normalized === "canceled" || isForfeitStatus(normalized)) {
     return "border-rose-200 bg-rose-50 text-rose-700";
   }
   if (normalized === "scheduled") {

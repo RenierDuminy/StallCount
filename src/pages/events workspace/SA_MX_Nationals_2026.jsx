@@ -8,114 +8,27 @@ import {
   SectionShell,
 } from "../../components/ui/primitives";
 import { StandardEventMatchCard } from "../../components/StandardEventMatchCard";
-import { StandardStandingsTable } from "../../components/StandardStandingsTable";
+import {
+  StandardStandingsLegend,
+  StandardStandingsTable,
+} from "../../components/StandardStandingsTable";
 import {
   buildPoolGroupStandings,
   isFinishedMatch,
-  isLiveMatch,
 } from "../../utils/standings";
 import { getMatchesByEvent } from "../../services/matchService";
 import { getEventHierarchy } from "../../services/leagueService";
 
-export const EVENT_ID = "db83a03e-b2bc-455a-a916-abe849fc65ec";
-export const EVENT_SLUG = "cpt-ow-nationals-2026";
-export const EVENT_NAME = "CPT OW Nationals 2026";
+export const EVENT_ID = "6aee69ac-8ae4-4cc4-9cf7-e22d98705d63";
+export const EVENT_SLUG = "sa-mx-nationals-2026";
+export const EVENT_NAME = "SA MX Nationals 2026";
+export const EVENT_WORKSPACE_PRIORITY = 10;
 const MATCH_LIMIT = 200;
 const TEAM_STANDINGS_GRID_STYLE = {
   gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
 };
-const FINAL_STANDINGS_GRID_STYLE = {
-  gridTemplateColumns: "repeat(auto-fit, minmax(18rem, 1fr))",
-};
-const FINAL_STANDINGS = [
-  {
-    division: "Open",
-    teams: [
-      "Mutiny",
-      "Kaalvoet",
-      "Rex",
-      "Bunnies",
-      "Gradient",
-      "Maties Ma'Gents",
-      "Wits Phoenix Rising",
-      "Zephyr",
-      "UCT Man Cubs",
-      "Inyhwagi (SA U20)",
-      "UFH Simbas",
-    ],
-  },
-  {
-    division: "Women",
-    teams: [
-      "Hot Sauce",
-      "UCT Bengals",
-      "Fierce",
-      "Maties Ma'Ladies",
-      "Craft",
-      "Wicked",
-      "UFH Nalas",
-    ],
-  },
-];
 const VENUE_GRID_CLASS =
   "flex flex-wrap gap-2";
-const MATCH_GRID_CLASS =
-  "grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(14rem,1fr))]";
-const FRIDAY_MATCH_GRID_CLASS =
-  "grid justify-start gap-2 [grid-template-columns:repeat(auto-fit,minmax(18rem,18rem))]";
-const SCHEDULE_TIMEZONE = "Africa/Johannesburg";
-const SCHEDULE_DAY_KEYS = {
-  day0: "2026-04-24",
-  day1: "2026-04-25",
-  day2: "2026-04-26",
-  day3: "2026-04-27",
-};
-const SCHEDULE_DAYS = [
-  {
-    key: SCHEDULE_DAY_KEYS.day0,
-    title: "Friday 24 Apr",
-    mode: "ordered",
-  },
-  {
-    key: SCHEDULE_DAY_KEYS.day1,
-    title: "Saturday 25 Apr",
-    mode: "pools",
-  },
-  {
-    key: SCHEDULE_DAY_KEYS.day2,
-    title: "Sunday 26 Apr",
-    mode: "pools-with-semis",
-  },
-  {
-    key: SCHEDULE_DAY_KEYS.day3,
-    title: "Monday 27 Apr",
-    mode: "divisions",
-  },
-];
-
-const getMatchGridClass = (dayKey) =>
-  dayKey === SCHEDULE_DAY_KEYS.day0 ? FRIDAY_MATCH_GRID_CLASS : MATCH_GRID_CLASS;
-
-const formatMatchup = (match) => {
-  const teamA = match.team_a?.name || "Team A";
-  const teamB = match.team_b?.name || "Team B";
-  return `${teamA} vs ${teamB}`;
-};
-
-const formatScoreLine = (match) => {
-  const scoreA =
-    typeof match.score_a === "number" ? match.score_a.toString() : "-";
-  const scoreB =
-    typeof match.score_b === "number" ? match.score_b.toString() : "-";
-  return `${scoreA} - ${scoreB}`;
-};
-
-const formatMatchStatus = (status) => {
-  if (!status) return "Scheduled";
-  const normalized = status.toString().trim().toLowerCase();
-  if (!normalized) return "Scheduled";
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-};
 
 const normalizeSortText = (value) =>
   (typeof value === "string" ? value.trim().toLowerCase() : "");
@@ -149,201 +62,118 @@ const copyToClipboard = async (text, onSuccess, onError) => {
 };
 
 const formatMatchTime = (value) => {
-  if (!value) {
-    return "Start time pending";
-  }
+  if (!value) return "--";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Start time pending";
-  }
+  if (Number.isNaN(date.getTime())) return "--";
   return date.toLocaleString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatScheduleDayLabel = (value) => {
+  if (!value) return "Date TBC";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date TBC";
+  return date.toLocaleDateString([], {
+    weekday: "long",
     month: "short",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: SCHEDULE_TIMEZONE,
   });
 };
 
-const formatDateKey = (value) => {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat("sv-SE", {
-    timeZone: SCHEDULE_TIMEZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+const formatMatchup = (match) => {
+  const teamA = match?.team_a?.name || "Team A";
+  const teamB = match?.team_b?.name || "Team B";
+  return `${teamA} vs ${teamB}`;
 };
 
-const getScheduleMinutes = (value) => {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-
-  const parts = new Intl.DateTimeFormat("en-ZA", {
-    timeZone: SCHEDULE_TIMEZONE,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(date);
-  const hour = Number(parts.find((part) => part.type === "hour")?.value);
-  const minute = Number(parts.find((part) => part.type === "minute")?.value);
-
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
-  return hour * 60 + minute;
+const formatScoreLine = (match) => {
+  const scoreA =
+    typeof match?.score_a === "number" ? match.score_a.toString() : "-";
+  const scoreB =
+    typeof match?.score_b === "number" ? match.score_b.toString() : "-";
+  return `${scoreA} - ${scoreB}`;
 };
 
-const sortByStartTimeAsc = (a, b) => {
-  const left = a.start_time ? new Date(a.start_time).getTime() : Infinity;
-  const right = b.start_time ? new Date(b.start_time).getTime() : Infinity;
-  return left - right;
+const formatMatchStatus = (status, fallback = "Scheduled") => {
+  const normalized = (status || "").toString().trim().toLowerCase();
+  if (!normalized) return fallback;
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
-const buildPoolLookup = (divisions = []) => {
-  const lookup = new Map();
-  (divisions || []).forEach((division, divisionIndex) => {
-    (division?.pools || []).forEach((pool, poolIndex) => {
-      lookup.set(pool.id, {
-        id: pool.id,
-        name: pool.name || "Pool",
-        order: divisionIndex * 100 + poolIndex,
-      });
-    });
-  });
-  return lookup;
+// Desktop: size the match-card grid to how many matches that day has so the
+// cards expand to fill the row instead of leaving a fixed 3-column gap.
+const getScheduleGridClass = (matchCount) => {
+  if (matchCount <= 1) return "grid gap-2";
+  if (matchCount === 2) return "grid gap-2 md:grid-cols-2";
+  return "grid gap-2 md:grid-cols-2 2xl:grid-cols-3";
 };
 
-const buildDivisionLookup = (divisions = []) => {
-  const lookup = new Map();
-  (divisions || []).forEach((division, divisionIndex) => {
-    if (!division?.id) return;
-    lookup.set(division.id, {
-      id: division.id,
-      name: division.name || "Division",
-      order: divisionIndex,
-    });
-  });
-  return lookup;
-};
-
-const normalizeScheduleText = (value) =>
-  (typeof value === "string" ? value.trim().toLowerCase() : "");
-
-const matchIncludesSemiFinalLabel = (match, poolLookup) => {
-  const poolName = normalizeScheduleText(poolLookup.get(match?.pool_id)?.name);
-  const teamAName = normalizeScheduleText(match?.team_a?.name);
-  const teamBName = normalizeScheduleText(match?.team_b?.name);
-  const venueName = normalizeScheduleText(match?.venue?.name);
-  const searchable = [poolName, teamAName, teamBName, venueName].join(" ");
-  return /(?:\bsf\s*\d*\b|\bsemi[-\s]?finals?\b|\bsemifinals?\b)/.test(searchable);
-};
-
-const isDayTwoSemiFinal = (match, poolLookup) => {
-  if (formatDateKey(match?.start_time) !== SCHEDULE_DAY_KEYS.day2) {
-    return false;
-  }
-  if (matchIncludesSemiFinalLabel(match, poolLookup)) {
-    return true;
-  }
-
-  const startMinutes = getScheduleMinutes(match?.start_time);
-  if (startMinutes === null || startMinutes < 18 * 60) {
-    return false;
-  }
-
-  return true;
-};
-
-const buildPoolGroups = (matchesForDay = [], poolLookup) => {
-  const groups = new Map();
-
-  matchesForDay.forEach((match) => {
-    const pool = poolLookup.get(match?.pool_id);
-    const groupKey = pool?.id || "unassigned";
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, {
-        key: groupKey,
-        title: pool?.name || "Unassigned matches",
-        order: pool?.order ?? Number.MAX_SAFE_INTEGER,
-        matches: [],
-      });
+const buildScheduleDays = (matches = []) => {
+  const buckets = new Map();
+  matches.forEach((match) => {
+    const startTime = match?.start_time || null;
+    const dayKey = startTime
+      ? new Date(startTime).toISOString().slice(0, 10)
+      : "tbc";
+    if (!buckets.has(dayKey)) {
+      buckets.set(dayKey, { key: dayKey, startTime, matches: [] });
     }
-    groups.get(groupKey).matches.push(match);
+    buckets.get(dayKey).matches.push(match);
   });
 
-  return Array.from(groups.values())
-    .map((group) => ({
-      ...group,
-      matches: [...group.matches].sort(sortByStartTimeAsc),
-    }))
-    .sort((left, right) => {
-      if (left.order !== right.order) return left.order - right.order;
-      return left.title.localeCompare(right.title);
+  const days = Array.from(buckets.values());
+  days.forEach((day) => {
+    day.matches.sort((a, b) => {
+      const aTime = a?.start_time ? new Date(a.start_time).getTime() : Infinity;
+      const bTime = b?.start_time ? new Date(b.start_time).getTime() : Infinity;
+      if (aTime !== bTime) return aTime - bTime;
+      return formatMatchup(a).localeCompare(formatMatchup(b));
     });
+  });
+  days.sort((a, b) => {
+    const aTime = a.startTime ? new Date(a.startTime).getTime() : Infinity;
+    const bTime = b.startTime ? new Date(b.startTime).getTime() : Infinity;
+    return aTime - bTime;
+  });
+  return days;
 };
 
-const buildDivisionGroups = (matchesForDay = [], divisionLookup) => {
-  const groups = new Map();
-
-  matchesForDay.forEach((match) => {
-    const division = divisionLookup.get(match?.division_id);
-    const groupKey = division?.id || "unassigned";
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, {
-        key: groupKey,
-        title: division?.name || "Unassigned matches",
-        order: division?.order ?? Number.MAX_SAFE_INTEGER,
-        matches: [],
-      });
+// Split the schedule by division (top level), then by day within each division.
+// `divisionNames` maps a division_id to its display name (from the hierarchy).
+const buildScheduleDivisions = (matches = [], divisionNames = new Map()) => {
+  const buckets = new Map();
+  matches.forEach((match) => {
+    const divisionId = match?.division_id || "unassigned";
+    if (!buckets.has(divisionId)) {
+      buckets.set(divisionId, { id: divisionId, matches: [] });
     }
-    groups.get(groupKey).matches.push(match);
+    buckets.get(divisionId).matches.push(match);
   });
 
-  return Array.from(groups.values())
-    .map((group) => ({
-      ...group,
-      matches: [...group.matches].sort(sortByStartTimeAsc),
-    }))
-    .sort((left, right) => {
-      if (left.order !== right.order) return left.order - right.order;
-      return left.title.localeCompare(right.title);
-    });
+  const divisions = Array.from(buckets.values()).map((bucket) => ({
+    id: bucket.id,
+    name:
+      bucket.id === "unassigned"
+        ? "Unassigned"
+        : divisionNames.get(bucket.id) || "Division",
+    days: buildScheduleDays(bucket.matches),
+  }));
+
+  divisions.sort((a, b) => {
+    if (a.id === "unassigned") return 1;
+    if (b.id === "unassigned") return -1;
+    return a.name.localeCompare(b.name);
+  });
+  return divisions;
 };
-
-const buildDailySchedule = (matches = [], poolLookup, divisionLookup) =>
-  SCHEDULE_DAYS.map((day) => {
-    const dayMatches = (matches || [])
-      .filter((match) => formatDateKey(match?.start_time) === day.key)
-      .sort(sortByStartTimeAsc);
-    const semifinalMatches =
-      day.key === SCHEDULE_DAY_KEYS.day2
-        ? dayMatches.filter((match) => isDayTwoSemiFinal(match, poolLookup))
-        : [];
-    const poolMatches =
-      day.key === SCHEDULE_DAY_KEYS.day2
-        ? dayMatches.filter((match) => !isDayTwoSemiFinal(match, poolLookup))
-        : dayMatches;
-
-    return {
-      ...day,
-      matches: dayMatches,
-      poolGroups:
-        day.mode === "ordered"
-          ? []
-          : day.mode === "divisions"
-            ? buildDivisionGroups(poolMatches, divisionLookup)
-            : buildPoolGroups(poolMatches, poolLookup),
-      semifinalMatches,
-    };
-  });
 
 const buildPoolStandings = (pool, matches) =>
-  // Plain pool table: no league points and no form guide; WFDF ranking.
+  // Plain pool table: no league points, so WFDF ranking leads on games won.
   buildPoolGroupStandings([pool], matches);
 
-export default function CptOwNationals2026WorkspacePage() {
+export default function SaMxNationals2026WorkspacePage() {
   const [matches, setMatches] = useState([]);
   const [eventData, setEventData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -417,6 +247,13 @@ export default function CptOwNationals2026WorkspacePage() {
     );
   }, [eventData, matches]);
 
+  const scheduleDivisions = useMemo(() => {
+    const divisionNames = new Map(
+      (eventData?.divisions || []).map((division) => [division.id, division.name]),
+    );
+    return buildScheduleDivisions(matches, divisionNames);
+  }, [matches, eventData]);
+
   const sortedVenues = useMemo(
     () => sortVenuesByCityLocationName(eventData?.venues || []),
     [eventData?.venues],
@@ -455,35 +292,6 @@ export default function CptOwNationals2026WorkspacePage() {
   }, [sortedVenues]);
 
   const eventTitle = eventData?.name || EVENT_NAME;
-  const poolLookup = useMemo(
-    () => buildPoolLookup(eventData?.divisions || []),
-    [eventData?.divisions],
-  );
-  const divisionLookup = useMemo(
-    () => buildDivisionLookup(eventData?.divisions || []),
-    [eventData?.divisions],
-  );
-  const dailySchedule = useMemo(
-    () => buildDailySchedule(matches, poolLookup, divisionLookup),
-    [matches, poolLookup, divisionLookup],
-  );
-
-  const renderMatchCard = (match, options = {}) => {
-    const liveOrFinal =
-      isLiveMatch(match.status) || isFinishedMatch(match.status);
-    return (
-      <StandardEventMatchCard
-        key={match.id}
-        match={match}
-        title={options.title || formatMatchup(match)}
-        meta={formatMatchTime(match.start_time)}
-        score={liveOrFinal ? formatScoreLine(match) : null}
-        status={formatMatchStatus(match.status)}
-        hideEyebrow
-        compact
-      />
-    );
-  };
 
   return (
     <div className="pb-16 text-ink">
@@ -542,30 +350,20 @@ export default function CptOwNationals2026WorkspacePage() {
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
               Final standings
             </p>
-            <div className="grid items-start gap-2" style={FINAL_STANDINGS_GRID_STYLE}>
-              {FINAL_STANDINGS.map((division) => (
-                <Panel key={division.division} variant="muted" className="min-w-0 space-y-2 border border-white/50 p-3">
-                  <p className="text-sm font-semibold uppercase tracking-wide text-ink">
-                    {division.division}
-                  </p>
-                  <ol className="space-y-1 text-sm text-ink">
-                    {division.teams.map((team, index) => (
-                      <li key={team} className="flex min-w-0 gap-2">
-                        <span className="w-5 shrink-0 text-right tabular-nums text-ink-muted">
-                          {index + 1}.
-                        </span>
-                        <span className="min-w-0 break-words">{team}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </Panel>
-              ))}
-            </div>
+            <Panel
+              variant="muted"
+              className="border border-white/50 p-4 text-center text-sm font-semibold uppercase tracking-wide text-ink-muted"
+            >
+              TBC
+            </Panel>
           </div>
           <div className="border-t border-white/30 pt-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Pool standings
-            </p>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                Division standings
+              </p>
+              <StandardStandingsLegend />
+            </div>
           {loading && standingsByPool.length === 0 ? (
             <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
               Loading standings...
@@ -581,7 +379,7 @@ export default function CptOwNationals2026WorkspacePage() {
                   <p className="truncate text-xs font-semibold uppercase tracking-wide text-ink" title={pool.name}>
                     {pool.name}
                   </p>
-                  <StandardStandingsTable rows={pool.rows} showForm={false} />
+                  <StandardStandingsTable rows={pool.rows} />
                 </Panel>
               ))}
             </div>
@@ -705,79 +503,56 @@ export default function CptOwNationals2026WorkspacePage() {
 
         <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
           <SectionHeader
-            title="Daily schedule"
+            title="Matches"
           />
-          <div className="divide-y divide-white/30">
-            {dailySchedule.map((day) => (
-              <div key={day.key} className="min-w-0 space-y-3 py-3 first:pt-0 last:pb-0">
-                <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-lg font-semibold text-ink">{day.title}</p>
-                  </div>
-                  <Chip>{day.matches.length} matches</Chip>
+          {scheduleDivisions.length ? (
+            <div className="space-y-6">
+              {scheduleDivisions.map((division) => (
+                <div key={division.id} className="min-w-0 space-y-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-ink">
+                    {division.name}
+                  </h3>
+                  {division.days.map((day) => (
+                    <div key={day.key} className="min-w-0 space-y-2">
+                      <h4 className="text-sm font-semibold text-ink-muted">
+                        {formatScheduleDayLabel(day.startTime)}
+                      </h4>
+                      <div className={getScheduleGridClass(day.matches.length)}>
+                        {day.matches.map((match) => {
+                          const showScore = isFinishedMatch(match.status);
+                          return (
+                            <StandardEventMatchCard
+                              key={match.id}
+                              match={match}
+                              eyebrow={
+                                match.start_time
+                                  ? formatMatchTime(match.start_time)
+                                  : "Time TBC"
+                              }
+                              hideEyebrow={false}
+                              title={formatMatchup(match)}
+                              score={showScore ? formatScoreLine(match) : null}
+                              status={formatMatchStatus(
+                                match.status,
+                                showScore ? "Final" : "Scheduled",
+                              )}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                {loading && day.matches.length === 0 ? (
-                  <p className="rounded border border-border bg-surface/70 p-2 text-center text-sm text-ink-muted">
-                    Loading matches...
-                  </p>
-                ) : day.matches.length === 0 ? (
-                  <p className="rounded border border-border bg-surface/70 p-2 text-center text-sm text-ink-muted">
-                    No matches scheduled for this day.
-                  </p>
-                ) : day.mode === "ordered" ? (
-                  <div className={getMatchGridClass(day.key)}>
-                    {day.matches.map((match) =>
-                      renderMatchCard(match),
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {day.poolGroups.map((poolGroup) => (
-                      <div
-                        key={`${day.key}-${poolGroup.key}`}
-                        className="min-w-0 space-y-2 border-t border-white/20 pt-2 first:border-t-0 first:pt-0"
-                      >
-                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold uppercase tracking-wide text-ink">
-                              {poolGroup.title}
-                            </p>
-                          </div>
-                          <Chip>{poolGroup.matches.length} matches</Chip>
-                        </div>
-                        <div className={getMatchGridClass(day.key)}>
-                          {poolGroup.matches.map((match) =>
-                            renderMatchCard(match),
-                          )}
-                        </div>
-                      </div>
-                    ))}
-
-                    {day.semifinalMatches.length > 0 ? (
-                      <div className="min-w-0 space-y-2 border-t border-white/25 pt-3">
-                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold uppercase tracking-wide text-ink">
-                              Semi-finals
-                            </p>
-                          </div>
-                          <Chip>{day.semifinalMatches.length} matches</Chip>
-                        </div>
-                        <div className={getMatchGridClass(day.key)}>
-                          {day.semifinalMatches.map((match, index) => {
-                            const semiLabel = `SF${index + 1}`;
-                            return renderMatchCard(match, {
-                              title: `${semiLabel}: ${formatMatchup(match)}`,
-                            });
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <Panel
+              variant="muted"
+              className="border border-white/50 p-4 text-center text-sm font-semibold uppercase tracking-wide text-ink-muted"
+            >
+              TBC
+            </Panel>
+          )}
         </Card>
       </SectionShell>
     </div>

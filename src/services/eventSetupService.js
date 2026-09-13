@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import { ALL_STATUS_CODES } from "../constants/statusCodes";
+import { ALL_STATUS_CODES, MATCH_STATUS } from "../constants/statusCodes";
 import {
   getBracketsByEvent,
   createBracket,
@@ -57,8 +57,21 @@ const toNullableNumber = (value) => {
 const EVENT_TYPES = new Set(["league", "tournament", "season"]);
 // Validation gate for writes, so it must mirror match_status(code) exactly.
 // Previously accepted "ready"/"pending" (not valid codes — the insert would
-// fail the FK) and rejected "Initialized"/"postponed"/"forfeit", which are.
-const MATCH_STATUS_CODES = new Set(ALL_STATUS_CODES);
+// fail the FK) and rejected "postponed"/"forfeit", which are.
+//
+// normalizeMatchStatus lowercases its input before checking this set, so the
+// set itself must be lowercased too — `forfeit_teamA`/`forfeit_teamB` are
+// stored with a capital A/B, so building this straight from ALL_STATUS_CODES
+// would silently reject a caller passing the correct DB casing (lowercased to
+// "forfeit_teama", which never matches) and fall back to "scheduled". Same
+// trap that "Initialized" used to spring before that row was lowercased.
+//
+// Maps lowercased -> canonical casing so normalizeMatchStatus can validate
+// case-insensitively while still writing back the exact stored spelling
+// (e.g. "forfeit_teamA", not "forfeit_teama" — the latter fails the FK).
+const MATCH_STATUS_CODE_BY_LOWERCASE = new Map(
+  ALL_STATUS_CODES.map((code) => [code.toLowerCase(), code]),
+);
 
 const normalizeEventType = (value) => {
   const normalized = normalizeText(value).toLowerCase();
@@ -70,10 +83,8 @@ const normalizeEventType = (value) => {
 
 const normalizeMatchStatus = (value) => {
   const normalized = normalizeText(value).toLowerCase();
-  if (MATCH_STATUS_CODES.has(normalized)) {
-    return normalized;
-  }
-  return "scheduled";
+  const canonical = MATCH_STATUS_CODE_BY_LOWERCASE.get(normalized);
+  return canonical ?? "scheduled";
 };
 
 const UUID_REGEX =
@@ -804,6 +815,9 @@ export async function createEventHierarchy(payload) {
     end_date: normalizeDate(event?.end_date),
     location: normalizeText(event?.location) || null,
     rules: parsedRules,
+    // New events always start life as "scheduled" — the column is `Status`
+    // (capitalised) in the DB, an FK to match_status(code) shared with matches.
+    Status: MATCH_STATUS.SCHEDULED,
   };
 
   const { data: eventRow, error: eventError } = await supabase

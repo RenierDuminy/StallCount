@@ -14,16 +14,23 @@ import { getMatchesByEvent } from "../../services/matchService";
 import { getBracketsByEvent } from "../../services/playoffStructureService";
 import BracketStructureView from "../playoff/BracketStructureView";
 import { executeCustomScript } from "../../services/customScriptService";
-import {
-  getStbRl26RosterSyncStatus,
-  invokeStbRl26RosterSync,
-} from "../../services/stbRl26RosterSyncService";
+import { invokeStbRl26RosterSync } from "../../services/stbRl26RosterSyncService";
 import {
   userHasAnyRole,
   SYS_ADMIN_ACCESS_ROLES,
   TOURNAMENT_DIRECTOR_ACCESS_ROLES,
 } from "../../utils/accessControl";
-import { isClosedStatus } from "../../constants/statusCodes";
+import {
+  StandardStandingsLegend,
+  StandardStandingsTable,
+} from "../../components/StandardStandingsTable";
+import {
+  LEAGUE_POINTS_SCORING,
+  buildPoolGroupStandings,
+  getEventPools,
+  isFinishedMatch,
+  isLiveMatch,
+} from "../../utils/standings";
 
 export const EVENT_ID = "e6a34716-f9d6-4d70-bc1a-b610a04e3eaf";
 export const EVENT_SLUG = "stellenbosch-rl-2026";
@@ -32,26 +39,20 @@ const MATCH_LIMIT = 200;
 const SAST_TIMEZONE = "Africa/Johannesburg";
 const SAST_UTC_OFFSET_HOURS = 2;
 const AUTO_ROSTER_SYNC_HOUR_SAST = 17;
-const AUTO_ROSTER_SYNC_INTERVAL_MS = 30 * 1000;
 const ROSTER_SCRIPT_SLUG = "STB_RL_26_update_rosters";
-const LIVE_STATUSES = new Set(["live", "halftime"]);
-const FINISHED_STATUSES = new Set(["finished", "completed"]);
-const CANCELED_STATUSES = new Set(["canceled", "cancelled"]);
-const STANDINGS_WIN_POINTS = 3;
-const STANDINGS_LOSS_POINTS = 1;
-const STANDINGS_CLOSE_LOSS_POINTS = 2;
-const STANDINGS_CLOSE_LOSS_MAX_MARGIN = 4;
-// Forfeit: recorded as a canceled match with a 5-0 line. The innocent (winning)
-// team is awarded 1 standings point, the guilty (forfeiting) team 0.
-const STANDINGS_FORFEIT_SCORE = 5;
-const STANDINGS_FORFEIT_WIN_POINTS = 2;
-const STANDINGS_FORFEIT_LOSS_POINTS = 0;
+// This event awards league points; the shared standings module owns the model
+// (3 / 2 / 1 and the forfeit split). Aliased here because the rules blurb below
+// quotes the numbers back to the reader.
+const STANDINGS_SCORING = LEAGUE_POINTS_SCORING;
 const TEAM_STANDINGS_GRID_STYLE = {
   gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
 };
 const MENS_DIVISION_POOL_LETTERS = new Set(["a", "b", "c", "d"]);
 const MENS_DIVISION_STANDINGS_START_DATE = "2026-04-13";
-const MENS_DIVISION_STANDINGS_END_DATE = "2026-07-23";
+// Extended through week 12 (27 Aug) so the team standings table covers the
+// full 12-week season, playoffs included, rather than stopping at the end of
+// pool play (23 Jul).
+const MENS_DIVISION_STANDINGS_END_DATE = "2026-08-27";
 const WOMENS_DIVISION_POOL_LETTERS = new Set(["e", "f"]);
 const WOMENS_DIVISION_STANDINGS_START_DATE = MENS_DIVISION_STANDINGS_START_DATE;
 const WOMENS_DIVISION_STANDINGS_END_DATE = MENS_DIVISION_STANDINGS_END_DATE;
@@ -299,23 +300,6 @@ const formatMatchStatus = (status) => {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
-const isLiveMatch = (status) => LIVE_STATUSES.has((status || "").toLowerCase());
-const isFinishedMatch = (status) =>
-  FINISHED_STATUSES.has((status || "").toLowerCase());
-const isCanceledMatch = (status) =>
-  CANCELED_STATUSES.has((status || "").toLowerCase());
-// A forfeit is a canceled match recorded with a 5-0 line (in either direction).
-const isForfeitMatch = (match) => {
-  if (!isCanceledMatch(match?.status)) return false;
-  const scoreA = match?.score_a;
-  const scoreB = match?.score_b;
-  if (typeof scoreA !== "number" || typeof scoreB !== "number") return false;
-  return (
-    (scoreA === STANDINGS_FORFEIT_SCORE && scoreB === 0) ||
-    (scoreB === STANDINGS_FORFEIT_SCORE && scoreA === 0)
-  );
-};
-
 const formatMatchTime = (value) => {
   if (!value) {
     return "Start time pending";
@@ -350,42 +334,6 @@ const sortByStartTimeAsc = (left, right) => {
   const rightTime = right?.start_time ? new Date(right.start_time).getTime() : Infinity;
   return leftTime - rightTime;
 };
-
-const buildPoolTeams = (pool) => {
-  const rows = [];
-  const seen = new Set();
-  (pool?.teams || []).forEach((entry) => {
-    if (!entry?.team?.id || seen.has(entry.team.id)) return;
-    seen.add(entry.team.id);
-    rows.push({
-      id: entry.team.id,
-      name: entry.team.name || "Team",
-      shortName: entry.team.short_name || null,
-      seed:
-        typeof entry.seed === "number" && !Number.isNaN(entry.seed)
-          ? entry.seed
-          : null,
-    });
-  });
-  rows.sort((a, b) => {
-    if (a.seed !== null && b.seed !== null) {
-      return a.seed - b.seed || a.name.localeCompare(b.name);
-    }
-    if (a.seed !== null) return -1;
-    if (b.seed !== null) return 1;
-    return a.name.localeCompare(b.name);
-  });
-  return rows;
-};
-
-const getEventPools = (eventData) =>
-  (eventData?.divisions || []).flatMap((division, divisionIndex) =>
-    (division?.pools || []).map((pool, poolIndex) => ({
-      ...pool,
-      id: pool.id || `${division.id || divisionIndex}-${poolIndex}`,
-      name: pool.name || "Pool",
-    })),
-  );
 
 const getPoolLetter = (pool) => {
   const normalizedName = (pool?.name || "").toString().trim().toLowerCase();
@@ -455,298 +403,6 @@ const buildStandingsPoolGroups = (eventData) => {
   ];
 };
 
-const buildPoolGroupTeams = (pools) => {
-  const rowsByTeam = new Map();
-  (pools || []).forEach((pool) => {
-    buildPoolTeams(pool).forEach((team) => {
-      const existing = rowsByTeam.get(team.id);
-      if (!existing) {
-        rowsByTeam.set(team.id, team);
-        return;
-      }
-      if (
-        existing.seed === null ||
-        (team.seed !== null && team.seed < existing.seed)
-      ) {
-        rowsByTeam.set(team.id, team);
-      }
-    });
-  });
-  return Array.from(rowsByTeam.values()).sort((a, b) => {
-    if (a.seed !== null && b.seed !== null) {
-      return a.seed - b.seed || a.name.localeCompare(b.name);
-    }
-    if (a.seed !== null) return -1;
-    if (b.seed !== null) return 1;
-    return a.name.localeCompare(b.name);
-  });
-};
-
-const buildPoolGroupIds = (pools) =>
-  new Set((pools || []).map((pool) => pool?.id).filter(Boolean));
-
-const formatScoreDiff = (value) => {
-  if (!Number.isFinite(value) || value === 0) return "0";
-  return value > 0 ? `+${value}` : `${value}`;
-};
-
-const getStandingsLossPoints = (scoreFor, scoreAgainst) =>
-  scoreAgainst - scoreFor <= STANDINGS_CLOSE_LOSS_MAX_MARGIN
-    ? STANDINGS_CLOSE_LOSS_POINTS
-    : STANDINGS_LOSS_POINTS;
-
-// Form-guide dots shown under each team name in the standings.
-const FORM_DOT_COLORS = {
-  win: "#16a34a", // green
-  loss: "#eab308", // yellow
-  canceled: "#dc2626", // red (includes forfeits, which are logged as canceled)
-  scheduled: "#9ca3af", // gray (not yet played)
-  draw: "#9ca3af", // gray (finished, level score)
-};
-
-const FORM_OUTCOME_LABELS = {
-  win: "Win",
-  loss: "Loss",
-  canceled: "Canceled",
-  scheduled: "Scheduled",
-  draw: "Draw",
-};
-
-const FORM_LEGEND_ITEMS = ["win", "loss", "canceled", "scheduled"];
-
-const getTeamMatchOutcome = (match, teamScore, oppScore) => {
-  if (isCanceledMatch(match?.status)) return "canceled";
-  if (
-    isFinishedMatch(match?.status) &&
-    typeof teamScore === "number" &&
-    typeof oppScore === "number"
-  ) {
-    if (teamScore > oppScore) return "win";
-    if (teamScore < oppScore) return "loss";
-    return "draw";
-  }
-  return "scheduled";
-};
-
-const buildTeamFormEntry = (match, opponent, teamScore, oppScore) => {
-  const outcome = getTeamMatchOutcome(match, teamScore, oppScore);
-  const opponentName = opponent?.short_name || opponent?.name || "TBD";
-  const hasScore =
-    outcome !== "scheduled" &&
-    typeof teamScore === "number" &&
-    typeof oppScore === "number";
-  const scorePart = hasScore ? ` ${teamScore}-${oppScore}` : "";
-  return {
-    outcome,
-    title: `${FORM_OUTCOME_LABELS[outcome]}${scorePart} vs ${opponentName}`,
-  };
-};
-
-const FormDots = ({ form, className = "", dotClassName = "h-1.5 w-1.5" }) => {
-  if (!form?.length) return null;
-  return (
-    <div className={`flex flex-wrap gap-0.5 ${className}`} aria-hidden="true">
-      {form.map((entry, index) => (
-        <span
-          key={index}
-          title={entry.title}
-          className={`inline-block rounded-full ${dotClassName}`}
-          style={{ backgroundColor: FORM_DOT_COLORS[entry.outcome] || FORM_DOT_COLORS.scheduled }}
-        />
-      ))}
-    </div>
-  );
-};
-
-const FormLegend = () => (
-  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] uppercase tracking-wide text-ink-muted">
-    {FORM_LEGEND_ITEMS.map((outcome) => (
-      <span key={outcome} className="inline-flex items-center gap-1">
-        <span
-          className="inline-block h-1.5 w-1.5 rounded-full"
-          style={{ backgroundColor: FORM_DOT_COLORS[outcome] }}
-        />
-        {FORM_OUTCOME_LABELS[outcome]}
-      </span>
-    ))}
-  </div>
-);
-
-const StandingsTable = ({ rows, showRank = false }) => {
-  if (!rows.length) {
-    return <p className="text-sm text-ink-muted">No standings available yet.</p>;
-  }
-  return (
-    <div className="sc-standings-table-wrap min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded border border-border bg-surface">
-      <table className="w-full table-fixed whitespace-nowrap text-xs">
-        <thead className="bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
-          <tr>
-            {showRank ? (
-              <th className="w-8 px-0.5 py-1 text-center font-semibold">#</th>
-            ) : null}
-            <th className="w-full px-1 py-1 text-left font-semibold">Team</th>
-            <th className="sc-standings-form-col w-16 px-1 py-1 text-center font-semibold">Form</th>
-            <th className="w-10 px-0.5 py-1 text-center font-semibold">Pts</th>
-            <th className="w-10 px-0.5 py-1 text-center font-semibold">W-L</th>
-            <th className="w-9 px-0.5 py-1 text-center font-semibold">+/-</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr
-              key={row.id}
-              style={{
-                background:
-                  index % 2 === 0
-                    ? "var(--sc-surface)"
-                    : "var(--sc-surface-muted)",
-              }}
-            >
-              {showRank ? (
-                <td className="px-0.5 py-1 text-center align-top tabular-nums text-ink-muted">
-                  {index + 1}
-                </td>
-              ) : null}
-              <td className="min-w-0 px-1 py-1 align-top" title={row.name}>
-                {row.id ? (
-                  <Link to={`/teams/${row.id}`} className="block truncate text-inherit! hover:underline">
-                    {row.name}
-                  </Link>
-                ) : (
-                  <span className="block truncate">{row.name}</span>
-                )}
-                <div className="sc-standings-form-inline">
-                  <FormDots form={row.form} className="mt-0.5" />
-                </div>
-              </td>
-              <td className="sc-standings-form-col px-1 py-1 align-top">
-                <FormDots form={row.form} className="justify-center" dotClassName="h-[7px] w-[7px]" />
-              </td>
-              <td className="px-0.5 py-1 text-center align-top tabular-nums">{row.points}</td>
-              <td className="px-0.5 py-1 text-center align-top tabular-nums">{`${row.wins}-${row.losses}`}</td>
-              <td className="px-0.5 py-1 text-center align-top tabular-nums">{formatScoreDiff(row.scoreDiff)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-const isDateKeyInRange = (dateKey, startDateKey, endDateKey) => {
-  if (!dateKey) return false;
-  if (startDateKey && dateKey < startDateKey) return false;
-  if (endDateKey && dateKey > endDateKey) return false;
-  return true;
-};
-
-const buildPoolGroupStandings = (pools, matches, options = {}) => {
-  const teams = buildPoolGroupTeams(pools);
-  const poolIds = buildPoolGroupIds(pools);
-  const teamIds = new Set(teams.map((team) => team.id));
-  const standingsByTeam = new Map(
-    teams.map((team) => [
-      team.id,
-      {
-        ...team,
-        wins: 0,
-        losses: 0,
-        played: 0,
-        points: 0,
-        scoreDiff: 0,
-        form: [],
-      },
-    ]),
-  );
-
-  const poolMatches = (matches || []).filter((match) => {
-    if (options.matchMode === "team_date_range") {
-      if (
-        !isDateKeyInRange(
-          formatDateKey(match?.start_time),
-          options.matchStartDateKey,
-          options.matchEndDateKey,
-        )
-      ) {
-        return false;
-      }
-
-      const teamAId = match?.team_a?.id;
-      const teamBId = match?.team_b?.id;
-      return teamIds.has(teamAId) && teamIds.has(teamBId);
-    }
-
-    return match?.pool_id && poolIds.has(match.pool_id);
-  });
-
-  poolMatches.forEach((match) => {
-    const forfeit = isForfeitMatch(match);
-
-    const teamAId = match.team_a?.id;
-    const teamBId = match.team_b?.id;
-    const teamAStanding = teamAId ? standingsByTeam.get(teamAId) : null;
-    const teamBStanding = teamBId ? standingsByTeam.get(teamBId) : null;
-
-    // Record a form dot for every match (played, canceled, or still scheduled).
-    if (teamAStanding) {
-      teamAStanding.form.push(
-        buildTeamFormEntry(match, match.team_b, match.score_a, match.score_b),
-      );
-    }
-    if (teamBStanding) {
-      teamBStanding.form.push(
-        buildTeamFormEntry(match, match.team_a, match.score_b, match.score_a),
-      );
-    }
-
-    if (!isFinishedMatch(match?.status) && !forfeit) return;
-    if (typeof match?.score_a !== "number" || typeof match?.score_b !== "number") {
-      return;
-    }
-
-    if (teamAStanding) {
-      teamAStanding.played += 1;
-      teamAStanding.scoreDiff += match.score_a - match.score_b;
-      if (match.score_a > match.score_b) {
-        teamAStanding.wins += 1;
-        teamAStanding.points += forfeit
-          ? STANDINGS_FORFEIT_WIN_POINTS
-          : STANDINGS_WIN_POINTS;
-      } else if (match.score_a < match.score_b) {
-        teamAStanding.losses += 1;
-        teamAStanding.points += forfeit
-          ? STANDINGS_FORFEIT_LOSS_POINTS
-          : getStandingsLossPoints(match.score_a, match.score_b);
-      }
-    }
-
-    if (teamBStanding) {
-      teamBStanding.played += 1;
-      teamBStanding.scoreDiff += match.score_b - match.score_a;
-      if (match.score_b > match.score_a) {
-        teamBStanding.wins += 1;
-        teamBStanding.points += forfeit
-          ? STANDINGS_FORFEIT_WIN_POINTS
-          : STANDINGS_WIN_POINTS;
-      } else if (match.score_b < match.score_a) {
-        teamBStanding.losses += 1;
-        teamBStanding.points += forfeit
-          ? STANDINGS_FORFEIT_LOSS_POINTS
-          : getStandingsLossPoints(match.score_b, match.score_a);
-      }
-    }
-  });
-
-  return Array.from(standingsByTeam.values()).sort(
-    (a, b) =>
-      b.points - a.points ||
-      b.scoreDiff - a.scoreDiff ||
-      b.wins - a.wins ||
-      a.losses - b.losses ||
-      a.name.localeCompare(b.name),
-  );
-};
-
 const padNumber = (value) => String(value).padStart(2, "0");
 
 const getSastDateParts = (value = new Date()) => {
@@ -774,25 +430,6 @@ const formatSastScheduleTime = (value) => {
     minute: "2-digit",
     timeZone: SAST_TIMEZONE,
   });
-};
-
-const formatDurationUntil = (milliseconds) => {
-  if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
-    return "due now";
-  }
-
-  const totalMinutes = Math.ceil(milliseconds / (60 * 1000));
-  const days = Math.floor(totalMinutes / (24 * 60));
-  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
-  const minutes = totalMinutes % 60;
-
-  if (days > 0) {
-    return `${days}d ${hours}h`;
-  }
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
-  return `${minutes}m`;
 };
 
 const buildRosterSyncErrorDetails = (output) => {
@@ -914,30 +551,12 @@ export default function StellenboschRl2026WorkspacePage() {
   const [brackets, setBrackets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [autoSyncSchedule, setAutoSyncSchedule] = useState(() =>
-    getRosterScriptScheduleSnapshot(),
-  );
-  const [timerState, setTimerState] = useState(null);
   const [scriptRunState, setScriptRunState] = useState({
     running: false,
     message: "",
     tone: "success",
     details: "",
   });
-
-  const refreshTimerState = useCallback(async () => {
-    try {
-      const nextState = await getStbRl26RosterSyncStatus();
-      setTimerState(nextState || null);
-    } catch (fetchError) {
-      if (import.meta.env.DEV) {
-        setTimerState(null);
-        return null;
-      }
-      throw fetchError;
-    }
-    return null;
-  }, []);
 
   const loadWorkspace = useCallback(async (ignoreRef) => {
     setLoading(true);
@@ -985,41 +604,18 @@ export default function StellenboschRl2026WorkspacePage() {
     [roles, rosterUpdateAccessRoles, session?.user],
   );
 
-  // The roster auto-sync only matters while the league is running. Once the
-  // event is completed/canceled there is nothing left to sync, so stop the
-  // 30 s poll rather than having every open tab keep hitting the backend
-  // forever. An unset or unreadable status counts as still running.
-  const isEventClosed = isClosedStatus(eventData?.event?.status);
-
-  useEffect(() => {
-    if (isEventClosed) return undefined;
-
-    setAutoSyncSchedule(getRosterScriptScheduleSnapshot());
-    if (canRunAdminScripts) {
-      refreshTimerState().catch(() => {});
-    }
-
-    const intervalId = window.setInterval(() => {
-      // Skip the tick entirely when the tab is hidden; the next visible tick
-      // catches up and nobody is looking at a countdown they cannot see.
-      if (typeof document !== "undefined" && document.hidden) return;
-      setAutoSyncSchedule(getRosterScriptScheduleSnapshot());
-      if (canRunAdminScripts) {
-        refreshTimerState().catch(() => {});
-      }
-    }, AUTO_ROSTER_SYNC_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [canRunAdminScripts, isEventClosed, refreshTimerState]);
-
   const workspaceTitle = eventData?.name || EVENT_NAME;
   const standingsGroups = useMemo(
     () =>
       buildStandingsPoolGroups(eventData).map((group) => ({
         ...group,
-        rows: buildPoolGroupStandings(group.pools, matches, group),
+        rows: buildPoolGroupStandings(group.pools, matches, {
+          ...group,
+          scoring: STANDINGS_SCORING,
+          // Date filtering is SAST-based for this event, so the workspace
+          // supplies the key rather than the shared module assuming a zone.
+          getMatchDateKey: (match) => formatDateKey(match?.start_time),
+        }),
       })),
     [eventData, matches],
   );
@@ -1108,11 +704,8 @@ export default function StellenboschRl2026WorkspacePage() {
         });
       }
 
-      setAutoSyncSchedule(getRosterScriptScheduleSnapshot());
-
       if (output.ok) {
         await loadWorkspace();
-        await refreshTimerState().catch(() => {});
         setScriptRunState({
           running: false,
           message:
@@ -1131,7 +724,6 @@ export default function StellenboschRl2026WorkspacePage() {
         output.error?.message ||
         output.result?.message ||
         (forceFullSync ? "Full roster sync failed." : "Roster update script failed.");
-      await refreshTimerState().catch(() => {});
       setScriptRunState({
         running: false,
         message: failureMessage,
@@ -1140,7 +732,6 @@ export default function StellenboschRl2026WorkspacePage() {
       });
       return output;
     } catch (runError) {
-      await refreshTimerState().catch(() => {});
       setScriptRunState({
         running: false,
         message:
@@ -1158,7 +749,7 @@ export default function StellenboschRl2026WorkspacePage() {
     } finally {
       scriptRunLockRef.current = false;
     }
-  }, [loadWorkspace, refreshTimerState]);
+  }, [loadWorkspace]);
 
   const handleRunRosterUpdate = useCallback(async () => {
     await runRosterUpdate({
@@ -1320,46 +911,16 @@ export default function StellenboschRl2026WorkspacePage() {
               </pre>
             </Panel>
           ) : null}
-          {canRunAdminScripts ? (
-            <Panel variant="muted" className="space-y-2 p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <Chip>Auto roster sync</Chip>
-                <Chip variant="ghost">Daily at 17:00 SAST</Chip>
-              </div>
-              <p className="text-xs text-ink-muted">
-                Next run: {autoSyncSchedule.nextSlotLabel} ({formatDurationUntil(autoSyncSchedule.millisUntilNextSlot)}).
-                {" "}Current slot: {autoSyncSchedule.currentSlotLabel}.
-                {timerState?.last_successful_run_at ? (
-                  <>
-                    {" "}Last successful update: {formatSastScheduleTime(timerState.last_successful_run_at)}.
-                  </>
-                ) : null}
-                {timerState?.last_processed_signup_timestamp ? (
-                  <>
-                    {" "}Latest signup timestamp: {formatSastScheduleTime(timerState.last_processed_signup_timestamp)}.
-                  </>
-                ) : null}
-                {timerState?.last_attempted_at ? (
-                  <>
-                    {" "}Last attempt: {formatSastScheduleTime(timerState.last_attempted_at)} (
-                    {timerState.last_ok ? "success" : "failed"}).
-                  </>
-                ) : (
-                  " No backend attempt has been recorded yet."
-                )}
-              </p>
-            </Panel>
-          ) : null}
         </Card>
 
         <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
           <SectionHeader title="Team standings" />
           <p className="text-xs text-ink-muted">
-            Points: {STANDINGS_WIN_POINTS} for a win, {STANDINGS_CLOSE_LOSS_POINTS} for losing by {STANDINGS_CLOSE_LOSS_MAX_MARGIN} or less,
-            and {STANDINGS_LOSS_POINTS} for any other loss. A forfeit ({STANDINGS_FORFEIT_SCORE}-0)
-            awards {STANDINGS_FORFEIT_WIN_POINTS} to the innocent team and {STANDINGS_FORFEIT_LOSS_POINTS} to the team that forfeits.
+            Points: {STANDINGS_SCORING.winPoints} for a win, {STANDINGS_SCORING.closeLossPoints} for losing by {STANDINGS_SCORING.closeLossMaxMargin} or less,
+            and {STANDINGS_SCORING.lossPoints} for any other loss. A forfeit ({STANDINGS_SCORING.forfeitScore}-0)
+            awards {STANDINGS_SCORING.forfeitWinPoints} to the innocent team and {STANDINGS_SCORING.forfeitLossPoints} to the team that forfeits.
           </p>
-          <FormLegend />
+          <StandardStandingsLegend />
           <div>
             {loading && standingsGroups.length === 0 ? (
               <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
@@ -1383,7 +944,11 @@ export default function StellenboschRl2026WorkspacePage() {
                     >
                       {group.name}
                     </p>
-                    <StandingsTable rows={group.rows} showRank={group.showRank} />
+                    <StandardStandingsTable
+                      rows={group.rows}
+                      showRank={group.showRank}
+                      showPoints
+                    />
                   </Panel>
                 ))}
               </div>

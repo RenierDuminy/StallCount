@@ -154,6 +154,7 @@ export type MatchLogUpdate = {
   eventTypeCode?: keyof typeof MATCH_LOG_EVENT_CODES | string;
   eventTypeId?: number | null;
   abbaLine?: string | null;
+  createdAt?: string | null;
 };
 
 const eventTypeCache = new Map<string, number>();
@@ -344,6 +345,9 @@ export async function updateMatchLogEntry(logId: string, updates: MatchLogUpdate
   if (Object.prototype.hasOwnProperty.call(updates, "abbaLine")) {
     updatePayload.abba_line = updates.abbaLine ?? null;
   }
+  if (Object.prototype.hasOwnProperty.call(updates, "createdAt") && updates.createdAt) {
+    updatePayload.created_at = updates.createdAt;
+  }
 
   const selectClause = matchLogsSupportsOptimisticId ? MATCH_LOG_SELECT : MATCH_LOG_SELECT_LEGACY;
 
@@ -420,6 +424,9 @@ export async function updateMatchLogEntryByTimestamp(
   }
   if (Object.prototype.hasOwnProperty.call(updates, "abbaLine")) {
     updatePayload.abba_line = updates.abbaLine ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, "createdAt") && updates.createdAt) {
+    updatePayload.created_at = updates.createdAt;
   }
 
   const selectClause = matchLogsSupportsOptimisticId ? MATCH_LOG_SELECT : MATCH_LOG_SELECT_LEGACY;

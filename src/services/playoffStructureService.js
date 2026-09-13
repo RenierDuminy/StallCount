@@ -3,13 +3,18 @@ import { getMatchesByIds, updateMatchParticipants } from "./matchService";
 
 const BRACKET_FIELDS = "id, event_id, name, type, is_locked, created_at";
 const BRACKET_NODE_FIELDS = "*";
-// Canceled matches still carry a recorded score line (e.g. a forfeit), so they
-// resolve a winner/loser for advancement just like a played match does.
+// Canceled matches still carry a recorded score line (e.g. a forfeit recorded
+// under the old convention), so they resolve a winner/loser for advancement
+// just like a played match does. The explicit forfeit codes (forfeit /
+// forfeit_teamA / forfeit_teamB) resolve a winner the same way.
 const FINISHED_MATCH_STATUSES = new Set([
   "finished",
   "completed",
   "canceled",
   "cancelled",
+  "forfeit",
+  "forfeit_teama",
+  "forfeit_teamb",
 ]);
 
 function normalizeLookupText(value) {

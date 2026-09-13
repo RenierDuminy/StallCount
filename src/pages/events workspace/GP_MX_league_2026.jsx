@@ -8,6 +8,14 @@ import {
   SectionShell,
 } from "../../components/ui/primitives";
 import { StandardEventMatchCard } from "../../components/StandardEventMatchCard";
+import {
+  StandardStandingsLegend,
+  StandardStandingsTable,
+} from "../../components/StandardStandingsTable";
+import {
+  buildPoolGroupStandings,
+  isFinishedMatch,
+} from "../../utils/standings";
 import { getMatchesByEvent } from "../../services/matchService";
 import { getEventHierarchy } from "../../services/leagueService";
 
@@ -16,8 +24,6 @@ export const EVENT_SLUG = "gp-mx-league";
 export const EVENT_NAME = "GP MX League";
 export const EVENT_WORKSPACE_PRIORITY = 10;
 const MATCH_LIMIT = 200;
-const FINISHED_STATUSES = new Set(["finished", "completed"]);
-const CANCELED_STATUSES = new Set(["canceled", "cancelled"]);
 const TEAM_STANDINGS_GRID_STYLE = {
   gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
 };
@@ -53,43 +59,6 @@ const copyToClipboard = async (text, onSuccess, onError) => {
       onError(err);
     }
   }
-};
-
-const isFinishedMatch = (status) =>
-  FINISHED_STATUSES.has((status || "").toLowerCase());
-const isCanceledMatch = (status) =>
-  CANCELED_STATUSES.has((status || "").toLowerCase());
-
-const buildPoolTeams = (pool) => {
-  const rows = [];
-  const seen = new Set();
-  (pool?.teams || []).forEach((entry) => {
-    if (!entry?.team?.id || seen.has(entry.team.id)) return;
-    seen.add(entry.team.id);
-    rows.push({
-      id: entry.team.id,
-      name: entry.team.name || "Team",
-      shortName: entry.team.short_name || null,
-      seed:
-        typeof entry.seed === "number" && !Number.isNaN(entry.seed)
-          ? entry.seed
-          : null,
-    });
-  });
-  rows.sort((a, b) => {
-    if (a.seed !== null && b.seed !== null) {
-      return a.seed - b.seed || a.name.localeCompare(b.name);
-    }
-    if (a.seed !== null) return -1;
-    if (b.seed !== null) return 1;
-    return a.name.localeCompare(b.name);
-  });
-  return rows;
-};
-
-const formatScoreDiff = (value) => {
-  if (!Number.isFinite(value) || value === 0) return "0";
-  return value > 0 ? `+${value}` : `${value}`;
 };
 
 const formatMatchTime = (value) => {
@@ -200,203 +169,9 @@ const buildScheduleDivisions = (matches = [], divisionNames = new Map()) => {
   return divisions;
 };
 
-// Form-guide dots shown under each team name in the standings.
-const FORM_DOT_COLORS = {
-  win: "#16a34a", // green
-  loss: "#eab308", // yellow
-  canceled: "#dc2626", // red
-  scheduled: "#9ca3af", // gray (not yet played)
-  draw: "#9ca3af", // gray (finished, level score)
-};
-
-const FORM_OUTCOME_LABELS = {
-  win: "Win",
-  loss: "Loss",
-  canceled: "Canceled",
-  scheduled: "Scheduled",
-  draw: "Draw",
-};
-
-const FORM_LEGEND_ITEMS = ["win", "loss", "canceled", "scheduled"];
-
-const getTeamMatchOutcome = (match, teamScore, oppScore) => {
-  if (isCanceledMatch(match?.status)) return "canceled";
-  if (
-    isFinishedMatch(match?.status) &&
-    typeof teamScore === "number" &&
-    typeof oppScore === "number"
-  ) {
-    if (teamScore > oppScore) return "win";
-    if (teamScore < oppScore) return "loss";
-    return "draw";
-  }
-  return "scheduled";
-};
-
-const buildTeamFormEntry = (match, opponent, teamScore, oppScore) => {
-  const outcome = getTeamMatchOutcome(match, teamScore, oppScore);
-  const opponentName = opponent?.short_name || opponent?.name || "TBD";
-  const hasScore =
-    outcome !== "scheduled" &&
-    typeof teamScore === "number" &&
-    typeof oppScore === "number";
-  const scorePart = hasScore ? ` ${teamScore}-${oppScore}` : "";
-  return {
-    outcome,
-    title: `${FORM_OUTCOME_LABELS[outcome]}${scorePart} vs ${opponentName}`,
-  };
-};
-
-const FormDots = ({ form, className = "", dotClassName = "h-1.5 w-1.5", wrap = true }) => {
-  if (!form?.length) return null;
-  return (
-    <div className={`flex ${wrap ? "flex-wrap" : "flex-nowrap"} gap-0.5 ${className}`} aria-hidden="true">
-      {form.map((entry, index) => (
-        <span
-          key={index}
-          title={entry.title}
-          className={`inline-block rounded-full ${dotClassName}`}
-          style={{ backgroundColor: FORM_DOT_COLORS[entry.outcome] || FORM_DOT_COLORS.scheduled }}
-        />
-      ))}
-    </div>
-  );
-};
-
-const FormLegend = () => (
-  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] uppercase tracking-wide text-ink-muted">
-    {FORM_LEGEND_ITEMS.map((outcome) => (
-      <span key={outcome} className="inline-flex items-center gap-1">
-        <span
-          className="inline-block h-1.5 w-1.5 rounded-full"
-          style={{ backgroundColor: FORM_DOT_COLORS[outcome] }}
-        />
-        {FORM_OUTCOME_LABELS[outcome]}
-      </span>
-    ))}
-  </div>
-);
-
-const StandingsTable = ({ rows }) => {
-  if (!rows.length) {
-    return <p className="text-sm text-ink-muted">No standings available yet.</p>;
-  }
-  return (
-    <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded border border-border bg-surface">
-      <table className="w-full table-auto whitespace-nowrap text-xs">
-        <thead className="bg-surface-muted text-xs uppercase tracking-wide text-ink-muted">
-          <tr>
-            <th className="w-full px-1 py-1 text-left font-semibold">Team</th>
-            <th className="whitespace-nowrap px-2 py-1 text-center font-semibold">Form</th>
-            <th className="w-10 px-0.5 py-1 text-center font-semibold">W-L</th>
-            <th className="w-9 px-0.5 py-1 text-center font-semibold">+/-</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr
-              key={row.id}
-              style={{
-                background:
-                  index % 2 === 0
-                    ? "var(--sc-surface)"
-                    : "var(--sc-surface-muted)",
-              }}
-            >
-              <td className="min-w-0 px-1 py-1 align-top" title={row.name}>
-                {row.id ? (
-                  <Link to={`/teams/${row.id}`} className="block truncate text-inherit! hover:underline">
-                    {row.name}
-                  </Link>
-                ) : (
-                  <span className="block truncate">
-                    {row.name}
-                  </span>
-                )}
-              </td>
-              <td className="whitespace-nowrap px-2 py-1 align-middle">
-                <FormDots form={row.form} className="justify-center" dotClassName="h-[7px] w-[7px]" wrap={false} />
-              </td>
-              <td className="px-0.5 py-1 text-center align-top tabular-nums">{`${row.wins}-${row.losses}`}</td>
-              <td className="px-0.5 py-1 text-center align-top tabular-nums">{formatScoreDiff(row.scoreDiff)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-const buildPoolStandings = (pool, matches) => {
-  const teams = buildPoolTeams(pool);
-  const standingsByTeam = new Map(
-    teams.map((team) => [
-      team.id,
-      {
-        ...team,
-        wins: 0,
-        losses: 0,
-        played: 0,
-        scoreDiff: 0,
-        form: [],
-      },
-    ]),
-  );
-
-  const poolMatches = (matches || []).filter((match) => match?.pool_id === pool?.id);
-
-  poolMatches.forEach((match) => {
-    const teamAId = match.team_a?.id;
-    const teamBId = match.team_b?.id;
-    const teamAStanding = teamAId ? standingsByTeam.get(teamAId) : null;
-    const teamBStanding = teamBId ? standingsByTeam.get(teamBId) : null;
-
-    // Record a form dot for every match (played, canceled, or still scheduled).
-    if (teamAStanding) {
-      teamAStanding.form.push(
-        buildTeamFormEntry(match, match.team_b, match.score_a, match.score_b),
-      );
-    }
-    if (teamBStanding) {
-      teamBStanding.form.push(
-        buildTeamFormEntry(match, match.team_a, match.score_b, match.score_a),
-      );
-    }
-
-    if (!isFinishedMatch(match?.status)) return;
-    if (typeof match?.score_a !== "number" || typeof match?.score_b !== "number") {
-      return;
-    }
-
-    if (teamAStanding) {
-      teamAStanding.played += 1;
-      teamAStanding.scoreDiff += match.score_a - match.score_b;
-      if (match.score_a > match.score_b) {
-        teamAStanding.wins += 1;
-      } else if (match.score_a < match.score_b) {
-        teamAStanding.losses += 1;
-      }
-    }
-
-    if (teamBStanding) {
-      teamBStanding.played += 1;
-      teamBStanding.scoreDiff += match.score_b - match.score_a;
-      if (match.score_b > match.score_a) {
-        teamBStanding.wins += 1;
-      } else if (match.score_b < match.score_a) {
-        teamBStanding.losses += 1;
-      }
-    }
-  });
-
-  return Array.from(standingsByTeam.values()).sort(
-    (a, b) =>
-      b.wins - a.wins ||
-      a.losses - b.losses ||
-      b.scoreDiff - a.scoreDiff ||
-      a.name.localeCompare(b.name),
-  );
-};
+const buildPoolStandings = (pool, matches) =>
+  // Plain pool table: no league points, so WFDF ranking leads on games won.
+  buildPoolGroupStandings([pool], matches);
 
 export default function GpMxLeagueWorkspacePage() {
   const [matches, setMatches] = useState([]);
@@ -587,7 +362,7 @@ export default function GpMxLeagueWorkspacePage() {
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                 Division standings
               </p>
-              <FormLegend />
+              <StandardStandingsLegend />
             </div>
           {loading && standingsByPool.length === 0 ? (
             <Card variant="muted" className="p-3 text-center text-sm text-ink-muted">
@@ -604,7 +379,7 @@ export default function GpMxLeagueWorkspacePage() {
                   <p className="truncate text-xs font-semibold uppercase tracking-wide text-ink" title={pool.name}>
                     {pool.name}
                   </p>
-                  <StandingsTable rows={pool.rows} />
+                  <StandardStandingsTable rows={pool.rows} />
                 </Panel>
               ))}
             </div>

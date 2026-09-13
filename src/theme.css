@@ -1613,6 +1613,15 @@ details[open] > summary.wizard-cursor-pointer::before {
   background: rgba(198, 255, 98, 0.12);
 }
 
+.wizard-option.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wizard-option.is-disabled:hover {
+  border-color: var(--sc-border);
+}
+
 .wizard-venue-list {
   display: grid;
   gap: 0;
