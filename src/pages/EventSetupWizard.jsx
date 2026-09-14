@@ -29,11 +29,15 @@ import {
 const STEPS = [
   { key: "event", title: "Event", description: "Baseline context" },
   { key: "divisions", title: "Divisions", description: "Competitive branches" },
-  { key: "pools", title: "Pools", description: "Round-robin clusters" },
+  {
+    key: "pools",
+    title: "Pools",
+    description: "Clusters + team assignments",
+  },
   {
     key: "teams",
     title: "Teams & matches",
-    description: "Assignments + fixtures",
+    description: "Generate the fixture framework",
   },
   {
     key: "playoffs",
@@ -229,6 +233,58 @@ const createEmptyMatchForm = (overrides = {}) => {
     ...overrides,
   };
 };
+
+// Blueprint generators. These are pure: they take the teams already assigned to
+// a pool and return the fixture pairings, leaving dates and venues blank for the
+// TD to fill in afterwards.
+const BLUEPRINT_TYPES = [
+  {
+    value: "round_robin",
+    label: "Round robin",
+    description: "Every team plays every other team once.",
+  },
+];
+
+// Circle method. With an odd number of teams a bye placeholder is rotated
+// through, so each round drops exactly one team instead of pairing it twice.
+const buildRoundRobinRounds = (teams) => {
+  const entries = teams.filter(Boolean);
+  if (entries.length < 2) {
+    return [];
+  }
+  const working = entries.slice();
+  if (working.length % 2 === 1) {
+    working.push(null);
+  }
+  const size = working.length;
+  const roundCount = size - 1;
+  const half = size / 2;
+  const rounds = [];
+  let rotation = working.slice();
+  for (let round = 0; round < roundCount; round += 1) {
+    const pairings = [];
+    for (let slot = 0; slot < half; slot += 1) {
+      const home = rotation[slot];
+      const away = rotation[size - 1 - slot];
+      if (!home || !away) continue;
+      // Alternate which side is listed first so no team is always "Team A".
+      pairings.push(round % 2 === 0 ? [home, away] : [away, home]);
+    }
+    if (pairings.length > 0) {
+      rounds.push(pairings);
+    }
+    // Hold the first entry fixed, rotate the rest clockwise.
+    const [fixed, ...rest] = rotation;
+    rest.unshift(rest.pop());
+    rotation = [fixed, ...rest];
+  }
+  return rounds;
+};
+
+// Order-independent key so an existing fixture is not duplicated when the
+// blueprint is re-run on a pool that already has some matches.
+const matchPairKey = (teamAId, teamBId) =>
+  [teamAId || "", teamBId || ""].slice().sort().join("::");
 
 const BRACKET_TYPES = [
   { value: "single_elim", label: "Single elimination" },
@@ -470,7 +526,21 @@ const resolveInitialWizardStep = (draft) => {
   return Math.min(Math.max(draft.step, 0), STEPS.length - 1);
 };
 
-const Stepper = ({ current, onStepSelect }) => {
+// Mode labels shown in the stepper so the create/edit/duplicate choice stays
+// visible after leaving the first step.
+const EVENT_MODE_LABELS = {
+  create: "Creating new event",
+  edit: "Editing existing event",
+  duplicate: "Duplicating event",
+};
+
+const EVENT_MODE_CHIP_VARIANT = {
+  create: "default",
+  edit: "warning",
+  duplicate: "media",
+};
+
+const Stepper = ({ current, onStepSelect, mode, modeDetail }) => {
   const progressPct =
     STEPS.length > 1 ? (current / (STEPS.length - 1)) * 100 : 0;
   const trackRef = useRef(null);
@@ -493,9 +563,23 @@ const Stepper = ({ current, onStepSelect }) => {
     <div className="wizard-stepper">
       {/* Count + progress bar shown on narrow screens. */}
       <div className="wizard-stepper__compact">
-        <span className="wizard-stepper__compact-count">
-          Step {current + 1} of {STEPS.length}
-        </span>
+        <div className="wizard-stepper__compact-heading">
+          <span className="wizard-stepper__compact-count">
+            Step {current + 1} of {STEPS.length}
+          </span>
+          {/* Surface the create/edit/duplicate mode on every step, not just the
+              first one, so a wizard left on the wrong option is obvious. */}
+          {mode && (
+            <span className="wizard-stepper__mode">
+              <Chip variant={EVENT_MODE_CHIP_VARIANT[mode] || "default"}>
+                {EVENT_MODE_LABELS[mode] || mode}
+              </Chip>
+              {modeDetail && (
+                <span className="wizard-stepper__mode-detail">{modeDetail}</span>
+              )}
+            </span>
+          )}
+        </div>
         <div
           className="wizard-stepper__progress"
           role="progressbar"
@@ -810,6 +894,14 @@ export default function EventSetupWizardPage() {
       ? createEmptyMatchForm(persistedDraft.matchForm)
       : createEmptyMatchForm(),
   );
+  // Visual-only: the Helper blueprint picker on the Teams & matches step
+  // (Division -> Pool -> Blueprint). Not persisted — it generates matches into
+  // the draft and holds no state worth restoring.
+  const [blueprintForm, setBlueprintForm] = useState({
+    divisionId: "",
+    poolId: "",
+    type: "round_robin",
+  });
   const [rules, setRules] = useState(() =>
     buildRulesFromConfig(persistedDraft.rules),
   );
@@ -1970,6 +2062,143 @@ export default function EventSetupWizardPage() {
     );
   };
 
+  // Helper blueprint: generate a pool's fixtures in one go from the teams
+  // already assigned to it. Dates and venues are intentionally left blank —
+  // the TD fills those in on the Round planning form afterwards.
+  const blueprintDivisionOptions = useMemo(
+    () =>
+      divisions.filter((division) => (division.pools || []).length > 0),
+    [divisions],
+  );
+
+  const blueprintDivision = useMemo(
+    () =>
+      blueprintDivisionOptions.find(
+        (division) => division.id === blueprintForm.divisionId,
+      ) || null,
+    [blueprintDivisionOptions, blueprintForm.divisionId],
+  );
+
+  const blueprintPool = useMemo(() => {
+    if (!blueprintDivision) return null;
+    return (
+      (blueprintDivision.pools || []).find(
+        (pool) => pool.id === blueprintForm.poolId,
+      ) || null
+    );
+  }, [blueprintDivision, blueprintForm.poolId]);
+
+  // What the selected blueprint would add, given what the pool already has.
+  const blueprintPreview = useMemo(() => {
+    // Only pool entries still linked to a real team can become fixtures — the
+    // match rows are keyed by teamId, and an unlinked entry would collide with
+    // every other unlinked entry.
+    const allPoolTeams = blueprintPool?.teams || [];
+    const poolTeams = allPoolTeams.filter((team) => team.teamId);
+    const unlinkedCount = allPoolTeams.length - poolTeams.length;
+    if (blueprintForm.type !== "round_robin" || poolTeams.length < 2) {
+      return {
+        rounds: [],
+        newCount: 0,
+        existingCount: 0,
+        teamCount: poolTeams.length,
+        unlinkedCount,
+      };
+    }
+    const existingKeys = new Set(
+      (blueprintPool.matches || []).map((match) =>
+        matchPairKey(match.teamAId, match.teamBId),
+      ),
+    );
+    const rounds = buildRoundRobinRounds(poolTeams).map((pairings) =>
+      pairings.map(([home, away]) => ({
+        home,
+        away,
+        duplicate: existingKeys.has(matchPairKey(home.teamId, away.teamId)),
+      })),
+    );
+    let newCount = 0;
+    let existingCount = 0;
+    rounds.forEach((pairings) =>
+      pairings.forEach((pairing) => {
+        if (pairing.duplicate) existingCount += 1;
+        else newCount += 1;
+      }),
+    );
+    return {
+      rounds,
+      newCount,
+      existingCount,
+      teamCount: poolTeams.length,
+      unlinkedCount,
+    };
+  }, [blueprintPool, blueprintForm.type]);
+
+  const handleApplyBlueprint = () => {
+    if (!blueprintPool) {
+      setFormNotice({
+        type: "error",
+        message: "Select a division and pool before generating a blueprint.",
+      });
+      return;
+    }
+    if (blueprintPreview.newCount === 0) {
+      setFormNotice({
+        type: "error",
+        message:
+          blueprintPreview.teamCount < 2
+            ? "Assign at least two teams to this pool before generating matches."
+            : "Every fixture in this blueprint already exists for the pool.",
+      });
+      return;
+    }
+    const poolId = blueprintPool.id;
+    setFormNotice(null);
+    upsertPoolEntity(poolId, (pool) => {
+      const existing = pool.matches || [];
+      const seenKeys = new Set(
+        existing.map((match) => matchPairKey(match.teamAId, match.teamBId)),
+      );
+      const generated = [];
+      blueprintPreview.rounds.forEach((pairings) => {
+        pairings.forEach(({ home, away }) => {
+          const key = matchPairKey(home.teamId, away.teamId);
+          if (seenKeys.has(key)) return;
+          seenKeys.add(key);
+          generated.push({
+            id: createId(),
+            teamA: home.name,
+            teamAId: home.teamId,
+            teamB: away.name,
+            teamBId: away.teamId,
+            teamALabel: home.displayLabel || home.name,
+            teamBLabel: away.displayLabel || away.name,
+            start: "",
+            status: "scheduled",
+            venueRefId: "",
+            venueLabel: "",
+            scoreA: "",
+            scoreB: "",
+            startingTeamId: "",
+            abbaPattern: "",
+            scorekeeperId: "",
+            captainsConfirmed: false,
+          });
+        });
+      });
+      return {
+        ...pool,
+        matches: [...existing, ...generated].slice().sort(compareMatchSchedule),
+      };
+    });
+    setFormNotice({
+      type: "success",
+      message: `Added ${blueprintPreview.newCount} match${
+        blueprintPreview.newCount === 1 ? "" : "es"
+      } to ${blueprintPool.name || "the pool"}. Set dates and venues on the Round planning form below.`,
+    });
+  };
+
   const handleAddBracket = () => {
     setBrackets((prev) => [...prev, createEmptyBracket()]);
   };
@@ -2383,6 +2612,21 @@ export default function EventSetupWizardPage() {
     summary.poolCount,
     derivedSubmissionCounts.validTeams,
   ]);
+
+  // Secondary line under the stepper mode chip: which event edit/duplicate is
+  // working from, or a prompt when none has been picked yet.
+  const stepperModeDetail = useMemo(() => {
+    if (eventMode !== "edit" && eventMode !== "duplicate") {
+      return "";
+    }
+    if (!selectedEventId) {
+      return "No source event selected";
+    }
+    const source = existingEvents.find(
+      (existing) => existing.id === selectedEventId,
+    );
+    return source?.name || event.name || "Source event selected";
+  }, [eventMode, selectedEventId, existingEvents, event.name]);
 
   const isEditingExistingEvent = eventMode === "edit" && Boolean(selectedEventId);
 
@@ -3788,88 +4032,10 @@ export default function EventSetupWizardPage() {
   );
 };
 
-  const renderPoolsStep = () => (
-    <div className="wizard-grid wizard-gap-xl wizard-grid-cols-sidebar-md">
-      <Panel variant="tinted" className="wizard-stack-md wizard-pad-md">
-        <SectionHeader title="Within division" />
-        <form className="wizard-stack-md" onSubmit={handlePoolSubmit}>
-          <label className="sc-fieldset">
-            <span className="sc-field-label">
-              Division
-            </span>
-            <select
-              className="sc-input"
-              value={poolForm.divisionId || activeDivision?.id || ""}
-              onChange={(event) =>
-                setPoolForm((prev) => ({
-                  ...prev,
-                  divisionId: event.target.value,
-                }))
-              }
-            >
-              <option value="">Choose division</option>
-              {divisions.map((division) => (
-                <option key={division.id} value={division.id}>
-                  {division.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <TextField
-            label="Pool name"
-            value={poolForm.name}
-            onChange={(event) =>
-              setPoolForm((prev) => ({ ...prev, name: event.target.value }))
-            }
-          />
-          <button type="submit" className="sc-button is-block">
-            {poolForm.id ? "Save" : "Add pool"}
-          </button>
-        </form>
-      </Panel>
-      <div className="wizard-stack-md">
-        {!activeDivision ? (
-          <Panel variant="muted" className="wizard-pad-md wizard-text-muted">
-            Select a division.
-          </Panel>
-        ) : (
-          (activeDivision.pools || []).map((pool) => (
-            <Panel
-              key={pool.id}
-              variant="tinted"
-              className="wizard-flex wizard-items-center wizard-justify-between wizard-pad-md"
-            >
-              <div>
-                <p className="wizard-text-strong">{pool.name}</p>
-                <p className="wizard-text-muted-xs">
-                  Teams {pool.teams?.length || 0} / Matches{" "}
-                  {pool.matches?.length || 0}
-                </p>
-              </div>
-              <div className="wizard-flex wizard-gap-sm">
-                <EditIconButton
-                  label="Edit pool"
-                  onClick={() =>
-                    setPoolForm({
-                      id: pool.id,
-                      divisionId: activeDivision.id,
-                      name: pool.name,
-                    })
-                  }
-                />
-                <DeleteIconButton
-                  label="Delete pool"
-                  onClick={() => removePool(pool.id)}
-                />
-              </div>
-            </Panel>
-          ))
-        )}
-      </div>
-    </div>
-  );
-
-  const renderTeamsStep = () => {
+  // Pool team assignment. Lives on the Pools step (a pool is not usable until
+  // it has teams), and is defined once here because it needs the same
+  // division-scoped guards the matches form uses.
+  const renderPoolTeamsPanel = () => {
     const currentTeamsPoolId = teamForm.poolId || activePool?.id || "";
     const currentDivisionForTeams = currentTeamsPoolId
       ? poolDivisionMap.get(currentTeamsPoolId) || null
@@ -3880,60 +4046,7 @@ export default function EventSetupWizardPage() {
     const canAssignPoolTeams =
       Boolean(currentDivisionForTeams) &&
       (currentDivisionForTeams.divisionTeams || []).length > 0;
-    const currentMatchesPoolId =
-      matchForm.matchPoolId ||
-      matchForm.poolId ||
-      teamForm.poolId ||
-      activePool?.id ||
-      "";
-    const currentDivisionForMatches = currentMatchesPoolId
-      ? poolDivisionMap.get(currentMatchesPoolId) || null
-      : null;
-    const matchDivisionDataListId = currentDivisionForMatches
-      ? `division-team-options-${currentDivisionForMatches.id}`
-      : "team-options-list";
-    const canPlanMatches =
-      Boolean(currentDivisionForMatches) &&
-      (currentDivisionForMatches.divisionTeams || []).length > 0;
-    const handleMatchTeamTabComplete = (field) => (event) => {
-      if (
-        event.key !== "Tab" ||
-        event.shiftKey ||
-        event.altKey ||
-        event.ctrlKey ||
-        event.metaKey
-      ) {
-        return;
-      }
-      const suggestion = findTopDivisionTeamSuggestion(
-        event.currentTarget.value,
-        currentDivisionForMatches?.divisionTeams || [],
-      );
-      if (!suggestion) {
-        return;
-      }
-      const label = suggestion.displayLabel || suggestion.name || "";
-      if (!label) {
-        return;
-      }
-      const idField = field === "teamA" ? "teamAId" : "teamBId";
-      setMatchForm((prev) => ({
-        ...prev,
-        [field]: label,
-        [idField]: suggestion.teamId || "",
-      }));
-    };
     return (
-    <div className="wizard-stack-xl">
-      {teamOptionsLoading && (
-        <div className="sc-field-label">
-          Loading team directory...
-        </div>
-      )}
-      {teamOptionsError && (
-        <div className="sc-alert is-error wizard-text-xs">{teamOptionsError}</div>
-      )}
-      <div className="wizard-grid wizard-gap-lg wizard-grid-cols-2-lg">
         <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
           <SectionHeader
             title={
@@ -4064,8 +4177,306 @@ export default function EventSetupWizardPage() {
             )}
           </div>
         </Panel>
-        <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
-          <SectionHeader title="Round planning" />
+    );
+  };
+
+  const renderPoolsStep = () => (
+    <div className="wizard-stack-xl">
+    <div className="wizard-grid wizard-gap-xl wizard-grid-cols-sidebar-md">
+      <Panel variant="tinted" className="wizard-stack-md wizard-pad-md">
+        <SectionHeader title="Within division" />
+        <form className="wizard-stack-md" onSubmit={handlePoolSubmit}>
+          <label className="sc-fieldset">
+            <span className="sc-field-label">
+              Division
+            </span>
+            <select
+              className="sc-input"
+              value={poolForm.divisionId || activeDivision?.id || ""}
+              onChange={(event) =>
+                setPoolForm((prev) => ({
+                  ...prev,
+                  divisionId: event.target.value,
+                }))
+              }
+            >
+              <option value="">Choose division</option>
+              {divisions.map((division) => (
+                <option key={division.id} value={division.id}>
+                  {division.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <TextField
+            label="Pool name"
+            value={poolForm.name}
+            onChange={(event) =>
+              setPoolForm((prev) => ({ ...prev, name: event.target.value }))
+            }
+          />
+          <button type="submit" className="sc-button is-block">
+            {poolForm.id ? "Save" : "Add pool"}
+          </button>
+        </form>
+      </Panel>
+      <div className="wizard-stack-md">
+        {!activeDivision ? (
+          <Panel variant="muted" className="wizard-pad-md wizard-text-muted">
+            Select a division.
+          </Panel>
+        ) : (
+          (activeDivision.pools || []).map((pool) => (
+            <Panel
+              key={pool.id}
+              variant="tinted"
+              className="wizard-flex wizard-items-center wizard-justify-between wizard-pad-md"
+            >
+              <div>
+                <p className="wizard-text-strong">{pool.name}</p>
+                <p className="wizard-text-muted-xs">
+                  Teams {pool.teams?.length || 0} / Matches{" "}
+                  {pool.matches?.length || 0}
+                </p>
+              </div>
+              <div className="wizard-flex wizard-gap-sm">
+                <EditIconButton
+                  label="Edit pool"
+                  onClick={() =>
+                    setPoolForm({
+                      id: pool.id,
+                      divisionId: activeDivision.id,
+                      name: pool.name,
+                    })
+                  }
+                />
+                <DeleteIconButton
+                  label="Delete pool"
+                  onClick={() => removePool(pool.id)}
+                />
+              </div>
+            </Panel>
+          ))
+        )}
+      </div>
+    </div>
+      {teamOptionsLoading && (
+        <div className="sc-field-label">Loading team directory...</div>
+      )}
+      {teamOptionsError && (
+        <div className="sc-alert is-error wizard-text-xs">{teamOptionsError}</div>
+      )}
+      {renderPoolTeamsPanel()}
+    </div>
+  );
+
+  const renderTeamsStep = () => {
+    const currentMatchesPoolId =
+      matchForm.matchPoolId ||
+      matchForm.poolId ||
+      teamForm.poolId ||
+      activePool?.id ||
+      "";
+    const currentDivisionForMatches = currentMatchesPoolId
+      ? poolDivisionMap.get(currentMatchesPoolId) || null
+      : null;
+    const matchDivisionDataListId = currentDivisionForMatches
+      ? `division-team-options-${currentDivisionForMatches.id}`
+      : "team-options-list";
+    const canPlanMatches =
+      Boolean(currentDivisionForMatches) &&
+      (currentDivisionForMatches.divisionTeams || []).length > 0;
+    const handleMatchTeamTabComplete = (field) => (event) => {
+      if (
+        event.key !== "Tab" ||
+        event.shiftKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey
+      ) {
+        return;
+      }
+      const suggestion = findTopDivisionTeamSuggestion(
+        event.currentTarget.value,
+        currentDivisionForMatches?.divisionTeams || [],
+      );
+      if (!suggestion) {
+        return;
+      }
+      const label = suggestion.displayLabel || suggestion.name || "";
+      if (!label) {
+        return;
+      }
+      const idField = field === "teamA" ? "teamAId" : "teamBId";
+      setMatchForm((prev) => ({
+        ...prev,
+        [field]: label,
+        [idField]: suggestion.teamId || "",
+      }));
+    };
+    return (
+    <div className="wizard-stack-xl">
+      {teamOptionsLoading && (
+        <div className="sc-field-label">
+          Loading team directory...
+        </div>
+      )}
+      {teamOptionsError && (
+        <div className="sc-alert is-error wizard-text-xs">{teamOptionsError}</div>
+      )}
+      <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
+        <SectionHeader
+          title="Helper blueprint"
+          description="Pick a division, then a pool, then a blueprint to generate that pool's fixtures in one go. Dates and venues are added manually afterwards."
+        />
+        <label className="sc-fieldset">
+          <span className="sc-field-label">Division</span>
+          <select
+            className="sc-input"
+            value={blueprintForm.divisionId}
+            onChange={(event) =>
+              setBlueprintForm((prev) => ({
+                ...prev,
+                divisionId: event.target.value,
+                poolId: "",
+              }))
+            }
+          >
+            <option value="">Select division</option>
+            {blueprintDivisionOptions.map((division) => (
+              <option key={division.id} value={division.id}>
+                {division.name || "Division"}
+              </option>
+            ))}
+          </select>
+        </label>
+        {blueprintDivisionOptions.length === 0 && (
+          <p className="wizard-text-muted-xs">
+            Add a division with at least one pool to use blueprints.
+          </p>
+        )}
+        <label className="sc-fieldset">
+          <span className="sc-field-label">Pool</span>
+          <select
+            className="sc-input"
+            value={blueprintForm.poolId}
+            onChange={(event) =>
+              setBlueprintForm((prev) => ({
+                ...prev,
+                poolId: event.target.value,
+              }))
+            }
+            disabled={!blueprintDivision}
+          >
+            <option value="">Select pool</option>
+            {(blueprintDivision?.pools || []).map((pool) => (
+              <option key={pool.id} value={pool.id}>
+                {pool.name || "Pool"} ({(pool.teams || []).length} teams)
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="sc-fieldset">
+          <span className="sc-field-label">Blueprint</span>
+          <select
+            className="sc-input"
+            value={blueprintForm.type}
+            onChange={(event) =>
+              setBlueprintForm((prev) => ({
+                ...prev,
+                type: event.target.value,
+              }))
+            }
+            disabled={!blueprintPool}
+          >
+            {BLUEPRINT_TYPES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="wizard-text-muted-xs">
+          {BLUEPRINT_TYPES.find(
+            (option) => option.value === blueprintForm.type,
+          )?.description || ""}
+        </p>
+        {blueprintPool && blueprintPreview.teamCount < 2 && (
+          <p className="wizard-text-muted-xs">
+            {blueprintPool.name || "This pool"} has{" "}
+            {blueprintPreview.teamCount} team
+            {blueprintPreview.teamCount === 1 ? "" : "s"}. Assign at least two
+            teams to the pool to generate fixtures.
+          </p>
+        )}
+        {blueprintPool && blueprintPreview.unlinkedCount > 0 && (
+          <p className="wizard-text-muted-xs">
+            {blueprintPreview.unlinkedCount} pool entr
+            {blueprintPreview.unlinkedCount === 1 ? "y is" : "ies are"} not
+            linked to a team in the directory and will be skipped. Re-add
+            {blueprintPreview.unlinkedCount === 1 ? " it" : " them"} from the
+            teams panel to include
+            {blueprintPreview.unlinkedCount === 1 ? " it" : " them"}.
+          </p>
+        )}
+        {blueprintPreview.rounds.length > 0 && (
+          <div className="wizard-stack-sm">
+            <div className="wizard-toolbar">
+              <span>Preview</span>
+              <span>
+                {blueprintPreview.newCount} new
+                {blueprintPreview.existingCount > 0
+                  ? ` - ${blueprintPreview.existingCount} already scheduled`
+                  : ""}
+              </span>
+            </div>
+            {blueprintPreview.rounds.map((pairings, roundIndex) => (
+              <div key={`blueprint-round-${roundIndex}`} className="wizard-stack-sm">
+                <p className="wizard-kicker-strong">Round {roundIndex + 1}</p>
+                <div className="wizard-grid wizard-gap-sm wizard-grid-cols-2-md">
+                  {pairings.map(({ home, away, duplicate }) => (
+                    <div
+                      key={`${home.id}-${away.id}`}
+                      className="wizard-box-compact wizard-box-xs"
+                    >
+                      <span className="wizard-text-strong">
+                        {home.displayLabel || home.name} vs{" "}
+                        {away.displayLabel || away.name}
+                      </span>
+                      {duplicate && (
+                        <p className="wizard-text-muted-xs">
+                          Already scheduled - will be skipped
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          className="sc-button is-block"
+          onClick={handleApplyBlueprint}
+          disabled={!blueprintPool || blueprintPreview.newCount === 0}
+        >
+          {blueprintPreview.newCount > 0
+            ? `Generate ${blueprintPreview.newCount} match${
+                blueprintPreview.newCount === 1 ? "" : "es"
+              }`
+            : "Generate matches"}
+        </button>
+        <p className="wizard-text-muted-xs">
+          Generated matches are scheduled with no date and no venue. Set those
+          on each match using the Round planning form below.
+        </p>
+      </Panel>
+      <Panel variant="muted" className="wizard-stack-md wizard-pad-md">
+        <SectionHeader
+          title="Round planning"
+          description="Manual fallback: add or correct a single fixture the blueprint could not express, and set each match's date and venue."
+        />
           <label className="sc-fieldset">
             <span className="sc-field-label">
               Pool
@@ -4302,8 +4713,7 @@ export default function EventSetupWizardPage() {
               )
             )}
           </div>
-        </Panel>
-      </div>
+      </Panel>
     </div>
   );
 };
@@ -5165,7 +5575,12 @@ export default function EventSetupWizardPage() {
               />
             </div>
           )}
-          <Stepper current={step} onStepSelect={setStep} />
+          <Stepper
+            current={step}
+            onStepSelect={setStep}
+            mode={eventMode}
+            modeDetail={stepperModeDetail}
+          />
         </Card>
       </SectionShell>
 

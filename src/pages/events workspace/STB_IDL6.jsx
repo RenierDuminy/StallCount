@@ -18,6 +18,8 @@ import {
 } from "../../utils/standings";
 import { getMatchesByEvent } from "../../services/matchService";
 import { getEventHierarchy } from "../../services/leagueService";
+import { getBracketsByEvent } from "../../services/playoffStructureService";
+import BracketStructureView from "../playoff/BracketStructureView";
 
 export const EVENT_ID = "abd01401-fba2-42f2-9bf9-7dfdce3e44d6";
 export const EVENT_SLUG = "stellenbosch-idl-6";
@@ -175,6 +177,7 @@ const buildPoolStandings = (pool, matches) =>
 export default function StellenboschIdl6WorkspacePage() {
   const [matches, setMatches] = useState([]);
   const [eventData, setEventData] = useState(null);
+  const [brackets, setBrackets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [copyToast, setCopyToast] = useState(null);
@@ -188,15 +191,19 @@ export default function StellenboschIdl6WorkspacePage() {
       setLoading(true);
       setError(null);
       try {
-        const [rows, hierarchy] = await Promise.all([
+        const [rows, hierarchy, bracketRows] = await Promise.all([
           getMatchesByEvent(EVENT_ID, MATCH_LIMIT, {
             includeFinished: true,
           }),
           getEventHierarchy(EVENT_ID),
+          // The bracket is supplementary: if it fails to load, the rest of
+          // the workspace should still render, so swallow the error.
+          getBracketsByEvent(EVENT_ID).catch(() => []),
         ]);
         if (!ignore) {
           setMatches(rows || []);
           setEventData(hierarchy || null);
+          setBrackets(bracketRows || []);
         }
       } catch (err) {
         if (!ignore) {
@@ -289,6 +296,55 @@ export default function StellenboschIdl6WorkspacePage() {
       })),
     }));
   }, [sortedVenues]);
+
+  // Bracket lookups let node source labels resolve to human names ("Pool A
+  // #1", "Winner of Quarterfinal 1") instead of raw ids.
+  const bracketLookups = useMemo(() => {
+    const divisions = eventData?.divisions || [];
+    const divisionById = new Map(
+      divisions.filter((division) => division?.id).map((division) => [division.id, division]),
+    );
+    const poolById = new Map(
+      divisions
+        .flatMap((division) => division?.pools || [])
+        .filter((pool) => pool?.id)
+        .map((pool) => [pool.id, pool]),
+    );
+    const teamById = new Map(
+      divisions
+        .flatMap((division) => division?.pools || [])
+        .flatMap((pool) => pool?.teams || [])
+        .map((entry) => entry?.team || entry)
+        .filter((team) => team?.id)
+        .map((team) => [team.id, team]),
+    );
+    const nodeById = new Map(
+      (brackets || []).flatMap((bracket) =>
+        (bracket?.nodes || []).map((node) => [node.id, node]),
+      ),
+    );
+    return { divisionById, poolById, teamById, nodeById };
+  }, [brackets, eventData]);
+
+  // Skip any bracket with no games yet so an empty scaffold doesn't take up a
+  // heading.
+  const playoffBrackets = useMemo(
+    () => (brackets || []).filter((bracket) => (bracket?.nodes || []).length > 0),
+    [brackets],
+  );
+
+  const renderBracketMatchCard = (match) => {
+    const showScore = isFinishedMatch(match.status);
+    return (
+      <StandardEventMatchCard
+        match={match}
+        eyebrow={match.start_time ? formatMatchTime(match.start_time) : "Time TBC"}
+        title={formatMatchup(match)}
+        score={showScore ? formatScoreLine(match) : null}
+        status={formatMatchStatus(match.status, showScore ? "Final" : "Scheduled")}
+      />
+    );
+  };
 
   const eventTitle = eventData?.name || EVENT_NAME;
 
@@ -553,6 +609,46 @@ export default function StellenboschIdl6WorkspacePage() {
             </Panel>
           )}
         </Card>
+
+        <section className="space-y-3">
+          <SectionHeader
+            title="Playoffs"
+            description="Seeds, rounds, and placements. Fixtures fill in as each round is decided."
+          />
+          {playoffBrackets.length > 1 ? (
+            <div className="space-y-3 sm:space-y-6">
+              {playoffBrackets.map((bracket) => (
+                <div
+                  key={bracket.id}
+                  className="space-y-2 rounded-2xl border border-[var(--sc-border-strong)] bg-[var(--sc-surface)]/40 p-2 sm:space-y-3 sm:p-4"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-[var(--sc-border-strong)] pb-1.5 sm:pb-2">
+                    <h3 className="text-sm font-semibold text-[var(--sc-ink)] sm:text-lg">
+                      {bracket.name || "Bracket"}
+                    </h3>
+                  </div>
+                  <BracketStructureView
+                    bracket={bracket}
+                    lookups={bracketLookups}
+                    renderMatchCard={renderBracketMatchCard}
+                    emptyMessage="No games in this bracket yet."
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <BracketStructureView
+              bracket={playoffBrackets[0] || null}
+              lookups={bracketLookups}
+              renderMatchCard={renderBracketMatchCard}
+              emptyMessage={
+                loading
+                  ? "Loading the playoff bracket..."
+                  : "The playoff bracket has not been published yet."
+              }
+            />
+          )}
+        </section>
       </SectionShell>
     </div>
   );

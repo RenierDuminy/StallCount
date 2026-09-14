@@ -1858,6 +1858,31 @@ details[open] > summary.wizard-cursor-pointer::before {
   margin-bottom: 0.75rem;
 }
 
+/* Step count on the left, create/edit/duplicate mode on the right. Wraps to
+   two lines when the mode detail is long or the screen is narrow. */
+.wizard-stepper__compact-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.wizard-stepper__mode {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.wizard-stepper__mode-detail {
+  font-size: 0.75rem;
+  color: var(--sc-ink-muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .wizard-stepper__compact-count {
   font-size: 0.7rem;
   font-weight: 700;
@@ -1953,8 +1978,21 @@ details[open] > summary.wizard-cursor-pointer::before {
 }
 
 @media (min-width: 768px) {
-  .wizard-stepper__compact {
+  /* Desktop has the full numbered track, so drop the count + progress bar, but
+     keep the mode chip: it must stay visible on every step at every width. */
+  .wizard-stepper__compact-count,
+  .wizard-stepper__progress {
     display: none;
+  }
+
+  .wizard-stepper__compact-heading {
+    justify-content: flex-end;
+  }
+
+  /* With the count + progress hidden, an empty heading still holds a gap;
+     collapse the wrapper spacing when only the mode chip remains. */
+  .wizard-stepper__compact {
+    margin-bottom: 0.5rem;
   }
 
   /* Full numbered track (wide screens). */
