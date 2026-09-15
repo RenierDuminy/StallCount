@@ -25,6 +25,18 @@ export const EVENT_ID = "abd01401-fba2-42f2-9bf9-7dfdce3e44d6";
 export const EVENT_SLUG = "stellenbosch-idl-6";
 export const EVENT_NAME = "Stellenbosch Internal Draft League VI";
 const MATCH_LIMIT = 200;
+const SUMMARY_RULES_HREF = "/rules/stellenbosch-rl-2026-rules-summary.pdf";
+const FULL_RULES_HREF = "/rules/stellenbosch-rl-2026-rules.pdf";
+const RULE_DOCUMENTS = [
+  {
+    name: "Rules-of-Ultimate - STB 5v5 edition (summary).pdf",
+    href: SUMMARY_RULES_HREF,
+  },
+  {
+    name: "Rules-of-Ultimate - STB 5v5 edition.pdf",
+    href: FULL_RULES_HREF,
+  },
+];
 const TEAM_STANDINGS_GRID_STYLE = {
   gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
 };
@@ -169,6 +181,26 @@ const buildScheduleDivisions = (matches = [], divisionNames = new Map()) => {
   });
   return divisions;
 };
+
+function PdfIcon(props) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      {...props}
+    >
+      <path
+        d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M14 2v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 const buildPoolStandings = (pool, matches) =>
   // Plain pool table: no league points, so WFDF ranking leads on games won.
@@ -395,6 +427,30 @@ export default function StellenboschIdl6WorkspacePage() {
             </a>
           </div>
           {error && <div className="sc-alert is-error">{error}</div>}
+        </Card>
+
+        <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
+          <SectionHeader title="Rules" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            {RULE_DOCUMENTS.map((document) => (
+              <a
+                key={document.href}
+                href={document.href}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 transition hover:bg-surface-muted"
+              >
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-600 text-white">
+                  <PdfIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink group-hover:underline break-words whitespace-normal">
+                    {document.name}
+                  </p>
+                </div>
+              </a>
+            ))}
+          </div>
         </Card>
 
         <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
