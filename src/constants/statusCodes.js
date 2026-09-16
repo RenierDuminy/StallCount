@@ -154,3 +154,36 @@ export function isForfeitStatus(status) {
 export function getDisplayStatus(status) {
   return isForfeitStatus(status) ? MATCH_STATUS.CANCELED : status;
 }
+
+/**
+ * Has this match been set up in a scorekeeper console (pulling team chosen,
+ * rules captured) — i.e. is it past `scheduled`/`postponed`?
+ *
+ * The console's "can I press Start match" gate asks this of the *match*, not of
+ * the setup form. The form is rebuilt from the saved row every time the active
+ * match changes, and that round-trip is lossy (`abba_pattern` is stored as
+ * "none" whenever ABBA is off, which reads back as an empty form field), so a
+ * form-shaped check reports a correctly-initialised match as un-initialised.
+ */
+export function isInitialisedStatus(status) {
+  const normalised = normalise(status);
+  return (
+    normalised === MATCH_STATUS.INITIALIZED || IN_PROGRESS_SET.has(normalised)
+  );
+}
+
+/**
+ * The status an initialising console should write.
+ *
+ * A match already under way keeps its in-progress status — a scorekeeper
+ * reconfiguring mid-game must not rewind it to `initialized`. Everything else
+ * the console will open (`scheduled`, `postponed`, `initialized`, or a legacy
+ * capitalised `Initialized`) is promoted. Never echo the caller's raw value
+ * back: a pre-rename `Initialized` written verbatim fails the FK on
+ * `match_status(code)`.
+ */
+export function getInitialisedStatusFor(currentStatus) {
+  return isInProgressStatus(currentStatus)
+    ? normalise(currentStatus)
+    : MATCH_STATUS.INITIALIZED;
+}

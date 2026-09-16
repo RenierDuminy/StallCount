@@ -13,6 +13,7 @@ export const MATCH_LOG_EVENT_CODES = {
   STOPPAGE_START: "stoppage_start",
   STOPPAGE_END: "stoppage_end",
   CALAHAN: "callahan",
+  BLOCK: "block",
 } as const;
 
 export const DEFAULT_MATCH_EVENT_DEFINITIONS = [
@@ -27,6 +28,7 @@ export const DEFAULT_MATCH_EVENT_DEFINITIONS = [
   { code: MATCH_LOG_EVENT_CODES.STOPPAGE_START, description: "Stoppage start" },
   { code: MATCH_LOG_EVENT_CODES.STOPPAGE_END, description: "Stoppage end" },
   { code: MATCH_LOG_EVENT_CODES.CALAHAN, description: "Callahan goal" },
+  { code: MATCH_LOG_EVENT_CODES.BLOCK, description: "Pass blocked by opponent" },
 ] as const;
 
 type MatchEventDefinitionRow = {

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
 import { CALAHAN_ASSIST_VALUE, SCORE_NA_PLAYER_VALUE } from "./scorekeeperConstants";
 import { formatClock, formatMatchLabel } from "./scorekeeperUtils";
+import { resolveScorekeeperFormat } from "./scorekeeperFormats";
 
 const SIMPLE_EVENT_DELETE_ONLY_CODES = new Set([
   MATCH_LOG_EVENT_CODES.HALFTIME_START,
@@ -87,7 +88,7 @@ export function ScorekeeperPopups({
   const { candidate, handled, busy, error, onResume, onDiscard } = resume;
   const {
     open: setupOpen,
-    title: setupTitle = "7v7 match setup",
+    title: setupTitle = "Match setup",
     onClose: onSetupClose,
     onBack: onSetupBack,
     onSubmit: onSetupSubmit,
@@ -118,7 +119,30 @@ export function ScorekeeperPopups({
     isStartMatchReady,
     error: setupError,
   } = setup;
-  const isFiveVFiveSetup = `${setupTitle}`.toLowerCase().includes("5v5");
+  // The format arrives as an explicit prop. The legacy popup inferred it by
+  // testing whether the modal *title* contained "5v5", so renaming a title
+  // silently changed which fields rendered.
+  const setupFormat = resolveScorekeeperFormat(setup?.format);
+  const advancedRuleFieldsEditable = setupFormat.flags.advancedRuleFieldsEditable;
+  // Which cap targets this format offers, rendered from the flag rather than
+  // hardcoded in the markup. Every mode listed there is implemented by the cap
+  // logic — assertFormatShape fails the build otherwise.
+  const capTargetModes = setupFormat.flags.capTargetModes;
+  const CAP_TARGET_MODE_LABELS = {
+    none: "None",
+    addOneToHighest: "Highest + 1",
+  };
+  const renderCapTargetOptions = () =>
+    capTargetModes.map((mode) => (
+      <option key={mode} value={mode}>
+        {CAP_TARGET_MODE_LABELS[mode] || mode}
+      </option>
+    ));
+  // Casual hides the advanced rule fields to keep setup short. Named after the
+  // flag, not the format, so a third format switching the same fields off does
+  // not need a second boolean here. A hidden field still applies — it just keeps
+  // whatever the event supplied.
+  const hideAdvancedRuleFields = !advancedRuleFieldsEditable;
   const {
     open: possessionOpen,
     onClose: onPossessionClose,
@@ -127,6 +151,7 @@ export function ScorekeeperPopups({
     displayTeamB: possessionDisplayTeamB,
     result: possessionResult,
     onResultChange: onPossessionResultChange,
+    allowBlock: possessionAllowBlock = true,
     activeActorOptions = [],
     actorId: possessionActorId,
     onActorSelect: onPossessionActorSelect,
@@ -144,6 +169,9 @@ export function ScorekeeperPopups({
     busy: endMatchBusy,
     onClose: onEndMatchClose,
     onConfirm: onEndMatchConfirm,
+    // Formats without spirit scoring return to the menu instead, so the prompt
+    // must not promise a step that will not happen.
+    spiritScores: endMatchSpiritScores = true,
   } = endMatch;
   const {
     open: timeOpen,
@@ -152,6 +180,7 @@ export function ScorekeeperPopups({
     halftimeBreakActive,
     halftimeDisabled,
     halftimeTypeLabel,
+    halftimeManualClosureRequired = false,
     onHalfTime,
     onForceEndHalftime,
     onTimeout,
@@ -190,7 +219,12 @@ export function ScorekeeperPopups({
   } = simpleEvent;
 
   const normalizedSimpleEventCode = `${simpleEventState?.eventCode || ""}`.toLowerCase();
-  const isSimpleEventDeleteOnly = SIMPLE_EVENT_DELETE_ONLY_CODES.has(normalizedSimpleEventCode);
+  // Halftime/stoppage entries are always delete-only (their team is implied, so
+  // there is nothing to edit). A format that switches simple-event editing off
+  // makes every simple event delete-only.
+  const isSimpleEventDeleteOnly =
+    !setupFormat.flags.allowEditSimpleEvents ||
+    SIMPLE_EVENT_DELETE_ONLY_CODES.has(normalizedSimpleEventCode);
 
   return (
     <Fragment>
@@ -308,7 +342,7 @@ export function ScorekeeperPopups({
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              {!isFiveVFiveSetup && (
+              {!hideAdvancedRuleFields && (
                 <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                   <span className="shrink-0">Time cap end mode</span>
                   <select
@@ -327,7 +361,7 @@ export function ScorekeeperPopups({
                   </select>
                 </label>
               )}
-              {!isFiveVFiveSetup && (
+              {!hideAdvancedRuleFields && (
                 <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                   <span className="shrink-0">Time cap target</span>
                   <select
@@ -341,8 +375,7 @@ export function ScorekeeperPopups({
                     }}
                     className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <option value="none">None</option>
-                    <option value="addOneToHighest">Highest + 1</option>
+                    {renderCapTargetOptions()}
                   </select>
                 </label>
               )}
@@ -362,7 +395,7 @@ export function ScorekeeperPopups({
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              {!isFiveVFiveSetup && (
+              {!hideAdvancedRuleFields && (
                 <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                   <span className="shrink-0">Halftime cap end mode</span>
                   <select
@@ -381,7 +414,7 @@ export function ScorekeeperPopups({
                   </select>
                 </label>
               )}
-              {!isFiveVFiveSetup && (
+              {!hideAdvancedRuleFields && (
                 <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                   <span className="shrink-0">Halftime cap target</span>
                   <select
@@ -395,8 +428,7 @@ export function ScorekeeperPopups({
                     }}
                     className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <option value="none">None</option>
-                    <option value="addOneToHighest">Highest + 1</option>
+                    {renderCapTargetOptions()}
                   </select>
                 </label>
               )}
@@ -416,25 +448,25 @@ export function ScorekeeperPopups({
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              {!isFiveVFiveSetup && (
-                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                  <span className="shrink-0">Timeout duration (sec)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={rules.timeoutSeconds}
-                    onChange={(event) => {
-                      if (!setRules) return;
-                      setRules((prev) => ({
-                        ...prev,
-                        timeoutSeconds: Number(event.target.value) || 0,
-                      }));
-                    }}
-                    className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-                </label>
-              )}
-              {!isFiveVFiveSetup && (
+              {/* Timeout duration stays visible in every format: how long a
+                  timeout runs is a basic setting, not an advanced one. */}
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                <span className="shrink-0">Timeout duration (sec)</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={rules.timeoutSeconds}
+                  onChange={(event) => {
+                    if (!setRules) return;
+                    setRules((prev) => ({
+                      ...prev,
+                      timeoutSeconds: Number(event.target.value) || 0,
+                    }));
+                  }}
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+              {!hideAdvancedRuleFields && (
                 <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                   <span className="shrink-0">Discussion duration (sec)</span>
                   <input
@@ -468,7 +500,7 @@ export function ScorekeeperPopups({
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              {!isFiveVFiveSetup && (
+              {!hideAdvancedRuleFields && (
                 <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                   <span className="shrink-0">Timeouts per half</span>
                   <input
@@ -595,7 +627,11 @@ export function ScorekeeperPopups({
                   ? `${possessionDisplayTeamB} in possession`
                   : "Select possession"}
             </p>
-            <div className="grid grid-cols-2 gap-2 text-sm font-semibold">
+            <div
+              className={`grid gap-2 text-sm font-semibold ${
+                possessionAllowBlock ? "grid-cols-2" : "grid-cols-1"
+              }`}
+            >
               <label
                 className={`flex items-center gap-2 rounded-2xl border px-3 py-3 min-h-[52px] ${
                   possessionResult === "throwaway"
@@ -616,26 +652,28 @@ export function ScorekeeperPopups({
                 />
                 <span>Incompletion</span>
               </label>
-              <label
-                className={`flex items-center gap-2 rounded-2xl border px-3 py-3 min-h-[52px] ${
-                  possessionResult === "block"
-                    ? "border-[#0f5132] bg-[#0f5132] text-white"
-                    : "border-[#0f5132]/30 bg-white text-[#0f5132]"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="possession-outcome-modal"
-                  value="block"
-                  checked={possessionResult === "block"}
-                  onChange={() => {
-                    if (onPossessionResultChange) {
-                      onPossessionResultChange("block");
-                    }
-                  }}
-                />
-                <span>Block</span>
-              </label>
+              {possessionAllowBlock && (
+                <label
+                  className={`flex items-center gap-2 rounded-2xl border px-3 py-3 min-h-[52px] ${
+                    possessionResult === "block"
+                      ? "border-[#0f5132] bg-[#0f5132] text-white"
+                      : "border-[#0f5132]/30 bg-white text-[#0f5132]"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="possession-outcome-modal"
+                    value="block"
+                    checked={possessionResult === "block"}
+                    onChange={() => {
+                      if (onPossessionResultChange) {
+                        onPossessionResultChange("block");
+                      }
+                    }}
+                  />
+                  <span>Block</span>
+                </label>
+              )}
             </div>
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
@@ -740,7 +778,10 @@ export function ScorekeeperPopups({
               </button>
             </div>
             <p className="text-sm text-[#7f1d1d]">
-              End this match and clear local data? You can still enter spirit scores next.
+              End this match and clear local data?{" "}
+              {endMatchSpiritScores
+                ? "You can still enter spirit scores next."
+                : "You will return to the score keeper menu."}
             </p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <button
@@ -798,6 +839,18 @@ export function ScorekeeperPopups({
             <p className="text-xs text-[#0f5132]/80">
               Trigger: {halftimeTypeLabel || "Unknown"}
             </p>
+            {/* A manually-started break has no automatic close: the timer expiring
+                does not end it, so the operator must come back and force-end it.
+                Saying so here is the only place they would find out. */}
+            {halftimeBreakActive && halftimeManualClosureRequired && (
+              <p
+                role="status"
+                className="rounded-2xl border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900"
+              >
+                You started this half time manually, so you must end it manually — use
+                &ldquo;Force end Halftime&rdquo; when both teams are ready.
+              </p>
+            )}
 
             <div className="grid gap-2 sm:grid-cols-2">
               <div>

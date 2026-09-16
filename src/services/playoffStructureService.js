@@ -7,9 +7,15 @@ const BRACKET_NODE_FIELDS = "*";
 // under the old convention), so they resolve a winner/loser for advancement
 // just like a played match does. The explicit forfeit codes (forfeit /
 // forfeit_teamA / forfeit_teamB) resolve a winner the same way.
-const FINISHED_MATCH_STATUSES = new Set([
+//
+// This list used to omit "final" while PlayoffStructurePage.jsx included it,
+// so the same match could be finished enough to seed a pool but not finished
+// enough to advance a winner. Both now use this one set; the server-side copy
+// in api/_lib/playoffResolve.js is kept identical (it cannot import from src).
+export const FINISHED_MATCH_STATUSES = new Set([
   "finished",
   "completed",
+  "final",
   "canceled",
   "cancelled",
   "forfeit",
@@ -412,6 +418,234 @@ export async function deleteBracketNode(nodeId) {
   }
 }
 
+const PLAYOFF_RESOLVE_ENDPOINT = "/api/playoff-resolve";
+
+async function getAccessToken() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    throw new Error(error.message || "Unable to read the current session.");
+  }
+  const token = data?.session?.access_token;
+  if (!token) {
+    throw new Error("You must be signed in to resolve playoffs.");
+  }
+  return token;
+}
+
+async function readApiResponse(response) {
+  // A non-JSON body (a proxy error page, say) must still surface the status
+  // rather than throwing a parse error over it.
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(
+      payload?.error?.message || `Playoff resolver failed (${response.status}).`,
+    );
+  }
+
+  return payload;
+}
+
+/**
+ * Run resolution for one event, server-side.
+ *
+ * The maths lives in api/_lib/playoffResolve.js rather than here so the manual
+ * button and the scheduled sweeper cannot drift apart. It resolves to a fixed
+ * point, so a QF -> SF -> Final chain whose earlier rounds are already played
+ * fills in one call instead of one press per round.
+ */
+export async function requestPlayoffResolve(eventId) {
+  if (!eventId) {
+    throw new Error("Event ID is required.");
+  }
+
+  const accessToken = await getAccessToken();
+  const response = await fetch(PLAYOFF_RESOLVE_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ eventId }),
+  });
+
+  const payload = await readApiResponse(response);
+  return payload?.result || null;
+}
+
+/** Last sweep outcome plus this event's pending/blocked nodes. */
+export async function getPlayoffResolveStatus(eventId) {
+  const accessToken = await getAccessToken();
+  const url = eventId
+    ? `${PLAYOFF_RESOLVE_ENDPOINT}?eventId=${encodeURIComponent(eventId)}`
+    : PLAYOFF_RESOLVE_ENDPOINT;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  const payload = await readApiResponse(response);
+  return payload?.status || null;
+}
+
+/** Per-event opt-in for the scheduled sweeper. */
+export async function setEventAutoResolve(eventId, enabled) {
+  if (!eventId) {
+    throw new Error("Event ID is required.");
+  }
+
+  const { data, error } = await supabase
+    .from("events")
+    .update({ auto_resolve_playoffs: Boolean(enabled) })
+    .eq("id", eventId)
+    .select("id, auto_resolve_playoffs")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to update auto-resolve setting.");
+  }
+
+  return data || null;
+}
+
+export async function getEventAutoResolve(eventId) {
+  if (!eventId) {
+    return false;
+  }
+
+  const { data, error } = await supabase
+    .from("events")
+    .select("auto_resolve_playoffs")
+    .eq("id", eventId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to read auto-resolve setting.");
+  }
+
+  return Boolean(data?.auto_resolve_playoffs);
+}
+
+const SCHEDULE_FIELDS =
+  "id, event_id, bracket_id, label, resolve_at, node_ids, enabled, created_at, updated_at";
+
+/**
+ * Release schedules for an event.
+ *
+ * A schedule is "these specific games may fill in at this time". Groups are
+ * arbitrary — they need not line up with a bracket round — and an event has as
+ * many as it needs, so the UI adds and removes rows rather than assuming a
+ * fixed QF/SF/Final shape.
+ */
+export async function getPlayoffSchedules(eventId) {
+  if (!eventId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("playoff_resolve_schedules")
+    .select(SCHEDULE_FIELDS)
+    .eq("event_id", eventId)
+    .order("resolve_at", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message || "Failed to load playoff schedules.");
+  }
+
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createPlayoffSchedule(payload = {}) {
+  if (!payload.eventId || !payload.bracketId) {
+    throw new Error("Event and bracket are required.");
+  }
+  if (!payload.resolveAt) {
+    throw new Error("A release time is required.");
+  }
+
+  const { data, error } = await supabase
+    .from("playoff_resolve_schedules")
+    .insert({
+      event_id: payload.eventId,
+      bracket_id: payload.bracketId,
+      label: payload.label || null,
+      resolve_at: payload.resolveAt,
+      node_ids: Array.isArray(payload.nodeIds) ? payload.nodeIds.filter(Boolean) : [],
+      enabled: payload.enabled === undefined ? true : Boolean(payload.enabled),
+    })
+    .select(SCHEDULE_FIELDS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to create the schedule.");
+  }
+
+  return data || null;
+}
+
+export async function updatePlayoffSchedule(scheduleId, payload = {}) {
+  if (!scheduleId) {
+    throw new Error("Schedule ID is required.");
+  }
+
+  const updatePayload = { updated_at: new Date().toISOString() };
+  if ("label" in payload) updatePayload.label = payload.label || null;
+  if ("resolveAt" in payload) updatePayload.resolve_at = payload.resolveAt;
+  if ("bracketId" in payload) updatePayload.bracket_id = payload.bracketId;
+  if ("enabled" in payload) updatePayload.enabled = Boolean(payload.enabled);
+  if ("nodeIds" in payload) {
+    updatePayload.node_ids = Array.isArray(payload.nodeIds)
+      ? payload.nodeIds.filter(Boolean)
+      : [];
+  }
+
+  const { data, error } = await supabase
+    .from("playoff_resolve_schedules")
+    .update(updatePayload)
+    .eq("id", scheduleId)
+    .select(SCHEDULE_FIELDS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Failed to update the schedule.");
+  }
+
+  return data || null;
+}
+
+export async function deletePlayoffSchedule(scheduleId) {
+  if (!scheduleId) {
+    throw new Error("Schedule ID is required.");
+  }
+
+  const { error } = await supabase
+    .from("playoff_resolve_schedules")
+    .delete()
+    .eq("id", scheduleId);
+
+  if (error) {
+    throw new Error(error.message || "Failed to delete the schedule.");
+  }
+}
+
+/**
+ * @deprecated Use `requestPlayoffResolve` instead.
+ *
+ * The legacy client-side resolver. Superseded by api/_lib/playoffResolve.js,
+ * which the Playoff Structure page and the scheduled sweeper both go through,
+ * so the two cannot drift. Kept only so nothing breaks if an older caller
+ * surfaces; it is no longer wired to any UI.
+ *
+ * It differs from the server implementation in ways that matter: it makes a
+ * single unordered pass (so a QF -> SF -> Final chain needs repeated calls),
+ * ignores `brackets.is_locked` and the release schedules, and seeds from
+ * whatever `standingsIndex` the caller passes rather than the WFDF ladder.
+ */
 export async function resolveBracketMatchesForEvent({ eventId, standingsIndex, brackets }) {
   const structure = Array.isArray(brackets) ? brackets : await getBracketsByEvent(eventId);
   const flatNodes = structure.flatMap((bracket) => bracket?.nodes || []);

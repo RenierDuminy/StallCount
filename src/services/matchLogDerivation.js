@@ -7,12 +7,12 @@
 // is what previously let a re-derive fold the existing total into a new baseline
 // and double the score on every console remount.
 //
-// This is a plain-function lift of `deriveLogsFromRows` in
-// src/pages/scorekeeper/useScoreKeeperData.js (~line 2770). The 7v7 and 5v5
-// scorekeeper hooks still hold their own copies: they are the highest-risk files
-// in the app and are deliberately left untouched here so an admin-side change
-// cannot break live scoring. If you change the counting rules, change them in all
-// three places or the console and the corrections page will disagree.
+// This is a plain-function lift of `deriveLogsFromRows`, which now lives in
+// src/pages/scorekeeper/modularScoreKeeperData.js — the scorekeeper console still
+// holds its own copy, kept separate so an admin-side change here cannot break
+// live scoring. If you change the counting rules, change them in both places or
+// the console and the corrections page will disagree. (The 7v7 and 5v5 hooks used
+// to hold a third and fourth copy; those consoles have been replaced.)
 
 import { MATCH_LOG_EVENT_CODES } from "./matchLogService";
 

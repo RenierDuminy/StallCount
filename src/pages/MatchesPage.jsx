@@ -478,7 +478,20 @@ export default function MatchesPage() {
                 )}
 
                 <section className="sc-card-base space-y-2 p-4 sm:p-6">
-                  <h2 className="text-lg font-semibold text-ink">Score progression</h2>
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-lg font-semibold text-ink">Score progression</h2>
+                    <FullscreenChartToggle
+                      title="Score progression"
+                      render={(isFullscreen) => (
+                        <TimelineChart
+                          match={selectedMatch}
+                          timeline={derived.timeline}
+                          possessionTimeline={derived.possessionTimeline}
+                          fullscreen={isFullscreen}
+                        />
+                      )}
+                    />
+                  </div>
                   <TimelineChart match={selectedMatch} timeline={derived.timeline} possessionTimeline={derived.possessionTimeline} />
                 </section>
 
@@ -674,7 +687,75 @@ function InsightTable({ title, rows }) {
   );
 }
 
-function TimelineChart({ match, timeline, possessionTimeline }) {
+// Mobile-only fullscreen toggle for a chart. Renders an icon button that
+// opens a fixed overlay; the overlay is CSS-rotated 90deg and sized to the
+// viewport so a chart built for a wide aspect ratio reads as landscape even
+// though the phone itself stays in portrait (there is no reliable way to
+// force real device orientation from the page). Desktop never shows the
+// trigger since the chart already has plenty of room there.
+function FullscreenChartToggle({ title, render }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setIsOpen(true)}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-ink-muted transition hover:bg-surface-light hover:text-ink sm:hidden"
+        aria-label={`View ${title} fullscreen`}
+        title="View fullscreen"
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-white sm:hidden">
+          {/*
+            Rotating a box 90deg swaps which viewport dimension it fills, so
+            the box must be pre-sized to the SWAPPED dimensions (width =
+            viewport height, height = viewport width) for it to exactly cover
+            the screen once rotated. `dvh`/`dvw` account for mobile browser
+            chrome so the fill is exact even as address bars show/hide.
+          */}
+          <div
+            className="absolute left-1/2 top-1/2 flex flex-col overflow-y-auto bg-white p-3"
+            style={{ width: "100dvh", height: "100dvw", transform: "translate(-50%, -50%) rotate(90deg)" }}
+          >
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="absolute right-1 top-1 z-10 flex h-9 w-9 items-center justify-center text-[#166534]"
+              aria-label="Close fullscreen view"
+            >
+              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+            <div className="flex min-h-0 w-full flex-1 items-center">{render(true)}</div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false }) {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -694,13 +775,17 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
     );
   }
 
+  // The fullscreen overlay is CSS-rotated into landscape, so it should use
+  // the same wide/short proportions as desktop even though the device is
+  // still reporting a narrow (portrait) window width.
+  const useCompactLayout = isMobile && !fullscreen;
   const graphClassName = "mx-auto w-full";
   const width = 900;
   const baseHeight = 300;
   const possessionSegments = possessionTimeline?.segments || [];
-  const possessionBandHeight = possessionSegments.length ? (isMobile ? 18 : 14) : 0;
+  const possessionBandHeight = possessionSegments.length ? (useCompactLayout ? 18 : 14) : 0;
   const possessionBandGap = possessionSegments.length ? 24 : 0;
-  const chartCanvasHeight = isMobile ? baseHeight * 1.35 : baseHeight;
+  const chartCanvasHeight = useCompactLayout ? baseHeight * 1.35 : baseHeight;
   const height = chartCanvasHeight + possessionBandHeight + possessionBandGap;
   const padding = { top: 26, right: 44, bottom: 52, left: 50 };
   const chartWidth = width - padding.left - padding.right;
@@ -715,6 +800,18 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
   };
 
   const getY = (score) => padding.top + (1 - score / (yMax || 1)) * chartHeight;
+
+  // Score is a step function over time: the value at `time` is whatever the
+  // last snapshot at or before it held. Used to sit a marker on a team's line.
+  const getScoreAtTime = (seriesPoints, time) => {
+    if (!seriesPoints?.length) return 0;
+    let current = seriesPoints[0].score;
+    for (const point of seriesPoints) {
+      if (point.time > time) break;
+      current = point.score;
+    }
+    return current;
+  };
 
   const renderLinePath = (points, color) => {
     if (!points.length) return null;
@@ -737,19 +834,49 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
 
   return (
     <div className={`${graphClassName} relative`}>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" preserveAspectRatio="xMidYMid meet">
+      <svg viewBox={`0 0 ${width} ${height}`} className="block h-auto w-full" preserveAspectRatio="xMidYMid meet">
         <rect x="0" y="0" width={width} height={height} fill="white" rx="18" />
 
-        {timeline.bands.map((band) => (
-          <rect
-            key={`${band.type}-${band.start}`}
-            x={getX(band.start)}
-            y={padding.top}
-            width={Math.max(2, getX(band.end) - getX(band.start))}
-            height={chartHeight}
-            fill={BAND_COLORS[band.type] || "rgba(125,125,125,0.15)"}
-          />
-        ))}
+        {timeline.bands.map((band) => {
+          const bandX = getX(band.start);
+          const bandWidth = Math.max(2, getX(band.end) - getX(band.start));
+          return (
+            <rect
+              key={`${band.type}-${band.start}`}
+              x={bandX}
+              y={padding.top}
+              width={bandWidth}
+              height={chartHeight}
+              fill={BAND_COLORS[band.type] || "rgba(125,125,125,0.15)"}
+            />
+          );
+        })}
+
+        {timeline.bands
+          .filter((band) => band.type === "timeout" && band.team)
+          .map((band) => {
+            const midTime = (band.start + band.end) / 2;
+            const otherTeam = band.team === "teamA" ? "teamB" : "teamA";
+            const cx = getX(midTime);
+            const cy = getY(getScoreAtTime(timeline.series[band.team], midTime));
+            const otherCy = getY(getScoreAtTime(timeline.series[otherTeam], midTime));
+            // Place the label on the side away from the other team's line at
+            // this moment, so a close or crossed pair doesn't overlap it.
+            const yOffset = cy <= otherCy ? -8 : 14;
+            return (
+              <text
+                key={`timeout-marker-${band.start}`}
+                x={cx}
+                y={cy + yOffset}
+                textAnchor="middle"
+                fontSize="9"
+                fontWeight="700"
+                fill={SERIES_COLORS[band.team]}
+              >
+                TO
+              </text>
+            );
+          })}
 
         <line
           x1={padding.left}
@@ -796,6 +923,85 @@ function TimelineChart({ match, timeline, possessionTimeline }) {
 
         {renderLinePath(timeline.series.teamA, SERIES_COLORS.teamA)}
         {renderLinePath(timeline.series.teamB, SERIES_COLORS.teamB)}
+
+        {timeline.halftimeScore && (() => {
+          const { time, scoreA, scoreB } = timeline.halftimeScore;
+          const cx = getX(time);
+          const cyA = getY(scoreA);
+          const cyB = getY(scoreB);
+          // When the lines are close together (or crossed), placing both
+          // labels "above" can land one on top of the other line. Push each
+          // label further away from the other team's line instead — the
+          // higher-scoring line's label goes up, the lower one's goes down —
+          // so they land on the outside of the pair no matter how close the
+          // lines are. A dead tie falls back to a horizontal split.
+          const isTie = scoreA === scoreB;
+          const yOffsetA = isTie ? -8 : cyA <= cyB ? -8 : 14;
+          const yOffsetB = isTie ? -8 : cyB <= cyA ? -8 : 14;
+          const xOffsetA = isTie ? -9 : 0;
+          const xOffsetB = isTie ? 9 : 0;
+          return (
+            <g>
+              <text
+                x={cx + xOffsetA}
+                y={cyA + yOffsetA}
+                textAnchor="middle"
+                fontSize="10"
+                fontWeight="700"
+                fill={SERIES_COLORS.teamA}
+              >
+                {scoreA}
+              </text>
+              <text
+                x={cx + xOffsetB}
+                y={cyB + yOffsetB}
+                textAnchor="middle"
+                fontSize="10"
+                fontWeight="700"
+                fill={SERIES_COLORS.teamB}
+              >
+                {scoreB}
+              </text>
+            </g>
+          );
+        })()}
+
+        {timeline.finalScore && (() => {
+          const { time, scoreA, scoreB } = timeline.finalScore;
+          const x = getX(time) + 6;
+          const cyA = getY(scoreA);
+          const cyB = getY(scoreB);
+          // Same outward-placement logic as the halftime labels: push each
+          // label away from the other team's line so close or tied endpoints
+          // don't stack their labels on top of one another.
+          const isTie = scoreA === scoreB;
+          const yOffsetA = isTie ? -3 : cyA <= cyB ? -3 : 11;
+          const yOffsetB = isTie ? 11 : cyB <= cyA ? -3 : 11;
+          return (
+            <g>
+              <text
+                x={x}
+                y={cyA + yOffsetA}
+                textAnchor="start"
+                fontSize="11"
+                fontWeight="700"
+                fill={SERIES_COLORS.teamA}
+              >
+                {scoreA}
+              </text>
+              <text
+                x={x}
+                y={cyB + yOffsetB}
+                textAnchor="start"
+                fontSize="11"
+                fontWeight="700"
+                fill={SERIES_COLORS.teamB}
+              >
+                {scoreB}
+              </text>
+            </g>
+          );
+        })()}
 
         <text x={width / 2} y={20} textAnchor="middle" fontSize="13.6" fontWeight="600" fill="#0f172a">
           {chartTitle}
@@ -998,6 +1204,7 @@ function TeamOverviewCard({ stats }) {
   const goals = stats?.goals || [];
   const assists = stats?.assists || [];
   const turnovers = stats?.turnovers || [];
+  const blocks = stats?.blocks || [];
   const connections = stats?.connections || [];
   const production = stats?.production;
   const summaryStats = [
@@ -1006,22 +1213,23 @@ function TeamOverviewCard({ stats }) {
     { key: "turnovers", label: "Total turnovers", value: production?.totalTurnovers },
     { key: "breaks", label: "Breaks", value: production?.breaks },
     { key: "breakChances", label: "Break chances", value: production?.breakChances },
+    { key: "blocks", label: "Blocks", value: production?.blocks },
   ];
   const formatStatValue = (value) => (Number.isFinite(value) ? value : value === 0 ? 0 : "--");
 
   const renderList = (label, rows) => {
     return (
-      <div className="py-1">
-        <p className="mb-1.5 border-b-2 border-accent/60 pb-1 text-xs font-semibold uppercase tracking-wide text-ink">
+      <div className="py-0.5 sm:py-1">
+        <p className="mb-1 bg-accent/15 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-ink sm:mb-1.5">
           {label}
         </p>
         {rows.length ? (
-          <table className="w-full text-left text-sm text-ink">
+          <table className="w-full text-left text-sm leading-tight text-ink sm:leading-normal">
             <tbody>
               {rows.map((row) => (
                 <tr key={`${label}-${row.player}`} className="border-t border-border text-sm">
-                  <td className="py-1 pr-2">{row.player}</td>
-                  <td className="py-1 text-right font-semibold">{row.count}</td>
+                  <td className="py-0.5 pr-2 sm:py-1">{row.player}</td>
+                  <td className="py-0.5 text-right font-semibold sm:py-1">{row.count}</td>
                 </tr>
               ))}
             </tbody>
@@ -1036,31 +1244,32 @@ function TeamOverviewCard({ stats }) {
   return (
     <div>
       {production && (
-        <div className="mb-2 grid gap-2 text-center sm:mb-3 sm:gap-3 [grid-template-columns:repeat(auto-fit,minmax(5rem,1fr))]">
+        <div className="mb-1.5 grid gap-1.5 text-center sm:mb-3 sm:gap-3 [grid-template-columns:repeat(auto-fit,minmax(5rem,1fr))]">
           {summaryStats.map((item) => (
             <div
               key={item.key}
-              className="rounded-xl border border-border bg-surface px-2 py-3"
+              className="rounded-xl border border-border bg-surface px-2 py-1.5 sm:py-3"
             >
-              <p className="text-lg font-semibold text-ink sm:text-xl">
+              <p className="text-lg font-semibold leading-tight text-ink sm:text-xl sm:leading-normal">
                 {formatStatValue(item.value)}
               </p>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted sm:text-[11px]">
+              <p className="text-[10px] font-semibold uppercase leading-tight tracking-wide text-ink-muted sm:text-[11px] sm:leading-normal">
                 {item.label}
               </p>
             </div>
           ))}
         </div>
       )}
-      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 sm:gap-3">
+      <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3 sm:gap-3">
         {renderList("Goals", goals)}
         {renderList("Assists", assists)}
         {renderList("Turnovers", turnovers)}
+        {renderList("Blocks", blocks)}
       </div>
-      <div className="mt-1.5 border-t border-border/50 pt-3 sm:mt-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Top connections</p>
+      <div className="mt-1 border-t border-border/50 pt-1.5 sm:mt-3 sm:pt-3">
+        <p className="bg-accent/15 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-ink">Top connections</p>
         {connections.length ? (
-          <table className="mt-1 w-full text-left text-sm text-ink sm:mt-1.5">
+          <table className="mt-0.5 w-full text-left text-sm leading-tight text-ink sm:mt-1.5 sm:leading-normal">
             <thead>
               <tr className="text-xs uppercase tracking-wide text-ink-muted">
                 <th className="py-0.5 pr-2">Assist</th>
@@ -1072,10 +1281,23 @@ function TeamOverviewCard({ stats }) {
             <tbody>
               {connections.map((row) => (
                 <tr key={`${row.assist}-${row.scorer}`} className="border-t border-border text-sm">
-                  <td className="py-1 pr-2">{row.assist}</td>
-                  <td className="py-1 text-center text-sm font-bold text-ink-muted">→</td>
-                  <td className="py-1 pr-2">{row.scorer}</td>
-                  <td className="py-1 text-right font-semibold">{row.count}</td>
+                  <td className="py-0.5 pr-2 sm:py-1">{row.assist}</td>
+                  <td className="py-0.5 text-center sm:py-1">
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="mx-auto h-4 w-4 shrink-0 text-ink-muted"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      strokeLinecap="square"
+                      strokeLinejoin="miter"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 12h14M13 6l6 6-6 6" />
+                    </svg>
+                  </td>
+                  <td className="py-0.5 pr-2 sm:py-1">{row.scorer}</td>
+                  <td className="py-0.5 text-right font-semibold sm:py-1">{row.count}</td>
                 </tr>
               ))}
             </tbody>
@@ -1461,7 +1683,25 @@ function PointLogTable({ rows }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {rows.map((row) => {
+            // Rows with a dark background (stoppage red, halftime/match-start
+            // green) need light text; the lighter fills read fine in black.
+            const isDarkRow = row.variant === "stoppage" || row.variant === "halftime";
+            // Turnover/block rows sit on a light fill and must stay black even
+            // if the dark-row logic above ever expands to cover more variants.
+            const isTurnoverRow = row.variant?.startsWith("turnover");
+            const rowTextClass = isDarkRow && !isTurnoverRow ? "text-white" : "text-black";
+            const metaTextClass = isDarkRow && !isTurnoverRow
+              ? "text-white/80"
+              : isTurnoverRow
+                ? "text-black"
+                : "text-ink-muted";
+            // The Halftime row itself (not match start/end, which also carry
+            // the "halftime" variant for colouring) is a match divider, so give
+            // it double the vertical padding to stand out from the flow.
+            const isHalftimeBreakRow = row.description === "Halftime";
+            const rowPaddingClass = isHalftimeBreakRow ? "py-1 sm:py-3" : "py-0.5 sm:py-1.5";
+            return (
             <tr
               key={`${row.index}-${row.timestamp}`}
               className={`border-b border-border last:border-none ${
@@ -1482,40 +1722,53 @@ function PointLogTable({ rows }) {
                   : ""
               }`}
             >
-              <td className="px-1 py-0.5 whitespace-nowrap text-black sm:px-2 sm:py-1.5">{row.formattedTime}</td>
-              <td className="px-1 py-0.5 text-center text-base sm:px-2 sm:py-1.5">
+              <td className={`px-1 sm:px-2 whitespace-nowrap ${rowPaddingClass} ${rowTextClass}`}>{row.formattedTime}</td>
+              <td className={`px-1 sm:px-2 text-center text-base ${rowPaddingClass}`}>
                 <span aria-label={row.description || "Event"} title={row.description || "Event"}>
                   {getEventSymbol(row)}
                 </span>
               </td>
-              <td className="px-1 py-0.5 font-semibold text-black sm:px-2 sm:py-1.5">{row.teamLabel}</td>
-              <td className="px-1 py-0.5 text-center sm:px-2 sm:py-1.5">
+              <td className={`px-1 sm:px-2 font-semibold ${rowPaddingClass} ${rowTextClass}`}>{row.teamLabel}</td>
+              <td className={`px-1 sm:px-2 text-center ${rowPaddingClass}`}>
                 {row.description === "Timeout" ||
                 row.description === "Halftime" ||
                 row.description === "Match start" ||
+                row.description === "Match end" ||
                 row.description === "Stoppage" ||
                 row.variant?.startsWith("turnover") ? (
-                  <div className="text-center text-xs font-semibold text-black sm:text-sm">
-                    <div>{row.description}</div>
+                  <div className={`text-center text-xs font-semibold sm:text-sm ${rowTextClass}`}>
+                    {!row.variant?.startsWith("turnover") && <div>{row.description}</div>}
                     {row.metaDetails && (
-                      <p className="text-[10px] font-normal text-ink-muted sm:text-xs">
+                      <p className={`text-[10px] font-normal sm:text-xs ${metaTextClass}`}>
                         {row.metaDetails}
                       </p>
                     )}
                   </div>
                 ) : (
-                  <div className="grid auto-rows-min items-center gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-1.5">
-                    <span className="text-black text-[11px] sm:text-sm sm:text-right">{row.assist || "-"}</span>
-                    <span className="text-[10px] font-semibold text-black text-center sm:text-xs">→</span>
-                    <span className="font-semibold text-black sm:text-left">{row.scorer || "-"}</span>
+                  <div className="grid auto-rows-min items-center gap-0.5 leading-tight sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-1.5 sm:leading-normal">
+                    <span className={`text-[11px] leading-tight sm:text-sm sm:leading-normal sm:text-right ${rowTextClass}`}>{row.assist || "-"}</span>
+                    <svg
+                      viewBox="0 0 24 24"
+                      className={`h-4 w-4 shrink-0 justify-self-center rotate-90 sm:h-5 sm:w-5 sm:rotate-0 ${rowTextClass}`}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      strokeLinecap="square"
+                      strokeLinejoin="miter"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 12h14M13 6l6 6-6 6" />
+                    </svg>
+                    <span className={`font-semibold leading-tight sm:leading-normal sm:text-left ${rowTextClass}`}>{row.scorer || "-"}</span>
                   </div>
                 )}
               </td>
-              <td className="px-1 py-0.5 text-right font-mono text-[11px] text-black sm:px-2 sm:py-1.5 sm:text-xs">
+              <td className={`px-1 sm:px-2 text-right font-mono text-[11px] sm:text-xs ${rowPaddingClass} ${rowTextClass}`}>
                 {row.gap}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -1530,15 +1783,11 @@ function deriveMatchInsights(match, logs) {
   const teamBName = match.team_b?.name || "Team B";
   const teamAShort = match.team_a?.short_name || teamAName;
   const teamBShort = match.team_b?.short_name || teamBName;
-  const getTeamShortLabel = (teamId) => {
-    if (teamId === teamAId) return teamAShort;
-    if (teamId === teamBId) return teamBShort;
-    return null;
-  };
   const createStats = () => ({
     goalCounts: new Map(),
     assistCounts: new Map(),
     turnoverCounts: new Map(),
+    blockCounts: new Map(),
     connectionCounts: new Map(),
   });
   const teamStats = {
@@ -1551,6 +1800,7 @@ function deriveMatchInsights(match, logs) {
     breaks: 0,
     breakChances: 0,
     totalTurnovers: 0,
+    blocks: 0,
   });
   const teamProduction = {
     teamA: createProductionTotals(),
@@ -1572,11 +1822,6 @@ function deriveMatchInsights(match, logs) {
     if (!teamId) return null;
     if (teamId === teamAId) return "teamA";
     if (teamId === teamBId) return "teamB";
-    return null;
-  };
-  const getTeamLabel = (teamId) => {
-    if (teamId === teamAId) return teamAName;
-    if (teamId === teamBId) return teamBName;
     return null;
   };
   const getOppositeTeam = (teamKey) => {
@@ -1673,19 +1918,33 @@ function deriveMatchInsights(match, logs) {
         timestamps.push(matchStartEventTime);
         if (!matchStartLogged) {
           const pullingTeamId = match.starting_team_id || log.team_id || null;
-          const pullingTeamLabel = getTeamLabel(pullingTeamId) || "Unassigned";
-          const pullingTeamShort = getTeamShortLabel(pullingTeamId) || "Unassigned";
+          // Pulling means giving the disc away, so the puller's opponent starts
+          // on offence. Attribute the row to the receiving team, since that is
+          // who actually has the disc once play begins.
+          const receivingTeamKey = getOppositeTeam(toTeamKey(pullingTeamId));
+          const receivingTeamLabel =
+            receivingTeamKey === "teamA"
+              ? teamAName
+              : receivingTeamKey === "teamB"
+                ? teamBName
+                : null;
+          const receivingTeamShort =
+            receivingTeamKey === "teamA"
+              ? teamAShort
+              : receivingTeamKey === "teamB"
+                ? teamBShort
+                : "Unassigned";
           logRows.unshift({
             label: "Start",
             index: 0,
             timestamp,
             formattedTime,
             eventTypeId: typeId,
-            teamLabel: pullingTeamShort,
+            teamLabel: receivingTeamShort,
             scorer: "-",
             assist: "-",
             description: "Match start",
-            metaDetails: `Pulling team: ${pullingTeamLabel}`,
+            metaDetails: receivingTeamLabel ? `${receivingTeamLabel} receives` : null,
             gap: "-",
             variant: "halftime",
           });
@@ -1816,9 +2075,13 @@ function deriveMatchInsights(match, logs) {
       const creditedTeamKey = isBlockEvent ? gainingTeamKey : losingTeamKey;
       if (creditedTeamKey) {
         const creditedStats = teamStats[creditedTeamKey];
-        if (creditedStats?.turnoverCounts && actorName) {
-          incrementCount(creditedStats.turnoverCounts, actorName);
+        const creditedMap = isBlockEvent ? creditedStats?.blockCounts : creditedStats?.turnoverCounts;
+        if (creditedMap && actorName) {
+          incrementCount(creditedMap, actorName);
         }
+      }
+      if (isBlockEvent && gainingTeamKey) {
+        teamProduction[gainingTeamKey].blocks += 1;
       }
 
       const gainingTeamLabel =
@@ -1834,12 +2097,23 @@ function deriveMatchInsights(match, logs) {
         source: isBlockEvent ? "block" : "turnover",
       });
 
+      // Attribute the event to the side that caused it rather than narrating who
+      // now holds the disc. For a block that is the gaining team; for a plain
+      // turnover the actor is the thrower who turfed it (see the possession
+      // replay in modularScoreKeeperData.js), so name their team as the cause.
+      const causingTeamLabel = isBlockEvent ? gainingTeamLabel : losingTeamLabel;
       const metaDetails = actorName
         ? isBlockEvent
-          ? `${actorName} denied ${losingTeamLabel || "opposition"}`
-          : `${actorName} credited`
-        : `${gainingTeamLabel || "Team"} gains possession`;
+          ? `Blocked by ${actorName}`
+          : `Turnover by ${actorName}`
+        : isBlockEvent
+          ? `Block by ${causingTeamLabel || "Team"}`
+          : `${causingTeamLabel || "Team"} caused a turnover`;
 
+      // The Team column names the side responsible for the event, matching
+      // metaDetails: the blocking team on a block, the team that gave the disc
+      // away on a turnover. The colour variant still tracks who gains it.
+      const causingTeamKey = isBlockEvent ? gainingTeamKey : losingTeamKey;
       logRows.push({
         label: "TO",
         index: pointIndex,
@@ -1847,9 +2121,9 @@ function deriveMatchInsights(match, logs) {
         formattedTime,
         eventTypeId: typeId,
         teamLabel:
-          gainingTeamKey === "teamA"
+          causingTeamKey === "teamA"
             ? teamAShort
-            : gainingTeamKey === "teamB"
+            : causingTeamKey === "teamB"
               ? teamBShort
               : "-",
         scorer: "-",
@@ -1864,7 +2138,8 @@ function deriveMatchInsights(match, logs) {
     }
 
     if (code === MATCH_LOG_EVENT_CODES.TIMEOUT_START) {
-      pendingBands.timeout = timestamp;
+      const timeoutTeamKey = toTeamKey(log.team_id);
+      pendingBands.timeout = { start: timestamp, team: timeoutTeamKey };
       pushSnapshot(timestamp);
       logRows.push({
         label: "TO",
@@ -1883,7 +2158,12 @@ function deriveMatchInsights(match, logs) {
       continue;
     }
     if (code === MATCH_LOG_EVENT_CODES.TIMEOUT_END && pendingBands.timeout) {
-      bands.push({ type: "timeout", start: pendingBands.timeout, end: timestamp });
+      bands.push({
+        type: "timeout",
+        start: pendingBands.timeout.start,
+        end: timestamp,
+        team: pendingBands.timeout.team,
+      });
       pendingBands.timeout = null;
       pushSnapshot(timestamp);
       previousTime = timestamp;
@@ -1947,14 +2227,17 @@ function deriveMatchInsights(match, logs) {
     }
   }
 
-  Object.entries(pendingBands).forEach(([type, start]) => {
-    if (start) {
-      bands.push({
-        type,
-        start,
-        end: timestamps[timestamps.length - 1] || start + 60_000,
-      });
-    }
+  Object.entries(pendingBands).forEach(([type, pending]) => {
+    if (!pending) return;
+    const start = type === "timeout" ? pending.start : pending;
+    const team = type === "timeout" ? pending.team : undefined;
+    if (!start) return;
+    bands.push({
+      type,
+      start,
+      end: timestamps[timestamps.length - 1] || start + 60_000,
+      ...(team ? { team } : {}),
+    });
   });
 
   const defaultStart = Number.isFinite(timelineStart)
@@ -2017,6 +2300,11 @@ function deriveMatchInsights(match, logs) {
     })
     .filter(Boolean);
 
+  const halftimeBand = boundedBands.find((band) => band.type === "halftime");
+  const halftimeScoreSnapshot = halftimeBand
+    ? [...boundedSnapshots].reverse().find((snap) => snap.time <= halftimeBand.start)
+    : null;
+
   const timeline = {
     minTime: axisStart,
     maxTime: axisEnd,
@@ -2028,6 +2316,10 @@ function deriveMatchInsights(match, logs) {
     scoringPoints: boundedScoringPoints,
     bands: boundedBands,
     timeTicks: buildTimeTicks(axisStart, axisEnd),
+    halftimeScore: halftimeScoreSnapshot
+      ? { time: halftimeBand.start, scoreA: halftimeScoreSnapshot.scoreA, scoreB: halftimeScoreSnapshot.scoreB }
+      : null,
+    finalScore: { time: axisEnd, scoreA, scoreB },
   };
 
   const mapToSortedList = (map) =>
@@ -2073,6 +2365,7 @@ function deriveMatchInsights(match, logs) {
       goals: mapToSortedList(teamStats.teamA.goalCounts),
       assists: mapToSortedList(teamStats.teamA.assistCounts),
       turnovers: mapToSortedList(teamStats.teamA.turnoverCounts),
+      blocks: mapToSortedList(teamStats.teamA.blockCounts),
       connections: mapToConnections(teamStats.teamA.connectionCounts),
       production: { ...teamProduction.teamA },
     },
@@ -2080,6 +2373,7 @@ function deriveMatchInsights(match, logs) {
       goals: mapToSortedList(teamStats.teamB.goalCounts),
       assists: mapToSortedList(teamStats.teamB.assistCounts),
       turnovers: mapToSortedList(teamStats.teamB.turnoverCounts),
+      blocks: mapToSortedList(teamStats.teamB.blockCounts),
       connections: mapToConnections(teamStats.teamB.connectionCounts),
       production: { ...teamProduction.teamB },
     },

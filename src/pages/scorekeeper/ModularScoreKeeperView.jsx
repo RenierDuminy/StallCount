@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
-import { saveScorekeeperSession } from "../../services/scorekeeperSessionStore";
+import { isInitialisedStatus } from "../../constants/statusCodes";
 import { setLiveActivity } from "../../services/liveActivity";
 import { formatClock } from "./scorekeeperUtils";
-import { useScoreKeeperData } from "./useScoreKeeperData";
-import { useScoreKeeperActions } from "./useScoreKeeperActions";
-import { useScoreKeeperData as useScoreKeeper5v5Data } from "./5v5useScoreKeeperData";
-import { useScoreKeeperActions as useScoreKeeper5v5Actions } from "./5v5useScoreKeeperActions";
-import { ResumeSessionSection, ScorekeeperPopups } from "./ScorekeeperPopup";
+import { useScoreKeeperData } from "./modularScoreKeeperData";
+import { useScoreKeeperActions } from "./modularScoreKeeperActions";
+import { ScorekeeperPopups } from "./ModularScorekeeperPopup";
 import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
 import {
   BlockEventCard,
@@ -26,133 +24,49 @@ import {
   UnknownEventCard,
 } from "./eventCards";
 import {
+  PHASE_TONES,
+  SECONDARY_TIMER_KINDS,
+  getActiveSecondaryTimerPhase,
+  getSecondaryTimerTitle,
+} from "./secondaryTimerPhases";
+import {
   CALAHAN_ASSIST_VALUE,
   DEFAULT_DISCUSSION_SECONDS,
   SCORE_NA_PLAYER_VALUE,
+  MODULAR_SCOREKEEPER_MENU_PATH,
 } from "./scorekeeperConstants";
 
-const BLOCK_EVENT_TYPE_ID = 19;
-const SECONDARY_TIMER_GUIDES = {
-  interPoint: {
-    title: "Inter-point timer",
-    steps: [
-      { from: 45, text: 'Set offence on the line' },
-      { from: 60, text: 'Signal offence ready' },
-    ],
-  },
-  betweenPointsTimeout: {
-    title: "Time-out (between points)",
-    steps: [
-      { from: 0, until: 75, text: 'Timeout' },
-      { from: 75, text: "Extend inter-point window" },
-      { from: 76, text: 'Inter-point' },
-    ],
-  },
-  liveTimeout: {
-    title: "Timeout (during a point)",
-    steps: [
-      { from: 0, until: 75, text: 'Timeout' },
-      { from: 75, until: 90, text: 'Confirm offence ready' },
-      { from: 90, text: 'Check disc in' },
-    ],
-  },
-  discussion: {
-    title: "Discussion",
-    steps: [
-      { from: 15, text: 'Involve captains' },
-      { from: 45, text: 'Declare contested' },
-    ],
-  },
-};
-
-export default function ScoreKeeperView() {
-  const navigate = useNavigate();
+export default function ModularScoreKeeperView({ format: formatKey }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  // The chooser ("intermediate page") and the 7v7 console share this route. `?view=menu`
-  // forces the chooser even while a console session is live, so the settings modal's
-  // back button can return here without tearing down the match.
-  const showMenu = searchParams.get("view") === "menu";
-  const data = useScoreKeeperData();
+  const navigate = useNavigate();
+  // `?setup=1` (how the landing page links in) opens match setup immediately, so
+  // arriving at the console does not first require a click on a screen whose only
+  // real action is "open setup".
+  const autoOpenSetup = searchParams.get("setup") === "1";
+  // One controller. The format comes from the route (`?mode=`), so the console
+  // never mounts a second hook pair for the format it is not running — which is
+  // what let the legacy consoles clobber each other's session and fetch
+  // everything twice.
+  const data = useScoreKeeperData(formatKey);
   const actions = useScoreKeeperActions(data);
-  const fiveVFiveData = useScoreKeeper5v5Data();
-  const autoResumeSevenVSevenRef = useRef(null);
-  const autoResumeFiveVFiveRef = useRef(null);
+  const { format, capabilities } = data;
+  const autoResumeRef = useRef(null);
 
-  const goToMenu = useCallback(() => {
-    setSearchParams({ view: "menu" });
-  }, [setSearchParams]);
-
+  // `mode` selects the format for this whole page and must survive every
+  // search-param change here — replacing the params wholesale (as the legacy
+  // single-format console safely did) drops `mode`, and the page falls back to
+  // the menu mid-session. Always carry it forward explicitly.
   const goToConsole = useCallback(() => {
-    setSearchParams({});
-  }, [setSearchParams]);
+    setSearchParams({ mode: formatKey });
+  }, [setSearchParams, formatKey]);
 
   const [settingsSavedAt, setSettingsSavedAt] = useState(null);
-  const [fiveVFiveSettingsSavedAt, setFiveVFiveSettingsSavedAt] = useState(null);
 
-  const {
-    consoleReady: fiveVFiveConsoleReady,
-    resumeCandidate: fiveVFiveResumeCandidate,
-    resumeHandled: fiveVFiveResumeHandled,
-    resumeBusy: fiveVFiveResumeBusy,
-    resumeError: fiveVFiveResumeError,
-    activeMatch: fiveVFiveActiveMatch,
-    handleResumeSession: handleFiveVFiveResumeSession,
-    handleDiscardResume: handleFiveVFiveDiscardResume,
-  } = fiveVFiveData;
 
   // Resuming is async (match -> rosters -> logs) and `consoleReady` stays false the
   // whole time, which would otherwise flash the chooser on the way to the console.
   // On failure `resumeBusy` clears and the chooser returns with the error shown.
-  const consoleOpening = !showMenu && (data.resumeBusy || fiveVFiveResumeBusy);
-  const fiveVFiveController = {
-    ...fiveVFiveData,
-    onInitialiseComplete: (match) => {
-      const eventId =
-        match?.event_id ||
-        match?.event?.id ||
-        fiveVFiveData.selectedEventId ||
-        "";
-      const matchId = match?.id || fiveVFiveData.selectedMatchId || "";
-      if (fiveVFiveData.userId && matchId) {
-        const now = Date.now();
-        saveScorekeeperSession(fiveVFiveData.userId, {
-          ruleset: "5v5",
-          matchId,
-          selectedMatchId: matchId,
-          eventId,
-          matchStarted: false,
-          setupForm: { ...fiveVFiveData.setupForm },
-          rules: { ...fiveVFiveData.rules },
-          score: {
-            a: match?.score_a ?? 0,
-            b: match?.score_b ?? 0,
-          },
-          pendingEntries: [],
-          timer: {
-            seconds: (fiveVFiveData.rules.matchDuration || 0) * 60,
-            running: false,
-            label: "Game time",
-            savedAt: now,
-            totalSeconds: (fiveVFiveData.rules.matchDuration || 0) * 60,
-          },
-          secondaryTimer: {
-            seconds: fiveVFiveData.rules.timeoutSeconds || 0,
-            running: false,
-            label: "Timeout",
-            savedAt: now,
-            totalSeconds: fiveVFiveData.rules.timeoutSeconds || 0,
-          },
-          timeoutUsage: { A: 0, B: 0 },
-        });
-      }
-      const params = new URLSearchParams();
-      params.set("mode", "5v5");
-      if (eventId) params.set("eventId", eventId);
-      if (matchId) params.set("matchId", matchId);
-      navigate(`/score-keeper-5v5?${params.toString()}`);
-    },
-  };
-  const fiveVFiveActions = useScoreKeeper5v5Actions(fiveVFiveController);
+  const consoleOpening = data.resumeBusy;
 
   const {
     events,
@@ -171,7 +85,6 @@ export default function ScoreKeeperView() {
     setupForm,
     setSetupForm,
     rules,
-    setRules,
     score,
     logs,
     logsLoading,
@@ -179,11 +92,15 @@ export default function ScoreKeeperView() {
     pendingEntries,
     timerSeconds,
     timerRunning,
-    secondarySeconds,
     secondaryRunning,
     secondaryLabel,
+    secondaryKind,
+    secondaryElapsedSeconds,
+    secondaryTone,
     secondaryTotalSeconds,
     secondaryTimerAnchorRef,
+    primaryTimerBg,
+    secondaryTimerBg,
     timerLabel,
     consoleError,
     rostersLoading,
@@ -233,6 +150,7 @@ export default function ScoreKeeperView() {
     commitSecondaryTimerState,
     setSecondaryTotalSeconds,
     setSecondaryLabel,
+    setSecondaryKind,
     setSecondaryFlashActive,
     setSecondaryFlashPulse,
     updatePossession,
@@ -317,56 +235,28 @@ export default function ScoreKeeperView() {
   };
   const isMixedDivision = (rules.division || "").toLowerCase() === "mixed";
   const isAbbaEnabled = isMixedDivision && rules.mixedRatioRule !== "B";
-  const spiritMatch = activeMatch || selectedMatch || null;
-  const spiritEventId = spiritMatch?.event_id || spiritMatch?.event?.id || selectedEventId || "";
-  const spiritScoresUrl = (() => {
-    if (!spiritMatch?.id && !spiritEventId) {
-      return "/spirit-scores";
-    }
-    const params = new URLSearchParams();
-    if (spiritEventId) {
-      params.set("eventId", spiritEventId);
-    }
-    if (spiritMatch?.id) {
-      params.set("matchId", spiritMatch.id);
-    }
-    return `/spirit-scores?${params.toString()}`;
-  })();
-  const isStartMatchReady =
+  // Readiness is a property of the *match*, not of the setup form. The form is
+  // rebuilt from the saved row whenever the active match changes, and that
+  // round-trip is lossy — `abba_pattern` is stored as "none" whenever ABBA is
+  // off (rule B, or mixedRatio disabled), which reads back as an empty field
+  // and made a correctly-initialised match report "needs to be initialised".
+  const isMatchInitialised = isInitialisedStatus(activeMatch?.status);
+  // The setup form still gates the *setup modal's* own submit button, where the
+  // fields being filled in is exactly the right question to ask.
+  const isSetupFormComplete =
     Boolean(setupForm.startingTeamId) &&
     (!isAbbaEnabled || ["male", "female"].includes(setupForm.abbaPattern));
-  const resumeCandidateCount = [resumeCandidate, fiveVFiveResumeCandidate].filter(Boolean).length;
+  const isStartMatchReady = isMatchInitialised;
+  const resumeCandidateCount = resumeCandidate ? 1 : 0;
 
-  const handleFiveVFiveResumeAndOpenConsole = useCallback(async () => {
-    const candidate = fiveVFiveResumeCandidate;
-    const resumed = await handleFiveVFiveResumeSession();
-    if (resumed === false) return;
-
-    const eventId = candidate?.eventId || fiveVFiveData.selectedEventId || "";
-    const matchId =
-      candidate?.matchId ||
-      candidate?.selectedMatchId ||
-      fiveVFiveData.selectedMatchId ||
-      "";
-    const params = new URLSearchParams();
-    params.set("mode", "5v5");
-    if (eventId) params.set("eventId", eventId);
-    if (matchId) params.set("matchId", matchId);
-    navigate(`/score-keeper-5v5?${params.toString()}`);
-  }, [
-    fiveVFiveResumeCandidate,
-    handleFiveVFiveResumeSession,
-    fiveVFiveData.selectedEventId,
-    fiveVFiveData.selectedMatchId,
-    navigate,
-  ]);
 
   // Defer automatic PWA reloads while a match is actively being scored.
-  const scoringLive = matchStarted || fiveVFiveData.matchStarted;
+  const scoringLive = matchStarted;
+  const liveActivityKey = format.liveActivityKey;
   useEffect(() => {
-    setLiveActivity("scorekeeper", scoringLive);
-    return () => setLiveActivity("scorekeeper", false);
-  }, [scoringLive]);
+    setLiveActivity(liveActivityKey, scoringLive);
+    return () => setLiveActivity(liveActivityKey, false);
+  }, [liveActivityKey, scoringLive]);
 
   useEffect(() => {
     if (
@@ -392,23 +282,19 @@ export default function ScoreKeeperView() {
     const matchId = resumeCandidate?.matchId || resumeCandidate?.selectedMatchId || null;
     if (
       !matchId ||
-      // `?view=menu` means the user deliberately came back to the chooser via
-      // "Back to score keeper menu" — respect that instead of reopening the console.
-      showMenu ||
       resumeCandidateCount !== 1 ||
       resumeHandled ||
       resumeBusy ||
       consoleReady ||
-      autoResumeSevenVSevenRef.current === matchId
+      autoResumeRef.current === matchId
     ) {
       return;
     }
 
-    autoResumeSevenVSevenRef.current = matchId;
+    autoResumeRef.current = matchId;
     void handleResumeSession();
   }, [
     resumeCandidate,
-    showMenu,
     resumeCandidateCount,
     resumeHandled,
     resumeBusy,
@@ -416,54 +302,30 @@ export default function ScoreKeeperView() {
     handleResumeSession,
   ]);
 
+  // Open match setup on arrival when the landing page asked for it, then strip
+  // `setup=1` so a later back/refresh does not reopen a modal the operator has
+  // already dismissed. Fires once: `autoSetupRef` guards against the param
+  // surviving a render, and the resume checks stop it stealing focus from a
+  // restored session (the landing page only sends the flag when there is
+  // nothing to resume, but the two must not race if that ever changes).
+  const autoSetupRef = useRef(false);
   useEffect(() => {
-    if (
-      fiveVFiveConsoleReady &&
-      fiveVFiveResumeCandidate &&
-      !fiveVFiveResumeHandled &&
-      !fiveVFiveResumeBusy &&
-      (fiveVFiveResumeCandidate.matchId === fiveVFiveActiveMatch?.id ||
-        fiveVFiveResumeCandidate.selectedMatchId === fiveVFiveActiveMatch?.id)
-    ) {
-      void handleFiveVFiveResumeSession();
+    if (!autoOpenSetup || autoSetupRef.current) return;
+    autoSetupRef.current = true;
+    if (!consoleReady && !resumeCandidate && !resumeBusy) {
+      setSetupModalOpen(true);
     }
+    const next = new URLSearchParams(searchParams);
+    next.delete("setup");
+    setSearchParams(next, { replace: true });
   }, [
-    fiveVFiveConsoleReady,
-    fiveVFiveResumeCandidate,
-    fiveVFiveResumeHandled,
-    fiveVFiveResumeBusy,
-    fiveVFiveActiveMatch?.id,
-    handleFiveVFiveResumeSession,
-  ]);
-
-  useEffect(() => {
-    const matchId =
-      fiveVFiveResumeCandidate?.matchId ||
-      fiveVFiveResumeCandidate?.selectedMatchId ||
-      null;
-    if (
-      !matchId ||
-      // See above: an explicit return to the menu must not bounce straight back.
-      showMenu ||
-      resumeCandidateCount !== 1 ||
-      fiveVFiveResumeHandled ||
-      fiveVFiveResumeBusy ||
-      fiveVFiveConsoleReady ||
-      autoResumeFiveVFiveRef.current === matchId
-    ) {
-      return;
-    }
-
-    autoResumeFiveVFiveRef.current = matchId;
-    void handleFiveVFiveResumeAndOpenConsole();
-  }, [
-    fiveVFiveResumeCandidate,
-    showMenu,
-    resumeCandidateCount,
-    fiveVFiveResumeHandled,
-    fiveVFiveResumeBusy,
-    fiveVFiveConsoleReady,
-    handleFiveVFiveResumeAndOpenConsole,
+    autoOpenSetup,
+    consoleReady,
+    resumeCandidate,
+    resumeBusy,
+    searchParams,
+    setSearchParams,
+    setSetupModalOpen,
   ]);
 
   const dedupedLogs = useMemo(() => {
@@ -492,7 +354,7 @@ export default function ScoreKeeperView() {
     const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
     const normalizedEventDescription = `${log.eventDescription || ""}`.toLowerCase();
     const isBlockLog =
-      (Number.isFinite(log.eventTypeId) && log.eventTypeId === BLOCK_EVENT_TYPE_ID) ||
+      normalizedEventCode === MATCH_LOG_EVENT_CODES.BLOCK ||
       normalizedEventCode.includes("block") ||
       normalizedEventDescription.includes("block");
 
@@ -787,25 +649,19 @@ export default function ScoreKeeperView() {
     const editingRef = possessionEditRef;
     resetPossessionModalState();
     if (editingRef !== null) {
-      if (isBlock) {
-        void handleUpdateLog(editingRef, {
-          teamKey: eventTeamKey,
-          scorerId: actorId || null,
-          eventTypeId: BLOCK_EVENT_TYPE_ID,
-        });
-      } else {
-        void handleUpdateLog(editingRef, {
-          teamKey: eventTeamKey,
-          scorerId: actorId || null,
-          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
-        });
-      }
+      // Editing only ever changes the player. The team an event belongs to is not
+      // editable — re-deriving it here from the modal's current result flipped an
+      // unchanged throwaway to the other side on every save. To move an event to
+      // the other team the operator deletes it and logs the correct one.
+      void handleUpdateLog(editingRef, { scorerId: actorId || null });
       return;
     }
 
     void updatePossession(nextTeam, {
       actorId: actorId || null,
-      eventTypeIdOverride: isBlock ? BLOCK_EVENT_TYPE_ID : null,
+      // Resolved by code like every other event type, so the console does not
+      // carry a raw `match_events` primary key.
+      eventCodeOverride: isBlock ? MATCH_LOG_EVENT_CODES.BLOCK : null,
       eventTeamKey,
     });
   };
@@ -851,19 +707,19 @@ export default function ScoreKeeperView() {
 
   const isBlockPossessionLog = (log) => {
     if (!log) return false;
-    if (Number.isFinite(log.eventTypeId) && log.eventTypeId === BLOCK_EVENT_TYPE_ID) return true;
     const code = `${log.eventCode || ""}`.toLowerCase();
-    if (code.includes("block")) return true;
+    if (code === MATCH_LOG_EVENT_CODES.BLOCK || code.includes("block")) return true;
     const desc = `${log.eventDescription || ""}`.toLowerCase();
     return desc.includes("block");
   };
 
   const openPossessionEditModal = useCallback((log, ref) => {
     const isBlockLog = isBlockPossessionLog(log);
+    // The event is shown against the team it was logged against, for both block
+    // and throwaway. Editing changes the player only, never the team.
     const loggedTeam = log?.team || null;
-    const nextTeam = isBlockLog ? loggedTeam : loggedTeam;
-    setPendingPossessionTeam(nextTeam);
-    setPossessionPreviewTeam(nextTeam);
+    setPendingPossessionTeam(loggedTeam);
+    setPossessionPreviewTeam(loggedTeam);
     setPossessionResult(isBlockLog ? "block" : "throwaway");
     setPossessionActorId(log?.scorerId || "");
     setPossessionModalOpen(true);
@@ -921,17 +777,22 @@ export default function ScoreKeeperView() {
     }
   };
 
+  const discussionRunning =
+    secondaryRunning && secondaryKind === SECONDARY_TIMER_KINDS.DISCUSSION;
+
   const handleStartDiscussionTimer = () => {
     cancelSecondaryHoldReset();
     if (secondaryResetTriggeredRef?.current) {
       secondaryResetTriggeredRef.current = false;
       return;
     }
-    const normalizedSecondaryLabel = (secondaryLabel || "").toLowerCase();
-    if (secondaryRunning && normalizedSecondaryLabel === "discussion") {
+    // Toggling off a running discussion is decided by the timer's kind, not by
+    // comparing its label text.
+    if (discussionRunning) {
       commitSecondaryTimerState(0, false);
       setSecondaryTotalSeconds(0);
       setSecondaryLabel("Discussion");
+      setSecondaryKind(SECONDARY_TIMER_KINDS.DISCUSSION);
       setSecondaryFlashActive(false);
       setSecondaryFlashPulse(false);
       return;
@@ -940,6 +801,7 @@ export default function ScoreKeeperView() {
     commitSecondaryTimerState(duration, true);
     setSecondaryTotalSeconds(duration);
     setSecondaryLabel("Discussion");
+    setSecondaryKind(SECONDARY_TIMER_KINDS.DISCUSSION);
     setSecondaryFlashActive(false);
     setSecondaryFlashPulse(false);
   };
@@ -948,7 +810,7 @@ export default function ScoreKeeperView() {
   return (
     <ScorekeeperShell>
       <main className="py-2">
-        {consoleReady && !showMenu ? (
+        {consoleReady ? (
           <section className="space-y-2">
             <div className="rounded-3xl border border-emerald-900/15 bg-white/90 p-1.5 w-full">
               <div className="flex items-center justify-between gap-2">
@@ -990,9 +852,11 @@ export default function ScoreKeeperView() {
             <div className="grid gap-2 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
               <div className="space-y-2">
 
-            <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-3">
+            <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-1.5">
               <div className="grid grid-cols-2 gap-2">
-                <div className="min-w-0 rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800 [container-type:inline-size]">
+                <div
+                  className={`min-w-0 rounded-xl border border-slate-200 p-1.5 text-center text-slate-800 transition-colors [container-type:inline-size] ${primaryTimerBg}`}
+                >
                   <p
                     className={`overflow-hidden whitespace-nowrap text-[min(5.5rem,32cqw)] font-semibold leading-none tabular-nums ${
                       primaryOvertime ? "text-[#b91c1c]" : "text-slate-900"
@@ -1004,22 +868,26 @@ export default function ScoreKeeperView() {
                     {timerLabel || "Game time"}
                   </p>
                 </div>
-                <div className="min-w-0 rounded-xl border border-slate-200 bg-[#dff7e5] p-3 text-center text-slate-800 [container-type:inline-size]">
+                <div
+                  className={`min-w-0 rounded-xl border border-slate-200 p-1.5 text-center text-slate-800 transition-colors [container-type:inline-size] ${secondaryTimerBg}`}
+                >
                   <p className="overflow-hidden whitespace-nowrap text-[min(4.5rem,30cqw)] font-semibold leading-none text-slate-900 tabular-nums">
                     {formattedSecondaryClock}
                   </p>
                   <div className="mt-1 flex items-center justify-center text-slate-700">
                     <SecondaryTimerDescription
+                      kind={secondaryKind}
                       label={secondaryLabel}
+                      rules={rules}
                       running={secondaryRunning}
-                      remainingSeconds={secondarySeconds}
-                      totalSeconds={secondaryTotalSeconds}
+                      elapsedSeconds={secondaryElapsedSeconds}
                     />
                   </div>
                   <SecondaryTimerProgressBar
                     anchorRef={secondaryTimerAnchorRef}
                     totalSeconds={secondaryTotalSeconds}
                     running={secondaryRunning}
+                    tone={secondaryTone}
                   />
                 </div>
               </div>
@@ -1062,7 +930,7 @@ export default function ScoreKeeperView() {
                   onTouchCancel={cancelSecondaryHoldReset}
                   className="rounded-md bg-[#dc2626] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#b91c1c]"
                 >
-                  {secondaryRunning && secondaryLabel === "Discussion" ? "Stop discussion" : "Discussion"}
+                  {discussionRunning ? "Stop discussion" : "Discussion"}
                 </button>
               </div>
             </div>
@@ -1079,7 +947,11 @@ export default function ScoreKeeperView() {
               </p>
             )}
 
-            {matchStarted && (
+            {/* Possession pad, turnover and block. Formats that do not track
+                possession hide the whole group — the state behind it stays
+                mounted (halftime still flips possession internally, without
+                logging a turnover), so only the operator surface disappears. */}
+            {matchStarted && capabilities.possession && (
               <div className="rounded-3xl border border-slate-200 bg-white p-2 w-full">
                 <div className="mt-3 space-y-2">
                   <div
@@ -1152,7 +1024,7 @@ export default function ScoreKeeperView() {
                         role="alert"
                         className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900"
                       >
-                        Match needs to be initialised in Setup pannel
+                        Match needs to be initialised in the Setup panel
                       </p>
                     )}
                     <button
@@ -1231,7 +1103,9 @@ export default function ScoreKeeperView() {
                   disabled={!canEndMatch}
                   className="sc-button-danger block w-full rounded-full px-4 py-3 text-center text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  End match / Enter spirit scores
+                  {capabilities.spiritScores
+                    ? "End match and proceed to spirit scores"
+                    : "End match"}
                 </button>
                 {pendingEntries.length > 0 && (
                   <PendingSyncPanel pendingEntries={pendingEntries} online={online} />
@@ -1302,60 +1176,34 @@ export default function ScoreKeeperView() {
             <p className="mt-1 text-xs text-slate-500">Loading the match, rosters and log.</p>
           </section>
         ) : (
-          <section
-            className="space-y-[var(--setup-button-size)] rounded-3xl border border-slate-200 bg-white p-2 text-center"
-            style={{ "--setup-button-size": "4.5rem" }}
-          >
-            {consoleReady && showMenu && (
-              <button
-                type="button"
-                onClick={goToConsole}
-                className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full border-2 border-brand bg-brand/10 px-4 text-sm font-semibold text-brand transition hover:bg-brand/20"
-              >
-                Return to live console
-              </button>
+          /* The menu is the landing page now. Reaching the console without a
+             match means setup is open over this, or the operator dismissed it —
+             so this is a backdrop with one way back, not a second menu. */
+          <section className="space-y-3 rounded-3xl border border-slate-200 bg-white p-6 text-center">
+            <p className="text-sm font-semibold text-[#0f5132]">
+              {initialising ? "Initialising..." : "No match set up yet"}
+            </p>
+            {consoleError ? (
+              <p className="text-sm text-rose-600">{consoleError}</p>
+            ) : (
+              <p className="text-xs text-slate-500">
+                {format.name} — {format.tagline.toLowerCase()}.
+              </p>
             )}
             <button
               type="button"
               onClick={() => setSetupModalOpen(true)}
               disabled={initialising}
-              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-12 w-full items-center justify-center rounded-full bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {initialising ? "Initialising..." : "7v7 match setup"}
+              Match setup
             </button>
             <Link
-              to={spiritScoresUrl}
-              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full border border-[#0f5132]/40 px-4 text-sm font-semibold text-[#0f5132] transition hover:bg-white"
+              to={MODULAR_SCOREKEEPER_MENU_PATH}
+              className="inline-flex h-12 w-full items-center justify-center rounded-full border border-[#0f5132]/40 px-4 text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
             >
-              Enter spirit scores
+              Back to score keeper menu
             </Link>
-            <button
-              type="button"
-              onClick={() => fiveVFiveData.setSetupModalOpen(true)}
-              disabled={fiveVFiveData.initialising}
-              className="inline-flex h-[var(--setup-button-size)] w-full items-center justify-center rounded-full bg-violet-600 px-4 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {fiveVFiveData.initialising ? "Initialising..." : "5v5 match setup"}
-            </button>
-            {consoleError && (
-              <p className="text-sm text-rose-600">{consoleError}</p>
-            )}
-            <ResumeSessionSection
-              candidate={resumeCandidate}
-              handled={resumeHandled}
-              busy={resumeBusy}
-              error={resumeError}
-              onResume={handleResumeSession}
-              onDiscard={handleDiscardResume}
-            />
-            <ResumeSessionSection
-              candidate={fiveVFiveResumeCandidate}
-              handled={fiveVFiveResumeHandled}
-              busy={fiveVFiveResumeBusy}
-              error={fiveVFiveResumeError}
-              onResume={handleFiveVFiveResumeAndOpenConsole}
-              onDiscard={handleFiveVFiveDiscardResume}
-            />
       </section>
       )}
     </main>
@@ -1371,11 +1219,14 @@ export default function ScoreKeeperView() {
         }}
         setup={{
           open: setupModalOpen,
-          title: "7v7 match setup",
+          title: format.setupModalTitle,
+          format: format.key,
           onClose: () => setSetupModalOpen(false),
+          // The menu is the landing page now, so "back" is a navigation, not a
+          // search-param flip onto a second in-page menu.
           onBack: () => {
             setSetupModalOpen(false);
-            goToMenu();
+            navigate(MODULAR_SCOREKEEPER_MENU_PATH);
           },
           onSubmit: async (event) => {
             // Persist the rules for this match first so initialise runs against saved settings.
@@ -1383,7 +1234,7 @@ export default function ScoreKeeperView() {
               setSettingsSavedAt(Date.now());
             }
             await handleInitialiseMatch(event);
-            // Setup succeeded from the chooser -> drop ?view=menu so the console shows.
+            // Setup succeeded -> normalise the URL so the console shows.
             goToConsole();
           },
           onResetSettings: () => {
@@ -1403,11 +1254,10 @@ export default function ScoreKeeperView() {
           selectedMatchId,
           onRefreshMatches: loadMatches,
           rules,
-          // Flag the edit so event defaults can't quietly reclaim it mid-session.
-          setRules: (updater) => {
-            data.markRulesManuallyEdited?.();
-            setRules(updater);
-          },
+          // Flags the edit so event defaults can't quietly reclaim it
+          // mid-session, and applies the format's rule couplings — the modal
+          // edits fields directly rather than going through handleRuleChange.
+          setRules: actions.setRulesWithCouplings,
           setupForm,
           setSetupForm,
           teamAId,
@@ -1417,7 +1267,9 @@ export default function ScoreKeeperView() {
           isAbbaEnabled,
           initialising,
           selectedMatch,
-          isStartMatchReady,
+          // The setup modal gates its own submit on the form being filled in,
+          // not on the match already being initialised.
+          isStartMatchReady: isSetupFormComplete,
           error: consoleError,
         }}
         possession={{
@@ -1428,6 +1280,9 @@ export default function ScoreKeeperView() {
           displayTeamB,
           result: possessionResult,
           onResultChange: setPossessionResult,
+          // A format without block tracking gets the incompletion-only form
+          // rather than an option that logs an event it does not support.
+          allowBlock: capabilities.block,
           activeActorOptions,
           actorId: possessionActorId,
           onActorSelect: handlePossessionActorSelect,
@@ -1445,6 +1300,7 @@ export default function ScoreKeeperView() {
           busy: endMatchBusy,
           onClose: () => setEndMatchModalOpen(false),
           onConfirm: confirmEndMatch,
+          spiritScores: capabilities.spiritScores,
         }}
         time={{
           open: timeModalOpen,
@@ -1453,6 +1309,9 @@ export default function ScoreKeeperView() {
           halftimeBreakActive,
           halftimeDisabled: halftimeButtonDisabled,
           halftimeTypeLabel,
+          // A manually-started break never closes on its own, so the operator has
+          // to be told they must come back and force-end it.
+          halftimeManualClosureRequired: halftimeTriggerType === "manual",
           onHalfTime: handleHalfTimeTrigger,
           onForceEndHalftime: handleForceEndHalftime,
           onTimeout: handleTimeoutTrigger,
@@ -1490,91 +1349,8 @@ export default function ScoreKeeperView() {
           displayTeamB,
         }}
       />
-      <ScorekeeperPopups
-        setup={{
-          open: fiveVFiveData.setupModalOpen,
-          title: "5v5 match setup",
-          onClose: () => fiveVFiveData.setSetupModalOpen(false),
-          onBack: () => {
-            fiveVFiveData.setSetupModalOpen(false);
-            goToMenu();
-          },
-          onSubmit: async (event) => {
-            // Persist the rules for this match first so initialise runs against saved settings.
-            if (fiveVFiveActions.handleSaveSettings()) {
-              setFiveVFiveSettingsSavedAt(Date.now());
-            }
-            await fiveVFiveActions.handleInitialiseMatch(event);
-          },
-          onResetSettings: () => {
-            fiveVFiveActions.handleResetSettings();
-            setFiveVFiveSettingsSavedAt(null);
-          },
-          settingsSavedAt: fiveVFiveSettingsSavedAt,
-          events: fiveVFiveData.events,
-          eventsLoading: fiveVFiveData.eventsLoading,
-          eventsError: fiveVFiveData.eventsError,
-          selectedEventId: fiveVFiveData.selectedEventId,
-          onSelectEvent: fiveVFiveData.setSelectedEventId,
-          onSelectMatch: fiveVFiveData.setSelectedMatchId,
-          matches: fiveVFiveData.matches,
-          matchesLoading: fiveVFiveData.matchesLoading,
-          matchesError: fiveVFiveData.matchesError,
-          selectedMatchId: fiveVFiveData.selectedMatchId,
-          onRefreshMatches: fiveVFiveData.loadMatches,
-          rules: fiveVFiveData.rules,
-          setRules: (updater) => {
-            fiveVFiveData.markRulesManuallyEdited?.();
-            fiveVFiveData.setRules(updater);
-          },
-          setupForm: fiveVFiveData.setupForm,
-          setSetupForm: fiveVFiveData.setSetupForm,
-          teamAId: fiveVFiveData.teamAId,
-          teamBId: fiveVFiveData.teamBId,
-          displayTeamA: fiveVFiveData.displayTeamA,
-          displayTeamB: fiveVFiveData.displayTeamB,
-          isAbbaEnabled:
-            (fiveVFiveData.rules.division || "").toLowerCase() === "mixed" &&
-            fiveVFiveData.rules.mixedRatioRule !== "B",
-          initialising: fiveVFiveData.initialising,
-          selectedMatch: fiveVFiveData.selectedMatch,
-          isStartMatchReady:
-            Boolean(fiveVFiveData.setupForm.startingTeamId) &&
-            (
-              (fiveVFiveData.rules.division || "").toLowerCase() !== "mixed" ||
-              fiveVFiveData.rules.mixedRatioRule === "B" ||
-              ["male", "female"].includes(fiveVFiveData.setupForm.abbaPattern)
-            ),
-          error: fiveVFiveData.consoleError,
-        }}
-      />
     </ScorekeeperShell>
   );
-}
-
-function getSecondaryTimerGuide(label) {
-  const normalized = `${label || ""}`.trim().toLowerCase();
-  if (!normalized) return null;
-  if (normalized.includes("discussion")) return SECONDARY_TIMER_GUIDES.discussion;
-  if (normalized === "inter point") return SECONDARY_TIMER_GUIDES.interPoint;
-  if (
-    normalized.includes("inter point timeout") ||
-    normalized.includes("pre-pull timeout")
-  ) {
-    return SECONDARY_TIMER_GUIDES.betweenPointsTimeout;
-  }
-  if (normalized.includes("timeout")) return SECONDARY_TIMER_GUIDES.liveTimeout;
-  return null;
-}
-
-function getCurrentSecondaryTimerStep(guide, elapsedSeconds) {
-  if (!guide || !Number.isFinite(elapsedSeconds)) return null;
-  const elapsed = Math.max(0, Math.floor(elapsedSeconds));
-  return guide.steps.reduce((activeStep, step) => {
-    if (elapsed < step.from) return activeStep;
-    if (step.until !== undefined && elapsed >= step.until) return activeStep;
-    return step;
-  }, null);
 }
 
 function PendingSyncPanel({ pendingEntries, online }) {
@@ -1618,21 +1394,18 @@ function PendingSyncPanel({ pendingEntries, online }) {
   );
 }
 
-function SecondaryTimerProgressBar({ anchorRef, totalSeconds, running }) {
+function SecondaryTimerProgressBar({ anchorRef, totalSeconds, running, tone }) {
   const [pct, setPct] = useState(1);
-  const [remainingEst, setRemainingEst] = useState(totalSeconds);
   const rafRef = useRef(null);
 
   useEffect(() => {
-    if (!running || !totalSeconds || totalSeconds <= 0) return;
+    if (!running || !totalSeconds || totalSeconds <= 0) return undefined;
     const tick = () => {
       const anchor = anchorRef?.current;
       if (anchor?.anchorTimestamp) {
-        const elapsedMs = Date.now() - anchor.anchorTimestamp;
-        const elapsedSec = elapsedMs / 1000;
+        const elapsedSec = (Date.now() - anchor.anchorTimestamp) / 1000;
         const remaining = Math.max(0, (anchor.baseSeconds ?? totalSeconds) - elapsedSec);
         setPct(Math.max(0, Math.min(1, remaining / totalSeconds)));
-        setRemainingEst(remaining);
       }
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -1642,28 +1415,29 @@ function SecondaryTimerProgressBar({ anchorRef, totalSeconds, running }) {
 
   if (!running || !totalSeconds || totalSeconds <= 0) return null;
 
-  const isUrgent = remainingEst <= 15;
-  const isWarning = !isUrgent && remainingEst <= 30;
-  const barColor = isUrgent ? "bg-[#ef4444]" : isWarning ? "bg-[#f59e0b]" : "bg-[#16a34a]";
+  // Same tone the panel background reads, so the bar and the panel escalate
+  // together instead of each applying its own second thresholds.
+  const barColor =
+    tone === PHASE_TONES.URGENT
+      ? "bg-[#ef4444]"
+      : tone === PHASE_TONES.WARNING
+        ? "bg-[#f59e0b]"
+        : "bg-[#16a34a]";
 
   return (
     <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-slate-300 ring-2 ring-slate-500">
-      <div
-        className={`h-full rounded-full ${barColor}`}
-        style={{ width: `${pct * 100}%` }}
-      />
+      <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct * 100}%` }} />
     </div>
   );
 }
 
-function SecondaryTimerDescription({ label, running, remainingSeconds, totalSeconds }) {
-  const guide = running ? getSecondaryTimerGuide(label) : null;
-  const elapsedSeconds =
-    Number.isFinite(totalSeconds) && Number.isFinite(remainingSeconds)
-      ? totalSeconds - remainingSeconds
-      : null;
-  const activeStep = guide ? getCurrentSecondaryTimerStep(guide, elapsedSeconds) : null;
-  if (!guide) {
+function SecondaryTimerDescription({ kind, label, rules, running, elapsedSeconds }) {
+  const title = running ? getSecondaryTimerTitle(kind) : null;
+  const activePhase = running ? getActiveSecondaryTimerPhase(kind, rules, elapsedSeconds) : null;
+
+  // A kind with no configured phases (or an idle timer) falls back to the plain
+  // label, which is all there is to say about it.
+  if (!title) {
     return (
       <span className="text-xs font-semibold uppercase tracking-wide">
         {label || "Inter point"}
@@ -1673,8 +1447,8 @@ function SecondaryTimerDescription({ label, running, remainingSeconds, totalSeco
 
   return (
     <div className="w-full text-center text-[10px] font-semibold leading-tight">
-      <p className="text-center text-slate-900">{guide.title}</p>
-      {activeStep && <p>{activeStep.text}</p>}
+      <p className="text-center text-slate-900">{title}</p>
+      {activePhase && <p>{activePhase.text}</p>}
     </div>
   );
 }

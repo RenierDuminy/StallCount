@@ -1529,6 +1529,15 @@ export async function seedEventBracketsIfEmpty(eventId, brackets = []) {
     });
   });
 
+  // Sources MUST carry a `type`: resolveBracketSource dispatches on it, and an
+  // untyped source resolves to nothing, so a node seeded without one can never
+  // advance a team — not via the Playoff Structure page's button, and not via
+  // the scheduled resolver. (Rows seeded before this was fixed are repaired by
+  // the backfill in supabase/migrations/*_playoff_auto_resolve.sql.)
+  //
+  // Both casings are written because the resolver reads either and the rest of
+  // the app writes camelCase; keeping the snake_case keys stays compatible with
+  // anything already reading the old shape.
   const resolveSource = (source) => {
     if (!source || typeof source !== "object") {
       return {};
@@ -1539,14 +1548,21 @@ export async function seedEventBracketsIfEmpty(eventId, brackets = []) {
     const resolved = {};
     if (divisionIdByName.has(divisionKey)) {
       resolved.division_id = divisionIdByName.get(divisionKey);
+      resolved.divisionId = resolved.division_id;
     }
     if (poolIdByName.has(poolKey)) {
       resolved.pool_id = poolIdByName.get(poolKey);
+      resolved.poolId = resolved.pool_id;
     }
     if (Number.isInteger(rank) && rank >= 1) {
       resolved.rank = rank;
     }
-    return resolved;
+    // An unmappable source stays untyped so it reports as unconfigured rather
+    // than as a broken pool_rank pointing at nothing.
+    if (!resolved.pool_id && !resolved.division_id) {
+      return {};
+    }
+    return { type: "pool_rank", ...resolved };
   };
 
   let bracketCount = 0;

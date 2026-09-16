@@ -248,7 +248,16 @@ export async function createMatch(payload = {}) {
     throw fromSupabaseError(error, "Failed to create match");
   }
 
-  if (data?.event_id) {
+  // INSERT is gated by `match_insert` the same way UPDATE is by `match_update`,
+  // and a rejected insert likewise returns no error and no row.
+  if (!data) {
+    throw new Error(
+      "Create match did not apply. You may not have permission to create " +
+        "matches in this event.",
+    );
+  }
+
+  if (data.event_id) {
     invalidateCachedQueries(`matches:event:${data.event_id}`);
   }
   invalidateCachedQueries("matches:open");
@@ -257,7 +266,7 @@ export async function createMatch(payload = {}) {
   invalidateCachedQueries("matches:ids");
   invalidateCachedQueries("teams:matches");
 
-  return data || null;
+  return data;
 }
 
 export async function updateMatch(matchId, payload = {}) {
@@ -299,15 +308,17 @@ export async function updateMatch(matchId, payload = {}) {
     throw fromSupabaseError(error, "Failed to update match");
   }
 
-  if (data?.event_id) {
-    invalidateCachedQueries(`matches:event:${data.event_id}`);
+  const applied = assertWriteApplied(data, matchId, "Update match");
+
+  if (applied.event_id) {
+    invalidateCachedQueries(`matches:event:${applied.event_id}`);
   }
   invalidateCachedQueries("matches:open");
   invalidateCachedQueries("matches:recent");
   invalidateCachedQueries("matches:ids");
   invalidateCachedQueries("teams:matches");
 
-  return data || null;
+  return applied;
 }
 
 export async function deleteMatch(matchId) {
@@ -349,6 +360,26 @@ export async function deleteMatch(matchId) {
 // MATCH_STATUS constant rather than a hardcoded string.
 const MATCH_STATUS_CODES = new Set(ALL_STATUS_CODES);
 
+/**
+ * A write that matched no rows is almost always RLS, not a missing match.
+ *
+ * `matches` has a permissive `SELECT ... USING (true)` policy but gates UPDATE
+ * behind `match_update` / `has_event_permission('match_update', event_id)`.
+ * Postgres does not error when an UPDATE's USING clause excludes the row — it
+ * simply updates nothing, so PostgREST returns no error and no row. Returning
+ * `null` (or, worse, re-reading the untouched row and returning that) turns a
+ * rejected write into what looks like a successful one: the caller sees a
+ * perfectly good match record that still holds its old values.
+ */
+function assertWriteApplied(data, matchId, action) {
+  if (data) return data;
+  throw new Error(
+    `${action} did not apply to match ${matchId}. The match may not exist, or your ` +
+      "role may be missing the match_update permission for this event " +
+      "(a role can hold match_insert for scoring without also holding match_update).",
+  );
+}
+
 export async function initialiseMatch(matchId, payload) {
   const desiredStatus = MATCH_STATUS_CODES.has(payload.status)
     ? payload.status
@@ -376,23 +407,20 @@ export async function initialiseMatch(matchId, payload) {
     throw fromSupabaseError(error, "Failed to initialise match");
   }
 
-  if (data) {
-    if (data.event_id) {
-      invalidateCachedQueries(`matches:event:${data.event_id}`);
-    }
-    invalidateCachedQueries("matches:open");
-    invalidateCachedQueries("matches:recent");
-    invalidateCachedQueries("matches:ids");
-    invalidateCachedQueries("teams:matches");
-    return data;
-  }
+  // No re-read fallback here. It previously returned getMatchById(matchId) when
+  // the update matched nothing — but SELECT is world-readable while UPDATE is
+  // not, so that path reliably succeeded and handed back the *un-initialised*
+  // row. The console then opened on a match that was never written.
+  const applied = assertWriteApplied(data, matchId, "Initialise match");
 
-  const fallback = await getMatchById(matchId);
-  if (fallback) {
-    return fallback;
+  if (applied.event_id) {
+    invalidateCachedQueries(`matches:event:${applied.event_id}`);
   }
-
-  throw new Error("Match not found after initialisation");
+  invalidateCachedQueries("matches:open");
+  invalidateCachedQueries("matches:recent");
+  invalidateCachedQueries("matches:ids");
+  invalidateCachedQueries("teams:matches");
+  return applied;
 }
 
 export async function updateMatchStatus(matchId, nextStatus = "finished") {
@@ -408,15 +436,17 @@ export async function updateMatchStatus(matchId, nextStatus = "finished") {
     throw fromSupabaseError(error, "Failed to update match status");
   }
 
-  if (data?.event_id) {
-    invalidateCachedQueries(`matches:event:${data.event_id}`);
+  const applied = assertWriteApplied(data, matchId, "Update match status");
+
+  if (applied.event_id) {
+    invalidateCachedQueries(`matches:event:${applied.event_id}`);
   }
   invalidateCachedQueries("matches:open");
   invalidateCachedQueries("matches:recent");
   invalidateCachedQueries("matches:ids");
   invalidateCachedQueries("teams:matches");
 
-  return data || null;
+  return applied;
 }
 
 export async function updateMatchParticipants(matchId, payload = {}) {
@@ -440,15 +470,17 @@ export async function updateMatchParticipants(matchId, payload = {}) {
     throw fromSupabaseError(error, "Failed to update match participants");
   }
 
-  if (data?.event_id) {
-    invalidateCachedQueries(`matches:event:${data.event_id}`);
+  const applied = assertWriteApplied(data, matchId, "Update match participants");
+
+  if (applied.event_id) {
+    invalidateCachedQueries(`matches:event:${applied.event_id}`);
   }
   invalidateCachedQueries("matches:open");
   invalidateCachedQueries("matches:recent");
   invalidateCachedQueries("matches:ids");
   invalidateCachedQueries("teams:matches");
 
-  return data || null;
+  return applied;
 }
 
 export async function updateMatchMediaLink(matchId, mediaPayload) {
@@ -467,15 +499,17 @@ export async function updateMatchMediaLink(matchId, mediaPayload) {
     throw fromSupabaseError(error, "Failed to update match media link");
   }
 
-  if (data?.event_id) {
-    invalidateCachedQueries(`matches:event:${data.event_id}`);
+  const applied = assertWriteApplied(data, matchId, "Update match media link");
+
+  if (applied.event_id) {
+    invalidateCachedQueries(`matches:event:${applied.event_id}`);
   }
   invalidateCachedQueries("matches:recent");
   invalidateCachedQueries("matches:recent-with-media");
   invalidateCachedQueries("matches:ids");
   invalidateCachedQueries("teams:matches");
 
-  return data || null;
+  return applied;
 }
 
 export async function getMatchesByIds(ids = []) {

@@ -103,27 +103,39 @@ Auth-required:
 - `/sys-admin`           → `SysAdminPage.jsx`
 
 Full-screen (outside AppLayout, no SiteHeader):
-- `/score-keeper`        → `ScoreKeeperPage.jsx` — 7v7 ultimate scorekeeper
+- `/score-keeper`        → `ModularScoreKeeperPage.jsx` — the ultimate
+                           scorekeeper console, covering both formats. With no
+                           valid `?mode=` it renders the format picker
+                           (`ModularScorekeeperLanding.jsx`); with one it
+                           resolves the format descriptor and mounts the
                            console. Internally composed from
-                           `src/pages/scorekeeper/ScoreKeeperView.jsx`,
-                           `useScoreKeeperData.js`, `useScoreKeeperActions.js`,
+                           `src/pages/scorekeeper/ModularScoreKeeperView.jsx`,
+                           `modularScoreKeeperData.js`,
+                           `modularScoreKeeperActions.js`,
+                           `scorekeeperFormats.js`, `secondaryTimerPhases.js`,
                            `scorekeeperConstants.js`, `scorekeeperUtils.js`,
                            `eventCards/MatchEventCard.jsx`, and
-                           `ScorekeeperPopup.jsx`.
-- `/score-keeper-5v5`    → `ScoreKeeper5v5Page.jsx` — 5v5 variant using its
-                           own parallel module set under `scorekeeper/5v5*`.
+                           `ModularScorekeeperPopup.jsx`.
+- `/score-keeper-modular`, `/score-keeper-5v5`
+                         → redirects to `/score-keeper`, preserving `?mode=`.
+                           They are the paths of the replaced consoles, kept so
+                           existing bookmarks and links still resolve.
 - `/admin/scrimmage`     → `ScrimmagePage.jsx` — scrimmage scoring tool with
                            its own module set under `src/pages/scrimmage/`.
 
 Scorekeeper module structure
 ----------------------------
-Both scorekeepers follow the same pattern:
-- `*Page.jsx`         — entry point, loads match and mounts the view.
+The scorekeeper follows this pattern:
+- `*Page.jsx`         — entry point, resolves the format and mounts the view.
 - `*View.jsx`         — full UI render, consumes data + action hooks.
-- `use*Data.js`       — Supabase data fetching and real-time subscriptions.
-- `use*Actions.js`    — all write operations (log events, undo, confirm, etc.)
+- `*Data.js`          — Supabase data fetching and real-time subscriptions.
+- `*Actions.js`       — all write operations (log events, undo, confirm, etc.)
 - `*Constants.js`     — shared enums and lookup tables.
 - `*Utils.js`         — pure helper functions (score derivation, ABBA logic).
+- `scorekeeperFormats.js` — the format descriptors. One console serves both
+  formats by reading capabilities and flags from a descriptor rather than
+  branching on a format key, which is what replaced the duplicated 7v7 and 5v5
+  consoles (each of which had its own full copy of the modules above).
 
 The scrimmage tool mirrors this pattern under `src/pages/scrimmage/` and
 additionally includes `scrimmageRules.js`, `scrimmageReport.js`, and

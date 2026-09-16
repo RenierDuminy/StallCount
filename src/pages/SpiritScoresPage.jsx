@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getEventsList } from "../services/leagueService";
 import { getMatchById, getMatchesByEvent, updateMatchStatus } from "../services/matchService";
@@ -10,7 +10,13 @@ import {
   saveSpiritScoresSession,
 } from "../services/spiritScoreSessionStore";
 import { Card, Field, Input, SectionHeader, SectionShell, Select, Textarea } from "../components/ui/primitives";
-import { SPIRIT_SCORES_ACCESS_PERMISSIONS, userHasAnyPermission } from "../utils/accessControl";
+import {
+  ADMIN_OVERRIDE_PERMISSIONS,
+  SPIRIT_SCORES_ACCESS_ROLES,
+  userHasAnyPermission,
+  userHasAnyRole,
+} from "../utils/accessControl";
+import { MODULAR_SCOREKEEPER_MENU_PATH } from "./scorekeeper/scorekeeperConstants";
 
 const SPIRIT_CATEGORIES = [
   { key: "rulesKnowledge", label: "Rules knowledge & use" },
@@ -38,6 +44,7 @@ export default function SpiritScoresPage() {
   const { session, roles, rolesLoading } = useAuth();
   const userId = session?.user?.id ?? null;
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const prefilledEventId = searchParams.get("eventId") || "";
   const prefilledMatchId = searchParams.get("matchId") || "";
 
@@ -345,16 +352,26 @@ export default function SpiritScoresPage() {
       return new Set();
     }
 
+    // Scoped by ROLE, matching the route gate. Spirit scoring is a captain's
+    // duty and captains hold no match permissions, so a permission-scoped
+    // dropdown (match_insert/match_update) returned an empty event list for
+    // exactly the people the form is for — they would pass the route and then
+    // find nothing to select. An admin_override holder stays unrestricted.
+    const hasOverride = userHasAnyPermission(
+      session?.user,
+      ADMIN_OVERRIDE_PERMISSIONS,
+      roles,
+      roleCatalog,
+    );
+    if (hasOverride) {
+      return null;
+    }
+
     const hasGlobalSpiritAccess = roles.some((assignment) => {
       if (assignment?.scope === "event" || assignment?.eventId) {
         return false;
       }
-      return userHasAnyPermission(
-        session?.user,
-        SPIRIT_SCORES_ACCESS_PERMISSIONS,
-        [assignment],
-        roleCatalog,
-      );
+      return userHasAnyRole(session?.user, SPIRIT_SCORES_ACCESS_ROLES, [assignment]);
     });
 
     if (hasGlobalSpiritAccess) {
@@ -366,14 +383,7 @@ export default function SpiritScoresPage() {
       if (!assignment?.eventId) {
         return;
       }
-      if (
-        userHasAnyPermission(
-          session?.user,
-          SPIRIT_SCORES_ACCESS_PERMISSIONS,
-          [assignment],
-          roleCatalog,
-        )
-      ) {
+      if (userHasAnyRole(session?.user, SPIRIT_SCORES_ACCESS_ROLES, [assignment])) {
         scopedEventIds.add(String(assignment.eventId));
       }
     });
@@ -437,6 +447,16 @@ export default function SpiritScoresPage() {
       setMatchError(null);
     }
   };
+
+  // Sum of the five WFDF categories per team (0-20). `notes` is on the same
+  // object, so sum the category keys rather than every value on it.
+  const spiritTotals = useMemo(
+    () => ({
+      teamA: SPIRIT_CATEGORIES.reduce((sum, c) => sum + (teamScores.teamA[c.key] || 0), 0),
+      teamB: SPIRIT_CATEGORIES.reduce((sum, c) => sum + (teamScores.teamB[c.key] || 0), 0),
+    }),
+    [teamScores]
+  );
 
   const updateScore = (teamKey, field, value) => {
     setTeamScores((prev) => ({
@@ -532,6 +552,13 @@ export default function SpiritScoresPage() {
                 message: "Spirit scores submitted",
                 variant: "success",
               });
+              // Submitting is the end of the task, so every successful submit
+              // hands off to the score keeper menu rather than leaving the
+              // operator on a form they are finished with. `completed=spirit`
+              // selects the banner variant confirming both the match and the
+              // spirit scores, so nobody has to wonder whether it registered.
+              navigate(`${MODULAR_SCOREKEEPER_MENU_PATH}?completed=spirit`);
+              return;
             } catch (err) {
               setSubmitState({
                 message: err instanceof Error ? err.message : "Failed to submit spirit scores.",
@@ -674,7 +701,12 @@ export default function SpiritScoresPage() {
               >
                 <div>
                   <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">
-                    Score for {teamKey === "teamA" ? teamLabels.teamA : teamLabels.teamB}
+                    Score for {teamKey === "teamA" ? teamLabels.teamA : teamLabels.teamB}:
+                    {/* The WFDF total is what gets reported, so it belongs in the
+                        heading. It also replaces the per-slider value readouts:
+                        each slider's position and its detent already show the
+                        individual score. */}
+                    <span className="ml-2 text-lg font-bold">{spiritTotals[teamKey]}</span>
                   </h3>
                 </div>
                 {SPIRIT_CATEGORIES.map((category) => (
@@ -682,12 +714,7 @@ export default function SpiritScoresPage() {
                     key={`${teamKey}-${category.key}`}
                     className="block text-sm font-semibold text-[var(--sc-surface-light-ink)]"
                   >
-                    <div className="flex items-center justify-between">
-                      <span>{category.label}</span>
-                      <span className="text-xs text-[var(--sc-surface-light-ink)]/70">
-                        {teamScores[teamKey][category.key]}
-                      </span>
-                    </div>
+                    <span className="block">{category.label}</span>
                     <input
                       type="range"
                       min="0"
@@ -695,8 +722,7 @@ export default function SpiritScoresPage() {
                       step="1"
                       value={teamScores[teamKey][category.key]}
                       onChange={(event) => updateScore(teamKey, category.key, event.target.value)}
-                      className="mt-0.5 w-full"
-                      style={{ accentColor: "#01611b" }}
+                      className="sc-spirit-slider mt-0.5"
                     />
                     <div className="flex justify-between text-xs text-[var(--sc-surface-light-ink)]/60">
                       <span>0</span>

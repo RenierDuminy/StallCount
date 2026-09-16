@@ -59,7 +59,6 @@ Disallow: /admin/
 Disallow: /sys-admin/
 Disallow: /captain/
 Disallow: /score-keeper
-Disallow: /score-keeper-5v5
 Disallow: /notifications
 Disallow: /user
 Disallow: /tournament-director

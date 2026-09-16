@@ -1,4 +1,19 @@
 const SESSION_VERSION = 1;
+
+/**
+ * Sessions are namespaced by format so two formats cannot clobber each other.
+ *
+ * The replaced 7v7 and 5v5 consoles both wrote one un-namespaced key and told
+ * themselves apart by a `ruleset` field inside the payload, so starting one
+ * format discarded a live session of the other. The scorekeeper console always
+ * passes a format, so that key is no longer written; the fallback below only
+ * guards a caller that omits the argument.
+ *
+ * Any session still sitting under the old key belongs to a console that no
+ * longer exists and is never read. It expires on its own via the TTL, so there
+ * is nothing to migrate — a match that was live across the switchover is
+ * resumed from the database like any other, not from that snapshot.
+ */
 export const SCOREKEEPER_SESSION_TTL_MS = 1000 * 60 * 60 * 2; // 2 hours
 
 function getStorage() {
@@ -10,16 +25,17 @@ function getStorage() {
   }
 }
 
-function getStorageKey(userId) {
+function getStorageKey(userId, format) {
   const suffix = userId ? String(userId) : "guest";
-  return `scorekeeper:session:${suffix}`;
+  if (!format) return `scorekeeper:session:${suffix}`;
+  return `scorekeeper:session:${format}:${suffix}`;
 }
 
-export function loadScorekeeperSession(userId) {
+export function loadScorekeeperSession(userId, format) {
   const storage = getStorage();
   if (!storage || !userId) return null;
 
-  const key = getStorageKey(userId);
+  const key = getStorageKey(userId, format);
   const raw = storage.getItem(key);
   if (!raw) return null;
 
@@ -42,11 +58,11 @@ export function loadScorekeeperSession(userId) {
   }
 }
 
-export function saveScorekeeperSession(userId, data) {
+export function saveScorekeeperSession(userId, data, format) {
   const storage = getStorage();
   if (!storage || !userId || !data) return;
 
-  const key = getStorageKey(userId);
+  const key = getStorageKey(userId, format);
   const now = Date.now();
 
   const record = {
@@ -67,8 +83,8 @@ export function saveScorekeeperSession(userId, data) {
   }
 }
 
-export function clearScorekeeperSession(userId) {
+export function clearScorekeeperSession(userId, format) {
   const storage = getStorage();
   if (!storage || !userId) return;
-  storage.removeItem(getStorageKey(userId));
+  storage.removeItem(getStorageKey(userId, format));
 }

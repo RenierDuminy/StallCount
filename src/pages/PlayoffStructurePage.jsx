@@ -20,10 +20,17 @@ import {
   clearBracketMatchAssignmentsForEvent,
   deleteBracket,
   deleteBracketNode,
+  createPlayoffSchedule,
+  deletePlayoffSchedule,
   getBracketsByEvent,
-  resolveBracketMatchesForEvent,
+  getEventAutoResolve,
+  getPlayoffResolveStatus,
+  getPlayoffSchedules,
+  requestPlayoffResolve,
+  setEventAutoResolve,
   updateBracket,
   updateBracketNode,
+  updatePlayoffSchedule,
 } from "../services/playoffStructureService";
 import { instantiateTemplate } from "../services/bracketTemplateService";
 import { defaultSeedMap, getTemplateById, listTemplates } from "../data/bracketTemplates";
@@ -42,27 +49,15 @@ import {
 
 const PLAYOFF_STRUCTURE_EVENT_KEY = "stallcount.playoffStructure.eventId";
 const MATCH_LIMIT = 400;
-// Canceled matches keep the score line recorded against them (e.g. a forfeit
-// recorded under the old convention), so they count as a decided result for
-// standings and seeding. The explicit forfeit codes (forfeit / forfeit_teamA
-// / forfeit_teamB) count the same way — any form of forfeit is a decided
-// result here, same as a canceled match card elsewhere.
-const FINISHED_MATCH_STATUSES = new Set([
-  "finished",
-  "completed",
-  "final",
-  "canceled",
-  "cancelled",
-  "forfeit",
-  "forfeit_teama",
-  "forfeit_teamb",
-]);
+// Seeding and advancement now run server-side (api/_lib/playoffResolve.js), so
+// the finished-status vocabulary that used to live here moved with them. The
+// canonical list is exported from playoffStructureService for anything on the
+// client that still needs it.
 const BRACKET_TYPES = [
   { value: "placement", label: "Placement" },
   { value: "single_elim", label: "Single elimination" },
   { value: "double_elim", label: "Double elimination" },
   { value: "play_in", label: "Play-in" },
-  { value: "custom", label: "Custom" },
 ];
 const SOURCE_TYPES = [
   { value: "pool_rank", label: "Pool or division rank" },
@@ -176,175 +171,128 @@ function formatVenueLabel(venue) {
   return parts.length ? parts.join(", ") : "Venue";
 }
 
-function isFinishedStatus(status) {
-  return FINISHED_MATCH_STATUSES.has(normalizeText(status));
-}
+// The sweeper runs EVERY 6 HOURS, on SERVER TIME (pg_cron fires in UTC):
+// 00:00, 06:00, 12:00, 18:00 UTC — see
+// supabase/migrations/*_playoff_auto_resolve.sql.
+//
+// South Africa (SAST) is UTC+2 and has no daylight saving, so for local users
+// those sweeps land at 02:00, 08:00, 14:00 and 20:00. The times the dropdown
+// offers are derived from the UTC grid rather than hardcoded, so they stay
+// correct for an operator in any timezone.
+//
+// A release time between those points does not take effect until the next one,
+// so letting an operator type 14:30 and watch nothing happen until 16:00 SAST
+// would be misleading. The UI therefore only ever offers real sweep times.
+const SWEEP_INTERVAL_HOURS = 6;
 
-function createStandingsRow(team) {
-  return {
-    id: team.id,
-    name: team.name || team.short_name || team.shortName || "Team",
-    shortName: team.short_name || team.shortName || "",
-    wins: 0,
-    losses: 0,
-    plusMinus: 0,
-  };
-}
-
-function ensureStandingsRow(map, team) {
-  if (!team?.id) return null;
-  if (!map.has(team.id)) {
-    map.set(team.id, createStandingsRow(team));
+/** The sweep times of one local day, as Date objects. */
+function buildSweepTimesForDay(dayValue) {
+  const base = dayValue ? new Date(`${dayValue}T00:00`) : null;
+  if (!base || Number.isNaN(base.getTime())) {
+    return [];
   }
-  return map.get(team.id);
-}
 
-function sortStandingsRows(rows) {
-  return [...rows].sort((left, right) => {
-    if (right.wins !== left.wins) return right.wins - left.wins;
-    if (left.losses !== right.losses) return left.losses - right.losses;
-    if (right.plusMinus !== left.plusMinus) return right.plusMinus - left.plusMinus;
-    return left.name.localeCompare(right.name);
-  });
-}
-
-function buildDivisionTeams(division) {
-  const teamMap = new Map();
-  (division?.pools || []).forEach((pool) => {
-    (pool?.teams || []).forEach((entry) => {
-      if (entry?.team?.id && !teamMap.has(entry.team.id)) {
-        teamMap.set(entry.team.id, entry.team);
-      }
-    });
-  });
-  return Array.from(teamMap.values());
-}
-
-function calculateStandingsRows(teams, matches) {
-  const rows = new Map();
-  (teams || []).forEach((team) => {
-    ensureStandingsRow(rows, team);
-  });
-
-  (matches || []).forEach((match) => {
-    if (!isFinishedStatus(match?.status)) return;
-    if (!match?.team_a?.id || !match?.team_b?.id) return;
-
-    const teamA = ensureStandingsRow(rows, match.team_a);
-    const teamB = ensureStandingsRow(rows, match.team_b);
-    const scoreA = Number.isFinite(match?.score_a) ? Number(match.score_a) : 0;
-    const scoreB = Number.isFinite(match?.score_b) ? Number(match.score_b) : 0;
-
-    if (!teamA || !teamB) return;
-
-    teamA.plusMinus += scoreA - scoreB;
-    teamB.plusMinus += scoreB - scoreA;
-
-    if (scoreA > scoreB) {
-      teamA.wins += 1;
-      teamB.losses += 1;
-    } else if (scoreB > scoreA) {
-      teamB.wins += 1;
-      teamA.losses += 1;
-    }
-  });
-
-  return sortStandingsRows(Array.from(rows.values()));
-}
-
-function isMatchCollectionComplete(matches) {
-  return Array.isArray(matches) && matches.length > 0 && matches.every((match) => isFinishedStatus(match?.status));
-}
-
-function buildPoolStandings(pool, matches) {
-  const poolTeams = (pool?.teams || []).map((entry) => entry.team).filter(Boolean);
-  return {
-    id: pool?.id || "",
-    name: pool?.name || "Pool",
-    divisionId: pool?.divisionId || "",
-    divisionName: pool?.divisionName || "",
-    rows: calculateStandingsRows(poolTeams, matches),
-    ready: isMatchCollectionComplete(matches),
-    matchCount: Array.isArray(matches) ? matches.length : 0,
-  };
-}
-
-function buildDivisionStandings(division, poolBuckets) {
-  const teams = buildDivisionTeams(division);
-  const divisionMatches = (division?.pools || []).flatMap((pool) => poolBuckets.get(pool.id) || []);
-  const poolsWithMatches = (division?.pools || []).filter((pool) => (poolBuckets.get(pool.id) || []).length > 0);
-
-  return {
-    id: division?.id || "",
-    name: division?.name || "Division",
-    rows: calculateStandingsRows(teams, divisionMatches),
-    ready:
-      poolsWithMatches.length > 0 &&
-      poolsWithMatches.every((pool) => isMatchCollectionComplete(poolBuckets.get(pool.id) || [])),
-    matchCount: divisionMatches.length,
-  };
-}
-
-function buildPlayoffStandingsIndex(eventData, matches, brackets) {
-  const bracketMatchIds = new Set(
-    (brackets || [])
-      .flatMap((bracket) => bracket?.nodes || [])
-      .map((node) => node?.match_id)
-      .filter(Boolean),
+  const times = [];
+  // Walk UTC sweep points across a 48-hour window and keep the ones that land
+  // on the requested local day — the UTC grid does not align to local midnight
+  // in every timezone (SAST is +02:00, so sweeps fall at 02:00/08:00/14:00/20:00).
+  const startUtc = Date.UTC(
+    base.getFullYear(),
+    base.getMonth(),
+    base.getDate(),
+    0,
+    0,
+    0,
+    0,
   );
-
-  const poolBuckets = new Map();
-  (matches || []).forEach((match) => {
-    if (!match?.pool_id || bracketMatchIds.has(match.id)) {
-      return;
+  for (let hour = -24; hour <= 48; hour += SWEEP_INTERVAL_HOURS) {
+    const candidate = new Date(startUtc + hour * 3600 * 1000);
+    const aligned = new Date(candidate);
+    aligned.setUTCMinutes(0, 0, 0);
+    aligned.setUTCHours(Math.floor(aligned.getUTCHours() / SWEEP_INTERVAL_HOURS) * SWEEP_INTERVAL_HOURS);
+    if (
+      aligned.getFullYear() === base.getFullYear() &&
+      aligned.getMonth() === base.getMonth() &&
+      aligned.getDate() === base.getDate() &&
+      !times.some((existing) => existing.getTime() === aligned.getTime())
+    ) {
+      times.push(aligned);
     }
-    const bucket = poolBuckets.get(match.pool_id) || [];
-    bucket.push(match);
-    poolBuckets.set(match.pool_id, bucket);
-  });
+  }
 
-  const standingsIndex = {
-    poolsById: {},
-    poolsByName: {},
-    poolsByScopedName: {},
-    divisionsById: {},
-    divisionsByName: {},
-  };
+  return times.sort((left, right) => left - right);
+}
 
-  (eventData?.divisions || []).forEach((division) => {
-    const divisionEntry = buildDivisionStandings(division, poolBuckets);
-    standingsIndex.divisionsById[division.id] = divisionEntry;
+/** Local date key (YYYY-MM-DD) for a timestamp, for the date input. */
+function toDayInputValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
 
-    const divisionKey = normalizeText(division.name);
-    if (divisionKey && !standingsIndex.divisionsByName[divisionKey]) {
-      standingsIndex.divisionsByName[divisionKey] = divisionEntry;
-    }
+/**
+ * The sweep times as they read on THIS operator's clock, e.g.
+ * "02:00, 08:00, 14:00, 20:00". Derived rather than hardcoded so a TD working
+ * from another timezone is not told SAST times that contradict the dropdown
+ * in front of them.
+ */
+function describeLocalSweepTimes() {
+  const today = new Date();
+  const times = buildSweepTimesForDay(toDayInputValue(today)).map(toTimeInputValue);
+  return times.join(", ");
+}
 
-    (division?.pools || []).forEach((pool) => {
-      const poolEntry = buildPoolStandings(
-        {
-          ...pool,
-          divisionId: division.id,
-          divisionName: division.name,
-        },
-        poolBuckets.get(pool.id) || [],
-      );
+/** Local HH:mm for a timestamp, matching the option values below. */
+function toTimeInputValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
 
-      standingsIndex.poolsById[pool.id] = poolEntry;
+/**
+ * Status chips for one node: whether it is waiting on a scheduled time, blocked
+ * on something the operator can fix, or missing the linked match it needs.
+ *
+ * A node with no match_id can never resolve — neither the setup wizard nor the
+ * bracket templates attach one — so it is called out explicitly rather than
+ * being silently skipped.
+ */
+function describeNodeResolveState(node, scheduled = null) {
+  const chips = [];
 
-      const poolKey = normalizeText(pool.name);
-      if (poolKey && !standingsIndex.poolsByName[poolKey]) {
-        standingsIndex.poolsByName[poolKey] = poolEntry;
-      }
-
-      const scopedKey = divisionKey && poolKey ? `${divisionKey}::${poolKey}` : "";
-      if (scopedKey && !standingsIndex.poolsByScopedName[scopedKey]) {
-        standingsIndex.poolsByScopedName[scopedKey] = poolEntry;
-      }
+  if (!node?.match_id) {
+    chips.push({
+      key: "no-match",
+      label: "No match linked",
+      className: "border border-amber-300/35 bg-amber-500/10 text-amber-200",
     });
-  });
+  }
 
-  return standingsIndex;
+  // `scheduled` is the release entry covering this node, if any. It comes from
+  // playoff_resolve_schedules rather than the node itself, because a date
+  // covers an arbitrary group of games, not a round.
+  const resolveAt = scheduled?.at ? new Date(scheduled.at) : null;
+  if (resolveAt && !Number.isNaN(resolveAt.getTime()) && resolveAt.getTime() > Date.now()) {
+    chips.push({
+      key: "pending",
+      label: `${scheduled.label ? `${scheduled.label}: ` : ""}fills ${formatDateTime(scheduled.at)}`,
+      className: "border border-sky-300/35 bg-sky-500/10 text-sky-200",
+    });
+  }
+
+  if (node?.last_resolve_error) {
+    chips.push({
+      key: "blocked",
+      label: node.last_resolve_error,
+      className: "border border-rose-400/35 bg-rose-500/10 text-rose-100",
+    });
+  }
+
+  return chips;
 }
 
 function createEmptyBracketForm() {
@@ -541,7 +489,11 @@ function buildSourcePayload(sourceForm, lookups, label) {
 
 function summarizeResolveResult(result) {
   const updated = result?.updatedCount || 0;
-  const skipped = Array.isArray(result?.skipped) ? result.skipped : [];
+  // "already assigned" is the steady state once a bracket is resolved, so it is
+  // not worth reporting back — only genuine blockers are.
+  const skipped = (Array.isArray(result?.skipped) ? result.skipped : []).filter(
+    (entry) => !entry.settled,
+  );
 
   if (!updated && !skipped.length) {
     return "No playoff changes made.";
@@ -921,6 +873,16 @@ export default function PlayoffStructurePage() {
   const [clearBusy, setClearBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  // Scheduled-resolution state. `resolveStatus` is read from the server rather
+  // than derived locally because the sweeper runs whether or not this page is
+  // open, and net.http_post is fire-and-forget so the DB's cron history cannot
+  // say what a sweep did — automation_job_state can.
+  const [autoResolve, setAutoResolve] = useState(false);
+  const [autoResolveBusy, setAutoResolveBusy] = useState(false);
+  const [resolveStatus, setResolveStatus] = useState(null);
+  const [schedules, setSchedules] = useState([]);
+  const [scheduleDrafts, setScheduleDrafts] = useState({});
+  const [scheduleBusy, setScheduleBusy] = useState("");
   // Scroll target so canvas clicks bring the node editor into view.
   const nodeEditorRef = useRef(null);
   // "Start from template" panel state.
@@ -1038,6 +1000,223 @@ export default function PlayoffStructurePage() {
     loadSelectedEventData();
   }, [loadSelectedEventData]);
 
+  const refreshResolveStatus = useCallback(async () => {
+    if (!selectedEventId) {
+      setResolveStatus(null);
+      return;
+    }
+
+    try {
+      const status = await getPlayoffResolveStatus(selectedEventId);
+      setResolveStatus(status);
+      if (status?.event) {
+        setAutoResolve(Boolean(status.event.autoResolve));
+      }
+    } catch {
+      // Status is advisory; a failure here must not block the page. The
+      // toggle falls back to a direct read below.
+      setResolveStatus(null);
+    }
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    refreshResolveStatus();
+  }, [refreshResolveStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedEventId) {
+      setAutoResolve(false);
+      return undefined;
+    }
+
+    getEventAutoResolve(selectedEventId)
+      .then((enabled) => {
+        if (!cancelled) setAutoResolve(Boolean(enabled));
+      })
+      .catch(() => {
+        if (!cancelled) setAutoResolve(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEventId]);
+
+  const handleToggleAutoResolve = useCallback(async () => {
+    if (!selectedEventId) return;
+
+    const next = !autoResolve;
+    setAutoResolveBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      await setEventAutoResolve(selectedEventId, next);
+      setAutoResolve(next);
+      setMessage(
+        next
+          ? "Scheduled resolution enabled. Rounds will fill in at their set times."
+          : "Scheduled resolution disabled. Use the Resolve playoffs button instead.",
+      );
+    } catch (toggleError) {
+      setError(toggleError?.message || "Failed to update the auto-resolve setting.");
+    } finally {
+      setAutoResolveBusy(false);
+    }
+  }, [autoResolve, selectedEventId]);
+
+  const refreshSchedules = useCallback(async () => {
+    if (!selectedEventId) {
+      setSchedules([]);
+      return;
+    }
+
+    try {
+      setSchedules(await getPlayoffSchedules(selectedEventId));
+    } catch (scheduleError) {
+      setError(scheduleError?.message || "Failed to load release schedules.");
+    }
+  }, [selectedEventId]);
+
+  useEffect(() => {
+    refreshSchedules();
+  }, [refreshSchedules]);
+
+  const updateScheduleDraft = useCallback((scheduleId, patch) => {
+    setScheduleDrafts((current) => ({
+      ...current,
+      [scheduleId]: { ...(current[scheduleId] || {}), ...patch },
+    }));
+  }, []);
+
+  /** Toggle one game in or out of a schedule's coverage. */
+  const toggleScheduleNode = useCallback(
+    (schedule, nodeId) => {
+      setScheduleDrafts((current) => {
+        const draft = current[schedule.id] || {};
+        const selected = draft.nodeIds ?? schedule.node_ids ?? [];
+        const nodeIds = selected.includes(nodeId)
+          ? selected.filter((id) => id !== nodeId)
+          : [...selected, nodeId];
+        return { ...current, [schedule.id]: { ...draft, nodeIds } };
+      });
+    },
+    [],
+  );
+
+  /** A new date starts empty: the operator picks which games it covers. */
+  const handleAddSchedule = useCallback(async () => {
+    if (!selectedEventId || !selectedBracketId) {
+      setError("Choose a bracket before adding a release date.");
+      return;
+    }
+
+    setScheduleBusy("new");
+    setError("");
+    setMessage("");
+
+    try {
+      // Default to the next real sweep after tomorrow, so a new row is never
+      // born already-due (which would release its games on the very next
+      // sweep) and never carries a time the sweeper does not actually run at.
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const sweeps = buildSweepTimesForDay(toDayInputValue(tomorrow));
+      const defaultAt = (
+        sweeps.find((sweep) => sweep.getTime() > Date.now()) ||
+        sweeps[0] ||
+        new Date(Date.now() + 6 * 60 * 60 * 1000)
+      ).toISOString();
+      await createPlayoffSchedule({
+        eventId: selectedEventId,
+        bracketId: selectedBracketId,
+        label: "",
+        resolveAt: defaultAt,
+        nodeIds: [],
+      });
+      await refreshSchedules();
+      setMessage("Release date added. Pick the games it covers, then save.");
+    } catch (scheduleError) {
+      setError(scheduleError?.message || "Failed to add the release date.");
+    } finally {
+      setScheduleBusy("");
+    }
+  }, [refreshSchedules, selectedBracketId, selectedEventId]);
+
+  const handleSaveSchedule = useCallback(
+    async (schedule) => {
+      const draft = scheduleDrafts[schedule.id] || {};
+      setScheduleBusy(schedule.id);
+      setError("");
+      setMessage("");
+
+      try {
+        const day = draft.day ?? toDayInputValue(schedule.resolve_at);
+        if (!day) {
+          throw new Error("A release date is required.");
+        }
+
+        // Snap to a real sweep time: if the chosen one is not in the day's
+        // list (a changed date can orphan the previous selection), fall back
+        // to that day's first sweep rather than writing a time that would sit
+        // idle until the next one.
+        const sweeps = buildSweepTimesForDay(day);
+        if (!sweeps.length) {
+          throw new Error("That date has no sweep times.");
+        }
+        const wanted = draft.time ?? toTimeInputValue(schedule.resolve_at);
+        const chosen =
+          sweeps.find((sweep) => toTimeInputValue(sweep) === wanted) || sweeps[0];
+
+        await updatePlayoffSchedule(schedule.id, {
+          label: draft.label ?? schedule.label ?? "",
+          resolveAt: chosen.toISOString(),
+          nodeIds: draft.nodeIds ?? schedule.node_ids ?? [],
+        });
+        setScheduleDrafts((current) => {
+          const next = { ...current };
+          delete next[schedule.id];
+          return next;
+        });
+        await refreshSchedules();
+        await refreshResolveStatus();
+        setMessage("Release date saved.");
+      } catch (scheduleError) {
+        setError(scheduleError?.message || "Failed to save the release date.");
+      } finally {
+        setScheduleBusy("");
+      }
+    },
+    [refreshResolveStatus, refreshSchedules, scheduleDrafts],
+  );
+
+  const handleDeleteSchedule = useCallback(
+    async (scheduleId) => {
+      if (typeof window !== "undefined") {
+        const confirmed = window.confirm(
+          "Remove this release date? Its games will then fill in as soon as results allow.",
+        );
+        if (!confirmed) return;
+      }
+
+      setScheduleBusy(scheduleId);
+      setError("");
+      setMessage("");
+
+      try {
+        await deletePlayoffSchedule(scheduleId);
+        await refreshSchedules();
+        await refreshResolveStatus();
+        setMessage("Release date removed.");
+      } catch (scheduleError) {
+        setError(scheduleError?.message || "Failed to remove the release date.");
+      } finally {
+        setScheduleBusy("");
+      }
+    },
+    [refreshResolveStatus, refreshSchedules],
+  );
+
   const selectedEvent = useMemo(
     () => accessibleEvents.find((event) => event.id === selectedEventId) || eventData || null,
     [accessibleEvents, eventData, selectedEventId],
@@ -1060,6 +1239,32 @@ export default function PlayoffStructurePage() {
   );
 
   const selectedBracketNodes = useMemo(() => selectedBracket?.nodes || [], [selectedBracket]);
+
+  const bracketSchedules = useMemo(
+    () => schedules.filter((schedule) => schedule.bracket_id === selectedBracketId),
+    [schedules, selectedBracketId],
+  );
+
+  /**
+   * Node id -> the release entry covering it. A node listed by several
+   * schedules takes the earliest time, matching buildScheduleIndex in
+   * api/_lib/playoffResolve.js — keep the two in step.
+   */
+  const scheduleByNodeId = useMemo(() => {
+    const index = new Map();
+    schedules.forEach((schedule) => {
+      if (schedule.enabled === false || !schedule.resolve_at) return;
+      const at = new Date(schedule.resolve_at);
+      if (Number.isNaN(at.getTime())) return;
+      (schedule.node_ids || []).forEach((nodeId) => {
+        const existing = index.get(nodeId);
+        if (!existing || at.getTime() < new Date(existing.at).getTime()) {
+          index.set(nodeId, { at: schedule.resolve_at, label: schedule.label || "" });
+        }
+      });
+    });
+    return index;
+  }, [schedules]);
 
   useEffect(() => {
     if (!selectedBracket) {
@@ -1386,6 +1591,11 @@ export default function PlayoffStructurePage() {
     const name = bracketForm.name.trim();
     if (!name) {
       setError("Bracket name is required.");
+      return;
+    }
+
+    if (!BRACKET_TYPES.some((option) => option.value === bracketForm.type)) {
+      setError("Choose a valid bracket type.");
       return;
     }
 
@@ -1818,7 +2028,9 @@ export default function PlayoffStructurePage() {
   }, [loadSelectedEventData, selectedBracketNodes, selectedNode, selectedNodeId]);
 
   const handleResolvePlayoffs = useCallback(async () => {
-    if (!selectedEventId || !eventData) {
+    // Only the event id is needed now: the resolver loads its own hierarchy,
+    // matches and brackets server-side rather than being handed this page's.
+    if (!selectedEventId) {
       setError("Choose an event before resolving playoffs.");
       return;
     }
@@ -1828,20 +2040,19 @@ export default function PlayoffStructurePage() {
     setMessage("");
 
     try {
-      const standingsIndex = buildPlayoffStandingsIndex(eventData, matches, brackets);
-      const result = await resolveBracketMatchesForEvent({
-        eventId: selectedEventId,
-        standingsIndex,
-        brackets,
-      });
+      // Resolution runs server-side so the manual button and the scheduled
+      // sweeper share one implementation. It resolves to a fixed point, so a
+      // chain whose earlier rounds are already played fills in a single call.
+      const result = await requestPlayoffResolve(selectedEventId);
       await loadSelectedEventData();
+      await refreshResolveStatus();
       setMessage(summarizeResolveResult(result));
     } catch (resolveError) {
       setError(resolveError?.message || "Failed to resolve playoff matches.");
     } finally {
       setResolveBusy(false);
     }
-  }, [brackets, eventData, loadSelectedEventData, matches, selectedEventId]);
+  }, [loadSelectedEventData, refreshResolveStatus, selectedEventId]);
 
   const handleClearPlayoffAssignments = useCallback(async () => {
     if (!selectedEventId) {
@@ -1913,6 +2124,17 @@ export default function PlayoffStructurePage() {
                 </button>
                 <button
                   type="button"
+                  onClick={handleToggleAutoResolve}
+                  className={autoResolve ? "sc-button" : "sc-button is-ghost"}
+                  disabled={autoResolveBusy || loading || !selectedEventId}
+                  title="Release games on their scheduled dates automatically, without anyone opening this page. Sweeps every 6 hours."
+                >
+                  {autoResolveBusy
+                    ? "Saving..."
+                    : `Scheduled resolution: ${autoResolve ? "On" : "Off"}`}
+                </button>
+                <button
+                  type="button"
                   onClick={handleResolvePlayoffs}
                   className="sc-button"
                   disabled={resolveBusy || clearBusy || loading || !selectedEventId}
@@ -1922,6 +2144,40 @@ export default function PlayoffStructurePage() {
               </div>
             }
           />
+
+          {/* Sweeper state. Surfaced because the schedule runs server-side, so
+              without this the operator has no way to tell whether it ran. */}
+          {selectedEventId && resolveStatus ? (
+            <div className="flex flex-wrap items-center gap-1 text-xs text-ink-muted">
+              {autoResolve ? (
+                <Chip variant="live">Auto-resolve on</Chip>
+              ) : (
+                <Chip variant="ghost">Manual only</Chip>
+              )}
+              {resolveStatus.event?.pendingCount ? (
+                <span>
+                  {resolveStatus.event.pendingCount} game(s) held until their release date
+                  {resolveStatus.event.nextDueAt
+                    ? `, next ${formatDateTime(resolveStatus.event.nextDueAt)}`
+                    : ""}
+                </span>
+              ) : null}
+              {resolveStatus.event?.blockedCount ? (
+                <span className="text-rose-200">
+                  {resolveStatus.event.blockedCount} blocked - see the node list
+                </span>
+              ) : null}
+              {resolveStatus.job?.last_attempted_at ? (
+                <span>
+                  Last sweep {formatDateTime(resolveStatus.job.last_attempted_at)}
+                  {resolveStatus.job.last_ok === false ? " (failed)" : ""}
+                  {resolveStatus.job.last_message ? ` - ${resolveStatus.job.last_message}` : ""}
+                </span>
+              ) : (
+                <span>No scheduled sweep has run yet.</span>
+              )}
+            </div>
+          ) : null}
 
           <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(16rem,1fr))]">
             <Field label="Event" hint="Choose the event whose brackets you want to manage.">
@@ -2186,7 +2442,7 @@ export default function PlayoffStructurePage() {
               />
 
               <div className="grid gap-2 md:grid-cols-3">
-                <Field label="Bracket name" hint="Required.">
+                <Field label="Bracket name">
                   <Input
                     value={bracketForm.name}
                     onChange={(event) => setBracketForm((current) => ({ ...current, name: event.target.value }))}
@@ -2254,6 +2510,144 @@ export default function PlayoffStructurePage() {
               ) : null}
             </Panel>
 
+            {/* Release schedules. Full width and above the node editor: this
+                used to sit inside the narrow Nodes sidebar under the node
+                list, where it was easy to miss entirely. A schedule is "these
+                games may fill in at this time" — an arbitrary group of nodes,
+                not a round, and as many per event as the director needs. */}
+            {selectedBracketId && selectedBracketNodes.length ? (
+              <Panel variant="default" className="space-y-1.5 border-white/20 p-2">
+                <SectionHeader
+                  title="Release schedule"
+                  description={
+                    autoResolve
+                      ? `Dates when groups of games fill in their teams. The sweeper runs every 6 hours on server time (UTC) — ${describeLocalSweepTimes()} in your timezone — so only those times can be chosen.`
+                      : "Dates when groups of games fill in their teams. Turn on scheduled resolution above for these to run automatically."
+                  }
+                  action={
+                    <button
+                      type="button"
+                      className="sc-button is-ghost text-xs"
+                      onClick={handleAddSchedule}
+                      disabled={scheduleBusy === "new"}
+                    >
+                      {scheduleBusy === "new" ? "Adding..." : "Add date"}
+                    </button>
+                  }
+                />
+
+                {!bracketSchedules.length ? (
+                  <p className="rounded-xl border border-dashed border-white/15 px-2 py-1.5 text-xs text-ink-muted">
+                    No release dates yet. Without one this bracket fills in as soon as its
+                    results are in.
+                  </p>
+                ) : null}
+
+                <div className="grid gap-1.5 [grid-template-columns:repeat(auto-fit,minmax(20rem,1fr))]">
+                  {bracketSchedules.map((schedule) => {
+                    const draft = scheduleDrafts[schedule.id] || {};
+                    const selectedIds = draft.nodeIds ?? schedule.node_ids ?? [];
+                    const busy = scheduleBusy === schedule.id;
+                    const day = draft.day ?? toDayInputValue(schedule.resolve_at);
+                    return (
+                      <div
+                        key={schedule.id}
+                        className="space-y-1 rounded-xl border border-white/10 bg-surface/50 p-1.5"
+                      >
+                        <div className="flex flex-wrap items-end gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Name (e.g. Semifinals)"
+                            className="sc-input is-compact min-w-[9rem] flex-1"
+                            value={draft.label ?? schedule.label ?? ""}
+                            onChange={(changeEvent) =>
+                              updateScheduleDraft(schedule.id, { label: changeEvent.target.value })
+                            }
+                          />
+                          {/* Date + sweep-time, not a free datetime: the
+                              sweeper only runs every 6 hours, so an arbitrary
+                              time would silently wait for the next one. */}
+                          <input
+                            type="date"
+                            className="sc-input is-compact min-w-[8rem] flex-1"
+                            value={day}
+                            onChange={(changeEvent) =>
+                              updateScheduleDraft(schedule.id, { day: changeEvent.target.value })
+                            }
+                          />
+                          <Select
+                            className="is-compact min-w-[7rem]"
+                            value={draft.time ?? toTimeInputValue(schedule.resolve_at)}
+                            onChange={(changeEvent) =>
+                              updateScheduleDraft(schedule.id, { time: changeEvent.target.value })
+                            }
+                          >
+                            {buildSweepTimesForDay(day).map((sweep) => {
+                              const value = toTimeInputValue(sweep);
+                              return (
+                                <option key={value} value={value}>
+                                  {value}
+                                </option>
+                              );
+                            })}
+                          </Select>
+                          <button
+                            type="button"
+                            className="sc-button is-ghost text-xs"
+                            disabled={busy}
+                            onClick={() => handleSaveSchedule(schedule)}
+                          >
+                            {busy ? "Saving..." : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            className="sc-button is-ghost text-xs"
+                            disabled={busy}
+                            onClick={() => handleDeleteSchedule(schedule.id)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <p className="text-[0.7rem] font-medium uppercase tracking-wide text-ink-muted">
+                          Select the nodes that will be updated
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedBracketNodes.map((node) => {
+                            const checked = selectedIds.includes(node.id);
+                            return (
+                              <button
+                                key={node.id}
+                                type="button"
+                                onClick={() => toggleScheduleNode(schedule, node.id)}
+                                aria-pressed={checked}
+                                className={`flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 ${
+                                  checked
+                                    ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-100"
+                                    : "border-white/20 bg-surface/60 text-ink-muted hover:border-emerald-400/40 hover:text-ink"
+                                }`}
+                              >
+                                {checked ? <span aria-hidden="true">✓</span> : null}
+                                {getNodeDisplayName(node)}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <p className="text-[0.7rem] text-ink-muted">
+                          {selectedIds.length} game{selectedIds.length === 1 ? "" : "s"} covered
+                          {schedule.enabled === false ? " · disabled" : ""}
+                          {selectedIds.length === 0
+                            ? " · pick the games this date releases"
+                            : ""}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Panel>
+            ) : null}
+
             <div className="grid items-start gap-2 [grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))] xl:grid-cols-[minmax(17rem,19rem)_minmax(0,1fr)]">
               <Panel variant="default" className="self-start space-y-2 border-white/20 p-2">
                 <SectionHeader
@@ -2307,6 +2701,20 @@ export default function PlayoffStructurePage() {
                             <p className="text-xs text-ink-muted">
                               Round {node.round ?? "--"} · Position {node.position ?? "--"}
                             </p>
+                            {/* Why this node did or did not fill in. Without
+                                this the operator has to guess, which is what
+                                made the old manual flow opaque. */}
+                            {describeNodeResolveState(
+                              node,
+                              scheduleByNodeId.get(node.id) || null,
+                            ).map((chip) => (
+                              <span
+                                key={chip.key}
+                                className={`mt-0.5 mr-1 inline-block rounded-full px-2 py-0.5 text-[0.65rem] font-medium ${chip.className}`}
+                              >
+                                {chip.label}
+                              </span>
+                            ))}
                           </div>
                           <span className="text-xs font-medium text-emerald-200">Edit</span>
                         </div>
@@ -2789,6 +3197,7 @@ export default function PlayoffStructurePage() {
                 selectedNodeId={selectedNodeId}
                 onSelectNode={handleSelectNodeFromCanvas}
                 onAddInColumn={handleAddInColumn}
+                schedules={bracketSchedules}
               />
             </div>
             {/* Narrow screens: compact tap-to-edit stack. */}

@@ -1,16 +1,24 @@
-﻿import { useRef } from "react";
+import { useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { initialiseMatch, updateMatchStatus } from "../../services/matchService";
 import { removeOfflineQueueItem } from "../../services/offlineQueue";
 import { updateScore } from "../../services/realtimeService";
 import { describeError } from "../../utils/errorMessages";
-import { MATCH_STATUS } from "../../constants/statusCodes";
+import {
+  MATCH_STATUS,
+  getInitialisedStatusFor,
+  isConcludedStatus,
+} from "../../constants/statusCodes";
 import {
   MATCH_LOG_EVENT_CODES,
   createMatchLogOptimisticId,
   deleteMatchLogEntry,
+  findMatchLogByOptimisticId,
   updateMatchLogEntry,
+  updateMatchLogEntryByOptimisticId,
   updateMatchLogEntryByTimestamp,
 } from "../../services/matchLogService";
+import { SECONDARY_TIMER_KINDS } from "./secondaryTimerPhases";
 import {
   DEFAULT_DURATION,
   DEFAULT_SECONDARY_LABEL,
@@ -20,11 +28,41 @@ import {
   HALFTIME_SCORE_THRESHOLD,
   CALAHAN_ASSIST_VALUE,
   SCORE_NA_PLAYER_VALUE,
-} from "./5v5scorekeeperConstants";
+  MODULAR_SCOREKEEPER_MENU_PATH,
+} from "./scorekeeperConstants";
 
 export function useScoreKeeperActions(controller) {
+  const navigate = useNavigate();
   const DB_WRITES_DISABLED = false;
   const scoreSubmitInFlightRef = useRef(false);
+  const submittedScoreKeysRef = useRef(new Set());
+
+  // Log references are identities (server id / optimistic id), never positions.
+  // `logs` is insertion-ordered while the UI renders newest-first, so a positional
+  // index from the view would resolve to the wrong entry.
+  function resolveLogRef(ref) {
+    const logs = Array.isArray(controller.logs) ? controller.logs : [];
+    if (ref === null || ref === undefined) return { log: null, index: -1 };
+    // The shared event cards fall back to a positional `editIndex` for the legacy
+    // consoles. This console always passes an identity, so a number here is that
+    // fallback leaking through — resolving it as an id would match whichever entry
+    // happens to carry that value and edit or delete the wrong point.
+    if (typeof ref === "number") {
+      if (import.meta.env?.DEV) {
+        console.error(
+          "[ScoreKeeper] Log reference arrived as a position, not an identity. Refusing to resolve it.",
+          ref,
+        );
+      }
+      return { log: null, index: -1 };
+    }
+    const key = typeof ref === "object" ? ref.id ?? ref.optimisticId ?? null : ref;
+    if (key === null || key === undefined) return { log: null, index: -1 };
+    const index = logs.findIndex(
+      (entry) => entry && (entry.id === key || (entry.optimisticId && entry.optimisticId === key))
+    );
+    return { log: index >= 0 ? logs[index] : null, index };
+  }
 
   function cancelPrimaryHoldReset() {
     if (controller.primaryResetRef.current) {
@@ -74,7 +112,7 @@ export function useScoreKeeperActions(controller) {
       return;
     }
     const normalizedStatus = (controller.selectedMatch.status || "").toLowerCase();
-    if (normalizedStatus === "finished" || normalizedStatus === "completed") {
+    if (isConcludedStatus(normalizedStatus)) {
       controller.setConsoleError("This match is finished and cannot be initialised.");
       return;
     }
@@ -82,10 +120,11 @@ export function useScoreKeeperActions(controller) {
     controller.setInitialising(true);
     controller.setConsoleError(null);
     try {
-      const nextStatus =
-        normalizedStatus === "scheduled"
-          ? MATCH_STATUS.INITIALIZED
-          : controller.selectedMatch.status || MATCH_STATUS.INITIALIZED;
+      // Promote from any not-yet-started status. Echoing the raw value back
+      // left `postponed` (an openable status) unchanged, so the match stayed
+      // postponed everywhere downstream, and re-wrote a legacy capitalised
+      // `Initialized` verbatim, which fails the match_status FK.
+      const nextStatus = getInitialisedStatusFor(normalizedStatus);
       const payload = {
         start_time: controller.setupForm.startTime
           ? new Date(controller.setupForm.startTime).toISOString()
@@ -121,9 +160,7 @@ export function useScoreKeeperActions(controller) {
           const rosterData = await controller.fetchRostersForTeams(teamA, teamB, rosterEventId);
           controller.setRosters(rosterData);
         } catch (err) {
-          controller.setRostersError(
-            describeError(err, { action: "Load rosters" })
-          );
+          controller.setRostersError(describeError(err, { action: "Load rosters" }));
         } finally {
           controller.setRostersLoading(false);
         }
@@ -138,13 +175,8 @@ export function useScoreKeeperActions(controller) {
       await controller.loadMatches(undefined, { preferredMatchId: updated.id });
 
       controller.setSetupModalOpen(false);
-      if (typeof controller.onInitialiseComplete === "function") {
-        await controller.onInitialiseComplete(updated);
-      }
     } catch (err) {
-      const message =
-        describeError(err, { action: "Initialise match" });
-      controller.setConsoleError(message);
+      controller.setConsoleError(describeError(err, { action: "Initialise match" }));
     } finally {
       controller.setInitialising(false);
     }
@@ -242,12 +274,8 @@ export function useScoreKeeperActions(controller) {
     controller.setMatchStarted(true);
     controller.setTimerLabel("Game time");
     void logMatchStartEvent();
-    const receivingTeam =
-      controller.matchStartingTeamKey === "A"
-        ? "B"
-        : controller.matchStartingTeamKey === "B"
-          ? "A"
-          : null;
+    // The pulling team gives the disc away, so the other side opens on offence.
+    const receivingTeam = controller.firstHalfReceivingTeamKey;
     if (receivingTeam) {
       void controller.updatePossession(receivingTeam, { logTurnover: false });
     }
@@ -368,7 +396,8 @@ export function useScoreKeeperActions(controller) {
           controller.rules.interPointTimeoutAddsSeconds ||
           controller.rules.timeoutSeconds ||
           DEFAULT_INTERPOINT_SECONDS,
-        "Inter point"
+        "Inter point",
+        SECONDARY_TIMER_KINDS.INTER_POINT
       );
     }
   }
@@ -389,6 +418,11 @@ export function useScoreKeeperActions(controller) {
       await updateScore(matchId, nextScore.a, nextScore.b);
     } catch (err) {
       console.error("Failed to sync score:", err);
+      if (typeof controller.queueScoreUpdate === "function") {
+        await controller.queueScoreUpdate(matchId, nextScore);
+      }
+      // The score is safely queued, so say so rather than leaving the operator
+      // wondering whether the point registered.
       controller.setConsoleError(
         describeError(err, {
           action: `Sync score ${nextScore.a}-${nextScore.b}`,
@@ -414,23 +448,64 @@ export function useScoreKeeperActions(controller) {
     controller.resetMatchRules?.();
   }
 
+  /**
+   * Apply the format's rule couplings to a pending rules change.
+   *
+   * A coupling keeps a value the operator cannot see in step with one they can,
+   * so a hidden field does not silently hold a stale default. Both couplings are
+   * currently off in every format; the machinery stays because a format that
+   * hides a cap field will need it. Written as a pure function of
+   * (previous, next) so both entry points share it: `handleRuleChange` and the
+   * setup modal, which calls `setRules` directly.
+   */
+  function applyRuleCouplings(nextRules, changedFields) {
+    const flags = controller.format?.flags || {};
+    const coupled = { ...nextRules };
+    if (flags.coupleMatchDurationToHardCap && changedFields.has("matchDuration")) {
+      coupled.gameHardCapMinutes = coupled.matchDuration;
+    }
+    if (
+      flags.coupleInterPointPullDeadline &&
+      changedFields.has("interPointPullDeadlineSeconds")
+    ) {
+      coupled.interPointSeconds = coupled.interPointPullDeadlineSeconds;
+    }
+    return coupled;
+  }
+
+  /**
+   * `setRules` for the setup modal, which edits fields directly rather than
+   * going through `handleRuleChange`. Diffs against the previous rules so the
+   * couplings above fire for whatever the operator actually changed.
+   */
+  function setRulesWithCouplings(updater) {
+    controller.markRulesManuallyEdited?.();
+    controller.setRules((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      const changedFields = new Set(
+        Object.keys(next).filter((key) => next[key] !== prev[key])
+      );
+      if (changedFields.size === 0) return next;
+      const coupled = applyRuleCouplings(next, changedFields);
+      if (changedFields.has("matchDuration")) {
+        controller.commitPrimaryTimerState((coupled.matchDuration || DEFAULT_DURATION) * 60, false);
+      }
+      if (changedFields.has("timeoutSeconds")) {
+        const nextTimeout = coupled.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
+        controller.commitSecondaryTimerState(nextTimeout, false);
+        controller.setSecondaryTotalSeconds(nextTimeout);
+      }
+      return coupled;
+    });
+  }
+
   function handleRuleChange(field, value) {
     if (typeof controller.markRulesManuallyEdited === "function") {
       controller.markRulesManuallyEdited();
     }
-    controller.setRules((prev) => {
-      const next = {
-        ...prev,
-        [field]: value,
-      };
-      if (field === "matchDuration") {
-        next.gameHardCapMinutes = value;
-      }
-      if (field === "interPointPullDeadlineSeconds") {
-        next.interPointSeconds = value;
-      }
-      return next;
-    });
+    controller.setRules((prev) =>
+      applyRuleCouplings({ ...prev, [field]: value }, new Set([field]))
+    );
     if (field === "matchDuration") {
       controller.commitPrimaryTimerState((value || DEFAULT_DURATION) * 60, false);
     }
@@ -441,16 +516,16 @@ export function useScoreKeeperActions(controller) {
     }
   }
 
-  function openScoreModal(team, mode = "add", logIndex = null) {
+  function openScoreModal(team, mode = "add", logRef = null) {
     controller.setScoreModalState({
       open: true,
       team,
       mode,
-      logIndex,
+      logRef,
       openedAt: mode === "add" ? new Date().toISOString() : null,
     });
-    if (mode === "edit" && logIndex !== null) {
-      const log = controller.logs[logIndex];
+    if (mode === "edit" && logRef !== null) {
+      const { log } = resolveLogRef(logRef);
       controller.setScoreForm({
         scorerId:
           log?.scorerId === null || log?.scorerId === undefined ? SCORE_NA_PLAYER_VALUE : log?.scorerId,
@@ -462,7 +537,7 @@ export function useScoreKeeperActions(controller) {
               : log?.assistId,
       });
     } else {
-      controller.setScoreForm({ scorerId: "", assistId: "" });
+      controller.setScoreForm({ scorerId: SCORE_NA_PLAYER_VALUE, assistId: SCORE_NA_PLAYER_VALUE });
     }
   }
 
@@ -471,7 +546,7 @@ export function useScoreKeeperActions(controller) {
       open: false,
       team: null,
       mode: "add",
-      logIndex: null,
+      logRef: null,
       openedAt: null,
     });
     controller.setScoreForm({ scorerId: "", assistId: "" });
@@ -505,8 +580,8 @@ export function useScoreKeeperActions(controller) {
 
     scoreSubmitInFlightRef.current = true;
     try {
-      if (controller.scoreModalState.mode === "edit" && controller.scoreModalState.logIndex !== null) {
-        await handleUpdateLog(controller.scoreModalState.logIndex, {
+      if (controller.scoreModalState.mode === "edit" && controller.scoreModalState.logRef !== null) {
+        await handleUpdateLog(controller.scoreModalState.logRef, {
           scorerId: normalizedScorerId,
           assistId: normalizedAssistId || null,
           eventCode: isCalahan ? MATCH_LOG_EVENT_CODES.CALAHAN : MATCH_LOG_EVENT_CODES.SCORE,
@@ -514,12 +589,27 @@ export function useScoreKeeperActions(controller) {
       } else {
         const submittedTimestamp =
           controller.scoreModalState.openedAt || new Date().toISOString();
-        await handleAddScore(
-          controller.scoreModalState.team,
-          normalizedScorerId,
-          normalizedAssistId || null,
-          { isCalahan, timestamp: submittedTimestamp }
-        );
+        // `openedAt` is stamped once per modal open, so re-submitting the same
+        // opened modal (double tap, slow network) must not add a second point.
+        const submissionKey = `${controller.activeMatch?.id || ""}:${
+          controller.scoreModalState.team
+        }:${submittedTimestamp}`;
+        if (submittedScoreKeysRef.current.has(submissionKey)) {
+          closeScoreModal();
+          return;
+        }
+        submittedScoreKeysRef.current.add(submissionKey);
+        try {
+          await handleAddScore(
+            controller.scoreModalState.team,
+            normalizedScorerId,
+            normalizedAssistId || null,
+            { isCalahan, timestamp: submittedTimestamp }
+          );
+        } catch (err) {
+          submittedScoreKeysRef.current.delete(submissionKey);
+          throw err;
+        }
       }
 
       closeScoreModal();
@@ -528,9 +618,9 @@ export function useScoreKeeperActions(controller) {
     }
   }
 
-  async function handleUpdateLog(index, updates) {
-    if (index === null || index === undefined) return;
-    const targetLog = controller.logs[index];
+  async function handleUpdateLog(logRef, updates) {
+    if (logRef === null || logRef === undefined) return;
+    const { log: targetLog } = resolveLogRef(logRef);
     if (!targetLog?.id) return;
 
     try {
@@ -571,26 +661,33 @@ export function useScoreKeeperActions(controller) {
         await updateMatchLogEntry(targetLog.id, payload);
       } else {
         const matchId = controller.matchLogMatchId;
-        const createdAt = targetLog.timestamp;
-        if (!matchId || !createdAt) {
+        if (!matchId) {
           throw new Error("Match log is still syncing. Please try again.");
         }
-        await updateMatchLogEntryByTimestamp(matchId, createdAt, payload);
+        // Prefer the optimistic id: it is unique per entry, whereas a timestamp
+        // can be shared by several events recorded in the same millisecond.
+        if (targetLog.optimisticId) {
+          await updateMatchLogEntryByOptimisticId(matchId, targetLog.optimisticId, payload);
+        } else {
+          const createdAt = targetLog.timestamp;
+          if (!createdAt) {
+            throw new Error("Match log is still syncing. Please try again.");
+          }
+          await updateMatchLogEntryByTimestamp(matchId, createdAt, payload);
+        }
       }
       const totals = await controller.refreshMatchLogs(controller.matchLogMatchId);
       if (totals) {
         await syncActiveMatchScore(totals);
       }
     } catch (err) {
-      controller.setConsoleError(
-        describeError(err, { action: "Update log entry" })
-      );
+      controller.setConsoleError(describeError(err, { action: "Update log entry" }));
     }
   }
 
-  async function handleDeleteLog(index) {
-    if (index === null || index === undefined) return;
-    const targetLog = controller.logs[index];
+  async function handleDeleteLog(logRef) {
+    if (logRef === null || logRef === undefined) return;
+    const { log: targetLog, index } = resolveLogRef(logRef);
     if (!targetLog) return;
 
     try {
@@ -601,6 +698,13 @@ export function useScoreKeeperActions(controller) {
       const halftimeCodes = new Set([
         MATCH_LOG_EVENT_CODES.HALFTIME_START,
         MATCH_LOG_EVENT_CODES.HALFTIME_END,
+      ]);
+      // Events whose removal changes who holds the disc.
+      const possessionCodes = new Set([
+        MATCH_LOG_EVENT_CODES.TURNOVER,
+        MATCH_LOG_EVENT_CODES.BLOCK,
+        MATCH_LOG_EVENT_CODES.SCORE,
+        MATCH_LOG_EVENT_CODES.CALAHAN,
       ]);
       const isTimeoutLog = timeoutCodes.has(targetLog.eventCode);
       const isHalftimeLog = halftimeCodes.has(targetLog.eventCode);
@@ -682,7 +786,9 @@ export function useScoreKeeperActions(controller) {
               })
               .map((entry) => entry.id)
           : [];
-        controller.setLogs((prev) =>
+        // Published to the ref as well as the state: guards downstream of this
+        // delete read the ref, which must not still contain what was removed.
+        controller.setLogsAndRef?.((prev) =>
           prev.filter((entry) => {
             if (localIds.has(entry.id)) return false;
             if (entry.optimisticId && optimisticIds.has(entry.optimisticId)) return false;
@@ -706,6 +812,24 @@ export function useScoreKeeperActions(controller) {
       for (const id of serverIds) {
         await deleteMatchLogEntry(id);
       }
+
+      // An optimistic entry may already have been inserted server-side (the write
+      // fires immediately when online and only clears on the next refresh). Removing
+      // it locally is not enough — look it up by optimistic id and delete the row,
+      // otherwise it reappears on refresh and re-inflates the score.
+      const matchIdForCleanup = controller.matchLogMatchId;
+      if (matchIdForCleanup) {
+        for (const optimisticId of optimisticIds) {
+          try {
+            const existing = await findMatchLogByOptimisticId(matchIdForCleanup, optimisticId);
+            if (existing?.id) {
+              await deleteMatchLogEntry(existing.id);
+            }
+          } catch (err) {
+            console.error("[ScoreKeeper] Failed to clean up synced optimistic log:", err);
+          }
+        }
+      }
       // The deleted row is gone from the log, so the recount below returns the score
       // without it and publishing that total is what makes the deletion stick.
       const totals = await controller.refreshMatchLogs(controller.matchLogMatchId);
@@ -713,7 +837,10 @@ export function useScoreKeeperActions(controller) {
         await syncActiveMatchScore(totals);
       }
       if (isTimeoutLog) {
-        const teamKey = targetLog.team || pairedLog?.team;
+        // A timeout is always linked to a team, so the refund goes to the team on
+        // the deleted entry. Falling back to the paired entry's team could refund
+        // a team that never called the timeout.
+        const teamKey = targetLog.team;
         if (teamKey) {
           controller.setTimeoutUsage((prev) => ({
             ...prev,
@@ -721,20 +848,36 @@ export function useScoreKeeperActions(controller) {
           }));
         }
       }
+      // Possession is a function of the log, so deleting one of its events leaves
+      // the pad showing a possession nothing supports any more. Re-derive it and
+      // let the operator log the correct change.
+      if (possessionCodes.has(targetLog.eventCode)) {
+        controller.recomputePossessionFromLogs?.();
+      }
       if (isHalftimeLog) {
         // Suppress before clearing the flags: the time-cap effect would otherwise see
         // "past the cap, halftime not triggered" and immediately re-add what was deleted.
+        // The automatic triggers stay spent for the match either way — deleting a
+        // halftime revives the *manual* trigger (and, for a deleted end, the manual
+        // force-end), never the checkers that would just re-add what was removed.
         controller.suppressHalftimeTimeCap?.();
         controller.setHalftimeTriggered(false);
         controller.setHalftimeTriggerType("unknown");
         controller.setHalftimeTimeCapArmed(false);
         controller.setHalftimeCapTargetScore(null);
+        // A deleted halftime_end puts the match back *inside* the break, so the
+        // operator can close it by hand again.
+        const deletedEnd = logsToDelete.some(
+          (log) => log?.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END,
+        );
+        const deletedStart = logsToDelete.some(
+          (log) => log?.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START,
+        );
+        controller.setHalftimeBreakActive?.(deletedEnd && !deletedStart);
       }
       closeScoreModal();
     } catch (err) {
-      controller.setConsoleError(
-        describeError(err, { action: "Delete log entry" })
-      );
+      controller.setConsoleError(describeError(err, { action: "Delete log entry" }));
     }
   }
 
@@ -748,24 +891,58 @@ export function useScoreKeeperActions(controller) {
     if (remaining === 0) return;
     controller.setTimeoutUsage((prev) => ({ ...prev, [team]: prev[team] + 1 }));
     const timeoutSeconds = controller.rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
+    const interPointTimeoutAddsSeconds =
+      controller.rules.interPointTimeoutAddsSeconds || timeoutSeconds;
+    const areTimeoutsStacked = Boolean(controller.rules.interPointAreTimeoutsStacked);
     let stackedDuration = timeoutSeconds;
     let timeoutLabel =
       `${team === "A" ? controller.displayTeamA : controller.displayTeamB} timeout`.trim();
-    const normalizedSecondaryLabel = (controller.secondaryLabel || "").toLowerCase();
+    // Which window the timeout was called in decides how it is timed. Read from
+    // the timer's kind rather than its label text, so renaming the label cannot
+    // change the timing.
     const isInterPointWindow =
-      controller.secondaryRunning && normalizedSecondaryLabel === "inter point";
+      controller.secondaryRunning &&
+      controller.secondaryKind === SECONDARY_TIMER_KINDS.INTER_POINT;
+    let followUp = null;
+    let timeoutKind = SECONDARY_TIMER_KINDS.LIVE_TIMEOUT;
+
     if (isInterPointWindow) {
-      const remainingInterPoint = Math.max(controller.getSecondaryRemainingSeconds(), 0);
-      stackedDuration += remainingInterPoint;
-      timeoutLabel = "Inter point timeout";
+      stackedDuration = interPointTimeoutAddsSeconds;
+      timeoutLabel = areTimeoutsStacked ? "Inter point timeout" : "Pre-pull timeout";
+      timeoutKind = SECONDARY_TIMER_KINDS.PRE_PULL_TIMEOUT;
+    } else {
+      const defenceCheckMax = controller.rules.inPointDefenceCheckMaxSeconds || 0;
+      const offenceSetSeconds = controller.rules.inPointOffenceSetSeconds || 0;
+      const withinSeconds =
+        controller.rules.inPointDefenceCheckWithinSecondsAfterOffenceSet || 0;
+      const followUpSeconds = defenceCheckMax || offenceSetSeconds;
+      if (followUpSeconds > 0) {
+        const detailParts = [];
+        if (offenceSetSeconds > 0) {
+          detailParts.push(`offence set ${offenceSetSeconds}s`);
+        }
+        if (withinSeconds > 0) {
+          detailParts.push(`check within ${withinSeconds}s`);
+        }
+        const labelDetails = detailParts.length ? ` (${detailParts.join(" · ")})` : "";
+        followUp = {
+          seconds: followUpSeconds,
+          label: `Defence check${labelDetails}`,
+          kind: SECONDARY_TIMER_KINDS.LIVE_TIMEOUT,
+        };
+      }
     }
+
     await controller.startTrackedSecondaryTimer(
       stackedDuration,
       timeoutLabel,
       {
         teamKey: team,
+        kind: timeoutKind,
         eventStartCode: MATCH_LOG_EVENT_CODES.TIMEOUT_START,
         eventEndCode: MATCH_LOG_EVENT_CODES.TIMEOUT_END,
+        replace: isInterPointWindow && !areTimeoutsStacked,
+        followUp,
       }
     );
     if (!controller.stoppageActive) {
@@ -797,20 +974,54 @@ export function useScoreKeeperActions(controller) {
     controller.setSecondaryFlashActive(false);
     controller.setSecondaryFlashPulse(false);
     controller.setSecondaryLabel("Game stoppage");
+    controller.setSecondaryKind(SECONDARY_TIMER_KINDS.STOPPAGE);
     controller.setStoppageActive(true);
     await controller.logSimpleEvent(MATCH_LOG_EVENT_CODES.STOPPAGE_START);
   }
 
   async function handleEndMatchNavigation() {
-    if (!controller.canEndMatch || !controller.activeMatch?.id) return false;
+    if (!controller.canEndMatch || !controller.activeMatch?.id) return;
     try {
       await logMatchEndEvent();
-      const updated = await updateMatchStatus(controller.activeMatch.id, "completed");
+      // The terminal status is a property of the format, not a constant.
+      // Competitive writes `finished` and hands off to spirit scores, which
+      // writes `completed` on submit — so the two statuses mean "played out,
+      // spirit outstanding" and "fully done". Casual has no spirit step and
+      // writes `completed` here.
+      const endStatus = controller.format?.endMatchStatus || MATCH_STATUS.FINISHED;
+      const updated = await updateMatchStatus(controller.activeMatch.id, endStatus);
       if (updated) {
         controller.setActiveMatch(updated);
         controller.setMatches((prev) =>
           prev.map((match) => (match.id === updated.id ? updated : match))
         );
+      }
+      // Where the operator goes next is a property of the format. Casual play has
+      // no spirit score to submit, so handing it to the spirit form would strand
+      // the operator on something they cannot complete; it returns to the menu
+      // with a completion banner instead.
+      if (controller.capabilities?.spiritScores) {
+        const spiritParams = new URLSearchParams();
+        const spiritMatchId = controller.activeMatch?.id || "";
+        const spiritEventId =
+          controller.activeMatch?.event_id ||
+          controller.activeMatch?.event?.id ||
+          controller.selectedEventId ||
+          "";
+        if (spiritEventId) {
+          spiritParams.set("eventId", spiritEventId);
+        }
+        if (spiritMatchId) {
+          spiritParams.set("matchId", spiritMatchId);
+        }
+        const spiritUrl = spiritParams.toString()
+          ? `/spirit-scores?${spiritParams.toString()}`
+          : "/spirit-scores";
+        navigate(spiritUrl);
+      } else {
+        // `completed=1` is read once by the menu and stripped, so a refresh or a
+        // later visit does not re-announce a match that ended some time ago.
+        navigate(`${MODULAR_SCOREKEEPER_MENU_PATH}?completed=1`);
       }
       controller.clearLocalMatchState();
       if (controller.selectedEventId) {
@@ -819,12 +1030,8 @@ export function useScoreKeeperActions(controller) {
           allowDefaultSelect: false,
         });
       }
-      return true;
     } catch (err) {
-      controller.setConsoleError(
-        describeError(err, { action: "End match" })
-      );
-      return false;
+      controller.setConsoleError(describeError(err, { action: "End match" }));
     }
   }
 
@@ -841,6 +1048,7 @@ export function useScoreKeeperActions(controller) {
     handleAddScore,
     syncActiveMatchScore,
     handleRuleChange,
+    setRulesWithCouplings,
     handleSaveSettings,
     handleResetSettings,
     openScoreModal,
@@ -856,4 +1064,3 @@ export function useScoreKeeperActions(controller) {
     logMatchStartEvent,
   };
 }
-

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from "react";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import SeoManager from "./components/SeoManager";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -10,7 +10,7 @@ import {
   CAPTAIN_ACCESS_PERMISSIONS,
   EVENT_ACCESS_PERMISSIONS,
   MEDIA_ACCESS_PERMISSIONS,
-  SPIRIT_SCORES_ACCESS_PERMISSIONS,
+  SPIRIT_SCORES_ACCESS_ROLES,
   SCOREKEEPER_ACCESS_PERMISSIONS,
   SCOREKEEPER_ACCESS_ROLES,
   SYS_ADMIN_ACCESS_PERMISSIONS,
@@ -28,8 +28,7 @@ const TeamProfilePage = lazy(() => import("./pages/TeamProfile"));
 const MatchesPage = lazy(() => import("./pages/MatchesPage"));
 const EventsPage = lazy(() => import("./pages/EventsPage"));
 const EventSetupWizardPage = lazy(() => import("./pages/EventSetupWizard"));
-const ScoreKeeperPage = lazy(() => import("./pages/ScoreKeeperPage"));
-const ScoreKeeper5v5Page = lazy(() => import("./pages/ScoreKeeper5v5Page"));
+const ModularScoreKeeperPage = lazy(() => import("./pages/ModularScoreKeeperPage"));
 const ScrimmagePage = lazy(() => import("./pages/ScrimmagePage"));
 const CommunityPage = lazy(() => import("./pages/CommunityPage"));
 const CaptainPage = lazy(() => import("./pages/CaptainPage"));
@@ -78,6 +77,19 @@ function ScrollToTop() {
 
 function Guarded({ name, children }) {
   return <ErrorBoundary name={name}>{children}</ErrorBoundary>;
+}
+
+/**
+ * `/score-keeper-modular` -> `/score-keeper`, keeping the query string.
+ *
+ * The console moved onto the plain path once it replaced the 7v7 and 5v5
+ * builds. The search params have to survive the trip because `?mode=` is what
+ * selects the format — dropping it would land a bookmarked Casual match on the
+ * format picker instead.
+ */
+function RedirectToScoreKeeper() {
+  const { search } = useLocation();
+  return <Navigate to={`/score-keeper${search}`} replace />;
 }
 
 export default function AppRoutes() {
@@ -155,10 +167,15 @@ export default function AppRoutes() {
               </ProtectedRoute>
             }
           />
+          {/* Gated on ROLES, not permissions. Spirit scoring is a captain's
+              duty, but captains hold no match permissions — so a permission
+              gate (match_insert/match_update) excluded exactly the people the
+              form is for, while admitting any match-writing role. The audience
+              is a role question, so ask it directly. */}
           <Route
             path="/spirit-scores"
             element={
-              <ProtectedRoute allowedPermissions={SPIRIT_SCORES_ACCESS_PERMISSIONS}>
+              <ProtectedRoute allowedRoles={SPIRIT_SCORES_ACCESS_ROLES}>
                 <Guarded name="Spirit scores"><SpiritScoresPage /></Guarded>
               </ProtectedRoute>
             }
@@ -238,6 +255,10 @@ export default function AppRoutes() {
             }
           />
         </Route>
+        {/* The modular console, and the only one. It replaced the separate 7v7
+            and 5v5 consoles, which are gone: the format now comes from `?mode=`
+            (`full` / `lite`, or the legacy `7v7` / `5v5` spellings), so one
+            console covers both. With no valid mode this is the landing page. */}
         <Route
           path="/score-keeper"
           element={
@@ -245,20 +266,20 @@ export default function AppRoutes() {
               allowedRoles={SCOREKEEPER_ACCESS_ROLES}
               allowedPermissions={SCOREKEEPER_ACCESS_PERMISSIONS}
             >
-              <Guarded name="Score keeper"><ScoreKeeperPage /></Guarded>
+              <Guarded name="Score keeper"><ModularScoreKeeperPage /></Guarded>
             </ProtectedRoute>
           }
         />
+        {/* Bookmarks and links from before the replacement. `/score-keeper-5v5`
+            carries its format across so those land on the Casual console rather
+            than dumping the operator back on the picker. */}
+        <Route
+          path="/score-keeper-modular"
+          element={<RedirectToScoreKeeper />}
+        />
         <Route
           path="/score-keeper-5v5"
-          element={
-            <ProtectedRoute
-              allowedRoles={SCOREKEEPER_ACCESS_ROLES}
-              allowedPermissions={SCOREKEEPER_ACCESS_PERMISSIONS}
-            >
-              <Guarded name="Score keeper 5v5"><ScoreKeeper5v5Page /></Guarded>
-            </ProtectedRoute>
-          }
+          element={<Navigate to="/score-keeper?mode=5v5" replace />}
         />
         <Route
           path="/admin/scrimmage"

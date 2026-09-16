@@ -13,6 +13,11 @@ export const SESSION_SAVE_DEBOUNCE_MS = 400;
 export const TIMER_TICK_INTERVAL_MS = 500;
 export const CALAHAN_ASSIST_VALUE = "__CALAHAN_ASSIST__";
 export const SCORE_NA_PLAYER_VALUE = "__SCORE_PLAYER_NA__";
-// The 7v7/5v5 chooser ("intermediate page"). `view=menu` keeps the chooser visible
-// even when a 7v7 console session is live, so returning here never ends a match.
-export const SCOREKEEPER_MENU_PATH = "/score-keeper?view=menu";
+// The scorekeeper menu: the landing page where the operator picks a format.
+// It is a real route rather than a `view=` flag on the console, so returning to
+// it always unmounts the console — which is why anything that must survive the
+// trip (a live match) lives in the session store rather than in console state.
+//
+// The name keeps the MODULAR_ prefix because every call site uses it and there is
+// no second console left to distinguish it from.
+export const MODULAR_SCOREKEEPER_MENU_PATH = "/score-keeper";

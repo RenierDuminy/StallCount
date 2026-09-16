@@ -69,7 +69,7 @@ const FINISHED_STATUSES = new Set(["finished", "completed"]);
 
 // `events.rules` has two naming generations in the wild (older events were
 // written with the pre-rename keys). These mirror the private accessors in
-// src/pages/scorekeeper/useScoreKeeperData.js:213-240 — read through them, never
+// src/pages/scorekeeper/modularScoreKeeperData.js:~241 — read through them, never
 // `rules.game.hardCapMinutes` directly, or legacy events silently skip checks.
 const getGameTimeCapMinutes = (rules) =>
   rules?.game?.timeCapMinutes ?? rules?.game?.hardCapMinutes;

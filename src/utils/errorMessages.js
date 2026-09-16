@@ -125,6 +125,23 @@ export function describeError(error, options = {}) {
   const withTechnical = (text) => (technicalTail ? `${text} ${technicalTail}` : text);
 
   const code = error?.code ? String(error.code) : null;
+
+  // A 23503 naming `matches_status_fkey` specifically is a lookup-table spelling
+  // mismatch, not a missing team/player/match row (the generic 23503 hint below).
+  // This happens whenever `public.match_status.code` is edited without updating
+  // the matching literal in `src/constants/statusCodes.js` — the two must always
+  // agree on exact spelling, and nothing enforces that automatically. Name the
+  // rejected value so the fix (edit statusCodes.js, or revert the DB edit) is
+  // obvious instead of "linked record missing", which reads as a data problem.
+  if (code === "23503" && /matches_status_fkey/i.test(String(error?.message || error?.details || ""))) {
+    const rejected = String(error?.details || error?.message || "").match(/\(status\)=\(([^)]+)\)/i)?.[1];
+    return withTechnical(
+      `${prefix}: unknown match status${rejected ? ` "${rejected}"` : ""} (23503). ` +
+        "public.match_status doesn't have this code — it was likely renamed in the " +
+        "database without updating src/constants/statusCodes.js to match."
+    );
+  }
+
   const hint = code ? CODE_HINTS[code] : null;
   if (hint) {
     return withTechnical(`${prefix}: ${hint.label} (${code}). ${hint.advice}`);

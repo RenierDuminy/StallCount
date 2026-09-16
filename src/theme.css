@@ -2334,3 +2334,109 @@ details[open] > summary.wizard-cursor-pointer::before {
     display: none;
   }
 }
+
+/* Spirit score slider (0-4).
+ *
+ * Two problems with the native control on a touch device:
+ *
+ *   1. A vertical scroll that happens to start on the thumb is captured by the
+ *      slider, so the page does not move and the score changes instead.
+ *      `touch-action: pan-y` gives vertical gestures back to the page and
+ *      reserves only horizontal movement for the slider, which is what makes
+ *      changing a value a deliberate sideways swipe.
+ *   2. There is no visual indication that the scale is stepped, so it reads as
+ *      continuous. The detent dots below are a single radial-gradient tiled
+ *      across the track by background-size, one per increment, so the five stops
+ *      are visible at rest.
+ *
+ * The dots are drawn on the track rather than as separate elements so they need
+ * no extra markup per slider and cannot drift out of alignment with the steps.
+ */
+.sc-spirit-slider {
+  --sc-spirit-slider-track: rgba(4, 19, 17, 0.18);
+  --sc-spirit-slider-detent: rgba(4, 19, 17, 0.38);
+  --sc-spirit-slider-accent: #01611b;
+  --sc-spirit-slider-thumb-size: 1.5rem;
+  --sc-spirit-slider-dot-r: 0.1875rem;
+  --sc-spirit-slider-dot-size: calc(var(--sc-spirit-slider-dot-r) * 2) calc(var(--sc-spirit-slider-dot-r) * 2);
+  /* One dot: a 2r-square layer holding a centred circle of radius r. Sizing the
+     layer to the dot (rather than tiling a wide one) is what lets each
+     background-position below place a dot exactly on its value. */
+  --sc-spirit-slider-dot: radial-gradient(
+    circle at center,
+    var(--sc-spirit-slider-detent) var(--sc-spirit-slider-dot-r),
+    transparent var(--sc-spirit-slider-dot-r)
+  );
+
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: var(--sc-spirit-slider-thumb-size);
+  margin: 0;
+  background: transparent;
+  touch-action: pan-y;
+  cursor: pointer;
+}
+
+/* Track + detents. The two engines need separate rules: a selector list
+   containing an unrecognised pseudo-element is dropped whole by both, so
+   ::-webkit-* and ::-moz-* can never share a declaration block. */
+.sc-spirit-slider::-webkit-slider-runnable-track {
+  height: 0.375rem;
+  border-radius: 999px;
+  /* Five dots spanning the full track: 0% 25% 50% 75% 100%, four even sections.
+     Listed explicitly rather than tiled, because background-size + repeat-x
+     centres the dot inside each tile (landing every dot half a step off, between
+     values) and draws as many as fit rather than exactly five.
+
+     Percentage background-position aligns the layer's own same-percentage point
+     with the track's, so the 0% and 100% dots sit flush inside the ends instead
+     of half-overhanging them. That is also why no radius offset is needed. */
+  background-image:
+    var(--sc-spirit-slider-dot), var(--sc-spirit-slider-dot), var(--sc-spirit-slider-dot),
+    var(--sc-spirit-slider-dot), var(--sc-spirit-slider-dot);
+  background-size: var(--sc-spirit-slider-dot-size);
+  background-repeat: no-repeat;
+  background-position: 0% 50%, 25% 50%, 50% 50%, 75% 50%, 100% 50%;
+  background-color: var(--sc-spirit-slider-track);
+}
+
+.sc-spirit-slider::-moz-range-track {
+  height: 0.375rem;
+  border-radius: 999px;
+  /* Dots as above; see the ::-webkit- rule for why they are listed explicitly. */
+  background-image:
+    var(--sc-spirit-slider-dot), var(--sc-spirit-slider-dot), var(--sc-spirit-slider-dot),
+    var(--sc-spirit-slider-dot), var(--sc-spirit-slider-dot);
+  background-size: var(--sc-spirit-slider-dot-size);
+  background-repeat: no-repeat;
+  background-position: 0% 50%, 25% 50%, 50% 50%, 75% 50%, 100% 50%;
+  background-color: var(--sc-spirit-slider-track);
+}
+
+.sc-spirit-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--sc-spirit-slider-thumb-size);
+  height: var(--sc-spirit-slider-thumb-size);
+  border-radius: 999px;
+  border: 2px solid #fff;
+  background: var(--sc-spirit-slider-accent);
+  box-shadow: 0 1px 3px rgba(4, 19, 17, 0.3);
+  /* Centre the thumb on the 0.375rem track. */
+  margin-top: calc((0.375rem - var(--sc-spirit-slider-thumb-size)) / 2);
+}
+
+.sc-spirit-slider::-moz-range-thumb {
+  width: var(--sc-spirit-slider-thumb-size);
+  height: var(--sc-spirit-slider-thumb-size);
+  border-radius: 999px;
+  border: 2px solid #fff;
+  background: var(--sc-spirit-slider-accent);
+  box-shadow: 0 1px 3px rgba(4, 19, 17, 0.3);
+}
+
+.sc-spirit-slider:focus-visible {
+  outline: 2px solid var(--sc-button-focus-ring);
+  outline-offset: 3px;
+}

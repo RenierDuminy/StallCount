@@ -33,6 +33,7 @@ import {
   markOfflineQueueFailure,
   processOfflineQueue,
   removeOfflineQueueItem,
+  upsertScoreUpdate,
 } from "../../services/offlineQueue";
 import {
   deriveShortName,
@@ -40,7 +41,7 @@ import {
   formatMatchTime,
   sortRoster,
   toDateTimeLocal,
-} from "./5v5scorekeeperUtils";
+} from "./scorekeeperUtils";
 import {
   DEFAULT_DURATION,
   HALFTIME_SCORE_THRESHOLD,
@@ -53,7 +54,18 @@ import {
   DEFAULT_DISCUSSION_SECONDS,
   SESSION_SAVE_DEBOUNCE_MS,
   TIMER_TICK_INTERVAL_MS,
-} from "./5v5scorekeeperConstants";
+} from "./scorekeeperConstants";
+import {
+  DEFAULT_SCOREKEEPER_FORMAT,
+  SCOREKEEPER_FORMATS,
+  resolveScorekeeperFormat,
+} from "./scorekeeperFormats";
+import {
+  PHASE_TONES,
+  SECONDARY_TIMER_KINDS,
+  getFlashRateMs,
+  getSecondaryTimerTone,
+} from "./secondaryTimerPhases";
 import {
   ADMIN_OVERRIDE_PERMISSIONS,
   SCOREKEEPER_ACCESS_PERMISSIONS,
@@ -74,6 +86,10 @@ const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
 const SOFT_CAP_TIMER_LABEL = "Soft Cap";
+const TIME_CAP_TARGET_LABEL = "Time cap reached, new match target set.";
+// The only cap target the rules implement is "highest + 1", so the label can
+// state it outright.
+const OVERTIME_TIMER_LABEL = "Over time (highest + 1)";
 // Statuses a match can be in and still be opened in the console. Lowercased
 // because callers compare a lowercased value — note the DB stores the
 // capitalised "Initialized", so the raw code would not have matched here.
@@ -82,8 +98,6 @@ const SETUP_MATCH_STATUSES = new Set(
 );
 
 const OPTIMISTIC_PREFIX = "local-";
-
-const MAX_OVERTIME_SECONDS = 30 * 60;
 
 function isSetupMatchStatus(match) {
   const normalizedStatus = String(match?.status || "").trim().toLowerCase();
@@ -187,20 +201,24 @@ function normalizeDivision(input) {
   const candidate = input.trim().toLowerCase();
   if (!candidate) return null;
   if (candidate === "mixed" || candidate === "open" || candidate === "women") return candidate;
-  if (candidate === "openwomen" || candidate === "open/women") return "openwomen";
   if (candidate === "men" || candidate === "mens" || candidate === "male") return "open";
   if (candidate === "woman" || candidate === "womens" || candidate === "female") return "women";
   return candidate;
 }
 
+// "addTwoToHighest" is not a WFDF rule. Events saved with it are read as the
+// official +1 cap so they still cap correctly, rather than silently losing the
+// cap and becoming unendable.
 function normalizeSoftCapMode(input) {
   if (typeof input !== "string") return "none";
   const candidate = input.trim().toLowerCase();
-  if (candidate === "addonetohighest" || candidate === "add_one_to_highest") {
+  if (
+    candidate === "addonetohighest" ||
+    candidate === "add_one_to_highest" ||
+    candidate === "addtwotohighest" ||
+    candidate === "add_two_to_highest"
+  ) {
     return "addOneToHighest";
-  }
-  if (candidate === "addtwotohighest" || candidate === "add_two_to_highest") {
-    return "addTwoToHighest";
   }
   return "none";
 }
@@ -239,6 +257,12 @@ const getClockRunningEnabled = (rules) =>
   rules?.clock?.isRunningGameClockEnabled ?? rules?.clock?.isRunningClockEnabled;
 const getInterPointPullDeadlineSeconds = (rules) =>
   rules?.interPoint?.defencePullBySeconds ?? rules?.interPoint?.pullDeadlineSeconds;
+const getInterPointOffenceOnGoalLineSeconds = (rules) =>
+  rules?.interPoint?.offenceOnGoalLineBySeconds ?? rules?.interPoint?.offenceOnGoalLineSeconds;
+const getInterPointOffenceReadyBySeconds = (rules) =>
+  rules?.interPoint?.offenceReadyBySeconds ?? rules?.interPoint?.offenceReadySeconds;
+const getDiscussionCaptainInterventionSeconds = (rules) =>
+  rules?.discussions?.captainInterventionSeconds ?? rules?.discussions?.captainSeconds;
 const getInterPointTimeoutAddsSeconds = (rules) =>
   rules?.interPoint?.prePullTimeoutAddsSeconds ?? rules?.interPoint?.timeoutAddsSeconds;
 const getInterPointAreTimeoutsStacked = (rules) =>
@@ -280,12 +304,24 @@ function normalizeEventRules(rawRules) {
       gameSoftCapMode: normalizeSoftCapMode(baseRaw.game.softCapMode),
       gameHardCapMinutes: coerceOptionalNumber(getGameTimeCapMinutes(baseRaw)),
       gameHardCapEndMode: normalizeHardCapEndMode(getGameTimeCapEndMode(baseRaw)),
-      gameTimeCapTargetMode: getGameTimeCapTargetMode(baseRaw) || null,
+      gameTimeCapTargetMode: normalizeSoftCapMode(getGameTimeCapTargetMode(baseRaw)),
       halftimeCapEndMode: normalizeHardCapEndMode(getHalfCapEndMode(baseRaw)),
-      halftimeCapTargetMode: getHalfCapTargetMode(baseRaw) || null,
+      halftimeCapTargetMode: normalizeSoftCapMode(getHalfCapTargetMode(baseRaw)),
       interPointPullDeadlineSeconds: coerceRuleNumber(
         getInterPointPullDeadlineSeconds(baseRaw),
         DEFAULT_INTERPOINT_SECONDS
+      ),
+      interPointOffenceOnGoalLineSeconds: coerceRuleNumber(
+        getInterPointOffenceOnGoalLineSeconds(baseRaw),
+        0
+      ),
+      interPointOffenceReadyBySeconds: coerceRuleNumber(
+        getInterPointOffenceReadyBySeconds(baseRaw),
+        0
+      ),
+      discussionCaptainInterventionSeconds: coerceRuleNumber(
+        getDiscussionCaptainInterventionSeconds(baseRaw),
+        0
       ),
       interPointTimeoutAddsSeconds: coerceRuleNumber(
         getInterPointTimeoutAddsSeconds(baseRaw),
@@ -420,12 +456,24 @@ function normalizeEventRules(rawRules) {
     gameSoftCapMode: normalizeSoftCapMode(mergedRaw.game?.softCapMode),
     gameHardCapMinutes: gameHardCapMinutes ?? DEFAULT_DURATION,
     gameHardCapEndMode: normalizeHardCapEndMode(getGameTimeCapEndMode(mergedRaw)),
-    gameTimeCapTargetMode: getGameTimeCapTargetMode(mergedRaw) || null,
+    gameTimeCapTargetMode: normalizeSoftCapMode(getGameTimeCapTargetMode(mergedRaw)),
     halftimeCapEndMode: normalizeHardCapEndMode(getHalfCapEndMode(mergedRaw)),
-    halftimeCapTargetMode: getHalfCapTargetMode(mergedRaw) || null,
+    halftimeCapTargetMode: normalizeSoftCapMode(getHalfCapTargetMode(mergedRaw)),
     interPointPullDeadlineSeconds: coerceRuleNumber(
       getInterPointPullDeadlineSeconds(mergedRaw),
       coerceRuleNumber(getInterPointPullDeadlineSeconds(baseRaw), DEFAULT_INTERPOINT_SECONDS)
+    ),
+    interPointOffenceOnGoalLineSeconds: coerceRuleNumber(
+      getInterPointOffenceOnGoalLineSeconds(mergedRaw),
+      coerceRuleNumber(getInterPointOffenceOnGoalLineSeconds(baseRaw), 0)
+    ),
+    interPointOffenceReadyBySeconds: coerceRuleNumber(
+      getInterPointOffenceReadyBySeconds(mergedRaw),
+      coerceRuleNumber(getInterPointOffenceReadyBySeconds(baseRaw), 0)
+    ),
+    discussionCaptainInterventionSeconds: coerceRuleNumber(
+      getDiscussionCaptainInterventionSeconds(mergedRaw),
+      coerceRuleNumber(getDiscussionCaptainInterventionSeconds(baseRaw), 0)
     ),
     interPointTimeoutAddsSeconds: coerceRuleNumber(
       getInterPointTimeoutAddsSeconds(mergedRaw),
@@ -478,18 +526,23 @@ const DEFAULT_RULES = normalizeEventRules(DEFAULT_EVENT_RULES);
 function deriveTimerStateFromSnapshot(
   snapshot,
   fallbackSeconds,
-  fallbackLabel = DEFAULT_TIMER_LABEL
+  fallbackLabel = DEFAULT_TIMER_LABEL,
+  options = {}
 ) {
+  // The primary clock runs negative during overtime, so it must not be clamped at
+  // zero on restore — doing so drops the elapsed overtime and stops the clock.
+  const { allowNegative = false } = options;
+  const clamp = (value) => (allowNegative ? value : Math.max(0, value));
   const safeFallback = Number.isFinite(fallbackSeconds) ? fallbackSeconds : 0;
   const baseSeconds = Number.isFinite(snapshot?.seconds)
     ? snapshot.seconds
     : safeFallback;
-  let remaining = Math.max(0, Math.round(baseSeconds));
+  let remaining = clamp(Math.round(baseSeconds));
 
   if (snapshot?.running && typeof snapshot.savedAt === "number") {
     const elapsed = Math.floor((Date.now() - snapshot.savedAt) / 1000);
     if (Number.isFinite(elapsed) && elapsed > 0) {
-      remaining = Math.max(0, remaining - elapsed);
+      remaining = clamp(remaining - elapsed);
     }
   }
 
@@ -499,7 +552,7 @@ function deriveTimerStateFromSnapshot(
 
   return {
     seconds: remaining,
-    running: Boolean(snapshot?.running) && remaining > 0,
+    running: Boolean(snapshot?.running) && (allowNegative || remaining > 0),
     label: snapshot?.label || fallbackLabel,
     totalSeconds,
   };
@@ -511,9 +564,26 @@ function normalizeTrackedSecondaryEvent(snapshot) {
   const endCode = typeof snapshot.endCode === "string" ? snapshot.endCode.trim() : "";
   if (!endCode) return null;
 
+  const teamKey = snapshot.teamKey === "A" || snapshot.teamKey === "B" ? snapshot.teamKey : null;
+  const followUpSeconds = Number.isFinite(snapshot.followUp?.seconds)
+    ? Math.max(0, Math.round(snapshot.followUp.seconds))
+    : 0;
+  const followUp =
+    followUpSeconds > 0
+      ? {
+          seconds: followUpSeconds,
+          label:
+            typeof snapshot.followUp?.label === "string" && snapshot.followUp.label.trim()
+              ? snapshot.followUp.label
+              : DEFAULT_SECONDARY_LABEL,
+          kind: typeof snapshot.followUp?.kind === "string" ? snapshot.followUp.kind : null,
+        }
+      : null;
+
   return {
     endCode,
-    teamKey: snapshot.teamKey === "A" || snapshot.teamKey === "B" ? snapshot.teamKey : null,
+    teamKey,
+    followUp,
   };
 }
 
@@ -645,7 +715,14 @@ function getAccessibleScorekeeperEventIds(assignments, roleCatalog) {
   return hasAdminOverride ? null : eventIds;
 }
 
-export function useScoreKeeperData() {
+export function useScoreKeeperData(formatKey = DEFAULT_SCOREKEEPER_FORMAT) {
+  // The format is fixed for the life of the console session: it shapes the
+  // rules, the log and the session key, so it is resolved once from the URL and
+  // never re-derived mid-match. Memoised on the key alone so the identity is
+  // stable across renders and safe in dependency arrays.
+  const format = useMemo(() => resolveScorekeeperFormat(formatKey), [formatKey]);
+  const capabilities = format.capabilities;
+
   const { session, roles } = useAuth();
   const userId = session?.user?.id ?? null;
 
@@ -680,6 +757,10 @@ export function useScoreKeeperData() {
   const [secondarySeconds, setSecondarySeconds] = useState(DEFAULT_RULES.timeoutSeconds);
   const [secondaryRunning, setSecondaryRunning] = useState(false);
   const [secondaryLabel, setSecondaryLabel] = useState(DEFAULT_SECONDARY_LABEL);
+  // What the secondary timer is counting, carried explicitly rather than
+  // inferred from `secondaryLabel`. The label is display copy; this drives the
+  // phase guidance and the colour bands (see secondaryTimerPhases.js).
+  const [secondaryKind, setSecondaryKind] = useState(null);
   const [consoleError, setConsoleError] = useState(null);
   const [rosters, setRosters] = useState({ teamA: [], teamB: [] });
   const [rostersLoading, setRostersLoading] = useState(false);
@@ -690,11 +771,19 @@ export function useScoreKeeperData() {
     open: false,
     team: null,
     mode: "add",
-    logIndex: null,
+    // An identity (server id / optimistic id), never a position: `logs` is
+    // insertion-ordered while the list renders newest-first.
+    logRef: null,
     openedAt: null,
   });
   const [scoreForm, setScoreForm] = useState({ scorerId: "", assistId: "" });
   const [timeoutUsage, setTimeoutUsage] = useState({ ...DEFAULT_TIMEOUT_USAGE });
+  // Match-wide timeout usage at the moment halftime ended. Subtracting it from
+  // `timeoutUsage` gives usage in the current half, which is what a per-half
+  // allowance is measured against. Zero for the whole first half.
+  const [halftimeTimeoutBaseline, setHalftimeTimeoutBaseline] = useState({
+    ...DEFAULT_TIMEOUT_USAGE,
+  });
   const [timerLabel, setTimerLabel] = useState(DEFAULT_TIMER_LABEL);
 const [secondaryTotalSeconds, setSecondaryTotalSeconds] = useState(
   DEFAULT_RULES.timeoutSeconds
@@ -709,9 +798,11 @@ const [secondaryFlashRateMs, setSecondaryFlashRateMs] = useState(400);
 const [possessionTeam, setPossessionTeam] = useState(null);
 const [halftimeTriggered, setHalftimeTriggered] = useState(false);
 const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
-const [halftimeTriggerType, setHalftimeTriggerType] = useState("unknown");
-const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
-const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
+  const [halftimeTriggerType, setHalftimeTriggerType] = useState("unknown");
+  // State mirror of halftimeTriggeredThisMatchRef — see `automaticHalftimeSpent`.
+  const [halftimeTriggerSpent, setHalftimeTriggerSpent] = useState(false);
+  const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
+  const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
   const [resumeCandidate, setResumeCandidate] = useState(null);
   const [resumeHandled, setResumeHandled] = useState(false);
   const [resumeBusy, setResumeBusy] = useState(false);
@@ -799,8 +890,7 @@ const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
         previous && filteredEvents.some((event) => event.id === previous) ? previous : null,
       );
     } catch (err) {
-      const message = describeError(err, { action: "Load events" });
-      setEventsError(message);
+      setEventsError(describeError(err, { action: "Load events" }));
     } finally {
       setEventsLoading(false);
     }
@@ -842,8 +932,7 @@ const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
         }
         setSelectedMatchId(allowDefaultSelect ? setupMatches[0].id : null);
       } catch (err) {
-        const message = describeError(err, { action: "Load matches" });
-        setMatchesError(message);
+        setMatchesError(describeError(err, { action: "Load matches" }));
         setSelectedMatchId(null);
       } finally {
         setMatchesLoading(false);
@@ -873,24 +962,27 @@ const secondaryTimerAnchorRef = useRef({
 const activeSecondaryEventRef = useRef(null);
 const secondaryTimerCompletedRef = useRef(false);
 const restoreTrackedSecondaryCompletionRef = useRef(false);
+// Rows from the most recent refresh, for callers that mutate the log and must
+// re-derive from the result before React has re-rendered with the new `logs`.
+const latestDerivedLogsRef = useRef([]);
+// Always-current mirror of `logs`, updated inside the same setLogs that changes
+// it. Guards that must not act on a stale read — "is this break already closed?"
+// asked immediately after a write — read this instead of the state.
+const logsRef = useRef([]);
 const halftimeReconciliationKeyRef = useRef(null);
 const halftimeEndInFlightRef = useRef(new Set());
 // Set when an operator deletes a halftime log. Without it the time-cap effect below
 // sees "past the cap, halftime not triggered" on the very next render and re-fires,
 // making the deleted entry reappear instantly.
 const halftimeTimeCapSuppressedRef = useRef(false);
+// True once *any* halftime trigger has fired in this match. Halftime has three
+// ways in (point cap, time cap, manual) but only one may be used, so this is
+// what makes the other two dormant for the rest of the match.
+const halftimeTriggeredThisMatchRef = useRef(false);
 const previousSecondaryRunningRef = useRef(false);
 const previousPrimaryRunningRef = useRef(false);
 const stoppageActiveRef = useRef(false);
 const appliedEventRulesRef = useRef(null);
-const urlHydrationRef = useRef(false);
-// True from first paint when the URL carries a match to open, so the console can
-// show a loading state instead of flashing the setup landing page in between.
-const [urlBootstrapping, setUrlBootstrapping] = useState(() => {
-  if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  return params.get("mode") === "5v5" && Boolean(params.get("matchId"));
-});
 const [trackedSecondaryEventVersion, setTrackedSecondaryEventVersion] = useState(0);
   const [matchStarted, setMatchStarted] = useState(false);
   const consoleReady = Boolean(activeMatch);
@@ -925,7 +1017,7 @@ useEffect(() => {
 const getPrimaryRemainingSeconds = useCallback(
   () =>
     computeRemainingSeconds(primaryTimerAnchorRef.current, timerRunning, 0, {
-      minSeconds: -MAX_OVERTIME_SECONDS,
+      minSeconds: null,
     }),
   [timerRunning]
 );
@@ -937,7 +1029,7 @@ const getSecondaryRemainingSeconds = useCallback(
 
 const commitPrimaryTimerState = useCallback(
   (seconds, running) => {
-    const normalized = normalizeSeconds(seconds, 0, { min: -MAX_OVERTIME_SECONDS });
+  const normalized = normalizeSeconds(seconds, 0, { min: null });
     primaryTimerAnchorRef.current = {
       baseSeconds: normalized,
       anchorTimestamp: running ? Date.now() : null,
@@ -999,9 +1091,26 @@ const refreshPendingEntries = useCallback(async () => {
     const items = await listOfflineQueue();
     setPendingEntries(items);
   } catch (err) {
-    console.error("[5v5ScoreKeeper] Failed to load offline queue:", err);
+    console.error("[ScoreKeeper] Failed to load offline queue:", err);
   }
 }, []);
+
+const queueScoreUpdate = useCallback(
+  async (matchId, nextScore) => {
+    if (!matchId || !nextScore) return;
+    try {
+      await upsertScoreUpdate({
+        matchId,
+        scoreA: nextScore.a ?? 0,
+        scoreB: nextScore.b ?? 0,
+      }, { lastAttemptAt: Date.now() });
+      await refreshPendingEntries();
+    } catch (err) {
+      console.error("[ScoreKeeper] Failed to queue score update:", err);
+    }
+  },
+  [refreshPendingEntries]
+);
 
 useEffect(() => {
   void refreshPendingEntries();
@@ -1021,6 +1130,7 @@ const clearLocalMatchState = useCallback(() => {
   setSelectedMatchId(null);
   setMatches([]);
     setRosters({ teamA: [], teamB: [] });
+    logsRef.current = [];
     setLogs([]);
     setPendingEntries([]);
     setSetupForm({ ...DEFAULT_SETUP_FORM });
@@ -1028,23 +1138,27 @@ const clearLocalMatchState = useCallback(() => {
     setRulesManuallyEdited(false);
     setScore({ a: 0, b: 0 });
     setTimeoutUsage({ ...DEFAULT_TIMEOUT_USAGE });
+    setHalftimeTimeoutBaseline({ ...DEFAULT_TIMEOUT_USAGE });
     setPossessionTeam(null);
     setHalftimeTriggered(false);
     setHalftimeBreakActive(false);
     setHalftimeTriggerType("unknown");
     setHalftimeTimeCapArmed(false);
+    setHalftimeCapTargetScore(null);
     halftimeTimeCapSuppressedRef.current = false;
+    halftimeTriggeredThisMatchRef.current = false;
+    setHalftimeTriggerSpent(false);
     setStoppageActive(false);
     setMatchStarted(false);
     setScoreTarget(DEFAULT_RULES.gamePointTarget || null);
     setSoftCapApplied(false);
     setHardCapReached(false);
     setTimeCapTargetApplied(false);
-    setHalftimeCapTargetScore(null);
     commitPrimaryTimerState((DEFAULT_RULES.matchDuration || DEFAULT_DURATION) * 60, false);
     commitSecondaryTimerState(DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS, false);
     setTimerLabel(DEFAULT_TIMER_LABEL);
     setSecondaryLabel(DEFAULT_SECONDARY_LABEL);
+    setSecondaryKind(null);
     setSecondaryTotalSeconds(DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS);
     primaryResetRef.current = null;
     secondaryResetRef.current = null;
@@ -1052,7 +1166,7 @@ const clearLocalMatchState = useCallback(() => {
     setTrackedSecondaryEvent(null);
     matchIdRef.current = null;
     if (userId) {
-      clearScorekeeperSession(userId);
+      clearScorekeeperSession(userId, format.sessionRuleset);
     }
   }, [
     userId,
@@ -1101,8 +1215,16 @@ useEffect(() => {
       setResumeBusy(false);
       return;
     }
-    const stored = loadScorekeeperSession(userId);
-    if (stored?.data?.ruleset === "5v5" && stored?.data?.matchId) {
+    const stored = loadScorekeeperSession(userId, format.sessionRuleset);
+    // A snapshot written before formats were namespaced carries no ruleset;
+    // treat it as the default format's ruleset, which is what the only console
+    // that wrote it produced. Compare like with like — `ruleset` holds the
+    // session namespace ("7v7"/"5v5"), not the format key ("full"/"lite"), so
+    // falling back to the bare key could never match.
+    const storedRuleset =
+      stored?.data?.ruleset ||
+      SCOREKEEPER_FORMATS[DEFAULT_SCOREKEEPER_FORMAT].sessionRuleset;
+    if (storedRuleset === format.sessionRuleset && stored?.data?.matchId) {
       setResumeCandidate(stored.data);
       setResumeHandled(false);
       setResumeError(null);
@@ -1189,8 +1311,7 @@ useEffect(() => {
       })
       .catch((err) => {
         if (!ignore) {
-          const message = describeError(err, { action: "Load rosters" });
-          setRostersError(message);
+          setRostersError(describeError(err, { action: "Load rosters" }));
         }
       })
       .finally(() => {
@@ -1212,6 +1333,7 @@ useEffect(() => {
     return;
   }
   setTimeoutUsage({ ...DEFAULT_TIMEOUT_USAGE });
+  setHalftimeTimeoutBaseline({ ...DEFAULT_TIMEOUT_USAGE });
 }, [rules.timeoutsTotal, rules.timeoutsPerHalf]);
 
 useEffect(() => {
@@ -1231,26 +1353,43 @@ useEffect(() => {
   stoppageActiveRef.current = stoppageActive;
 }, [stoppageActive]);
 
+// Elapsed seconds into the current secondary timer, which is what the phase
+// model is indexed by. `secondaryTotalSeconds` grows when a timer is extended,
+// so elapsed is derived rather than counted.
+const secondaryElapsedSeconds =
+  Number.isFinite(secondaryTotalSeconds) && Number.isFinite(secondarySeconds)
+    ? Math.max(0, secondaryTotalSeconds - secondarySeconds)
+    : null;
+
+// The tone the timer is in right now: the worse of the rule-driven phase it has
+// reached and how little time is left. Every colour and the flash cadence read
+// this one value, so a rule edit moves them together.
+const secondaryTone = useMemo(
+  () =>
+    secondaryRunning
+      ? getSecondaryTimerTone(secondaryKind, rules, {
+          elapsedSeconds: secondaryElapsedSeconds,
+          remainingSeconds: secondarySeconds,
+        })
+      : PHASE_TONES.NORMAL,
+  [secondaryRunning, secondaryKind, rules, secondaryElapsedSeconds, secondarySeconds]
+);
+
 useEffect(() => {
   if (!secondaryRunning) {
     setSecondaryFlashActive(false);
     setSecondaryFlashPulse(false);
     return;
   }
-  const normalizedSecondaryLabel = (secondaryLabel || "").toLowerCase();
-  const shouldFlash = secondarySeconds <= 30;
-  if (shouldFlash) {
-    const fastThreshold = normalizedSecondaryLabel === "discussion" ? 15 : 15;
-    const nextRate = secondarySeconds <= fastThreshold ? 175 : 450;
-    setSecondaryFlashRateMs(nextRate);
-    setSecondaryFlashActive(true);
-    setSecondaryFlashPulse(false);
-  } else {
+  const nextRate = getFlashRateMs(secondaryTone);
+  if (nextRate === null) {
     setSecondaryFlashActive(false);
     setSecondaryFlashPulse(false);
-    setSecondaryFlashRateMs(450);
+    return;
   }
-}, [secondaryRunning, secondarySeconds, secondaryLabel]);
+  setSecondaryFlashRateMs(nextRate);
+  setSecondaryFlashActive(true);
+}, [secondaryRunning, secondaryTone]);
 
 useEffect(() => {
   if (!secondaryFlashActive) return undefined;
@@ -1263,7 +1402,6 @@ useEffect(() => {
 useEffect(() => {
   if (resumeHydrationRef.current) return;
   if (!secondaryRunning) {
-    setSecondaryTotalSeconds(rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS);
     setSecondaryTotalSeconds(rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS);
   }
 }, [rules.timeoutSeconds, secondaryRunning]);
@@ -1279,21 +1417,32 @@ useEffect(() => {
   };
 }, []);
 
+  // Overtime bounds, from the format. The clock counts negative past 00:00 so
+  // overtime is visible, but it must not run away: `stopOnCapWinner` freezes it
+  // at 00:00 once a team has reached the target (the match is decided), and
+  // `maxSeconds` is the hard ceiling for everything else.
+  const overtimeFlags = format.flags.overtime;
+  const hasScoreCapWinner = Boolean(
+    scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget)
+  );
+  const allowOvertime =
+    matchStarted && !(overtimeFlags.stopOnCapWinner && hasScoreCapWinner);
+  const overtimeFloorSeconds = Number.isFinite(overtimeFlags.maxSeconds)
+    ? -Math.abs(overtimeFlags.maxSeconds)
+    : null;
+
   useEffect(() => {
     if (!timerRunning && !secondaryRunning) return undefined;
-    const hasScoreCapWinner = Boolean(
-      scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget)
-    );
-    const allowOvertime = matchStarted && !hasScoreCapWinner;
     const tick = () => {
       if (timerRunning) {
         const remainingPrimary = getPrimaryRemainingSeconds();
         if (!allowOvertime && remainingPrimary <= 0) {
-          setTimerSeconds(0);
           commitPrimaryTimerState(0, false);
-        } else if (allowOvertime && remainingPrimary <= -MAX_OVERTIME_SECONDS) {
-          setTimerSeconds(-MAX_OVERTIME_SECONDS);
-          commitPrimaryTimerState(-MAX_OVERTIME_SECONDS, false);
+        } else if (
+          overtimeFloorSeconds !== null &&
+          remainingPrimary <= overtimeFloorSeconds
+        ) {
+          commitPrimaryTimerState(overtimeFloorSeconds, false);
         } else {
           setTimerSeconds(remainingPrimary);
         }
@@ -1316,12 +1465,10 @@ useEffect(() => {
     secondaryRunning,
     getPrimaryRemainingSeconds,
     getSecondaryRemainingSeconds,
-    commitPrimaryTimerState,
     commitSecondaryTimerState,
-    matchStarted,
-    scoreTarget,
-    score.a,
-    score.b,
+    commitPrimaryTimerState,
+    allowOvertime,
+    overtimeFloorSeconds,
   ]);
 
 useEffect(() => {
@@ -1329,7 +1476,6 @@ useEffect(() => {
     setSoftCapApplied(false);
     setHardCapReached(false);
     setTimeCapTargetApplied(false);
-    setHalftimeCapTargetScore(null);
     setScoreTarget(rules.gamePointTarget || null);
       return;
     }
@@ -1353,11 +1499,7 @@ useEffect(() => {
     }
 
     const highest = Math.max(score.a, score.b);
-    const increment = mode === "addTwoToHighest" ? 2 : 1;
-    const nextTarget = Math.max(
-      highest + increment,
-      rules.gamePointTarget || highest + increment
-    );
+    const nextTarget = Math.max(highest + 1, rules.gamePointTarget || highest + 1);
     setScoreTarget(nextTarget);
     setTimerLabel(SOFT_CAP_TIMER_LABEL);
     setSoftCapApplied(true);
@@ -1367,10 +1509,10 @@ useEffect(() => {
     rules.gameSoftCapMinutes,
     rules.matchDuration,
     rules.gameSoftCapMode,
-    rules.gamePointTarget,
-    timerSeconds,
-    score.a,
-    score.b,
+  rules.gamePointTarget,
+  timerSeconds,
+  score.a,
+  score.b,
   ]);
 
 useEffect(() => {
@@ -1378,18 +1520,16 @@ useEffect(() => {
   if (timerSeconds > 0) return;
   setHardCapReached(true);
   const timeCapTargetMode = rules.gameTimeCapTargetMode;
-  if (
-    !timeCapTargetApplied &&
-    (timeCapTargetMode === "addOneToHighest" ||
-      timeCapTargetMode === "addTwoToHighest")
-  ) {
-    const increment = timeCapTargetMode === "addTwoToHighest" ? 2 : 1;
-    const nextTarget = Math.max(score.a, score.b) + increment;
+  if (timeCapTargetMode === "addOneToHighest" && !timeCapTargetApplied) {
+    const nextTarget = Math.max(score.a, score.b) + 1;
     setScoreTarget(nextTarget);
     setTimeCapTargetApplied(true);
+    setTimerLabel(TIME_CAP_TARGET_LABEL);
   }
   if (rules.gameHardCapEndMode === "immediate") {
-    setTimerLabel("Time cap reached");
+    if (timeCapTargetMode !== "addOneToHighest") {
+      setTimerLabel(TIME_CAP_TARGET_LABEL);
+    }
     setTimerRunning(false);
   }
 }, [
@@ -1423,8 +1563,8 @@ useEffect(() => {
   if (hardCapReached) return;
   const overtimeActive = timerSeconds < 0 && !hasScoreCapWinner;
   if (overtimeActive) {
-    if (timerLabel !== "Over time (highest + 1)") {
-      setTimerLabel("Over time (highest + 1)");
+    if (timerLabel !== OVERTIME_TIMER_LABEL) {
+      setTimerLabel(OVERTIME_TIMER_LABEL);
     }
     return;
   }
@@ -1503,12 +1643,15 @@ useEffect(() => {
   setHalftimeTriggered(false);
   setHalftimeTriggerType("unknown");
   halftimeTimeCapSuppressedRef.current = false;
+  halftimeTriggeredThisMatchRef.current = false;
+  setHalftimeTriggerSpent(false);
 }, [activeMatch?.id]);
 
   useEffect(() => {
     if (!activeMatch) {
       matchIdRef.current = null;
       setScore({ a: 0, b: 0 });
+      logsRef.current = [];
       setLogs([]);
       return;
     }
@@ -1519,9 +1662,13 @@ useEffect(() => {
 
     if (isMatchSwitch) {
       matchIdRef.current = activeId;
+      // Clear the ref alongside the state: a guard reading it before the next
+      // render would otherwise still see the previous match's log.
+      logsRef.current = [];
       setLogs([]);
       if (!hydrating) {
         setTimeoutUsage({ A: 0, B: 0 });
+        setHalftimeTimeoutBaseline({ A: 0, B: 0 });
         commitPrimaryTimerState((rules.matchDuration || DEFAULT_DURATION) * 60, false);
         commitSecondaryTimerState(rules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS, false);
       }
@@ -1599,6 +1746,7 @@ useEffect(() => {
       }
       const startCode = rules.abbaPattern === "male" ? "M" : "F";
       const alternateCode = startCode === "M" ? "F" : "M";
+
       // ABBA opens on a single starting-gender point, then settles into repeating
       // 2-point blocks: X1, Y1, Y2, X1, X2, Y1, Y2, ... Mirrors getAbbaDescriptor.
       if (orderIndex === 0) {
@@ -1614,13 +1762,36 @@ useEffect(() => {
     [rules.abbaPattern, normalizeAbbaLine]
   );
   const startingTeamId = activeMatch?.starting_team_id || setupForm.startingTeamId;
+  // The team that pulls to open the match. Pulling means giving the disc away, so
+  // the *other* team starts the first half on offence.
   const matchStartingTeamKey =
     startingTeamId === teamAId ? "A" : startingTeamId === teamBId ? "B" : null;
+  const firstHalfReceivingTeamKey =
+    matchStartingTeamKey === "A" ? "B" : matchStartingTeamKey === "B" ? "A" : null;
+  // The pull flips at halftime, so the team that pulled first now receives. This
+  // is a straight reset, not a continuation of the last point of the first half:
+  // whoever held the disc when the half ended is irrelevant.
+  const secondHalfReceivingTeamKey = matchStartingTeamKey;
   const matchDuration = rules.matchDuration || DEFAULT_DURATION;
-  const remainingTimeouts = {
-    A: Math.max(rules.timeoutsTotal - timeoutUsage.A, 0),
-    B: Math.max(rules.timeoutsTotal - timeoutUsage.B, 0),
+  // Timeouts used in the current half. `timeoutUsage` counts the whole match and
+  // is what a deletion refunds against, so the half is expressed as a baseline
+  // captured at halftime rather than by resetting the counter.
+  const timeoutUsageThisHalf = {
+    A: Math.max(timeoutUsage.A - halftimeTimeoutBaseline.A, 0),
+    B: Math.max(timeoutUsage.B - halftimeTimeoutBaseline.B, 0),
   };
+  // A per-half allowance replenishes at halftime; with none configured the
+  // per-game total is the only pool and match-wide usage is what counts.
+  const usesPerHalfTimeouts = rules.timeoutsPerHalf > 0;
+  const remainingTimeouts = usesPerHalfTimeouts
+    ? {
+        A: Math.max(rules.timeoutsPerHalf - timeoutUsageThisHalf.A, 0),
+        B: Math.max(rules.timeoutsPerHalf - timeoutUsageThisHalf.B, 0),
+      }
+    : {
+        A: Math.max(rules.timeoutsTotal - timeoutUsage.A, 0),
+        B: Math.max(rules.timeoutsTotal - timeoutUsage.B, 0),
+      };
   const reachedPointTarget = scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget);
   const canEndMatch = matchStarted;
   const possessionValue = possessionTeam === "A" ? 0 : possessionTeam === "B" ? 100 : 50;
@@ -1631,7 +1802,9 @@ useEffect(() => {
         ? displayTeamB
         : "Contested";
   const halfRemainingLabel = (teamKey) =>
-    rules.timeoutsPerHalf > 0 ? Math.max(rules.timeoutsPerHalf - timeoutUsage[teamKey], 0) : "N/A";
+    usesPerHalfTimeouts
+      ? Math.max(rules.timeoutsPerHalf - timeoutUsageThisHalf[teamKey], 0)
+      : "N/A";
   const sortedRosters = useMemo(
     () => ({
       teamA: sortRoster(rosters.teamA),
@@ -1685,7 +1858,7 @@ useEffect(() => {
     const primarySeconds = getPrimaryRemainingSeconds();
     const secondarySecondsSnapshot = getSecondaryRemainingSeconds();
     const snapshot = {
-      ruleset: "5v5",
+      ruleset: format.sessionRuleset,
       matchId,
       selectedMatchId,
       eventId: selectedEventId,
@@ -1693,6 +1866,7 @@ useEffect(() => {
       setupForm: { ...setupForm },
       rules: { ...rules },
       score: { ...score },
+      logs: Array.isArray(logs) ? [...logs] : [],
       pendingEntries: Array.isArray(pendingEntries) ? [...pendingEntries] : [],
       timer: {
         seconds: primarySeconds,
@@ -1705,15 +1879,22 @@ useEffect(() => {
         seconds: secondarySecondsSnapshot,
         running: secondaryRunning,
         label: secondaryLabel,
+        // Persisted so a resumed timer keeps its phase guidance and colours; it
+        // cannot be recovered from the label.
+        kind: secondaryKind,
         savedAt: now,
         totalSeconds: secondaryTotalSeconds,
       },
       activeSecondaryEvent: normalizeTrackedSecondaryEvent(activeSecondaryEventRef.current),
       timeoutUsage: { ...timeoutUsage },
+      halftimeTimeoutBaseline: { ...halftimeTimeoutBaseline },
       possessionTeam,
       halftimeTriggered,
       halftimeBreakActive,
       halftimeTriggerType,
+      // Whether a halftime trigger has already been spent, so a reload cannot
+      // hand the automatic checkers a second chance.
+      halftimeTriggeredThisMatch: halftimeTriggeredThisMatchRef.current,
       halftimeTimeCapArmed,
       stoppageActive,
       scoreTarget,
@@ -1732,12 +1913,13 @@ useEffect(() => {
     setupForm,
     rules,
     score,
-    pendingEntries,
     timerRunning,
     timerLabel,
     secondaryRunning,
     secondaryLabel,
+    secondaryKind,
     timeoutUsage,
+    halftimeTimeoutBaseline,
     possessionTeam,
     halftimeTriggered,
     halftimeBreakActive,
@@ -1751,6 +1933,8 @@ useEffect(() => {
     timeCapTargetApplied,
     halftimeCapTargetScore,
     userId,
+    logs,
+    pendingEntries,
     getPrimaryRemainingSeconds,
     getSecondaryRemainingSeconds,
   ]);
@@ -1759,7 +1943,7 @@ useEffect(() => {
     if (!resumeHandled || !userId) return;
     const snapshot = buildSessionSnapshot();
     if (snapshot) {
-      saveScorekeeperSession(userId, snapshot);
+      saveScorekeeperSession(userId, snapshot, format.sessionRuleset);
     }
   }, [buildSessionSnapshot, resumeHandled, userId]);
 
@@ -1768,7 +1952,7 @@ useEffect(() => {
     const snapshot = buildSessionSnapshot();
     if (!snapshot) return undefined;
     const handle = setTimeout(() => {
-      saveScorekeeperSession(userId, snapshot);
+      saveScorekeeperSession(userId, snapshot, format.sessionRuleset);
     }, SESSION_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(handle);
   }, [buildSessionSnapshot, resumeHandled, userId]);
@@ -1782,7 +1966,7 @@ useEffect(() => {
     const persistNow = () => {
       const snapshot = buildSessionSnapshot();
       if (snapshot) {
-        saveScorekeeperSession(userId, snapshot);
+        saveScorekeeperSession(userId, snapshot, format.sessionRuleset);
       }
     };
 
@@ -1792,12 +1976,13 @@ useEffect(() => {
       }
     };
 
-    window.addEventListener("visibilitychange", handleVisibility);
+    // `visibilitychange` fires on document, not window.
+    document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("pagehide", persistNow);
     window.addEventListener("beforeunload", persistNow);
 
     return () => {
-      window.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("pagehide", persistNow);
       window.removeEventListener("beforeunload", persistNow);
     };
@@ -1815,18 +2000,29 @@ useEffect(() => {
     secondaryRunning,
     secondaryTotalSeconds,
     secondaryLabel,
+    secondaryKind,
     halftimeBreakActive,
   ]);
+// `setLogs` that keeps `logsRef` in step synchronously. Use this wherever the new
+// log is read back before React can re-render — the effect that mirrors `logs`
+// into the ref runs after render, too late for a guard in the same tick.
+const setLogsAndRef = useCallback((updater) => {
+  const next = typeof updater === "function" ? updater(logsRef.current) : updater;
+  logsRef.current = next;
+  setLogs(next);
+  return next;
+}, []);
+
 const cleanupOptimisticLog = useCallback(
   (optimisticId) => {
     if (!optimisticId) return;
-    setLogs((prev) =>
+    setLogsAndRef((prev) =>
       prev.filter(
         (entry) => !(entry.isOptimistic && entry.optimisticId && entry.optimisticId === optimisticId)
       )
     );
   },
-  [setLogs]
+  [setLogsAndRef]
 );
 
 const recordPendingEntry = useCallback(
@@ -1877,7 +2073,7 @@ const recordPendingEntry = useCallback(
     }
 
     const queueId = optimisticId || createQueueId("match-log");
-    // Name the specific event in any error, so "score" vs "timeout start" is obvious.
+    // Name the specific event in any error, so "score" vs "timeout_start" is obvious.
     const eventLabel = String(eventTypeCode || "match event").replace(/_/g, " ");
 
     void (async () => {
@@ -1886,12 +2082,12 @@ const recordPendingEntry = useCallback(
           await enqueueMatchLogEntry(dbPayload, { id: queueId });
           await refreshPendingEntries();
         } catch (err) {
-          console.error("[5v5ScoreKeeper] Failed to queue match log entry:", err);
+          console.error("[ScoreKeeper] Failed to queue match log entry:", err);
         }
       };
 
       if (DB_WRITES_DISABLED) {
-        console.warn("[5v5ScoreKeeper] DB writes are temporarily disabled. Skipping save.", dbPayload);
+        console.warn("[ScoreKeeper] DB writes are temporarily disabled. Skipping save.", dbPayload);
         await queueForRetry();
         setConsoleError(
           (prev) => prev || `Offline mode is on — ${eventLabel} is queued, not saved.`
@@ -1916,7 +2112,7 @@ const recordPendingEntry = useCallback(
           void refresh(matchId);
         }
       } catch (err) {
-        console.error("[5v5ScoreKeeper] Failed to persist match log entry:", err);
+        console.error("[ScoreKeeper] Failed to persist match log entry:", err);
         await queueForRetry();
         await markOfflineQueueFailure(queueId);
         setConsoleError((prev) =>
@@ -1931,60 +2127,34 @@ const recordPendingEntry = useCallback(
   },
   [setConsoleError, normalizeAbbaLine, cleanupOptimisticLog, refreshPendingEntries]
 );
-const normalizedSecondaryLabel =
-  typeof secondaryLabel === "string" ? secondaryLabel.toLowerCase() : "";
-const isDiscussionTimer = normalizedSecondaryLabel === "discussion";
-
+// Timer panel backgrounds. Both are consumed by the view — the panels used to
+// carry a fixed green and these were computed and thrown away, so the secondary
+// timer never changed colour as it ran down.
+//
+// Primary: red past 00:00 (overtime), green while running, slate when paused.
 const primaryTimerBg =
   timerSeconds <= 0 ? "bg-[#fee2e2]" : timerRunning ? "bg-[#dcfce7]" : "bg-[#e2e8f0]";
-const secondaryTimerBg = (() => {
-  if (secondaryRunning) {
-    if (isDiscussionTimer) {
-      if (secondarySeconds <= 15) {
-        return secondaryFlashActive
-          ? secondaryFlashPulse
-            ? "bg-[#fcd34d]"
-            : "bg-[#fef08a]"
-          : "bg-[#fef08a]";
-      }
-      if (secondarySeconds <= 45) {
-        return "bg-[#fef08a]";
-      }
-      return "bg-[#dcfce7]";
-    }
-    if (secondarySeconds <= 15) {
-      return secondaryFlashActive
-        ? secondaryFlashPulse
-          ? "bg-[#fb923c]"
-          : "bg-[#fed7aa]"
-        : "bg-[#fed7aa]";
-    }
-    if (secondarySeconds <= 30) {
-      return secondaryFlashActive
-        ? secondaryFlashPulse
-          ? "bg-[#fcd34d]"
-          : "bg-[#fef3c7]"
-        : "bg-[#fef3c7]";
-    }
-    return "bg-[#dcfce7]";
-  }
 
-  if (secondarySeconds === 0) {
-    return "bg-[#f8cad6]";
+// Secondary: driven by the phase tone, so the colour changes when the rules say
+// the situation escalates rather than at a hardcoded second count. Flashing
+// alternates the two shades of the current tone.
+const SECONDARY_TONE_BG = {
+  [PHASE_TONES.NORMAL]: { steady: "bg-[#dcfce7]", pulse: "bg-[#bbf7d0]" },
+  [PHASE_TONES.WARNING]: { steady: "bg-[#fef3c7]", pulse: "bg-[#fcd34d]" },
+  [PHASE_TONES.URGENT]: { steady: "bg-[#fed7aa]", pulse: "bg-[#fb923c]" },
+};
+
+const secondaryTimerBg = (() => {
+  if (!secondaryRunning) {
+    // Expired reads as spent; an idle timer is neutral.
+    return secondarySeconds === 0 ? "bg-[#f8cad6]" : "bg-[#f8f1ff]";
   }
-  if (isDiscussionTimer) {
-    if (secondarySeconds > 45) {
-      return "bg-[#c9ead6]";
-    }
-    if (secondarySeconds > 15) {
-      return "bg-[#ffe2a1]";
-    }
-  }
-  return "bg-[#f8f1ff]";
+  const palette = SECONDARY_TONE_BG[secondaryTone] || SECONDARY_TONE_BG[PHASE_TONES.NORMAL];
+  return secondaryFlashActive && secondaryFlashPulse ? palette.pulse : palette.steady;
 })();
 
-  const startSecondaryTimer = useCallback(
-    (duration, label) => {
+const startSecondaryTimer = useCallback(
+    (duration, label, kind = null) => {
       const normalized = normalizeSeconds(duration);
       if (!normalized) return;
 
@@ -2005,13 +2175,28 @@ const secondaryTimerBg = (() => {
       commitSecondaryTimerState(nextSeconds, true);
       setSecondaryTotalSeconds(nextTotal);
       setSecondaryLabel(label || DEFAULT_SECONDARY_LABEL);
+    setSecondaryKind(kind);
     setSecondaryFlashActive(false);
     setSecondaryFlashPulse(false);
   },
   [commitSecondaryTimerState, secondaryRunning, getSecondaryRemainingSeconds, secondaryTotalSeconds]
 );
 
-const rosterNameLookup = useMemo(() => {
+const replaceSecondaryTimer = useCallback(
+  (duration, label, kind = null) => {
+    const normalized = normalizeSeconds(duration);
+    if (!normalized) return;
+    commitSecondaryTimerState(normalized, true);
+    setSecondaryTotalSeconds(normalized);
+    setSecondaryLabel(label || DEFAULT_SECONDARY_LABEL);
+    setSecondaryKind(kind);
+    setSecondaryFlashActive(false);
+    setSecondaryFlashPulse(false);
+  },
+  [commitSecondaryTimerState]
+);
+
+  const rosterNameLookup = useMemo(() => {
     const map = new Map();
     sortedRosters.teamA.forEach((player) => {
       if (player.id) {
@@ -2038,55 +2223,52 @@ const rosterNameLookup = useMemo(() => {
 
   const appendLocalLog = useCallback(
     ({ team, timestamp, scorerId, assistId, totals, eventDescription, eventCode, optimisticId }) => {
-      let derivedInfo = { scoreOrderIndex: null, abbaLine: getAbbaLineCode(null) };
-      setLogs((prev) => {
-        const normalizedCode = eventCode || null;
-        const isScoringEvent =
-          normalizedCode === MATCH_LOG_EVENT_CODES.SCORE ||
-          normalizedCode === MATCH_LOG_EVENT_CODES.CALAHAN;
-        const nextScoreOrder = isScoringEvent
-          ? prev.reduce(
-              (count, entry) =>
-                entry.eventCode === MATCH_LOG_EVENT_CODES.SCORE ||
-                entry.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN
-                  ? count + 1
-                  : count,
-              0
-            )
-          : null;
-        const abbaLine = normalizeAbbaLine(getAbbaLineCode(nextScoreOrder));
-        derivedInfo = { scoreOrderIndex: nextScoreOrder, abbaLine };
+      // Build the entry against the ref, not against the updater's `prev`. React
+      // may defer or re-run an updater, so the updater is not a safe place to
+      // publish state that a guard will read back in this same tick.
+      const baseLogs = logsRef.current;
+      const normalizedCode = eventCode || null;
+      const isScoringEvent =
+        normalizedCode === MATCH_LOG_EVENT_CODES.SCORE ||
+        normalizedCode === MATCH_LOG_EVENT_CODES.CALAHAN;
+      const nextScoreOrder = isScoringEvent
+        ? baseLogs.reduce(
+            (count, entry) =>
+              entry.eventCode === MATCH_LOG_EVENT_CODES.SCORE ||
+              entry.eventCode === MATCH_LOG_EVENT_CODES.CALAHAN
+                ? count + 1
+                : count,
+            0,
+          )
+        : null;
+      const abbaLine = normalizeAbbaLine(getAbbaLineCode(nextScoreOrder));
 
-        return [
-          ...prev,
-          {
-            id: optimisticId || `${OPTIMISTIC_PREFIX}${prev.length + 1}`,
-            team,
-            timestamp,
-            scorerName:
-              rosterNameLookup.get(scorerId || "") ||
-              (scorerId ? "Unknown player" : "Unassigned"),
-            scorerId: scorerId || null,
-            assistName:
+      const appendedEntry = {
+        id: optimisticId || `${OPTIMISTIC_PREFIX}${baseLogs.length + 1}`,
+        team,
+        timestamp,
+        scorerName:
+          rosterNameLookup.get(scorerId || "") || (scorerId ? "Unknown player" : "Unassigned"),
+        scorerId: scorerId || null,
+        assistName:
           normalizedCode === MATCH_LOG_EVENT_CODES.CALAHAN
-                ? "CALLAHAN!!"
-                : rosterNameLookup.get(assistId || "") ||
-                  (assistId ? "Unknown player" : null),
-            assistId: assistId || null,
-            totalA: totals.a,
-            totalB: totals.b,
-            eventDescription,
-            eventCode: normalizedCode,
-            scoreOrderIndex: nextScoreOrder,
-            abbaLine,
-            isOptimistic: Boolean(optimisticId),
-            optimisticId: optimisticId || null,
-          },
-        ];
-      });
-      return { ...derivedInfo, optimisticId: optimisticId || null };
+            ? "CALLAHAN!!"
+            : rosterNameLookup.get(assistId || "") || (assistId ? "Unknown player" : null),
+        assistId: assistId || null,
+        totalA: totals.a,
+        totalB: totals.b,
+        eventDescription,
+        eventCode: normalizedCode,
+        scoreOrderIndex: nextScoreOrder,
+        abbaLine,
+        isOptimistic: Boolean(optimisticId),
+        optimisticId: optimisticId || null,
+      };
+
+      setLogsAndRef([...baseLogs, appendedEntry]);
+      return { scoreOrderIndex: nextScoreOrder, abbaLine, optimisticId: optimisticId || null };
     },
-    [rosterNameLookup, getAbbaLineCode, normalizeAbbaLine]
+    [rosterNameLookup, getAbbaLineCode, normalizeAbbaLine, setLogsAndRef]
   );
 
   const logSimpleEvent = useCallback(
@@ -2099,6 +2281,20 @@ const rosterNameLookup = useMemo(() => {
       const isHalftimeEnd = eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END;
       if (isHalftimeEnd) {
         if (halftimeEndInFlightRef.current.has(activeMatch.id)) return;
+        // A break that is already closed in the log must not be closed again.
+        // The in-flight marker above only covers the window before the write
+        // reaches `logs`; once it lands, the marker is released and this is what
+        // stops a second close. Callers cannot do this check themselves — they
+        // read a `logs` that the write they just made has not reached yet.
+        if (
+          !getLastUnmatchedEventStart(
+            logsRef.current,
+            MATCH_LOG_EVENT_CODES.HALFTIME_START,
+            MATCH_LOG_EVENT_CODES.HALFTIME_END,
+          )
+        ) {
+          return;
+        }
         halftimeEndInFlightRef.current.add(activeMatch.id);
       }
       try {
@@ -2137,11 +2333,12 @@ const rosterNameLookup = useMemo(() => {
       } catch (err) {
         // Drop the in-flight marker on failure, otherwise it masks halftime_end for
         // the rest of the session and the event can never be re-logged.
-        if (isHalftimeEnd && activeMatch?.id) {
+        if (eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END && activeMatch?.id) {
           halftimeEndInFlightRef.current.delete(activeMatch.id);
         }
-        const message = describeError(err, { action: "Record match event" });
-        setConsoleError(message);
+        setConsoleError(
+          describeError(err, { action: `Record ${String(eventCode).replace(/_/g, " ")}` })
+        );
       }
     },
     [
@@ -2156,6 +2353,32 @@ const rosterNameLookup = useMemo(() => {
       score,
     ]
   );
+
+  // Backstop for any `setLogs` that does not publish the ref itself. Runs after
+  // render, so it cannot help a guard in the same tick — writers whose result a
+  // guard reads back immediately use `setLogsAndRef` instead.
+  useEffect(() => {
+    logsRef.current = logs;
+  }, [logs]);
+
+  // Once a halftime_end is durably represented (in the log or the offline queue) the
+  // transient in-flight marker is redundant; clearing it keeps the guard from going
+  // stale and permanently suppressing a legitimate re-log.
+  useEffect(() => {
+    const targetMatchId = activeMatch?.id;
+    if (!targetMatchId || !halftimeEndInFlightRef.current.has(targetMatchId)) return;
+    const settled =
+      logs.some((entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) ||
+      pendingEntries.some(
+        (item) =>
+          item?.kind === "match_log" &&
+          item?.payload?.matchId === targetMatchId &&
+          item?.payload?.eventTypeCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
+      );
+    if (settled) {
+      halftimeEndInFlightRef.current.delete(targetMatchId);
+    }
+  }, [activeMatch?.id, logs, pendingEntries]);
 
   const clearSecondaryTimerEvent = useCallback(() => {
     setTrackedSecondaryEvent(null);
@@ -2302,21 +2525,26 @@ const rosterNameLookup = useMemo(() => {
         setTrackedSecondaryEvent({
           endCode: meta.eventEndCode,
           teamKey: meta.teamKey ?? null,
+          followUp: meta.followUp || null,
         });
         setHalftimeBreakActive(meta.eventEndCode === MATCH_LOG_EVENT_CODES.HALFTIME_END);
       } else {
         setTrackedSecondaryEvent(null);
         setHalftimeBreakActive(false);
       }
-      startSecondaryTimer(duration, label);
+      if (meta?.replace) {
+        replaceSecondaryTimer(duration, label, meta?.kind ?? null);
+      } else {
+        startSecondaryTimer(duration, label, meta?.kind ?? null);
+      }
     },
-    [clearSecondaryTimerEvent, logSimpleEvent, startSecondaryTimer, setTrackedSecondaryEvent]
+    [clearSecondaryTimerEvent, logSimpleEvent, startSecondaryTimer, replaceSecondaryTimer, setTrackedSecondaryEvent]
   );
 
   const updatePossession = useCallback(
     async (
       teamKey,
-      { logTurnover = true, actorId = null, eventTypeIdOverride = null, eventTeamKey = null } = {}
+      { logTurnover = true, actorId = null, eventCodeOverride = null, eventTeamKey = null } = {}
     ) => {
       const previousTeam = possessionTeam;
       if (!teamKey || teamKey === previousTeam) return;
@@ -2324,13 +2552,18 @@ const rosterNameLookup = useMemo(() => {
       setPossessionTeam(teamKey);
 
       if (!logTurnover || !consoleReady || !activeMatch?.id) return;
+      // Formats that do not track turnovers still flip possession internally
+      // (a score and halftime both change who has the disc); they simply never
+      // write a possession-change row for it.
+      if (!capabilities.turnover && !eventCodeOverride) return;
+      if (eventCodeOverride === MATCH_LOG_EVENT_CODES.BLOCK && !capabilities.block) return;
 
       try {
-        const resolvedEventTypeId =
-          eventTypeIdOverride ?? (await resolveEventTypeIdLocal(MATCH_LOG_EVENT_CODES.TURNOVER));
+        const eventCode = eventCodeOverride || MATCH_LOG_EVENT_CODES.TURNOVER;
+        const resolvedEventTypeId = await resolveEventTypeIdLocal(eventCode);
         if (!resolvedEventTypeId) {
           setConsoleError(
-            "Missing `turnover` event type in match_events. Please add it in Supabase before logging."
+            `Missing \`${eventCode}\` event type in match_events. Please add it in Supabase before logging.`
           );
           return;
         }
@@ -2355,13 +2588,13 @@ const rosterNameLookup = useMemo(() => {
           assistId: null,
           totals: totalsSnapshot,
           eventDescription: describeEvent(resolvedEventTypeId),
-          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
+          eventCode,
           optimisticId,
         });
         const entry = {
           matchId: activeMatch.id,
           eventTypeId: resolvedEventTypeId,
-          eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
+          eventCode,
           teamId: targetTeamId,
           scorerId: actorId || null,
           createdAt: timestamp,
@@ -2370,8 +2603,7 @@ const rosterNameLookup = useMemo(() => {
         };
         recordPendingEntry(entry);
       } catch (err) {
-        const message = describeError(err, { action: "Log turnover" });
-        setConsoleError(message);
+        setConsoleError(describeError(err, { action: "Log turnover" }));
       }
     },
     [
@@ -2387,6 +2619,8 @@ const rosterNameLookup = useMemo(() => {
       resolveEventTypeIdLocal,
       setConsoleError,
       score,
+      capabilities.turnover,
+      capabilities.block,
     ]
   );
 
@@ -2397,10 +2631,14 @@ const rosterNameLookup = useMemo(() => {
         const meta = completedNaturally ? await finalizeSecondaryTimerEvent() : null;
         if (meta?.endCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
           setHalftimeBreakActive(false);
-          const nextTeam = matchStartingTeamKey;
+          const nextTeam = secondHalfReceivingTeamKey;
           if (nextTeam) {
             void updatePossession(nextTeam, { logTurnover: false });
           }
+        }
+        const followUp = meta?.followUp;
+        if (followUp && followUp.seconds > 0) {
+          startSecondaryTimer(followUp.seconds, followUp.label, followUp.kind ?? null);
         }
       })();
     }
@@ -2408,7 +2646,8 @@ const rosterNameLookup = useMemo(() => {
   }, [
     secondaryRunning,
     finalizeSecondaryTimerEvent,
-    matchStartingTeamKey,
+    startSecondaryTimer,
+    secondHalfReceivingTeamKey,
     updatePossession,
   ]);
 
@@ -2418,22 +2657,35 @@ const rosterNameLookup = useMemo(() => {
     void (async () => {
       const meta = await finalizeSecondaryTimerEvent();
       if (meta?.endCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
-        const nextTeam = matchStartingTeamKey;
+        const nextTeam = secondHalfReceivingTeamKey;
         if (nextTeam) {
           void updatePossession(nextTeam, { logTurnover: false });
         }
       }
+      const followUp = meta?.followUp;
+      if (followUp && followUp.seconds > 0) {
+        startSecondaryTimer(followUp.seconds, followUp.label, followUp.kind ?? null);
+      }
     })();
-  }, [consoleReady, finalizeSecondaryTimerEvent, matchStartingTeamKey, updatePossession]);
+  }, [
+    consoleReady,
+    finalizeSecondaryTimerEvent,
+    secondHalfReceivingTeamKey,
+    startSecondaryTimer,
+    updatePossession,
+  ]);
 
   const forceEndHalftime = useCallback(async () => {
     if (!halftimeBreakActive) return false;
+    // `finalizeSecondaryTimerEvent` writes the halftime_end itself whenever it is
+    // tracking one. Only write here when it was not — and then let `logSimpleEvent`
+    // be the sole arbiter of whether a write is allowed. Re-checking
+    // `hasLoggedOrPendingMatchEvent` here cannot work: it reads `logs`, which the
+    // write that just happened has not been flushed into yet, so the stale read
+    // waved a duplicate through. `logSimpleEvent` holds a synchronous in-flight
+    // marker for exactly this reason.
     const meta = await finalizeSecondaryTimerEvent();
-    const targetMatchId = activeMatch?.id || selectedMatch?.id || null;
-    if (
-      meta?.endCode !== MATCH_LOG_EVENT_CODES.HALFTIME_END &&
-      !hasLoggedOrPendingMatchEvent(targetMatchId, MATCH_LOG_EVENT_CODES.HALFTIME_END)
-    ) {
+    if (meta?.endCode !== MATCH_LOG_EVENT_CODES.HALFTIME_END) {
       await logSimpleEvent(MATCH_LOG_EVENT_CODES.HALFTIME_END);
     }
     setHalftimeBreakActive(false);
@@ -2442,22 +2694,83 @@ const rosterNameLookup = useMemo(() => {
     commitSecondaryTimerState(0, false);
     setSecondaryTotalSeconds(0);
     setSecondaryLabel(DEFAULT_SECONDARY_LABEL);
-    const nextTeam = matchStartingTeamKey;
+    setSecondaryKind(null);
+    const nextTeam = secondHalfReceivingTeamKey;
     if (nextTeam) {
       void updatePossession(nextTeam, { logTurnover: false });
     }
     return true;
   }, [
     halftimeBreakActive,
-    activeMatch?.id,
-    selectedMatch?.id,
     finalizeSecondaryTimerEvent,
-    hasLoggedOrPendingMatchEvent,
     logSimpleEvent,
     commitSecondaryTimerState,
-    matchStartingTeamKey,
+    secondHalfReceivingTeamKey,
     updatePossession,
   ]);
+
+  // Replay the log to work out who holds the disc now. Used after a possession
+  // event is deleted: the pad would otherwise keep showing the possession that
+  // the deleted event produced, and the operator has no way to correct it.
+  // Possession is a pure function of the log, so it is re-derived rather than
+  // patched — a score hands the disc to the conceding team, and a turnover/block
+  // hands it to the other side.
+  //
+  // Halftime is the exception: it is a **reset**, not a continuation. Whoever
+  // held the disc when the first half ended does not carry over — the pull flips,
+  // so the team that pulled to open the match receives to open the second. The
+  // reset lands on `halftime_start`, because that is the moment the first half's
+  // possession stops mattering; the break itself has no possession to show.
+  const recomputePossessionFromLogs = useCallback((sourceLogs = null) => {
+    // Prefer the rows from the last refresh: a caller that has just deleted an
+    // entry runs before React re-renders, so `logs` in this closure is still the
+    // pre-delete state.
+    const basis = Array.isArray(sourceLogs)
+      ? sourceLogs
+      : latestDerivedLogsRef.current.length
+        ? latestDerivedLogsRef.current
+        : logs;
+    const ordered = [...basis].sort((a, b) => {
+      const toEpoch = (entry) => {
+        const parsed = new Date(entry?.timestamp || entry?.createdAt || 0).getTime();
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+      return toEpoch(a) - toEpoch(b);
+    });
+
+    const opposite = (teamKey) => (teamKey === "A" ? "B" : teamKey === "B" ? "A" : null);
+    let holder = firstHalfReceivingTeamKey;
+
+    ordered.forEach((entry) => {
+      switch (entry?.eventCode) {
+        case MATCH_LOG_EVENT_CODES.SCORE:
+        case MATCH_LOG_EVENT_CODES.CALAHAN:
+          // The team that conceded receives the next pull.
+          if (entry.team) holder = opposite(entry.team);
+          break;
+        case MATCH_LOG_EVENT_CODES.TURNOVER:
+        case MATCH_LOG_EVENT_CODES.BLOCK:
+          // Both are stamped with the acting player's own team: the defender who
+          // got the block, or the thrower who turfed it.
+          if (entry.team) {
+            holder =
+              entry.eventCode === MATCH_LOG_EVENT_CODES.BLOCK
+                ? entry.team
+                : opposite(entry.team);
+          }
+          break;
+        case MATCH_LOG_EVENT_CODES.HALFTIME_START:
+          // Hard reset — see the note above. Anything the first half left on the
+          // pad is discarded here rather than replayed through the break.
+          holder = secondHalfReceivingTeamKey;
+          break;
+        default:
+          break;
+      }
+    });
+
+    setPossessionTeam(holder);
+  }, [logs, firstHalfReceivingTeamKey, secondHalfReceivingTeamKey]);
 
   const hasPendingMatchLogEventCode = useCallback(
     (targetMatchId, eventCode) => {
@@ -2487,7 +2800,7 @@ const rosterNameLookup = useMemo(() => {
     if (!consoleReady || !matchLogMatchId) return;
 
     const breakSeconds = Math.max(1, (rules.halftimeBreakMinutes || 0) * 60);
-    const halftimeLabelActive = (secondaryLabel || "").toLowerCase() === "half time";
+    const halftimeLabelActive = secondaryKind === SECONDARY_TIMER_KINDS.HALFTIME;
     const trackedEvent = activeSecondaryEventRef.current;
     const trackedHalftimeActive =
       trackedEvent?.endCode === MATCH_LOG_EVENT_CODES.HALFTIME_END;
@@ -2555,6 +2868,14 @@ const rosterNameLookup = useMemo(() => {
       if (halftimeReconciliationKeyRef.current === reconciliationKey) {
         return;
       }
+      // A halftime_end the operator deleted must not be written straight back:
+      // deleting it deliberately re-opens the break so it can be closed by hand.
+      // The same flag that stops the time cap re-firing covers this.
+      if (halftimeTimeCapSuppressedRef.current) {
+        halftimeReconciliationKeyRef.current = reconciliationKey;
+        setHalftimeBreakActive(true);
+        return;
+      }
       halftimeReconciliationKeyRef.current = reconciliationKey;
       const optimisticId =
         `${OPTIMISTIC_PREFIX}reconcile-halftime-end-${matchLogMatchId}-${halftimeStartMs}`;
@@ -2569,10 +2890,12 @@ const rosterNameLookup = useMemo(() => {
     setTrackedSecondaryEvent({
       endCode: MATCH_LOG_EVENT_CODES.HALFTIME_END,
       teamKey: null,
+      followUp: null,
     });
     setHalftimeBreakActive(true);
     setSecondaryTotalSeconds(breakSeconds);
     setSecondaryLabel("Half time");
+    setSecondaryKind(SECONDARY_TIMER_KINDS.HALFTIME);
     commitSecondaryTimerState(
       Math.max(1, Math.ceil((expectedEndMs - Date.now()) / 1000)),
       true
@@ -2581,7 +2904,7 @@ const rosterNameLookup = useMemo(() => {
     consoleReady,
     matchLogMatchId,
     rules.halftimeBreakMinutes,
-    secondaryLabel,
+    secondaryKind,
     logs,
     halftimeBreakActive,
     hasPendingMatchLogEventCode,
@@ -2604,13 +2927,56 @@ const rosterNameLookup = useMemo(() => {
       entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START ||
       entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
   );
+  const halftimeEndLogged = logs.some(
+    (entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
+  );
+
+  // A per-half timeout allowance replenishes once the break is over. Keyed off the
+  // logged halftime_end rather than any one of the three end paths, so every route
+  // into the second half (timer expiry, force-end, reconciliation on reload) lands
+  // on the same baseline — and deleting the halftime_end puts it back.
+  useEffect(() => {
+    if (!usesPerHalfTimeouts || resumeHydrationRef.current) return;
+    if (halftimeEndLogged) {
+      setHalftimeTimeoutBaseline((prev) =>
+        prev.A === timeoutUsage.A && prev.B === timeoutUsage.B
+          ? prev
+          : { A: timeoutUsage.A, B: timeoutUsage.B },
+      );
+      return;
+    }
+    setHalftimeTimeoutBaseline((prev) => (prev.A === 0 && prev.B === 0 ? prev : { A: 0, B: 0 }));
+    // `timeoutUsage` is deliberately not a dependency: the baseline is captured at
+    // the transition into the second half, not re-captured on every later timeout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [halftimeEndLogged, usesPerHalfTimeouts]);
+
+  // Halftime happens once. It has three ways in — point cap, time cap, manual —
+  // and whichever fires first makes the other two dormant for the rest of the
+  // match. Once a halftime has ever been logged the automatic triggers stay
+  // spent even if the operator deletes it: a deleted break is re-opened by hand,
+  // never re-fired by a checker that would just re-add what was removed.
+  //
+  // Mirrored into state as well as the ref: the ref is what `triggerHalftime`
+  // reads synchronously (two triggers can race inside one tick), while the state
+  // is what the time-cap effect below depends on, since a ref mutation would not
+  // re-run it.
+  const automaticHalftimeSpent = halftimeTriggerSpent || halftimeLogged;
 
   const triggerHalftime = useCallback(async (triggerType = "unknown") => {
+    const normalizedTriggerType = normalizeHalftimeTriggerType(triggerType);
     if (halftimeTriggerLockRef.current || halftimeTriggered || !matchStarted || halftimeLogged) {
       setHalftimeTimeCapArmed(false);
       return false;
     }
-    const normalizedTriggerType = normalizeHalftimeTriggerType(triggerType);
+    // An automatic trigger gets one chance per match; manual is always available
+    // so the operator can re-open a break they deleted.
+    if (normalizedTriggerType !== "manual" && halftimeTriggeredThisMatchRef.current) {
+      setHalftimeTimeCapArmed(false);
+      return false;
+    }
+    halftimeTriggeredThisMatchRef.current = true;
+    setHalftimeTriggerSpent(true);
     halftimeTriggerLockRef.current = true;
     setHalftimeTriggered(true);
     setHalftimeBreakActive(true);
@@ -2619,6 +2985,7 @@ const rosterNameLookup = useMemo(() => {
     const breakSeconds = Math.max(1, (rules.halftimeBreakMinutes || 0) * 60);
     try {
       await startTrackedSecondaryTimer(breakSeconds || 60, "Half time", {
+        kind: SECONDARY_TIMER_KINDS.HALFTIME,
         eventStartCode: MATCH_LOG_EVENT_CODES.HALFTIME_START,
         eventEndCode: MATCH_LOG_EVENT_CODES.HALFTIME_END,
       });
@@ -2640,14 +3007,16 @@ const rosterNameLookup = useMemo(() => {
     }
   }, [halftimeTriggered]);
 
-  // Called after a halftime log is deleted so the elapsed-time cap doesn't immediately
-  // re-trigger the halftime the operator just removed.
+  // Called after a halftime log is deleted. Deleting the break revives only the
+  // *manual* trigger (see `automaticHalftimeSpent`), never the automatic ones —
+  // this flag is what keeps the elapsed-time cap from instantly re-adding the
+  // halftime the operator just removed.
   const suppressHalftimeTimeCap = useCallback(() => {
     halftimeTimeCapSuppressedRef.current = true;
   }, []);
 
   useEffect(() => {
-    if (!matchStarted || halftimeTriggered || halftimeLogged) {
+    if (!matchStarted || halftimeTriggered || halftimeLogged || automaticHalftimeSpent) {
       if (halftimeTimeCapArmed) {
         setHalftimeTimeCapArmed(false);
       }
@@ -2666,12 +3035,6 @@ const rosterNameLookup = useMemo(() => {
       }
       return;
     }
-    const elapsedSeconds = matchDuration * 60 - timerSeconds;
-    if (elapsedSeconds < halftimeMinutes * 60) {
-      // Back inside the cap window (clock rewound or rules changed): a later deletion
-      // shouldn't stay suppressed, so let the cap arm normally again.
-      halftimeTimeCapSuppressedRef.current = false;
-    }
     if (halftimeTimeCapSuppressedRef.current) {
       if (halftimeTimeCapArmed) {
         setHalftimeTimeCapArmed(false);
@@ -2681,29 +3044,30 @@ const rosterNameLookup = useMemo(() => {
       }
       return;
     }
+    const elapsedSeconds = matchDuration * 60 - timerSeconds;
     if (elapsedSeconds >= halftimeMinutes * 60) {
       const halftimeCapEndMode = rules.halftimeCapEndMode || "afterPoint";
       if (halftimeCapEndMode === "immediate") {
         if (halftimeTimeCapArmed) {
           setHalftimeTimeCapArmed(false);
         }
-        void triggerHalftime();
+        void triggerHalftime("timeCap");
       } else if (!halftimeTimeCapArmed) {
+        // "afterPoint": arm now, fire when the point in progress is scored.
         setHalftimeTimeCapArmed(true);
       }
       if (
-        (rules.halftimeCapTargetMode === "addOneToHighest" ||
-          rules.halftimeCapTargetMode === "addTwoToHighest") &&
+        rules.halftimeCapTargetMode === "addOneToHighest" &&
         halftimeCapTargetScore === null
       ) {
-        const increment = rules.halftimeCapTargetMode === "addTwoToHighest" ? 2 : 1;
-        setHalftimeCapTargetScore(Math.max(score.a, score.b) + increment);
+        setHalftimeCapTargetScore(Math.max(score.a, score.b) + 1);
       }
     }
   }, [
     matchStarted,
     halftimeTriggered,
     halftimeLogged,
+    automaticHalftimeSpent,
     rules.halftimeMinutes,
     matchDuration,
     timerSeconds,
@@ -2730,7 +3094,7 @@ const rosterNameLookup = useMemo(() => {
 
   const processQueueAndRefresh = useCallback(async () => {
     let shouldRefreshLogs = false;
-    await processOfflineQueue({
+    const result = await processOfflineQueue({
       onItemSuccess: (item) => {
         if (item.kind === "match_log" && item.payload.matchId === matchLogMatchId) {
           shouldRefreshLogs = true;
@@ -2741,6 +3105,7 @@ const rosterNameLookup = useMemo(() => {
       void refreshMatchLogsRef.current(matchLogMatchId);
     }
     await refreshPendingEntries();
+    return result;
   }, [matchLogMatchId, refreshPendingEntries]);
 
   useEffect(() => {
@@ -2828,6 +3193,7 @@ const rosterNameLookup = useMemo(() => {
   const refreshMatchLogs = useCallback(
     async (targetMatchId = matchLogMatchId) => {
       if (!targetMatchId) {
+        logsRef.current = [];
         setLogs([]);
         return null;
       }
@@ -2848,30 +3214,31 @@ const rosterNameLookup = useMemo(() => {
             .map((log) => log.optimisticId)
             .filter((id) => typeof id === "string" && id.length > 0)
         );
-        setLogs((prev) => {
-          const optimistic = prev.filter(
-            (entry) =>
-              entry.isOptimistic &&
-              (!entry.optimisticId || !serverOptimisticIds.has(entry.optimisticId))
+        // Merged against the ref rather than the updater's `prev`, and published
+        // to the ref before setLogs, so a guard running immediately after this
+        // refresh (the delete path does exactly that) sees the merged result.
+        const optimistic = logsRef.current.filter(
+          (entry) =>
+            entry.isOptimistic &&
+            (!entry.optimisticId || !serverOptimisticIds.has(entry.optimisticId))
+        );
+        const merged = [...derived.logs];
+        optimistic.forEach((entry) => {
+          const exists = merged.some(
+            (log) =>
+              (entry.optimisticId &&
+                log.optimisticId &&
+                log.optimisticId === entry.optimisticId) ||
+              log.id === entry.id ||
+              (log.eventCode === entry.eventCode &&
+                log.team === entry.team &&
+                log.timestamp === entry.timestamp)
           );
-          const merged = [...derived.logs];
-          optimistic.forEach((entry) => {
-            const exists = merged.some(
-              (log) =>
-                (entry.optimisticId &&
-                  log.optimisticId &&
-                  log.optimisticId === entry.optimisticId) ||
-                log.id === entry.id ||
-                (log.eventCode === entry.eventCode &&
-                  log.team === entry.team &&
-                  log.timestamp === entry.timestamp)
-            );
-            if (!exists) {
-              merged.push(entry);
-            }
-          });
-          return merged;
+          if (!exists) {
+            merged.push(entry);
+          }
         });
+        setLogsAndRef(merged);
 
         const queuedScores = countQueuedScores(targetMatchId, serverOptimisticIds);
         // An empty log means 0-0, including after the last point is deleted. Untracked
@@ -2884,6 +3251,9 @@ const rosterNameLookup = useMemo(() => {
           b: derived.totals.b + queuedScores.b,
         };
         setScore(totals);
+        // Exposed for callers that have just mutated the log and need to re-derive
+        // from the new rows without waiting for a re-render.
+        latestDerivedLogsRef.current = derived.logs;
 
         if (!resumeHydrationRef.current) {
           const matchStartLog = derived.logs.find(
@@ -2908,9 +3278,7 @@ const rosterNameLookup = useMemo(() => {
 
         return totals;
       } catch (err) {
-        setConsoleError(
-          describeError(err, { action: "Load match log" })
-        );
+        setConsoleError(describeError(err, { action: "Load match log" }));
         return null;
       } finally {
         setLogsLoading(false);
@@ -2922,8 +3290,9 @@ const rosterNameLookup = useMemo(() => {
       activeMatch?.status,
       selectedMatch?.status,
       rules.matchDuration,
-      commitPrimaryTimerState,
       countQueuedScores,
+      commitPrimaryTimerState,
+      setLogsAndRef,
       teamAId,
       teamBId,
     ]
@@ -2932,135 +3301,6 @@ const rosterNameLookup = useMemo(() => {
   useEffect(() => {
     refreshMatchLogsRef.current = refreshMatchLogs;
   }, [refreshMatchLogs]);
-
-  useEffect(() => {
-    if (urlHydrationRef.current || typeof window === "undefined") return undefined;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("mode") !== "5v5") return undefined;
-
-    const urlMatchId = params.get("matchId");
-    const urlEventId = params.get("eventId");
-    if (!urlMatchId) return undefined;
-
-    urlHydrationRef.current = true;
-
-    const hydrateFromUrl = async () => {
-      resumeHydrationRef.current = true;
-      setResumeCandidate(null);
-      setResumeHandled(true);
-      setResumeError(null);
-      setResumeBusy(false);
-      setSetupModalOpen(false);
-
-      if (urlEventId) {
-        setSelectedEventId(urlEventId);
-      }
-      setSelectedMatchId(urlMatchId);
-
-      try {
-        const stored = userId ? loadScorekeeperSession(userId) : null;
-        const storedSnapshot =
-          stored?.data?.ruleset === "5v5" &&
-          (stored.data.matchId === urlMatchId || stored.data.selectedMatchId === urlMatchId)
-            ? stored.data
-            : null;
-
-        if (storedSnapshot) {
-          setSetupForm({
-            ...DEFAULT_SETUP_FORM,
-            ...(storedSnapshot.setupForm || {}),
-          });
-          setRules((prev) => ({
-            ...prev,
-            ...(storedSnapshot.rules || {}),
-          }));
-          setRulesManuallyEdited(Boolean(storedSnapshot.rules));
-          setScore(storedSnapshot.score ?? { a: 0, b: 0 });
-          setTimeoutUsage(storedSnapshot.timeoutUsage ?? { ...DEFAULT_TIMEOUT_USAGE });
-        }
-
-        let targetMatch =
-          (activeMatch?.id === urlMatchId ? activeMatch : null) ||
-          matches.find((match) => match.id === urlMatchId) ||
-          null;
-
-        if (!targetMatch) {
-          targetMatch = await getMatchById(urlMatchId);
-        }
-
-        if (!targetMatch) {
-          throw new Error("Unable to locate the initialised 5v5 match.");
-        }
-
-        const targetEventId =
-          targetMatch.event_id || targetMatch.event?.id || urlEventId || null;
-
-        if (targetEventId) {
-          setSelectedEventId(targetEventId);
-        }
-        setActiveMatch(targetMatch);
-        setSelectedMatchId(targetMatch.id);
-        setMatches((prev) => {
-          const exists = prev.some((match) => match.id === targetMatch.id);
-          if (exists) {
-            return prev.map((match) => (match.id === targetMatch.id ? targetMatch : match));
-          }
-          return [targetMatch, ...prev];
-        });
-
-        const teamA = targetMatch.team_a?.id || null;
-        const teamB = targetMatch.team_b?.id || null;
-        if (!teamA && !teamB) {
-          setRosters({ teamA: [], teamB: [] });
-        } else {
-          setRostersLoading(true);
-          setRostersError(null);
-          try {
-            const rosterData = await fetchRostersForTeams(teamA, teamB, targetEventId);
-            setRosters(rosterData);
-          } catch (err) {
-            setRostersError(describeError(err, { action: "Load rosters" }));
-          } finally {
-            setRostersLoading(false);
-          }
-        }
-
-        await Promise.all([
-          loadMatchEventDefinitions(),
-          refreshMatchLogs(targetMatch.id),
-        ]);
-
-        appliedEventRulesRef.current = `match-${targetMatch.id}`;
-        setConsoleError(null);
-      } catch (err) {
-        setConsoleError(
-          describeError(err, { action: "Open 5v5 console" }),
-        );
-      } finally {
-        setUrlBootstrapping(false);
-        setTimeout(() => {
-          resumeHydrationRef.current = false;
-        }, 0);
-      }
-    };
-
-    void hydrateFromUrl();
-
-    // Run once on mount, guarded solely by `urlHydrationRef`.
-    //
-    // There is deliberately no `ignore` cleanup flag. Under StrictMode the effect is
-    // invoked twice: the first run started hydration, the cleanup set `ignore = true`,
-    // and the second run bailed on the ref — so the in-flight hydration aborted right
-    // after `getMatchById`, before `setActiveMatch`, and the console never opened.
-    // The ref alone makes this run exactly once per mount; the trailing state writes
-    // are no-ops if the component has genuinely unmounted.
-    //
-    // Deps stay empty for the same reason: including volatile values (activeMatch,
-    // matches, refreshMatchLogs, …) re-ran the effect mid-hydration whenever the
-    // synchronous setSelectedEventId/setSelectedMatchId calls above triggered a
-    // dependent state change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // user-interaction handlers moved to useScoreKeeperActions
 
@@ -3092,12 +3332,23 @@ const rosterNameLookup = useMemo(() => {
     }));
     setRulesManuallyEdited(Boolean(snapshot.rules));
     setScore(snapshot.score ?? { a: 0, b: 0 });
+    logsRef.current = Array.isArray(snapshot.logs) ? snapshot.logs : [];
+    setLogs(logsRef.current);
     setPendingEntries(Array.isArray(snapshot.pendingEntries) ? snapshot.pendingEntries : []);
     setTimeoutUsage(snapshot.timeoutUsage ?? { ...DEFAULT_TIMEOUT_USAGE });
     setPossessionTeam(snapshot.possessionTeam ?? null);
     setHalftimeTriggered(Boolean(snapshot.halftimeTriggered));
     setHalftimeBreakActive(Boolean(snapshot.halftimeBreakActive));
     setHalftimeTriggerType(normalizeHalftimeTriggerType(snapshot.halftimeTriggerType));
+    // A halftime that fired before the reload keeps the automatic triggers spent,
+    // so resuming mid-match cannot hand the checkers a second chance.
+    halftimeTriggeredThisMatchRef.current = Boolean(
+      snapshot.halftimeTriggeredThisMatch ?? snapshot.halftimeTriggered,
+    );
+    setHalftimeTriggerSpent(halftimeTriggeredThisMatchRef.current);
+    setHalftimeTimeoutBaseline(
+      snapshot.halftimeTimeoutBaseline ?? { ...DEFAULT_TIMEOUT_USAGE },
+    );
     setHalftimeTimeCapArmed(Boolean(snapshot.halftimeTimeCapArmed));
     setStoppageActive(Boolean(snapshot.stoppageActive));
     setMatchStarted(resumeWasStarted);
@@ -3119,7 +3370,8 @@ const rosterNameLookup = useMemo(() => {
     const restoredPrimary = deriveTimerStateFromSnapshot(
       snapshot.timer,
       ((snapshot.rules?.matchDuration ?? rules.matchDuration ?? DEFAULT_DURATION) || DEFAULT_DURATION) * 60,
-      snapshot.timer?.label || DEFAULT_TIMER_LABEL
+      snapshot.timer?.label || DEFAULT_TIMER_LABEL,
+      { allowNegative: true }
     );
     const shouldRunPrimary = restoredPrimary.running && !snapshot.stoppageActive;
     commitPrimaryTimerState(restoredPrimary.seconds, shouldRunPrimary);
@@ -3142,6 +3394,9 @@ const rosterNameLookup = useMemo(() => {
     );
     commitSecondaryTimerState(restoredSecondary.seconds, restoredSecondary.running);
     setSecondaryLabel(restoredSecondary.label || DEFAULT_SECONDARY_LABEL);
+    setSecondaryKind(
+      typeof snapshot.secondaryTimer?.kind === "string" ? snapshot.secondaryTimer.kind : null
+    );
     setSecondaryTotalSeconds(restoredSecondary.totalSeconds || secondaryFallback);
 
     try {
@@ -3188,7 +3443,7 @@ const rosterNameLookup = useMemo(() => {
           const rosterData = await fetchRostersForTeams(teamA, teamB, rosterEventId);
           setRosters(rosterData);
         } catch (err) {
-          setRostersError(describeError(err, { action: "Load rosters" }));
+          setRostersError(err instanceof Error ? err.message : "Failed to load rosters.");
         } finally {
           setRostersLoading(false);
         }
@@ -3237,7 +3492,7 @@ const rosterNameLookup = useMemo(() => {
 
   const handleDiscardResume = useCallback(() => {
     if (userId) {
-      clearScorekeeperSession(userId);
+      clearScorekeeperSession(userId, format.sessionRuleset);
     }
     setResumeCandidate(null);
     setResumeHandled(true);
@@ -3275,6 +3530,7 @@ const rosterNameLookup = useMemo(() => {
     setScore,
     logs,
     setLogs,
+    setLogsAndRef,
     logsLoading,
     matchEventOptions,
     setMatchEventOptions,
@@ -3292,6 +3548,10 @@ const rosterNameLookup = useMemo(() => {
     setSecondaryRunning,
     secondaryLabel,
     setSecondaryLabel,
+    secondaryKind,
+    setSecondaryKind,
+    secondaryElapsedSeconds,
+    secondaryTone,
     secondaryTotalSeconds,
     setSecondaryTotalSeconds,
     secondaryFlashActive,
@@ -3312,6 +3572,11 @@ const rosterNameLookup = useMemo(() => {
     setTimeModalOpen,
     setupModalOpen,
     setSetupModalOpen,
+    // The resolved format descriptor. Everything downstream reads capabilities
+    // and flags from here rather than testing the format key, so adding a
+    // format never means adding a branch.
+    format,
+    capabilities,
     scoreModalState,
     setScoreModalState,
     scoreForm,
@@ -3323,6 +3588,7 @@ const rosterNameLookup = useMemo(() => {
     halftimeTriggered,
     setHalftimeTriggered,
     halftimeBreakActive,
+    setHalftimeBreakActive,
     halftimeTriggerType,
     setHalftimeTriggerType,
     halftimeTimeCapArmed,
@@ -3343,7 +3609,6 @@ const rosterNameLookup = useMemo(() => {
     matchStarted,
     setMatchStarted,
     consoleReady,
-    urlBootstrapping,
     displayTeamA,
     displayTeamB,
     displayTeamAShort,
@@ -3356,6 +3621,8 @@ const rosterNameLookup = useMemo(() => {
     getAbbaDescriptor,
     startingTeamId,
     matchStartingTeamKey,
+    firstHalfReceivingTeamKey,
+    secondHalfReceivingTeamKey,
     matchDuration,
     remainingTimeouts,
     canEndMatch,
@@ -3379,6 +3646,7 @@ const rosterNameLookup = useMemo(() => {
     commitSecondaryTimerState,
     buildSessionSnapshot,
     recordPendingEntry,
+    queueScoreUpdate,
     startSecondaryTimer,
     startTrackedSecondaryTimer,
     describeEvent,
@@ -3387,6 +3655,7 @@ const rosterNameLookup = useMemo(() => {
     triggerHalftime,
     forceEndHalftime,
     updatePossession,
+    recomputePossessionFromLogs,
     matchLogMatchId,
     currentMatchScore,
     deriveLogsFromRows,
@@ -3413,4 +3682,3 @@ const rosterNameLookup = useMemo(() => {
     clearLocalMatchState,
   };
 }
-
