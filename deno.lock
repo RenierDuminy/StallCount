@@ -1,0 +1,37 @@
+{
+  "version": "5",
+  "remote": {
+    "https://deno.land/std@0.224.0/async/delay.ts": "f90dd685b97c2f142b8069082993e437b1602b8e2561134827eeb7c12b95c499",
+    "https://deno.land/std@0.224.0/http/server.ts": "f9313804bf6467a1704f45f76cb6cd0a3396a3b31c316035e6a4c2035d1ea514",
+    "https://esm.sh/@supabase/supabase-js@2.45.0": "36ae57c3f2dc3f94fd122a846b40a87114d29bb2f47e910cb46bee5575febf2e"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@eslint/js@^10.0.1",
+        "npm:@supabase/supabase-js@^2.112.3",
+        "npm:@tailwindcss/vite@^4.3.3",
+        "npm:@types/react-dom@^19.2.4",
+        "npm:@types/react@^19.2.18",
+        "npm:@vercel/analytics@^2.0.1",
+        "npm:@vercel/speed-insights@2",
+        "npm:@vitejs/plugin-react@^5.2.0",
+        "npm:eslint-plugin-react-hooks@^7.1.1",
+        "npm:eslint-plugin-react-refresh@~0.5.4",
+        "npm:eslint@^10.8.1",
+        "npm:globals@^17.11.0",
+        "npm:jspdf-autotable@^5.0.8",
+        "npm:jspdf@^4.2.1",
+        "npm:postcss@^8.5.26",
+        "npm:react-dom@^19.2.8",
+        "npm:react-router-dom@^7.18.2",
+        "npm:react@^19.2.8",
+        "npm:tailwindcss@^4.3.3",
+        "npm:vite-plugin-pwa@^1.3.0",
+        "npm:vite@^8.2.1",
+        "npm:web-push@^3.6.7",
+        "npm:workbox-window@^7.3.0"
+      ]
+    }
+  }
+}

@@ -360,7 +360,7 @@ export function buildPointLogRows(derivedLogs, match) {
           teamLabel: "-",
           scorer: "-",
           assist: "-",
-          variant: "",
+          variant: log.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END ? "halftime" : "",
           isBandEnd: true,
         };
       }

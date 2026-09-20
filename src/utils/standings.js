@@ -41,9 +41,9 @@ export const isCanceledMatch = (status) => CANCELED_STATUSES.has(normaliseStatus
 
 /**
  * WFDF-style league scoring used by the Stellenbosch Residence League: 3 for a
- * win, 2 for losing by <= 4, 1 for any other loss. A forfeit is recorded as a
- * canceled match with a 5-0 line; the innocent team takes 2 points and the
- * guilty team 0.
+ * win, 2 for losing by <= 4, 1 for any other loss. A forfeit is recorded with a
+ * `forfeit_teamA`/`forfeit_teamB` status (or, for older rows, a canceled match
+ * with a 5-0 line); the innocent team takes 2 points and the guilty team 0.
  */
 export const LEAGUE_POINTS_SCORING = Object.freeze({
   winPoints: 3,
@@ -60,12 +60,23 @@ const DEFAULT_FORFEIT_SCORE = 5;
 
 const getForfeitScore = (scoring) => scoring?.forfeitScore ?? DEFAULT_FORFEIT_SCORE;
 
+const FORFEIT_STATUSES = new Set(["forfeit", "forfeit_teama", "forfeit_teamb"]);
+
+/** True when the status itself declares the match a forfeit. */
+export const isForfeitStatus = (status) => FORFEIT_STATUSES.has(normaliseStatus(status));
+
 /**
- * A forfeit is a canceled match recorded with a `forfeitScore`-0 line in either
- * direction. Kept as a score heuristic because the explicit forfeit_teamA /
- * forfeit_teamB statuses are not yet written by the app everywhere.
+ * A forfeit is either declared by the status (`forfeit`, `forfeit_teamA`,
+ * `forfeit_teamB`) or inferred from a canceled match carrying a
+ * `forfeitScore`-0 line in either direction.
+ *
+ * The score heuristic is kept for rows written before the explicit statuses
+ * existed, and for events that record a forfeit as a plain cancellation. It is
+ * only a fallback: a `forfeit_teamA`/`forfeit_teamB` match counts as a forfeit
+ * whatever score line it carries.
  */
 export const isForfeitMatch = (match, scoring) => {
+  if (isForfeitStatus(match?.status)) return true;
   if (!isCanceledMatch(match?.status)) return false;
   const scoreA = match?.score_a;
   const scoreB = match?.score_b;
@@ -124,15 +135,40 @@ export const FORM_LEGEND_ITEMS = Object.freeze([
 ]);
 
 /**
- * `forfeit_teama` / `forfeit_teamb` name the guilty team explicitly once that
- * status is set. Until then the 5-0 heuristic can flag a forfeit but cannot say
- * which side is guilty, so both teams fall back to the plain "canceled" dot.
+ * `forfeit_teama` / `forfeit_teamb` name the guilty team explicitly. A plain
+ * `forfeit` (or a 5-0 cancellation caught by the score heuristic) does not say
+ * which side is to blame, so both teams fall back to the "canceled" dot and
+ * neither has the forfeit counted against them.
  */
 const getForfeitGuiltyTeamId = (match) => {
   const status = normaliseStatus(match?.status);
   if (status === "forfeit_teama") return match?.team_a?.id ?? null;
   if (status === "forfeit_teamb") return match?.team_b?.id ?? null;
   return null;
+};
+
+/**
+ * The score line a forfeit should be counted and displayed with.
+ *
+ * An attributed forfeit stands on its status alone, so when the recorded score
+ * is missing or level the configured forfeit line is substituted to give the
+ * result a direction — a TD who sets `forfeit_teamB` without touching the
+ * score still awards the win. An unattributed forfeit has no direction to
+ * infer, and any other match keeps its real score.
+ */
+export const resolveMatchScores = (match, scoring) => {
+  const scoreA = match?.score_a;
+  const scoreB = match?.score_b;
+  if (!isForfeitMatch(match, scoring)) return { scoreA, scoreB };
+  const guiltyTeamId = getForfeitGuiltyTeamId(match);
+  if (!guiltyTeamId) return { scoreA, scoreB };
+  if (scoreA > scoreB || scoreB > scoreA) return { scoreA, scoreB };
+  const forfeitScore = getForfeitScore(scoring);
+  const guiltyIsA = guiltyTeamId === match?.team_a?.id;
+  return {
+    scoreA: guiltyIsA ? 0 : forfeitScore,
+    scoreB: guiltyIsA ? forfeitScore : 0,
+  };
 };
 
 export const getTeamMatchOutcome = (match, teamId, teamScore, oppScore, scoring) => {
@@ -481,26 +517,43 @@ export const buildPoolGroupStandings = (pools, matches, options = {}) => {
     const teamBStanding = teamBId ? standingsByTeam.get(teamBId) : null;
 
     // Record a form dot for every match (played, canceled, or still scheduled).
+    // The resolved scores are used so a forfeit's tooltip shows the same line
+    // the table counted.
+    const formScores = resolveMatchScores(match, scoring);
     if (teamAStanding) {
       teamAStanding.form.push(
-        buildTeamFormEntry(match, teamAId, match.team_b, match.score_a, match.score_b, scoring),
+        buildTeamFormEntry(
+          match,
+          teamAId,
+          match.team_b,
+          formScores.scoreA,
+          formScores.scoreB,
+          scoring,
+        ),
       );
     }
     if (teamBStanding) {
       teamBStanding.form.push(
-        buildTeamFormEntry(match, teamBId, match.team_a, match.score_b, match.score_a, scoring),
+        buildTeamFormEntry(
+          match,
+          teamBId,
+          match.team_a,
+          formScores.scoreB,
+          formScores.scoreA,
+          scoring,
+        ),
       );
     }
 
     if (!isFinishedMatch(match?.status) && !forfeit) return;
-    if (typeof match?.score_a !== "number" || typeof match?.score_b !== "number") {
-      return;
-    }
 
     // Which side forfeited, when the status names them. Used by the WFDF
-    // "fewest games forfeited" criterion; an unattributed forfeit (5-0 with no
-    // forfeit_teamA/B status) counts against neither team.
+    // "fewest games forfeited" criterion; an unattributed forfeit (a plain
+    // `forfeit`, or a 5-0 cancellation) counts against neither team.
     const guiltyTeamId = forfeit ? getForfeitGuiltyTeamId(match) : null;
+
+    const { scoreA, scoreB } = resolveMatchScores(match, scoring);
+    if (typeof scoreA !== "number" || typeof scoreB !== "number") return;
 
     const applyResult = (standing, opponentId, scoreFor, scoreAgainst) => {
       if (!standing) return;
@@ -525,8 +578,8 @@ export const buildPoolGroupStandings = (pools, matches, options = {}) => {
       }
     };
 
-    applyResult(teamAStanding, teamBId, match.score_a, match.score_b);
-    applyResult(teamBStanding, teamAId, match.score_b, match.score_a);
+    applyResult(teamAStanding, teamBId, scoreA, scoreB);
+    applyResult(teamBStanding, teamAId, scoreB, scoreA);
   });
 
   const rows = Array.from(standingsByTeam.values());

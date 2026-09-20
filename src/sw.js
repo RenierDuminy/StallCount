@@ -38,9 +38,19 @@ self.addEventListener("push", (event) => {
     body: payload.body || "Tap to open StallCount.",
     icon: payload.icon || "/icon-192.png",
     badge: payload.badge || "/icon-192.png",
-    tag: payload.tag || "stallcount-updates",
+    // The dispatcher sends a unique `live-event-<id>` tag per event. Falling
+    // back to a shared constant would make Android silently REPLACE the
+    // previous notification instead of alerting again, so when no tag is given
+    // we generate a unique one rather than reusing a fixed string.
+    tag: payload.tag || `stallcount-${Date.now()}`,
     data: { url: payload.url || "/", ...payload.data },
-    renotify: Boolean(payload.renotify),
+    // Re-alert even when a tag repeats; without this a same-tag notification
+    // updates silently on Android.
+    renotify: payload.renotify !== false,
+    // Android collapses notifications that arrive while the screen is locked
+    // unless a vibration pattern marks them as user-facing.
+    vibrate: payload.vibrate || [100, 50, 100],
+    timestamp: Date.now(),
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });

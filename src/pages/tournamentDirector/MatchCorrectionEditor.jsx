@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Card, Panel } from "../../components/ui/primitives";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
+import { sortRoster } from "../scorekeeper/scorekeeperUtils";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
@@ -119,7 +120,7 @@ export default function MatchCorrectionEditor({
     [...base, ...(rosters.strays ?? [])].forEach((player) => {
       if (player?.id) merged.set(player.id, player);
     });
-    return Array.from(merged.values());
+    return sortRoster(Array.from(merged.values()));
   }, [rosters, teamId, teamAId, teamBId]);
 
   const isScoring = SCORING_CODES.has(eventCode);

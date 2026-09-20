@@ -214,6 +214,10 @@ CREATE TABLE public.live_events (
   target_name text,
   title text,
   body text,
+  attempts integer NOT NULL DEFAULT 0,
+  last_attempt_at timestamp with time zone,
+  last_error text,
+  delivered_count integer NOT NULL DEFAULT 0,
   CONSTRAINT live_events_pkey PRIMARY KEY (id),
   CONSTRAINT live_events_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
   CONSTRAINT live_events_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.player(id),
@@ -287,7 +291,6 @@ CREATE TABLE public.bracket_nodes (
   advance_to_loser uuid,
   advance_to_loser_side character CHECK (advance_to_loser_side = ANY (ARRAY['A'::bpchar, 'B'::bpchar])),
   name character varying,
-  resolve_at timestamp with time zone,
   last_resolve_error text,
   last_resolve_attempt_at timestamp with time zone,
   CONSTRAINT bracket_nodes_pkey PRIMARY KEY (id),
@@ -295,20 +298,6 @@ CREATE TABLE public.bracket_nodes (
   CONSTRAINT bracket_nodes_match_id_fkey FOREIGN KEY (match_id) REFERENCES public.matches(id),
   CONSTRAINT bracket_nodes_advance_to_winner_fkey FOREIGN KEY (advance_to_winner) REFERENCES public.bracket_nodes(id),
   CONSTRAINT bracket_nodes_advance_to_loser_fkey FOREIGN KEY (advance_to_loser) REFERENCES public.bracket_nodes(id)
-);
-CREATE TABLE public.playoff_resolve_schedules (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  event_id uuid NOT NULL,
-  bracket_id uuid NOT NULL,
-  label text,
-  resolve_at timestamp with time zone NOT NULL,
-  node_ids uuid[] NOT NULL DEFAULT '{}',
-  enabled boolean NOT NULL DEFAULT true,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT playoff_resolve_schedules_pkey PRIMARY KEY (id),
-  CONSTRAINT playoff_resolve_schedules_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
-  CONSTRAINT playoff_resolve_schedules_bracket_id_fkey FOREIGN KEY (bracket_id) REFERENCES public.brackets(id)
 );
 CREATE TABLE public.abba_line (
   line text NOT NULL UNIQUE,
@@ -464,4 +453,18 @@ CREATE TABLE public.team_user_roles (
   CONSTRAINT team_user_roles_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(id),
   CONSTRAINT team_user_roles_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
   CONSTRAINT team_user_roles_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.playoff_resolve_schedules (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  event_id uuid NOT NULL,
+  bracket_id uuid NOT NULL,
+  label text,
+  resolve_at timestamp with time zone NOT NULL,
+  node_ids ARRAY NOT NULL DEFAULT '{}'::uuid[],
+  enabled boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT playoff_resolve_schedules_pkey PRIMARY KEY (id),
+  CONSTRAINT playoff_resolve_schedules_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id),
+  CONSTRAINT playoff_resolve_schedules_bracket_id_fkey FOREIGN KEY (bracket_id) REFERENCES public.brackets(id)
 );

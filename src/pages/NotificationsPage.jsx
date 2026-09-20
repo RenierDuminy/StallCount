@@ -14,6 +14,13 @@ import {
   upsertSubscription,
 } from "../services/subscriptionService";
 import { Panel, SectionHeader, SectionShell, Chip, Field, Input, Select } from "../components/ui/primitives";
+import {
+  DEFAULT_TOPICS,
+  TOPIC_DESCRIPTIONS,
+  TOPIC_LABELS,
+  TOPIC_PRESETS,
+  topicMatchesEventCode,
+} from "../constants/notificationTopics";
 
 const TARGET_OPTIONS = [
   { value: "match", label: "Match" },
@@ -23,31 +30,8 @@ const TARGET_OPTIONS = [
   { value: "division", label: "Division" },
 ];
 
-const TOPIC_PRESETS = [
-  "match_start",
-  "score",
-  "match_final",
-  "turnover",
-  "timeout_start",
-  "stoppage_start",
-  "halftime_start",
-];
-
-const TOPIC_LABELS = {
-  match_start: "Match start",
-  score: "Point scored",
-  goal: "Point scored",
-  match_final: "Match end",
-  turnover: "Possession (turnover/block)",
-  timeout_start: "Timeout",
-  stoppage_start: "Stoppage",
-  halftime_start: "Halftime",
-};
-
-const TOPIC_EVENT_ALIASES = {
-  goal: ["score"],
-  turnover: ["turnover", "block"],
-};
+// Topic vocabulary lives in ../constants/notificationTopics so the UI, the
+// Edge Function and the fallback script agree on what a topic delivers.
 
 const supportsPush = () =>
   typeof window !== "undefined" &&
@@ -89,12 +73,7 @@ function formatPlayerLabel(player) {
 }
 
 function topicMatchesEventType(topic, eventType) {
-  const normalizedTopic = String(topic || "").toLowerCase();
-  const normalizedEventType = String(eventType || "").toLowerCase();
-  if (!normalizedTopic || !normalizedEventType) return false;
-  if (normalizedTopic === normalizedEventType) return true;
-  const aliasTargets = TOPIC_EVENT_ALIASES[normalizedTopic];
-  return Array.isArray(aliasTargets) ? aliasTargets.includes(normalizedEventType) : false;
+  return topicMatchesEventCode(topic, eventType);
 }
 
 function eventMatchesSubscription(event, subscription) {
@@ -169,7 +148,7 @@ export default function NotificationsPage() {
   const [matchDivisionId, setMatchDivisionId] = useState("");
   const [matchEvents, setMatchEvents] = useState([]);
   const [matchDivisions, setMatchDivisions] = useState([]);
-  const [selectedTopics, setSelectedTopics] = useState(["match_start", "match_final"]);
+  const [selectedTopics, setSelectedTopics] = useState(DEFAULT_TOPICS);
   const [topicEdits, setTopicEdits] = useState({});
   const [choices, setChoices] = useState([]);
   const [choiceLoading, setChoiceLoading] = useState(false);
@@ -192,6 +171,7 @@ export default function NotificationsPage() {
       TOPIC_PRESETS.map((topic) => ({
         value: topic,
         label: TOPIC_LABELS[topic] || topic.replace(/_/g, " "),
+        description: TOPIC_DESCRIPTIONS[topic] || "",
       })),
     [],
   );
@@ -602,7 +582,7 @@ export default function NotificationsPage() {
       });
       setSuccess("Follow preferences saved.");
       setTargetId("");
-      setSelectedTopics(["match_start", "match_final"]);
+      setSelectedTopics(DEFAULT_TOPICS);
       const rows = await getSubscriptions(profileId);
       setSubscriptions(rows);
     } catch (err) {
@@ -988,7 +968,8 @@ export default function NotificationsPage() {
                     return (
                       <label
                         key={topic.value}
-                        className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                        title={topic.description}
+                        className={`flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
                           checked
                             ? "border-[var(--sc-accent)]/70 bg-[var(--sc-accent)]/10 text-accent"
                             : "border-border-strong text-ink hover:border-[var(--sc-accent)]/40"
@@ -998,10 +979,17 @@ export default function NotificationsPage() {
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggleTopic(topic.value)}
-                          className="h-4 w-4 rounded border-border-strong bg-surface text-accent focus:ring-0"
+                          className="mt-0.5 h-4 w-4 shrink-0 rounded border-border-strong bg-surface text-accent focus:ring-0"
                           disabled={saving || isLoggedOut}
                         />
-                        {topic.label}
+                        <span className="flex flex-col gap-0.5">
+                          <span>{topic.label}</span>
+                          {topic.description ? (
+                            <span className="text-[0.65rem] font-normal text-ink-muted">
+                              {topic.description}
+                            </span>
+                          ) : null}
+                        </span>
                       </label>
                     );
                   })}

@@ -801,17 +801,19 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                   {pointRows.map((row) => {
                     const flagged = flaggedLogIds.has(row.id);
                     const highlighted = highlightedLogId === row.id;
-                    // The finding highlight must win over the event tint: layering
-                    // it over a dark blue or green row would hide the flag.
-                    const rowTint = highlighted
-                      ? "bg-amber-200 ring-2 ring-inset ring-amber-500"
+                    // Flagged/highlighted rows keep their event-type tint so colour
+                    // still reads as "what kind of event"; the issue is marked with
+                    // red side borders instead of overriding the fill.
+                    const rowTint = VARIANT_ROW_CLASS[row.variant] || "";
+                    const flagBorder = highlighted
+                      ? "border-l-8 border-r-8 border-l-red-600 border-r-red-600 ring-2 ring-inset ring-amber-500"
                       : flagged
-                        ? "bg-amber-100"
-                        : VARIANT_ROW_CLASS[row.variant] || "";
+                        ? "border-l-8 border-r-8 border-l-red-600 border-r-red-600"
+                        : "";
                     return (
                       <tr
                         key={row.id}
-                        className={`border-b border-border last:border-none ${rowTint} ${
+                        className={`border-b border-border last:border-none ${rowTint} ${flagBorder} ${
                           row.isBandEnd ? "opacity-60" : ""
                         }`}
                       >
@@ -908,15 +910,16 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
               {pointRows.map((row) => {
                 const flagged = flaggedLogIds.has(row.id);
                 const highlighted = highlightedLogId === row.id;
-                const tint = highlighted
-                  ? "bg-amber-200 ring-2 ring-inset ring-amber-500"
+                const tint = VARIANT_ROW_CLASS[row.variant] || "bg-white";
+                const flagBorder = highlighted
+                  ? "border-l-8 border-r-8 border-l-red-600 border-r-red-600 ring-2 ring-inset ring-amber-500"
                   : flagged
-                    ? "bg-amber-100"
-                    : VARIANT_ROW_CLASS[row.variant] || "bg-white";
+                    ? "border-l-8 border-r-8 border-l-red-600 border-r-red-600"
+                    : "border border-[var(--sc-surface-light-border)]";
                 return (
                   <li
                     key={row.id}
-                    className={`rounded-lg border border-[var(--sc-surface-light-border)] p-3 text-black ${tint} ${
+                    className={`rounded-lg p-3 text-black ${tint} ${flagBorder} ${
                       row.isBandEnd ? "opacity-60" : ""
                     }`}
                   >

@@ -9,7 +9,8 @@
     "build": "npm run generate:sitemap && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "dispatch:notifications": "node scripts/sendLiveEventNotifications.js"
+    "dispatch:notifications": "node scripts/sendLiveEventNotifications.js",
+    "deploy:dispatcher": "supabase functions deploy notification-dispatcher --project-ref pwpnbbqnahjyecnvedio"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

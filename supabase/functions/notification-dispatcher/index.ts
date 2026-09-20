@@ -78,10 +78,49 @@ if (!config.serviceRoleKey) {
 const supabase = createClient(config.supabaseUrl!, config.serviceRoleKey!);
 webpush.setVapidDetails(config.vapidSubject, config.vapidPublicKey!, config.vapidPrivateKey!);
 
-const TOPIC_EVENT_ALIASES: Record<string, string[]> = {
-  goal: ["score"],
+// VERBATIM COPY of src/constants/notificationTopics.js. Deno cannot import from
+// the Vite bundle, so this and scripts/sendLiveEventNotifications.js each carry
+// their own copy. Change one, change all three.
+//
+// A topic is what the user subscribes to; the values are the
+// `live_events.event_type` codes it delivers. These vocabularies are not the
+// same: the UI once offered `match_final`, which the database never emits (it
+// emits `match_end`), so every match-end alert was silently dropped.
+const TOPIC_EVENT_CODES: Record<string, string[]> = {
+  match_start: ["match_start"],
+  match_end: ["match_end"],
+  score: ["score", "callahan"],
   turnover: ["turnover", "block"],
+  halftime: ["halftime_start", "halftime_end"],
+  timeout: ["timeout_start", "timeout_end"],
+  stoppage: ["stoppage_start", "stoppage_end"],
 };
+
+// Topics written by older builds. Read when matching, never written. Stored
+// rows are deliberately not migrated, so removing an entry breaks every
+// subscription still holding that string.
+const LEGACY_TOPIC_ALIASES: Record<string, string> = {
+  match_final: "match_end",
+  goal: "score",
+  halftime_start: "halftime",
+  timeout_start: "timeout",
+  stoppage_start: "stoppage",
+};
+
+function canonicalTopic(topic: string) {
+  if (!topic) return "";
+  if (TOPIC_EVENT_CODES[topic]) return topic;
+  return LEGACY_TOPIC_ALIASES[topic] ?? topic;
+}
+
+function topicMatchesEventCode(topic: string, eventCode: string) {
+  if (!eventCode) return false;
+  const canonical = canonicalTopic(topic);
+  if (!canonical) return false;
+  const codes = TOPIC_EVENT_CODES[canonical];
+  if (Array.isArray(codes)) return codes.includes(eventCode);
+  return canonical === eventCode;
+}
 
 type TargetMap = Map<string, Set<string>>;
 
@@ -138,12 +177,11 @@ async function fetchMatchingSubscriptions(targets: TargetMap, eventType: string)
 
   const normalizedEvent = (eventType ?? "").toLowerCase();
   return matches.filter((sub) => {
+    // An empty topic list means "everything".
     if (!Array.isArray(sub.topics) || sub.topics.length === 0) return true;
-    return sub.topics.map(normalizeTopic).some((topic) => {
-      if (!topic) return false;
-      if (topic === normalizedEvent) return true;
-      return TOPIC_EVENT_ALIASES[topic]?.includes(normalizedEvent) ?? false;
-    });
+    return sub.topics
+      .map(normalizeTopic)
+      .some((topic) => topic && topicMatchesEventCode(topic, normalizedEvent));
   });
 }
 
