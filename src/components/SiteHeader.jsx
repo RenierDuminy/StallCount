@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import useInstallPrompt from "../hooks/useInstallPrompt";
 import { useAuth } from "../context/AuthContext";
@@ -13,8 +13,10 @@ const NAV_LINKS = [
   { label: "Community", to: "/community" },
 ];
 
-const ROLE_LINKS = [
-  { label: "User", to: "/user" },
+// Signed-in only: /user and /notifications are protected routes, so showing
+// them to a visitor would only lead to a login wall.
+const ACCOUNT_LINKS = [
+  { label: "Profile", to: "/user" },
   { label: "Notifications", to: "/notifications" },
   { label: "Tournament director", to: "/tournament-director" },
   { label: "Admin tools", to: "/admin" },
@@ -34,6 +36,72 @@ function isLinkActive(linkTo, location) {
 
 function isAdminToneLink(linkTo) {
   return linkTo === "/admin" || linkTo === "/tournament-director";
+}
+
+/**
+ * Desktop account menu: one button instead of a row of role links, so the
+ * bar has a fixed width however many roles the user holds.
+ */
+function AccountMenu({ links, location }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+  const hasActiveLink = links.some((link) => isLinkActive(link.to, location));
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handlePointerDown(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="sc-account-menu">
+      <button
+        type="button"
+        className={`sc-header-button${hasActiveLink ? " is-current" : ""}`}
+        aria-expanded={open}
+        aria-controls="sc-account-menu-panel"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        Account
+        <svg
+          className={`sc-account-menu__chevron${open ? " is-open" : ""}`}
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          aria-hidden="true"
+        >
+          <path d="M3 4.5 6 8l3-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div id="sc-account-menu-panel" className="sc-account-menu__panel">
+          {links.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              aria-current={isLinkActive(link.to, location) ? "page" : undefined}
+              className={`sc-account-menu__link${isAdminToneLink(link.to) ? " is-admin" : ""}`}
+              onClick={() => setOpen(false)}
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function SiteHeader() {
@@ -63,15 +131,17 @@ export default function SiteHeader() {
         return false;
       })
     : false;
-  const roleLinks = ROLE_LINKS.filter((link) => {
-    if (link.to === "/tournament-director") {
-      return showTournamentDirector;
-    }
-    if (link.to === "/admin") {
-      return showAdminTools;
-    }
-    return true;
-  });
+  const accountLinks = user
+    ? ACCOUNT_LINKS.filter((link) => {
+        if (link.to === "/tournament-director") {
+          return showTournamentDirector;
+        }
+        if (link.to === "/admin") {
+          return showAdminTools;
+        }
+        return true;
+      })
+    : [];
 
   useEffect(() => {
     setMenuOpen(false);
@@ -90,152 +160,99 @@ export default function SiteHeader() {
 
   return (
     <>
-      <header className="border-b border-[var(--sc-border)]/50 bg-[var(--sc-bg-accent)] text-[var(--sc-ink)]">
-        <div className="sc-shell flex h-20 items-center justify-between">
-          <Link to="/" className="flex h-full items-center gap-3 text-[var(--sc-ink)]">
+      <header className="sc-site-header">
+        <div className="sc-shell sc-site-header__bar">
+          <Link to="/" className="sc-site-header__brand">
             <img
               src="/assets/stallcount-logo.svg"
               alt="StallCount"
-              className="h-[80%] w-auto object-contain md:h-[90%]"
+              className="sc-site-header__logo"
               loading="lazy"
             />
-            <p className="text-sm text-[var(--sc-ink-muted)]">Ultimate Frisbee League Tracker</p>
+            <span className="sc-site-header__tagline">Ultimate Frisbee League Tracker</span>
           </Link>
 
-        <nav className="hidden items-center gap-1 text-sm font-semibold text-[var(--sc-ink-muted)] md:flex">
-          {NAV_LINKS.map((link) => {
-            const active = isLinkActive(link.to, location);
-            return (
+          <nav className="sc-site-header__nav" aria-label="Main">
+            {NAV_LINKS.map((link) => (
               <Link
                 key={link.to}
                 to={link.to}
-                aria-current={active ? "page" : undefined}
-                className={`rounded-md border-b-2 px-3 py-2 text-center transition ${
-                  active
-                    ? "border-[var(--sc-accent)] text-[var(--sc-ink)]"
-                    : "border-transparent hover:bg-white/[0.06] hover:text-[var(--sc-ink)]"
-                }`}
+                aria-current={isLinkActive(link.to, location) ? "page" : undefined}
+                className="sc-nav-link"
               >
                 {link.label}
               </Link>
-            );
-          })}
-        </nav>
+            ))}
+          </nav>
 
-        <div className="hidden items-center gap-3 border-l-2 border-(--sc-accent)/70 pl-4 text-xs font-semibold text-(--sc-ink-muted) lg:flex">
-          {roleLinks.map((role) => {
-            const active = isLinkActive(role.to, location);
-            const activeToneClass = isAdminToneLink(role.to)
-              ? "border-admin text-admin-ink"
-              : "border-[var(--sc-accent)] text-[var(--sc-ink)]";
-            return (
-              <Link
-                key={role.to}
-                to={role.to}
-                aria-current={active ? "page" : undefined}
-                className={`border-b-2 py-1 text-center transition ${
-                  active
-                    ? activeToneClass
-                    : "border-transparent hover:border-[var(--sc-border-strong)] hover:text-[var(--sc-ink)]"
-                }`}
-              >
-                {role.label}
+          <div className="sc-site-header__actions">
+            <button type="button" onClick={handleInstallClick} className="sc-header-button sc-site-header__desktop-only">
+              Install app
+            </button>
+            {user ? (
+              <div className="sc-site-header__desktop-only">
+                <AccountMenu links={accountLinks} location={location} />
+              </div>
+            ) : (
+              <Link to="/login" className="sc-header-button is-primary sc-site-header__desktop-only">
+                Log in
               </Link>
-            );
-          })}
-        </div>
-
-        <div className="flex items-center gap-3 text-[var(--sc-ink)]">
-          <button
-            type="button"
-            onClick={handleInstallClick}
-            className="hidden rounded-md border border-[var(--sc-border)] px-3 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08] lg:inline-flex"
-          >
-            Install app
-          </button>
-          {!user && (
-            <Link
-              to="/login"
-              className="hidden rounded-md border border-[var(--sc-border)] px-3 py-2 text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08] lg:inline-flex"
+            )}
+            <button
+              type="button"
+              className="sc-header-button is-icon sc-site-header__mobile-only"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              aria-label="Toggle navigation menu"
+              aria-expanded={menuOpen}
             >
-              Log in
-            </Link>
-          )}
-          <button
-            type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-md border border-[var(--sc-border)] text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08] lg:hidden"
-            onClick={() => setMenuOpen((prev) => !prev)}
-            aria-label="Toggle navigation menu"
-            aria-expanded={menuOpen}
-          >
-            <span className="sr-only">Menu</span>
-            <span aria-hidden="true" className="flex h-4 w-5 flex-col justify-between">
-              <span className={`h-0.5 rounded-full bg-current transition ${menuOpen ? "translate-y-[7px] rotate-45" : ""}`} />
-              <span className={`h-0.5 rounded-full bg-current transition ${menuOpen ? "opacity-0" : ""}`} />
-              <span className={`h-0.5 rounded-full bg-current transition ${menuOpen ? "-translate-y-[7px] -rotate-45" : ""}`} />
-            </span>
-          </button>
+              <span className="sr-only">Menu</span>
+              <span aria-hidden="true" className="flex h-4 w-5 flex-col justify-between">
+                <span className={`h-0.5 rounded-full bg-current transition ${menuOpen ? "translate-y-[7px] rotate-45" : ""}`} />
+                <span className={`h-0.5 rounded-full bg-current transition ${menuOpen ? "opacity-0" : ""}`} />
+                <span className={`h-0.5 rounded-full bg-current transition ${menuOpen ? "-translate-y-[7px] -rotate-45" : ""}`} />
+              </span>
+            </button>
+          </div>
         </div>
 
-        </div>
         {menuOpen && (
-          <div className="border-t border-[var(--sc-border)]/50 bg-[var(--sc-surface)] px-5 py-4 text-[var(--sc-ink)] lg:hidden">
-            <nav className="flex flex-col gap-2 text-sm font-semibold">
-              {NAV_LINKS.map((link) => {
-                const active = isLinkActive(link.to, location);
-                return (
-                  <Link
-                    key={link.to}
-                    to={link.to}
-                    aria-current={active ? "page" : undefined}
-                    className={`rounded-md border px-3 py-2 transition ${
-                      active
-                        ? "border-[var(--sc-border-strong)] bg-white/[0.08] text-[var(--sc-ink)]"
-                        : "border-transparent text-[var(--sc-ink-muted)] hover:bg-white/[0.08] hover:text-[var(--sc-ink)]"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                );
-              })}
-              {roleLinks.length > 0 && (
-                <div className="my-1 border-t border-[var(--sc-border)]/70" />
-              )}
-              {roleLinks.map((role) => {
-                const active = isLinkActive(role.to, location);
-                const activeToneClass = isAdminToneLink(role.to)
-                  ? "border-admin-border bg-admin-bg text-admin-ink"
-                  : "border-[var(--sc-border-strong)] bg-white/[0.08] text-[var(--sc-ink)]";
-                return (
-                  <Link
-                    key={role.to}
-                    to={role.to}
-                    aria-current={active ? "page" : undefined}
-                    className={`rounded-md border px-3 py-2 transition ${
-                      active
-                        ? activeToneClass
-                        : "border-transparent text-[var(--sc-ink-muted)] hover:bg-white/[0.08] hover:text-[var(--sc-ink)]"
-                    }`}
-                  >
-                    {role.label}
-                  </Link>
-                );
-              })}
-              <button
-                type="button"
-                onClick={handleInstallClick}
-                className="mt-1 rounded-md border border-[var(--sc-border)] px-4 py-2 text-center text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08]"
-              >
-                Install app
-              </button>
-              {!user && (
+          <div className="sc-site-header__menu sc-site-header__mobile-only">
+            <nav className="sc-shell sc-site-header__menu-inner" aria-label="Main">
+              {NAV_LINKS.map((link) => (
                 <Link
-                  to="/login"
-                  className="rounded-md border border-[var(--sc-border)] px-4 py-2 text-center text-sm font-semibold text-[var(--sc-ink)] transition hover:border-[var(--sc-border-strong)] hover:bg-white/[0.08]"
+                  key={link.to}
+                  to={link.to}
+                  aria-current={isLinkActive(link.to, location) ? "page" : undefined}
+                  className="sc-menu-link"
                 >
-                  Log in
+                  {link.label}
                 </Link>
+              ))}
+              {accountLinks.length > 0 && (
+                <>
+                  <hr className="sc-site-header__menu-divider" />
+                  {accountLinks.map((link) => (
+                    <Link
+                      key={link.to}
+                      to={link.to}
+                      aria-current={isLinkActive(link.to, location) ? "page" : undefined}
+                      className={`sc-menu-link${isAdminToneLink(link.to) ? " is-admin" : ""}`}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </>
               )}
+              <div className="sc-site-header__menu-actions">
+                {!user && (
+                  <Link to="/login" className="sc-header-button is-primary">
+                    Log in
+                  </Link>
+                )}
+                <button type="button" onClick={handleInstallClick} className="sc-header-button">
+                  Install app
+                </button>
+              </div>
             </nav>
           </div>
         )}

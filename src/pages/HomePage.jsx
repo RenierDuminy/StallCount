@@ -1,6 +1,7 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { getTeamsByIds, getTeamMatches } from "../services/teamService";
+import { getPlayerMatchStats, getTeamsByIds, getTeamMatches } from "../services/teamService";
+import { getPlayersByIds } from "../services/playerService";
 import {
   getMatchesByIds,
 } from "../services/matchService";
@@ -12,10 +13,8 @@ import {
   getHomeHeroSummary,
   getHomeStreamingSummary,
 } from "../services/homeSummaryService";
-import { getEventWorkspacePath } from "./eventWorkspaces";
 import { useHomeLiveRefresh } from "../hooks/useHomeLiveRefresh";
-import { Card, Metric, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
-import { StandardEventMatchCard } from "../components/StandardEventMatchCard";
+import usePersistentState from "../hooks/usePersistentState";
 import {
   hasMatchMedia,
 } from "../utils/matchMedia";
@@ -25,24 +24,42 @@ import {
   IN_PROGRESS_STATUSES,
   PENDING_STATUSES,
   isClosedStatus,
-  isConcludedStatus,
-  isInProgressStatus,
 } from "../constants/statusCodes";
+import { HomeEventList } from "./home/HomeEventList";
+import { HomeFeaturedMatch } from "./home/HomeFeaturedMatch";
+import { HomeAgendaList, HomeResultList, HomeWatchList } from "./home/HomeMatchLists";
+import { HomeQuickLinks } from "./home/HomeQuickLinks";
+import { HomeNotice, HomeSectionHeader, HomeSkeleton } from "./home/HomeSectionHeader";
+import { HomeWelcome } from "./home/HomeWelcome";
+import { HomeYourTeams } from "./home/HomeYourTeams";
+import { HomeNotificationsPromo } from "./home/HomeNotificationsPromo";
+import {
+  buildMatchLink,
+  compareByStartTime,
+  formatMatchup,
+  isMatchFinal,
+  isMatchLive,
+  toTime,
+} from "./home/homeFormat";
 
 const FINISHED_STATUSES = new Set(CONCLUDED_STATUSES);
 const MAX_MY_TEAMS = 2;
 const MAX_MY_MATCHES = 3;
+const MAX_MY_PLAYERS = 3;
+// `finalMatches` / `broadcastMatches` / `recentMatches` are fetch sizes;
+// `results` / `watch` / `upcomingMatches` are how many rows are shown.
 const DESKTOP_HOME_LIMITS = {
   events: 40,
   recentMatches: 50,
   openMatches: 20,
   broadcastMatches: 5,
   finalMatches: 16,
+  results: 8,
   liveEvents: 50,
   activeEvents: 5,
   timelineEvents: 8,
-  pastEvents: 10,
   streamMatches: 5,
+  watch: 6,
   upcomingMatches: 10,
 };
 const MOBILE_HOME_LIMITS = {
@@ -51,29 +68,25 @@ const MOBILE_HOME_LIMITS = {
   openMatches: 8,
   broadcastMatches: 3,
   finalMatches: 8,
+  results: 5,
   liveEvents: 10,
   activeEvents: 5,
   timelineEvents: 4,
-  pastEvents: 10,
   streamMatches: 3,
+  watch: 4,
   upcomingMatches: 6,
 };
 const HOME_LAZY_SECTION_ROOT_MARGIN = "700px 0px";
-const DATE_FORMATTER = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
-const MATCH_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-const HEADING_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-});
+const STALE_FIXTURE_MS = 12 * 60 * 60 * 1000;
+const COMPACT_HOME_QUERY = "(max-width: 640px)";
+// Matches the desktop breakpoint in theme.css (.home-columns).
+const WIDE_HOME_QUERY = "(min-width: 1024px)";
+const WELCOME_DISMISSED_KEY = "home:welcome-dismissed";
 
 function LazyHomeSection({
   children,
   className = "",
+  id,
   onVisible,
   placeholderHeight = 360,
   rootMargin = HOME_LAZY_SECTION_ROOT_MARGIN,
@@ -111,11 +124,36 @@ function LazyHomeSection({
     return () => observer.disconnect();
   }, [isVisible, rootMargin]);
 
+  // A section that renders nothing once loaded leaves this wrapper empty, and
+  // `.home-lazy-section:empty` collapses it — so empty sections take no space.
   return (
-    <div ref={ref} className={`home-lazy-section ${className}`}>
+    <div ref={ref} id={id} className={`home-lazy-section ${className}`}>
       {isVisible ? children : <div aria-hidden="true" style={{ minHeight: placeholderHeight }} />}
     </div>
   );
+}
+
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia ? window.matchMedia(query).matches : false,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const mediaQuery = window.matchMedia(query);
+    const handleChange = (event) => setMatches(event.matches);
+    setMatches(mediaQuery.matches);
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, [query]);
+
+  return matches;
 }
 
 export default function HomePage() {
@@ -139,20 +177,28 @@ export default function HomePage() {
   const [myTeamInsights, setMyTeamInsights] = useState([]);
   const [myMatchInsights, setMyMatchInsights] = useState([]);
   const [myTeamsLoading, setMyTeamsLoading] = useState(false);
+  const [myPlayerInsights, setMyPlayerInsights] = useState([]);
+  const [myPlayersLoading, setMyPlayersLoading] = useState(false);
   const [myMatchesLoading, setMyMatchesLoading] = useState(false);
 
   const [renderStreaming, setRenderStreaming] = useState(false);
-  const [renderMatches, setRenderMatches] = useState(false);
   const [renderFinals, setRenderFinals] = useState(false);
   const [renderEventTimeline, setRenderEventTimeline] = useState(false);
   const [renderPersonalized, setRenderPersonalized] = useState(false);
-  const [streamsLoading, setStreamsLoading] = useState(false);
-  const [finalsLoading, setFinalsLoading] = useState(false);
-  const [isCompactHome, setIsCompactHome] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia("(max-width: 640px)").matches : false,
-  );
+  // Start true: these sections render only once their data is in, and hide
+  // entirely when it comes back empty, so "not loaded yet" must not read as
+  // "loaded and empty".
+  const [streamsLoading, setStreamsLoading] = useState(true);
+  const [finalsLoading, setFinalsLoading] = useState(true);
+  const isCompactHome = useMediaQuery(COMPACT_HOME_QUERY);
+  const isWideHome = useMediaQuery(WIDE_HOME_QUERY);
+  const [welcomeDismissed, setWelcomeDismissed] = usePersistentState(WELCOME_DISMISSED_KEY, false);
 
-  const { session } = useAuth();
+  const { session, loading: authLoading } = useAuth();
+  const isLoggedIn = Boolean(session?.user);
+  // Wait for the session check so a returning signed-in user doesn't see the
+  // introduction flash up and disappear.
+  const showWelcome = !authLoading && !isLoggedIn && !welcomeDismissed;
   const homeLimits = useMemo(
     () => (isCompactHome ? MOBILE_HOME_LIMITS : DESKTOP_HOME_LIMITS),
     [isCompactHome],
@@ -170,20 +216,6 @@ export default function HomePage() {
     return () => clearTimeout(timer);
   }, [personalizedMessage]);
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return undefined;
-    const query = window.matchMedia("(max-width: 640px)");
-    const handleChange = (event) => setIsCompactHome(event.matches);
-    setIsCompactHome(query.matches);
-
-    if (query.addEventListener) {
-      query.addEventListener("change", handleChange);
-      return () => query.removeEventListener("change", handleChange);
-    }
-
-    query.addListener(handleChange);
-    return () => query.removeListener(handleChange);
-  }, []);
   // Shared by the initial load and every live/idle refresh. A background
   // refresh must not flip the page back into its loading state or clear the
   // cards already on screen, so `background` suppresses the spinner and keeps
@@ -247,8 +279,13 @@ export default function HomePage() {
     };
   }, [loadHeroData]);
 
+  // The welcome band shows the site-wide counts, which come from the same
+  // summary as the events list — so while it is up, fetch now rather than
+  // waiting for the events section to scroll into view.
+  const loadBelowFold = renderEventTimeline || showWelcome;
+
   useEffect(() => {
-    if (!renderEventTimeline) return undefined;
+    if (!loadBelowFold) return undefined;
 
     let ignore = false;
 
@@ -292,7 +329,7 @@ export default function HomePage() {
     return () => {
       ignore = true;
     };
-  }, [homeLimits.events, renderEventTimeline]);
+  }, [homeLimits.events, loadBelowFold]);
 
   useEffect(() => {
     if (!renderStreaming) return undefined;
@@ -377,6 +414,7 @@ export default function HomePage() {
     if (!profileId) {
       setSubscriptions([]);
       setMyTeamInsights([]);
+      setMyPlayerInsights([]);
       setMyMatchInsights([]);
       setPersonalizedLoading(false);
       setPersonalizedError(null);
@@ -435,6 +473,17 @@ export default function HomePage() {
       new Set(
         (subscriptions || [])
           .filter((sub) => normalizeTargetType(sub.target_type) === "match")
+          .map((sub) => sub.target_id)
+          .filter(Boolean),
+      ),
+    );
+  }, [subscriptions]);
+
+  const followedPlayerIds = useMemo(() => {
+    return Array.from(
+      new Set(
+        (subscriptions || [])
+          .filter((sub) => normalizeTargetType(sub.target_type) === "player")
           .map((sub) => sub.target_id)
           .filter(Boolean),
       ),
@@ -513,6 +562,70 @@ export default function HomePage() {
     };
   }, [followedTeamIds]);
 
+  // Followed players: the player row supplies the name even for someone with
+  // no games yet; per-match stats supply team, goals, assists and games.
+  useEffect(() => {
+    const playerIds = followedPlayerIds.slice(0, MAX_MY_PLAYERS);
+
+    if (playerIds.length === 0) {
+      setMyPlayerInsights([]);
+      setMyPlayersLoading(false);
+      return;
+    }
+
+    let ignore = false;
+    setMyPlayersLoading(true);
+
+    async function loadMyPlayers() {
+      try {
+        const [playerRowsResult, ...statsResults] = await Promise.all([
+          toSettled(getPlayersByIds(playerIds)),
+          ...playerIds.map((playerId) => toSettled(getPlayerMatchStats(playerId))),
+        ]);
+
+        if (ignore) return;
+
+        if (playerRowsResult.status !== "fulfilled") {
+          console.error("[HomePage] Failed to load followed players:", playerRowsResult.reason);
+        }
+        const playerLookup =
+          playerRowsResult.status === "fulfilled"
+            ? new Map((playerRowsResult.value || []).map((player) => [player.id, player]))
+            : new Map();
+
+        const insights = playerIds
+          .map((playerId, index) => {
+            const statsResult = statsResults[index];
+            if (statsResult?.status !== "fulfilled") {
+              console.error("[HomePage] Failed to load stats for player:", playerId, statsResult?.reason);
+            }
+            const statRows = statsResult?.status === "fulfilled" ? statsResult.value || [] : [];
+            const playerRow = playerLookup.get(playerId) || null;
+            if (!playerRow && statRows.length === 0) return null;
+            return computePlayerInsight(playerId, playerRow, statRows);
+          })
+          .filter(Boolean);
+
+        setMyPlayerInsights(insights);
+      } catch (err) {
+        if (!ignore) {
+          console.error("[HomePage] Unable to load followed players:", err);
+          setMyPlayerInsights([]);
+        }
+      } finally {
+        if (!ignore) {
+          setMyPlayersLoading(false);
+        }
+      }
+    }
+
+    loadMyPlayers();
+
+    return () => {
+      ignore = true;
+    };
+  }, [followedPlayerIds]);
+
   useEffect(() => {
     const matchIds = followedMatchIds.slice(0, MAX_MY_MATCHES);
 
@@ -552,9 +665,8 @@ export default function HomePage() {
   const safeEvents = useMemo(() => events ?? [], [events]);
   const safeLatestMatches = useMemo(() => latestMatches ?? [], [latestMatches]);
   // Matches on closed events are dropped here rather than at each call site, so
-  // the hero, the "next scheduled" strip and "Live & upcoming" all agree — a
-  // match left in `scheduled` on a wrapped-up event should not be featured
-  // anywhere on the landing page.
+  // the hero and "Coming up" agree — a match left in `scheduled` on a
+  // wrapped-up event should not be featured anywhere on the landing page.
   const safeOpenMatches = useMemo(
     () => (openMatches ?? []).filter((match) => !isMatchFromClosedEvent(match)),
     [openMatches],
@@ -572,13 +684,7 @@ export default function HomePage() {
   }, [safeLiveEvents]);
 
   const liveHeroMatches = useMemo(() => {
-    return [...safeOpenMatches]
-      .filter((match) => isMatchLive(match?.status))
-      .sort((a, b) => {
-        const aTime = a?.start_time ? new Date(a.start_time).getTime() : Number.MAX_SAFE_INTEGER;
-        const bTime = b?.start_time ? new Date(b.start_time).getTime() : Number.MAX_SAFE_INTEGER;
-        return aTime - bTime;
-      });
+    return safeOpenMatches.filter((match) => isMatchLive(match?.status)).sort(compareByStartTime);
   }, [safeOpenMatches]);
 
   const liveNowMatch = liveHeroMatches[0] || null;
@@ -600,155 +706,78 @@ export default function HomePage() {
   });
 
   const nextMatchCandidate = useMemo(() => {
+    if (liveNowMatch) return null;
     const now = Date.now();
-    const futureSorted = [...safeOpenMatches]
-      .filter((match) => !FINISHED_STATUSES.has((match?.status || "").toLowerCase()))
-      .filter((match) => {
-        if (!match?.start_time) return true;
-        const startTime = new Date(match.start_time).getTime();
-        return Number.isNaN(startTime) ? true : startTime > now;
-      })
-      .sort((a, b) => {
-        const aTime = a.start_time ? new Date(a.start_time).getTime() : Number.MAX_SAFE_INTEGER;
-        const bTime = b.start_time ? new Date(b.start_time).getTime() : Number.MAX_SAFE_INTEGER;
-        return aTime - bTime;
-      });
-    if (liveNowMatch) {
-      return futureSorted.find((match) => match.id !== liveNowMatch.id) || null;
-    }
-    return futureSorted[0] || null;
+    return (
+      safeOpenMatches
+        .filter((match) => !FINISHED_STATUSES.has((match?.status || "").toLowerCase()))
+        .filter((match) => {
+          const startTime = toTime(match?.start_time);
+          return startTime === null || startTime > now;
+        })
+        .sort(compareByStartTime)[0] || null
+    );
   }, [safeOpenMatches, liveNowMatch]);
 
-  const heroCardMatch = liveNowMatch || nextMatchCandidate || null;
-  const heroCardIsLive = Boolean(liveNowMatch);
-  const showMultiLiveHero = liveHeroMatches.length > 1;
+  const heroIsLive = Boolean(liveNowMatch);
   const heroFeaturedMatches = useMemo(
-    () =>
-      showMultiLiveHero
-        ? liveHeroMatches
-        : heroCardMatch
-          ? [heroCardMatch]
-          : [],
-    [showMultiLiveHero, liveHeroMatches, heroCardMatch],
+    () => (heroIsLive ? liveHeroMatches : nextMatchCandidate ? [nextMatchCandidate] : []),
+    [heroIsLive, liveHeroMatches, nextMatchCandidate],
   );
-  const heroFeaturedMatchIds = useMemo(
-    () => heroFeaturedMatches.map((match) => match?.id).filter(Boolean),
-    [heroFeaturedMatches],
-  );
+  const showMultiLiveHero = heroFeaturedMatches.length > 1;
 
-  const nextScheduledMatch = useMemo(() => {
-    const now = Date.now();
-    const futureSorted = [...safeOpenMatches]
-      .filter((match) => !FINISHED_STATUSES.has((match?.status || "").toLowerCase()))
+  // Everything open that isn't already featured above, live first, then by
+  // kick-off. Grouped by day at render time.
+  //
+  // A pending match whose kick-off is well in the past is almost always one
+  // nobody marked as played, not one that is "coming up" — leading the list
+  // with last week's fixtures is exactly what confuses a first-time visitor.
+  // Those stay visible on /matches; live matches are never dropped.
+  const comingUpMatches = useMemo(() => {
+    const featuredIds = new Set(heroFeaturedMatches.map((match) => match?.id).filter(Boolean));
+    const staleBefore = Date.now() - STALE_FIXTURE_MS;
+    const remaining = safeOpenMatches.filter((match) => !featuredIds.has(match?.id));
+    const live = remaining.filter((match) => isMatchLive(match.status)).sort(compareByStartTime);
+    const upcoming = remaining
+      .filter((match) => !isMatchLive(match.status))
       .filter((match) => {
-        if (!match?.start_time) return true;
-        const startTime = new Date(match.start_time).getTime();
-        return Number.isNaN(startTime) ? true : startTime > now;
+        const startTime = toTime(match.start_time);
+        return startTime === null || startTime >= staleBefore;
       })
-      .sort((a, b) => {
-        const aTime = a.start_time ? new Date(a.start_time).getTime() : Number.MAX_SAFE_INTEGER;
-        const bTime = b.start_time ? new Date(b.start_time).getTime() : Number.MAX_SAFE_INTEGER;
-        return aTime - bTime;
+      .sort(compareByStartTime);
+    return [...live, ...upcoming].slice(0, homeLimits.upcomingMatches);
+  }, [heroFeaturedMatches, homeLimits.upcomingMatches, safeOpenMatches]);
+
+  const activeEvents = useMemo(
+    () => filterEventsByStatusGroup(safeEvents, "active").slice(0, homeLimits.activeEvents),
+    [homeLimits.activeEvents, safeEvents],
+  );
+  const upcomingEvents = useMemo(
+    () => filterEventsByStatusGroup(safeEvents, "upcoming").slice(0, homeLimits.timelineEvents),
+    [homeLimits.timelineEvents, safeEvents],
+  );
+
+  // One "Watch" list: streams still to come first, then the latest replays.
+  const watchMatches = useMemo(() => {
+    const byId = new Map();
+    const hasWatchable = (match) => hasMatchMedia(match) || Boolean(match?.has_media);
+
+    [...safeOpenMatches, ...safeLatestMatches]
+      .filter((match) => match?.id && hasWatchable(match) && !isMatchFinal(match.status))
+      .sort(compareByStartTime)
+      .slice(0, homeLimits.streamMatches)
+      .forEach((match) => byId.set(match.id, match));
+
+    recentBroadcastMatches
+      .filter((match) => match?.id && hasWatchable(match))
+      .slice(0, homeLimits.streamMatches)
+      .forEach((match) => {
+        if (!byId.has(match.id)) byId.set(match.id, match);
       });
-    if (futureSorted.length === 0) return null;
-    if (heroCardIsLive) {
-      return futureSorted[0] || null;
-    }
-    if (heroCardMatch?.id) {
-      const index = futureSorted.findIndex((match) => match.id === heroCardMatch.id);
-      if (index >= 0) {
-        return futureSorted[index + 1] || null;
-      }
-    }
-    return futureSorted[0] || null;
-  }, [safeOpenMatches, heroCardIsLive, heroCardMatch]);
 
-  const isLoggedIn = Boolean(session?.user);
+    return Array.from(byId.values()).slice(0, homeLimits.watch);
+  }, [homeLimits.streamMatches, homeLimits.watch, recentBroadcastMatches, safeLatestMatches, safeOpenMatches]);
 
-  const activeTimelineEvents = useMemo(
-    () => filterEventsByStatusGroup(safeEvents, "active"),
-    [safeEvents],
-  );
-  const pastTimelineEvents = useMemo(
-    () => filterEventsByStatusGroup(safeEvents, "past"),
-    [safeEvents],
-  );
-  const upcomingTimelineEvents = useMemo(
-    () => filterEventsByStatusGroup(safeEvents, "upcoming"),
-    [safeEvents],
-  );
-  const currentEventSection = useMemo(
-    () => ({
-      key: "active",
-      title: "Current events",
-      events: activeTimelineEvents,
-      limit: homeLimits.activeEvents,
-      emptyMessage: "No current events right now.",
-    }),
-    [activeTimelineEvents, homeLimits.activeEvents],
-  );
-
-  const [expandedEventSections, setExpandedEventSections] = useState({ upcoming: false, past: false });
-  const eventTimelineOptions = useMemo(
-    () => [
-      {
-        key: "upcoming",
-        title: "Upcoming events",
-        events: upcomingTimelineEvents,
-        limit: homeLimits.timelineEvents,
-        emptyMessage: "No upcoming events on the calendar.",
-      },
-      {
-        key: "past",
-        title: "Past events",
-        events: pastTimelineEvents,
-        limit: homeLimits.pastEvents,
-        emptyMessage: "No past events on the calendar.",
-      },
-    ],
-    [homeLimits.pastEvents, homeLimits.timelineEvents, pastTimelineEvents, upcomingTimelineEvents],
-  );
-
-  const streamMatches = useMemo(() => {
-    const map = new Map();
-    [...safeOpenMatches, ...safeLatestMatches].forEach((match) => {
-      if (match?.id && !map.has(match.id)) {
-        map.set(match.id, match);
-      }
-    });
-    return Array.from(map.values()).filter((match) => matchHasStream(match) || Boolean(match?.has_media));
-  }, [safeOpenMatches, safeLatestMatches]);
-
-  const upcomingStreamMatches = useMemo(() => {
-    return streamMatches
-      .filter((match) => !isMatchFinal(match?.status))
-      .sort((a, b) => {
-        const aTime = a?.start_time ? new Date(a.start_time).getTime() : Number.MAX_SAFE_INTEGER;
-        const bTime = b?.start_time ? new Date(b.start_time).getTime() : Number.MAX_SAFE_INTEGER;
-        return aTime - bTime;
-      })
-      .slice(0, homeLimits.streamMatches);
-  }, [homeLimits.streamMatches, streamMatches]);
-
-  const recentStreamMatches = useMemo(() => {
-    return recentBroadcastMatches
-      .filter((match) => matchHasStream(match) || Boolean(match?.has_media))
-      .slice(0, homeLimits.streamMatches);
-  }, [homeLimits.streamMatches, recentBroadcastMatches]);
-
-  const forYouLoading = personalizedLoading || myTeamsLoading || myMatchesLoading;
-  const liveAndUpcomingMatches = useMemo(() => {
-    const filtered = safeOpenMatches.filter((match) => !heroFeaturedMatchIds.includes(match?.id));
-    const sortByStartTime = (list) =>
-      list.sort((a, b) => {
-        const aTime = a?.start_time ? new Date(a.start_time).getTime() : Number.MAX_SAFE_INTEGER;
-        const bTime = b?.start_time ? new Date(b.start_time).getTime() : Number.MAX_SAFE_INTEGER;
-        return aTime - bTime;
-      });
-    const liveMatches = sortByStartTime(filtered.filter((match) => isMatchLive(match.status)));
-    const upcomingMatches = sortByStartTime(filtered.filter((match) => !isMatchLive(match.status)));
-    return [...liveMatches, ...upcomingMatches].slice(0, homeLimits.upcomingMatches);
-  }, [homeLimits.upcomingMatches, safeOpenMatches, heroFeaturedMatchIds]);
   const latestResults = useMemo(() => {
     return recentFinalMatches
       .map((match) => ({ match, completedTime: getMatchCompletionTime(match) }))
@@ -757,19 +786,9 @@ export default function HomePage() {
           Boolean(match?.id) && isMatchFinal(match?.status) && completedTime !== null,
       )
       .sort((a, b) => (b.completedTime ?? 0) - (a.completedTime ?? 0))
-      .slice(0, homeLimits.finalMatches)
+      .slice(0, homeLimits.results)
       .map(({ match }) => match);
-  }, [homeLimits.finalMatches, recentFinalMatches]);
-
-  const heroStats = [
-    { label: "teams", value: stats.teams },
-    { label: "players", value: stats.players },
-    { label: "events", value: stats.events },
-  ];
-
-  const myNextMatchAnswer = nextScheduledMatch
-    ? `${formatMatchup(nextScheduledMatch)}`
-    : "Add your fixtures";
+  }, [homeLimits.results, recentFinalMatches]);
 
   async function handleShareMatch(match) {
     if (!match) return;
@@ -794,462 +813,209 @@ export default function HomePage() {
     }
   }
 
-  const renderHeroMatchCard = (match, options = {}) => {
-    const { compact = false } = options;
-    if (!match) return null;
+  function handleFindEvent(domEvent) {
+    const target = typeof document !== "undefined" ? document.getElementById("home-events") : null;
+    if (!target) return;
+    domEvent.preventDefault();
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  }
 
-    const live = isMatchLive(match.status);
-    const liveEvent = live ? liveEventLookup.get(match.id) || null : null;
-    const pointStatus = live ? derivePointStatus(liveEvent) : null;
-    const liveClockLabel = live ? deriveClockLabel(match, liveEvent) : null;
-    const lastEvent = live ? formatLiveEventSummary(liveEvent, match) : null;
-    const trackerHref = buildMatchLink(match.id);
-    const notificationHref = `/notifications?targetType=match&targetId=${match.id}`;
-    const liveMetaParts = live
-      ? [liveClockLabel, lastEvent].filter(Boolean)
-      : [];
-
-    return (
-      <StandardEventMatchCard
-        key={match.id}
-        match={match}
-        variant="muted"
-        className={`sc-frosted sc-live-card home-hero-match ${compact ? "p-3 sm:p-4" : "p-3 sm:p-5"} ${
-          live ? "is-live border-2 border-live-border bg-live-bg" : ""
-        }`}
-        eyebrow={pointStatus && live ? `${pointStatus} point` : live ? "Live now" : "Next up"}
-        title={formatMatchup(match)}
-        meta={liveMetaParts.join(" · ")}
-        score={live ? formatLiveScore(match) : null}
-        status={live ? "Live" : formatMatchStatus(match.status) || "Scheduled"}
-        actions={
-          <>
-            <Link to={live ? trackerHref : notificationHref} className="sc-button text-center">
-              {live ? "Open live tracker" : "Notifications"}
-            </Link>
-            <button type="button" onClick={() => void handleShareMatch(match)} className="sc-button is-ghost">
-              Share
-            </button>
-          </>
-        }
-        linkCard={false}
-        hideEyebrow={false}
-        compact={compact}
-        hideFinishedVenue={false}
-        hideVenue
+  const liveSection = (
+    <section className="home-section" aria-labelledby="home-live-title">
+      <HomeSectionHeader
+        id="home-live-title"
+        title={heroIsLive ? "Live now" : "Up next"}
+        live={heroIsLive}
+        count={showMultiLiveHero ? heroFeaturedMatches.length : undefined}
       />
-    );
-  };
+      {loading && heroFeaturedMatches.length === 0 ? (
+        <HomeSkeleton rows={2} />
+      ) : heroFeaturedMatches.length > 0 ? (
+        <div className={showMultiLiveHero ? "home-feature-grid" : undefined}>
+          {heroFeaturedMatches.map((match) => (
+            <HomeFeaturedMatch
+              key={match.id}
+              match={match}
+              liveEvent={liveEventLookup.get(match.id) || null}
+              isLoggedIn={isLoggedIn}
+              onShare={handleShareMatch}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="home-card home-card--cta">
+          <p className="home-card__cta-text">Nothing scheduled right now.</p>
+          <Link to="/events" className="sc-button is-ghost home-action">
+            Browse events
+          </Link>
+        </div>
+      )}
+      {heroActionStatus ? (
+        <p className="home-status-message" role="status">
+          {heroActionStatus}
+        </p>
+      ) : null}
+      {error ? <HomeNotice tone="error">{error}</HomeNotice> : null}
+    </section>
+  );
+
+  // Hidden while the hero is loading (it shows its own skeleton) and when
+  // nothing is left beyond the featured match.
+  const comingUpSection =
+    !loading && comingUpMatches.length > 0 ? (
+      <section className="home-section" aria-labelledby="home-coming-title">
+        <HomeSectionHeader id="home-coming-title" title="Coming up" action={{ to: "/matches", label: "All matches" }} />
+        <HomeAgendaList matches={comingUpMatches} />
+      </section>
+    ) : null;
+
+  const yourTeamsSection = isLoggedIn ? (
+    <LazyHomeSection
+      onVisible={() => setRenderPersonalized(true)}
+      placeholderHeight={200}
+      rootMargin="220px 0px"
+    >
+      {renderPersonalized && (
+        <section className="home-section" aria-labelledby="home-yours-title">
+          <HomeSectionHeader
+            id="home-yours-title"
+            title="Your notifications"
+            action={{ to: "/notifications", label: "Notifications" }}
+          />
+          {personalizedError ? <HomeNotice tone="error">{personalizedError}</HomeNotice> : null}
+          {personalizedMessage ? <HomeNotice>{personalizedMessage}</HomeNotice> : null}
+          {personalizedLoading && subscriptions.length === 0 ? (
+            <HomeSkeleton rows={2} />
+          ) : (
+            <HomeYourTeams
+              teams={myTeamInsights}
+              matches={myMatchInsights}
+              teamsLoading={myTeamsLoading}
+              players={myPlayerInsights}
+              playersLoading={myPlayersLoading}
+              matchesLoading={myMatchesLoading}
+            />
+          )}
+        </section>
+      )}
+    </LazyHomeSection>
+  ) : null;
+
+  const eventsSection = (
+    <LazyHomeSection
+      id="home-events"
+      className="home-anchor"
+      onVisible={() => setRenderEventTimeline(true)}
+      placeholderHeight={320}
+      rootMargin="520px 0px"
+    >
+      {renderEventTimeline && (
+        <section className="home-section" aria-labelledby="home-events-title">
+          <HomeSectionHeader
+            id="home-events-title"
+            title="Events"
+            description="Tap an event for its schedule, standings and results."
+            action={{ to: "/events", label: "All events" }}
+          />
+          {belowFoldError ? <HomeNotice tone="error">{belowFoldError}</HomeNotice> : null}
+          {belowFoldLoading && safeEvents.length === 0 ? (
+            <HomeSkeleton rows={3} />
+          ) : (
+            <HomeEventList activeEvents={activeEvents} upcomingEvents={upcomingEvents} />
+          )}
+        </section>
+      )}
+    </LazyHomeSection>
+  );
+
+  // Signed-out counterpart of "Your notifications", placed under Events.
+  // Waits for the session check so a signed-in user never sees it flash.
+  const notificationsPromoSection =
+    !authLoading && !isLoggedIn ? (
+      <section className="home-section" aria-labelledby="home-alerts-title">
+        <HomeSectionHeader id="home-alerts-title" title="Notifications" />
+        <HomeNotificationsPromo />
+      </section>
+    ) : null;
+
+  const resultsSection = (
+    <LazyHomeSection onVisible={() => setRenderFinals(true)} placeholderHeight={320}>
+      {renderFinals && (finalsLoading || latestResults.length > 0) && (
+        <section className="home-section" aria-labelledby="home-results-title">
+          <HomeSectionHeader
+            id="home-results-title"
+            title="Latest results"
+            action={{ to: "/matches", label: "All results" }}
+          />
+          {finalsLoading && latestResults.length === 0 ? (
+            <HomeSkeleton rows={3} />
+          ) : (
+            <HomeResultList matches={latestResults} />
+          )}
+        </section>
+      )}
+    </LazyHomeSection>
+  );
+
+  // Often empty, so it shows nothing until there is something to watch rather
+  // than flashing a skeleton that then disappears.
+  const watchSection = (
+    <LazyHomeSection onVisible={() => setRenderStreaming(true)} placeholderHeight={200}>
+      {renderStreaming && !streamsLoading && watchMatches.length > 0 && (
+        <section className="home-section" aria-labelledby="home-watch-title">
+          <HomeSectionHeader id="home-watch-title" title="Watch" description="Live streams and replays." />
+          <HomeWatchList matches={watchMatches} />
+        </section>
+      )}
+    </LazyHomeSection>
+  );
 
   return (
-    <div className="home-page pb-10 text-ink sm:pb-20">
-      <SectionShell as="header" className="space-y-3 pb-1 pt-2 sm:space-y-6 sm:pt-8 sm:pb-2">
-        <Card className="sc-hero home-hero-board p-3 sm:p-8 lg:p-10">
-          <div className="space-y-4 sm:space-y-8">
-            <div className={showMultiLiveHero ? "space-y-3 sm:space-y-6" : "home-hero-grid"}>
-              <div className="home-hero-panel space-y-3 sm:space-y-6">
-                <div className="sc-metric-row home-hero-metrics">
-                  {heroStats.map((item) => (
-                    <Metric
-                      key={item.label}
-                      className="sc-metric--stacked"
-                      value={belowFoldLoading ? "--" : item.value}
-                      label={item.label}
-                    />
-                  ))}
-                </div>
-                {heroActionStatus && (
-                  <p className="text-xs font-semibold text-accent">{heroActionStatus}</p>
-                )}
-              </div>
-              {!showMultiLiveHero && (
-                <div className="space-y-3 sm:space-y-4">
-                  {heroCardMatch ? (
-                    renderHeroMatchCard(heroCardMatch)
-                  ) : (
-                    <div className="home-empty-state text-left">
-                      <p className="text-2xl font-semibold text-ink">No matches scheduled</p>
-                    </div>
-                  )}
-                  <Panel variant="tinted" className="home-next-strip p-3 sm:p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                      <span>Next scheduled</span>
-                      {nextScheduledMatch?.start_time && (
-                        <span>{formatHeadingDateTime(nextScheduledMatch.start_time)}</span>
-                      )}
-                    </div>
-                    <p className="text-sm text-ink">{myNextMatchAnswer}</p>
-                  </Panel>
-                  {error && (
-                    <p className="rounded-2xl border border-rose-400/30 bg-rose-950/50 p-3 text-sm font-semibold text-rose-100 sm:p-4">
-                      {error}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-            {showMultiLiveHero && (
-              <div className="space-y-3 sm:space-y-4">
-                <div className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {liveHeroMatches.map((match) => renderHeroMatchCard(match, { compact: true }))}
-                </div>
-                <Panel variant="tinted" className="home-next-strip p-3 sm:p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                    <span>Next scheduled</span>
-                    {nextScheduledMatch?.start_time && (
-                      <span>{formatHeadingDateTime(nextScheduledMatch.start_time)}</span>
-                    )}
-                  </div>
-                  <p className="text-sm text-ink">{myNextMatchAnswer}</p>
-                </Panel>
-                {error && (
-                  <p className="rounded-2xl border border-rose-400/30 bg-rose-950/50 p-3 text-sm font-semibold text-rose-100 sm:p-4">
-                    {error}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        </Card>
-      </SectionShell>
-      {/* Two-column layout: main feed (left) + sidebar (right) */}
-      <div className="sc-shell home-two-col pt-2 sm:pt-4">
-
-        {/* DOM order = mobile order. Desktop positions assigned via grid-column + order. */}
-
-        {/* Mobile: 1 — Desktop: R1 */}
-        {isLoggedIn && (
-          <LazyHomeSection
-            className="home-two-col__item--r1"
-            onVisible={() => setRenderPersonalized(true)}
-            placeholderHeight={420}
-            rootMargin="220px 0px"
-          >
-            {renderPersonalized && (
-            <div className="home-section space-y-3 sm:space-y-5">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Your notifications</p>
-                <div className="flex items-center gap-3">
-                  {forYouLoading && (
-                    <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Refreshing...</span>
-                  )}
-                  <Link to="/notifications" className="sc-button text-xs">
-                    Notifications
-                  </Link>
-                </div>
-              </div>
-              {personalizedError && (
-                <p className="rounded-xl border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-100 sm:p-4">
-                  {personalizedError}
-                </p>
-              )}
-              {personalizedMessage && (
-                <p className="rounded-xl border border-border/70 bg-[rgba(6,22,18,0.45)] p-3 text-sm text-ink sm:p-4">
-                  {personalizedMessage}
-                </p>
-              )}
-              <div className="space-y-3">
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Teams</p>
-                  {myTeamsLoading ? (
-                    <p className="text-sm text-ink-muted">Loading teams...</p>
-                  ) : myTeamInsights.length === 0 ? (
-                    <p className="text-sm text-ink-muted">Follow a team to see records and fixtures here.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {myTeamInsights.map((team) => (
-                        <Panel key={team.teamId} variant="muted" className="p-3 sm:p-4">
-                          <p className="text-sm font-semibold text-ink">{team.name}</p>
-                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
-                            {team.record && <span>Record <span className="font-semibold text-ink">{formatRecord(team.record)}</span></span>}
-                            {team.nextFixture && <span>Next <span className="font-semibold text-ink">{formatFixture(team.nextFixture)}</span></span>}
-                            {team.lastResult && <span>Last <span className="font-semibold text-ink">{formatResult(team.lastResult)}</span></span>}
-                          </div>
-                        </Panel>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Matches</p>
-                  {myMatchesLoading ? (
-                    <p className="text-sm text-ink-muted">Loading matches...</p>
-                  ) : myMatchInsights.length === 0 ? (
-                    <p className="text-sm text-ink-muted">Follow matches to keep them pinned here.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {myMatchInsights.map((match) => (
-                        <StandardEventMatchCard
-                          key={match.id}
-                          match={match}
-                          eyebrow={match.event?.name || "Match"}
-                          title={formatMatchup(match)}
-                          meta={null}
-                          score={isMatchLive(match.status) || isMatchFinal(match.status) ? formatLiveScore(match) : null}
-                          status={formatMatchStatus(match.status) || "Scheduled"}
-                          hideEyebrow={false}
-                          compact
-                          hideFinishedVenue={false}
-                          hideVenue
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            )}
-          </LazyHomeSection>
+    <div className="home-page text-ink">
+      <div className="sc-shell home-shell">
+        {showWelcome ? (
+          <HomeWelcome
+            stats={stats}
+            statsLoaded={!belowFoldLoading}
+            onDismiss={() => setWelcomeDismissed(true)}
+            onFindEvent={handleFindEvent}
+          />
+        ) : (
+          <h1 className="sr-only">StallCount – ultimate frisbee scores and fixtures</h1>
         )}
-
-        {/* Mobile: 2 — Desktop: R3 */}
-        <LazyHomeSection className="home-two-col__item--r3" onVisible={() => setRenderEventTimeline(true)} placeholderHeight={520} rootMargin="520px 0px">
-          {renderEventTimeline && (
-          <div className="home-section home-timeline">
-            {belowFoldError && (
-              <p className="rounded-xl border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-100 sm:p-4">
-                {belowFoldError}
-              </p>
-            )}
-            <div className="home-timeline-section">
-              <h2 className="mb-3 text-xl font-bold tracking-tight text-ink sm:text-2xl">
-                {currentEventSection.title}
-              </h2>
-              {belowFoldLoading && safeEvents.length === 0 ? (
-                <div className="home-empty-state">Loading events...</div>
-              ) : currentEventSection.events.length === 0 ? (
-                <div className="home-empty-state">{currentEventSection.emptyMessage}</div>
-              ) : (
-                <div className="home-timeline-list home-timeline-list--grid">
-                  {currentEventSection.events.slice(0, currentEventSection.limit).map((event) => (
-                    <HomeEventCard key={event.id} event={event} eventStatusTab={currentEventSection.key} />
-                  ))}
-                </div>
-              )}
+        <HomeQuickLinks />
+        {/* One set of sections, two arrangements: a single stack in reading
+            order on phones and tablets, a fixed main + sidebar on desktop so
+            nothing reshuffles as lazy sections load. */}
+        {isWideHome ? (
+          <div className="home-columns">
+            <div className="home-column">
+              {liveSection}
+              {comingUpSection}
+              {resultsSection}
             </div>
-
-            {eventTimelineOptions.map((section) => {
-              const isOpen = Boolean(expandedEventSections[section.key]);
-              return (
-                <div key={section.key} className="home-timeline-section">
-                  <button
-                    type="button"
-                    className="home-timeline-toggle"
-                    aria-expanded={isOpen}
-                    onClick={() =>
-                      setExpandedEventSections((prev) => ({ ...prev, [section.key]: !prev[section.key] }))
-                    }
-                  >
-                    <svg
-                      className={`home-timeline-toggle__chevron${isOpen ? " is-open" : ""}`}
-                      width="16"
-                      height="16"
-                      viewBox="0 0 12 12"
-                      aria-hidden="true"
-                    >
-                      <path d="M3 4.5 6 8l3-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    <span className="text-xl font-bold tracking-tight text-ink sm:text-2xl">
-                      {section.title}
-                    </span>
-                  </button>
-                  {isOpen ? (
-                    belowFoldLoading && safeEvents.length === 0 ? (
-                      <div className="home-empty-state mt-3">Loading events...</div>
-                    ) : section.events.length === 0 ? (
-                      <div className="home-empty-state mt-3">{section.emptyMessage}</div>
-                    ) : (
-                      <div className="home-timeline-list home-timeline-list--grid mt-3">
-                        {section.events.slice(0, section.limit).map((event) => (
-                          <HomeEventCard key={event.id} event={event} eventStatusTab={section.key} />
-                        ))}
-                      </div>
-                    )
-                  ) : null}
-                </div>
-              );
-            })}
+            <aside className="home-column" aria-label="Events and your teams">
+              {yourTeamsSection}
+              {eventsSection}
+              {notificationsPromoSection}
+              {watchSection}
+            </aside>
           </div>
-          )}
-        </LazyHomeSection>
-
-        {/* Mobile: 3 — Desktop: L1 */}
-        <LazyHomeSection className="home-two-col__item--l1" onVisible={() => setRenderMatches(true)} placeholderHeight={440}>
-          {renderMatches && (
-          <div className="home-section space-y-3 sm:space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-live-ink">Live &amp; upcoming</p>
-            {loading && liveAndUpcomingMatches.length === 0 ? (
-              <div className="home-empty-state">Loading matches...</div>
-            ) : liveAndUpcomingMatches.length === 0 ? (
-              <div className="home-empty-state">No open matches right now.</div>
-            ) : (
-              <div className="home-agenda-grid">
-                {liveAndUpcomingMatches.map((match) => {
-                  const live = isMatchLive(match.status);
-                  const final = isMatchFinal(match.status);
-                  const showScore = live || final;
-                  const statusLabel = showScore
-                    ? formatMatchStatus(match.status) || (live ? "Live" : "Final")
-                    : formatMatchStatus(match.status) || "Scheduled";
-                  return (
-                    <StandardEventMatchCard
-                      key={match.id}
-                      match={match}
-                      variant="tintedAlt"
-                      className="home-agenda-card"
-                      eyebrow={match.event?.name || "Match"}
-                      title={formatMatchup(match)}
-                      meta={null}
-                      score={showScore ? formatLiveScore(match) : null}
-                      status={statusLabel}
-                      hideEyebrow={false}
-                      compact={false}
-                      hideFinishedVenue={false}
-                      hideVenue
-                    />
-                  );
-                })}
-              </div>
-            )}
+        ) : (
+          <div className="home-column">
+            {liveSection}
+            {yourTeamsSection}
+            {comingUpSection}
+            {eventsSection}
+            {notificationsPromoSection}
+            {resultsSection}
+            {watchSection}
           </div>
-          )}
-        </LazyHomeSection>
-
-        {/* Mobile: 4 — Desktop: R2 */}
-        <LazyHomeSection className="home-two-col__item--r2" onVisible={() => setRenderStreaming(true)} placeholderHeight={520}>
-          {renderStreaming && (
-          <div className="home-section space-y-3 sm:space-y-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-media-ink">Featured broadcasts</p>
-            <div className="home-media-grid">
-              <div className="home-media-column space-y-3 sm:space-y-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Next to stream</p>
-                {streamsLoading && upcomingStreamMatches.length === 0 ? (
-                  <p className="text-sm text-ink-muted">Loading streams...</p>
-                ) : upcomingStreamMatches.length > 0 ? (
-                  <div className="space-y-2 sm:space-y-3">
-                    {upcomingStreamMatches.map((match) => (
-                      <HomeStreamMatchCard key={match.id} match={match} />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-ink-muted">No upcoming matches with media linked.</p>
-                )}
-              </div>
-              <div className="home-media-column space-y-3 sm:space-y-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Latest replays</p>
-                {streamsLoading && recentStreamMatches.length === 0 ? (
-                  <p className="text-sm text-ink-muted">Loading replays...</p>
-                ) : recentStreamMatches.length > 0 ? (
-                  <div className="space-y-2 sm:space-y-3">
-                    {recentStreamMatches.map((match) => (
-                      <HomeStreamMatchCard key={match.id} match={match} />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-ink-muted">No recent matches with media linked.</p>
-                )}
-              </div>
-            </div>
-          </div>
-          )}
-        </LazyHomeSection>
-
-        {/* Mobile: 5 — Desktop: L2 */}
-        <LazyHomeSection className="home-two-col__item--l2" onVisible={() => setRenderFinals(true)} placeholderHeight={420}>
-          {renderFinals && (
-          <div className="home-section space-y-3 sm:space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Latest results</p>
-            {finalsLoading && latestResults.length === 0 ? (
-              <div className="home-empty-state">Loading results...</div>
-            ) : latestResults.length === 0 ? (
-              <div className="home-empty-state">No finals saved yet.</div>
-            ) : (
-              <div className="home-score-grid">
-                {latestResults.map((match) => (
-                  <StandardEventMatchCard
-                    key={match.id}
-                    match={match}
-                    className="home-score-card"
-                    eyebrow={match.event?.name || "Match"}
-                    title={formatMatchup(match)}
-                    meta={null}
-                    score={formatLiveScore(match)}
-                    status={formatMatchStatus(match.status) || "Final"}
-                    hideEyebrow={false}
-                    compact={false}
-                    scoreAlign="right"
-                    hideVenue
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-          )}
-        </LazyHomeSection>
+        )}
       </div>
     </div>
   );
-}
-
-const HomeEventCard = memo(function HomeEventCard({ event, eventStatusTab }) {
-  const eventWorkspacePath = getEventWorkspacePath(event.id);
-  const searchParams = new URLSearchParams({ eventId: event.id });
-  if (eventStatusTab) {
-    searchParams.set("status", eventStatusTab);
-  }
-  const fallbackPath = `/events?${searchParams.toString()}`;
-  const cardClassName =
-    eventStatusTab === "active"
-      ? "home-event-row is-active block border-white/90 p-3 transition hover:border-white hover:text-ink sm:p-3"
-      : "home-event-row block p-3 transition hover:border-accent/70 hover:text-ink sm:p-3";
-
-  return (
-    <Card
-      as={Link}
-      to={eventWorkspacePath || fallbackPath}
-      variant="muted"
-      className={cardClassName}
-    >
-      <div className="flex min-w-0 flex-col items-center gap-1 text-center">
-        <h3 className="w-full break-words text-base font-semibold leading-snug text-ink">
-          {event.name}
-        </h3>
-        <p className="w-full break-words text-xs font-semibold text-ink-muted">
-          {formatDateRange(event.start_date, event.end_date)}
-        </p>
-      </div>
-    </Card>
-  );
-});
-
-const HomeStreamMatchCard = memo(function HomeStreamMatchCard({ match }) {
-  return (
-    <StandardEventMatchCard
-      match={match}
-      eyebrow={match.event?.name || "Stream"}
-      title={formatMatchup(match)}
-      meta={null}
-      score={isMatchLive(match.status) || isMatchFinal(match.status) ? formatLiveScore(match) : null}
-      status={formatMatchStatus(match.status) || "Scheduled"}
-      hideEyebrow={false}
-      compact
-      hideFinishedVenue={false}
-      hideVenue
-    />
-  );
-});
-
-function formatDateRange(start, end) {
-  if (!start && !end) return "Dates pending";
-  const startDate = start ? formatDateValue(start, DATE_FORMATTER, "TBD") : "TBD";
-  const endDate = end ? formatDateValue(end, DATE_FORMATTER, null) : null;
-  return endDate && endDate !== startDate ? `${startDate} - ${endDate}` : startDate;
-}
-
-function formatDateValue(value, formatter, fallback = "") {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return fallback;
-  return formatter.format(date);
 }
 
 function toSettled(promise) {
@@ -1258,59 +1024,19 @@ function toSettled(promise) {
     .catch((reason) => ({ status: "rejected", reason }));
 }
 
-function formatMatchTime(timestamp) {
-  if (!timestamp) return "Start time pending";
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "Start time pending";
-  return `${DATE_FORMATTER.format(date)} at ${MATCH_TIME_FORMATTER.format(date)}`;
-}
-
-function formatHeadingDateTime(timestamp) {
-  if (!timestamp) return "Start time pending";
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "Start time pending";
-  const time = MATCH_TIME_FORMATTER.format(date);
-  const day = HEADING_DATE_FORMATTER.format(date);
-  return `${time}, ${day}`;
-}
-
-function formatMatchup(match) {
-  const teamA = match.team_a?.name || "Team A";
-  const teamB = match.team_b?.name || "Team B";
-  return `${teamA} vs ${teamB}`;
-}
-
-function matchHasStream(match) {
-  return hasMatchMedia(match);
-}
-
-function formatLiveScore(match) {
-  const left = typeof match.score_a === "number" ? match.score_a : "-";
-  const right = typeof match.score_b === "number" ? match.score_b : "-";
-  return `${left} - ${right}`;
-}
-
-function formatMatchStatus(status) {
-  if (!status) return "";
-  const normalized = status.toString().trim().toLowerCase();
-  if (!normalized) return "";
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
-function buildMatchLink(matchId, options = {}) {
-  const path = matchId ? `/matches?matchId=${matchId}` : "/matches";
-  if (options.absolute && typeof window !== "undefined") {
-    return `${window.location.origin}${path}`;
-  }
-  return path;
-}
-
 function normalizeTargetType(type) {
   return (type || "").toString().trim().toLowerCase();
 }
+
+function isFinishedMatch(match) {
+  return FINISHED_STATUSES.has((match?.status || "").toString().toLowerCase());
+}
+
+// Only finished matches count: an unplayed fixture sits at 0-0 and a live
+// one's score is not yet a result.
 function computeTeamRecord(matches, teamId) {
   if (!Array.isArray(matches)) return null;
-  return matches.reduce(
+  return matches.filter(isFinishedMatch).reduce(
     (acc, match) => {
       const isTeamA = match.team_a?.id === teamId;
       const isTeamB = match.team_b?.id === teamId;
@@ -1332,23 +1058,42 @@ function computeTeamRecord(matches, teamId) {
   );
 }
 
+function computePlayerInsight(playerId, playerRow, statRows) {
+  const totals = statRows.reduce(
+    (acc, row) => ({
+      goals: acc.goals + (row.goals ?? 0),
+      assists: acc.assists + (row.assists ?? 0),
+      matches: acc.matches + 1,
+    }),
+    { goals: 0, assists: 0, matches: 0 },
+  );
+  // The service orders by match id, not date, so find the latest game here.
+  const latest =
+    [...statRows].sort((a, b) => (toTime(b.match?.start_time) ?? 0) - (toTime(a.match?.start_time) ?? 0))[0] || null;
+  return {
+    playerId,
+    name: playerRow?.name || latest?.player?.name || "Player",
+    jerseyNumber: playerRow?.jersey_number ?? latest?.player?.jersey_number ?? null,
+    teamName: latest?.team?.name || null,
+    totals,
+  };
+}
+
 function pickNextFixture(matches, teamId) {
   if (!Array.isArray(matches)) return null;
   const now = Date.now();
   const future = matches
     .filter((match) => {
-      if (!match.start_time) return false;
-      const time = new Date(match.start_time).getTime();
-      const status = (match.status || "").toLowerCase();
-      return time >= now && !FINISHED_STATUSES.has(status);
+      const time = toTime(match.start_time);
+      return time !== null && time >= now && !isFinishedMatch(match);
     })
-    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+    .sort(compareByStartTime);
   const target = future[0];
   if (!target) return null;
   const opponent = target.team_a?.id === teamId ? target.team_b : target.team_a;
   return {
     matchId: target.id,
-    opponentName: opponent?.name || "TBD",
+    opponentName: opponent?.name || "TBC",
     startTime: target.start_time,
     venueName: target.venue?.name || null,
   };
@@ -1357,8 +1102,8 @@ function pickNextFixture(matches, teamId) {
 function pickLastResult(matches, teamId) {
   if (!Array.isArray(matches)) return null;
   const past = matches
-    .filter((match) => match.start_time)
-    .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+    .filter((match) => match.start_time && isFinishedMatch(match))
+    .sort((a, b) => compareByStartTime(b, a));
   const target = past[0];
   if (!target) return null;
   const isTeamA = target.team_a?.id === teamId;
@@ -1374,92 +1119,7 @@ function pickLastResult(matches, teamId) {
   };
 }
 
-function formatRecord(record) {
-  if (!record) return "0-0";
-  return `${record.wins}-${record.losses}`;
-}
-
-function formatFixture(fixture) {
-  if (!fixture) return "TBD";
-  const time = fixture.startTime ? formatMatchTime(fixture.startTime) : "TBD";
-  const venue = fixture.venueName ? ` @ ${fixture.venueName}` : "";
-  return `${fixture.opponentName || "Opponent"} - ${time}${venue}`;
-}
-
-function formatResult(result) {
-  if (!result) return "--";
-  return `${result.scoreFor}-${result.scoreAgainst} vs ${result.opponentName || "Opponent"}`;
-}
-function deriveClockLabel(match, liveEvent) {
-  if (!match || !liveEvent) return null;
-  const data = liveEvent.data || {};
-  const clock = data.clock || data.timer || data.display_clock || data.game_clock;
-  const cap = data.cap || data.cap_status || data.clock_label;
-  if (clock && cap) {
-    return `${clock} - ${cap}`;
-  }
-  if (clock) {
-    return clock;
-  }
-  if (cap) {
-    return cap;
-  }
-  return null;
-}
-
-function derivePointStatus(liveEvent) {
-  if (!liveEvent) return null;
-  const data = liveEvent.data || {};
-  const value =
-    data.point_status || data.pointStatus || data.possession || data.possession_team || data.possessionTeam || null;
-  if (!value) return null;
-  const normalized = value.toString().trim().toUpperCase();
-  if (normalized.startsWith("O")) return "O";
-  if (normalized.startsWith("D")) return "D";
-  return normalized.charAt(0);
-}
-
-function deriveLiveMinute(liveEvent, match) {
-  const eventTime = liveEvent?.created_at;
-  const startTime = match?.start_time;
-  if (!eventTime || !startTime) return null;
-  const elapsed = new Date(eventTime).getTime() - new Date(startTime).getTime();
-  if (isNaN(elapsed) || elapsed < 0) return null;
-  return Math.floor(elapsed / 60000);
-}
-
-function deriveCapStatus(liveEvent) {
-  if (!liveEvent) return null;
-  const data = liveEvent.data || {};
-  const raw = (data.cap || data.cap_status || data.clock_label || "").toString().trim().toLowerCase();
-  if (raw.includes("hard")) return "Hard cap";
-  if (raw.includes("soft")) return "Soft cap";
-  return null;
-}
-
-function formatLiveEventSummary(liveEvent, match) {
-  if (!liveEvent) return null;
-  const data = liveEvent.data || {};
-  const teamId = data.team_id || data.teamId;
-  const teamName = teamId
-    ? match?.team_a?.id === teamId
-      ? match.team_a?.name
-      : match?.team_b?.id === teamId
-        ? match.team_b?.name
-        : null
-    : null;
-  const description =
-    data.title ||
-    data.description ||
-    (teamName ? `${liveEvent.event_type || "event"} — ${teamName}` : liveEvent.event_type || null);
-  if (!description) return null;
-  const minute = deriveLiveMinute(liveEvent, match);
-  if (minute !== null) return `${minute}' · ${description}`;
-  const cap = deriveCapStatus(liveEvent);
-  return cap ? `${cap} · ${description}` : description;
-}
-
-// UI buckets for the event timeline. The KEYS (active/past/upcoming) are
+// UI buckets for the event list. The KEYS (active/past/upcoming) are
 // display groupings, not database values; the VALUES are canonical
 // match_status codes, since events.Status is a FK to that table.
 //
@@ -1504,15 +1164,5 @@ function filterEventsByStatusGroup(events = [], group) {
 
 function getMatchCompletionTime(match) {
   if (!match) return null;
-  const timestamp = match.confirmed_at || match.start_time;
-  if (!timestamp) return null;
-  const ms = new Date(timestamp).getTime();
-  return Number.isNaN(ms) ? null : ms;
-}
-function isMatchLive(status) {
-  return isInProgressStatus(status);
-}
-
-function isMatchFinal(status) {
-  return isConcludedStatus(status);
+  return toTime(match.confirmed_at || match.start_time);
 }

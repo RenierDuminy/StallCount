@@ -211,341 +211,1134 @@ a:focus-visible {
   padding: 0.75rem 0.5rem;
 }
 
-.home-lazy-section {
-  content-visibility: auto;
-  contain-intrinsic-size: 1px;
-}
-
-.home-lazy-section__content {
-  contain: layout paint style;
-}
-
-.home-two-col {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.5rem;
-  align-items: start;
-}
-
-@media (min-width: 1024px) {
-  /* Snaking flow: sections fill column 1 top-to-bottom in DOM order, then
-     continue into column 2 once column 1 is full - no fixed column/order
-     assignment, so a section that doesn't render (e.g. logged-out) leaves
-     no hole and the remaining sections just flow up to fill the gap. */
-  .home-two-col {
-    display: block;
-    columns: 2;
-    column-gap: 2rem;
-  }
-
-  .home-two-col > * {
-    break-inside: avoid;
-    margin-bottom: 2rem;
-    /* content-visibility: auto (from .home-lazy-section) can make an
-       off-screen section report near-zero height, which throws off
-       column-fill height math. Force layout for these so the snaking
-       column break points are computed from real content sizes. */
-    content-visibility: visible;
-  }
-
-  .home-two-col > *:last-child {
-    margin-bottom: 0;
-  }
-}
-
-.home-two-col__sidebar .home-timeline-list--grid {
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-}
-
-.home-page {
-  --home-row-bg: rgba(6, 22, 18, 0.34);
-  --home-row-bg-strong: rgba(6, 22, 18, 0.54);
-  --home-row-border: rgba(232, 244, 237, 0.12);
-}
-
-.home-section {
-  border-top: 1px solid rgba(232, 244, 237, 0.08);
-}
-
-@media (min-width: 1024px) {
-  .home-two-col .home-section {
-    position: relative;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-top: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: var(--sc-radius-lg);
-    background: var(--sc-card-muted-bg);
-    box-shadow: var(--sc-card-muted-glow);
-    padding: 1.25rem;
-  }
-}
-
-.home-section + .home-section,
-.home-lazy-section + .home-lazy-section .home-section {
-  margin-top: 0.25rem;
-}
-
-.home-hero-board {
-  border-radius: clamp(0.5rem, 1vw, 0.75rem);
-}
-
-.home-hero-grid {
-  display: grid;
-  gap: 1rem;
-}
-
-.home-hero-panel {
-  min-width: 0;
-}
-
-.home-hero-match {
-  position: relative;
-}
-
-.home-hero-match::after {
-  content: "";
-  position: absolute;
-  inset: auto 1rem 0.75rem 1rem;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(198, 255, 98, 0.35), transparent);
-  pointer-events: none;
-}
-
-.home-hero-metrics {
-  align-items: stretch;
-}
-
-.home-hero-metrics .sc-metric {
-  box-shadow: none;
-}
-
-.home-next-strip {
-  display: grid;
-  gap: 0.35rem;
-  border-color: rgba(232, 244, 237, 0.14);
-  background:
-    linear-gradient(90deg, rgba(198, 255, 98, 0.1), transparent 48%),
-    rgba(6, 22, 18, 0.52);
-}
-
-.home-dashboard-grid {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.home-dashboard-column {
-  min-width: 0;
-  border-top: 1px solid var(--home-row-border);
-  padding-top: 0.75rem;
-}
-
-.home-dashboard-column__title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.55rem;
-}
-
-.home-mini-list {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.home-mini-row {
-  border: 1px solid var(--home-row-border);
-  border-radius: 0.45rem;
-  background: var(--home-row-bg);
-  padding: 0.65rem 0.75rem;
-}
-
-.home-empty-state {
-  border: 1px dashed rgba(232, 244, 237, 0.16);
-  border-radius: 0.45rem;
-  background: rgba(6, 22, 18, 0.24);
-  padding: 0.8rem;
-  text-align: center;
-  color: var(--sc-ink-muted);
-}
-
-.home-timeline {
-  display: grid;
-  gap: 1rem;
-}
-
-.home-timeline-section {
-  position: relative;
-  padding-top: 0.9rem;
-  border-top: 1px solid rgba(232, 244, 237, 0.1);
-}
-
-.home-timeline-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  border: none;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-  color: inherit;
-}
-
-.home-timeline-toggle:hover .home-timeline-toggle__chevron,
-.home-timeline-toggle:hover span {
-  color: var(--sc-ink);
-}
-
-.home-timeline-toggle__chevron {
-  flex-shrink: 0;
-  color: var(--sc-ink-muted);
-  transition: transform 0.15s ease, color 0.15s ease;
-}
-
-.home-timeline-toggle__chevron.is-open {
-  transform: rotate(180deg);
-}
-
-.home-timeline-list {
-  display: grid;
-  gap: 0.65rem;
-}
-
-.home-timeline-list--grid {
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  align-items: stretch;
-}
-
-.home-timeline-list--grid .home-event-row {
-  height: 100%;
-}
-
-.home-event-row {
-  position: relative;
-  overflow: hidden;
-  box-shadow: none;
-}
-
-.home-event-row::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: rgba(99, 255, 160, 0.36);
-}
-
-.home-event-row.is-active::before {
-  background: var(--sc-live);
-}
-
-.home-event-row__date {
-  display: inline-flex;
-  min-width: 7.5rem;
-  justify-content: flex-start;
-  color: var(--sc-ink-muted);
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.home-media-grid,
-.home-score-grid,
-.home-agenda-grid {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.home-media-column {
-  min-width: 0;
-  border-top: 1px solid rgba(56, 189, 248, 0.22);
-  padding-top: 0.75rem;
-}
-
-.home-media-column__label {
-  color: var(--sc-media-ink);
-}
-
-.home-score-card {
-  border-color: rgba(251, 191, 36, 0.3);
-  background:
-    linear-gradient(90deg, rgba(251, 191, 36, 0.08), transparent 42%),
-    var(--sc-panel-bg-alt);
-}
-
-.home-agenda-card {
-  border-color: rgba(232, 244, 237, 0.14);
-}
-
-@media (max-width: 639px) {
-  .home-page .sc-shell {
-    padding: 0.5rem;
-  }
-
-  .home-dashboard-grid,
-  .home-score-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .home-timeline-list--grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem;
-  }
-
-  .home-event-row__date {
-    min-width: 0;
-    font-size: 0.75rem;
-  }
-
-  .home-page .sc-card-base,
-  .home-page .sc-card-muted,
-  .home-page .sc-surface-light,
-  .home-page .sc-panel,
-  .home-page .sc-panel-alt,
-  .home-page .sc-feature-panel {
-    border-radius: 0.45rem;
-  }
-
-  .home-page .sc-metric-row {
-    gap: 0.4rem;
-  }
-
-  .home-page .sc-metric--stacked {
-    padding: 0.5rem 0.65rem;
-    gap: 0.2rem;
-  }
-
-  .home-page .sc-metric--stacked strong {
-    font-size: 1.15rem;
-  }
-}
-
 @media (min-width: 640px) {
-  .home-hero-grid {
-    gap: 1.35rem;
-  }
-
-  .home-dashboard-grid,
-  .home-media-grid,
-  .home-score-grid,
-  .home-agenda-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .matches-compact-shell {
     padding: 1.5rem 1.25rem;
   }
 }
 
 @media (min-width: 1024px) {
-  .home-hero-grid {
-    grid-template-columns: minmax(0, 0.92fr) minmax(24rem, 1.08fr);
-    align-items: start;
-  }
-
-  .home-dashboard-grid {
-    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.15fr);
-  }
-
   .matches-compact-shell {
     padding-left: 1.5rem;
     padding-right: 1.5rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Site header
+   Colours live here rather than in Tailwind utilities on purpose: the global
+   `a { color }` rule above is unlayered, so it beats every (layered) Tailwind
+   text-colour class and would turn every header link lime.
+   Full bar from 1024px; below that, logo + menu button.
+   --------------------------------------------------------------------------- */
+
+.sc-site-header {
+  position: relative;
+  z-index: 30;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--sc-bg-accent);
+  color: var(--sc-ink);
+}
+
+.sc-site-header__bar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  height: 5rem;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.sc-site-header__brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+  height: 100%;
+  color: var(--sc-ink);
+}
+
+.sc-site-header__brand:hover {
+  color: var(--sc-ink);
+}
+
+.sc-site-header__logo {
+  flex-shrink: 0;
+  width: auto;
+  height: 80%;
+  object-fit: contain;
+}
+
+.sc-site-header__tagline {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--sc-accent);
+}
+
+/* On narrow phones the bold tagline would push the menu button off-screen,
+   so it wraps onto two lines instead. */
+@media (max-width: 419px) {
+  .sc-site-header__tagline {
+    min-width: 0;
+    line-height: 1.25;
+    white-space: normal;
+  }
+}
+
+.sc-site-header__nav {
+  display: none;
+  align-self: stretch;
+  gap: 0.125rem;
+}
+
+.sc-nav-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 0.75rem 0;
+  border-bottom: 3px solid transparent;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--sc-ink-muted);
+  transition:
+    color var(--sc-transition-fast),
+    border-color var(--sc-transition-fast);
+}
+
+.sc-nav-link:hover {
+  color: var(--sc-ink-strong);
+  border-bottom-color: rgba(255, 255, 255, 0.25);
+}
+
+.sc-nav-link[aria-current="page"] {
+  color: var(--sc-ink-strong);
+  border-bottom-color: var(--sc-accent);
+}
+
+.sc-nav-link:focus-visible,
+.sc-menu-link:focus-visible,
+.sc-account-menu__link:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.sc-site-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.sc-header-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  height: 2.5rem;
+  padding: 0 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sc-ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--sc-transition-fast),
+    border-color var(--sc-transition-fast);
+}
+
+.sc-header-button:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--sc-ink-strong);
+}
+
+.sc-header-button:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
+.sc-header-button.is-primary,
+.sc-header-button.is-primary:hover {
+  border-color: var(--sc-accent);
+  background: var(--sc-accent);
+  color: var(--sc-button-ink);
+}
+
+.sc-header-button.is-primary:hover {
+  background: var(--sc-accent-strong);
+}
+
+.sc-header-button.is-current {
+  border-color: var(--sc-accent);
+}
+
+.sc-header-button.is-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+}
+
+/* Account menu (desktop) */
+
+.sc-account-menu {
+  position: relative;
+}
+
+.sc-account-menu__chevron {
+  transition: transform var(--sc-transition-fast);
+}
+
+.sc-account-menu__chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.sc-account-menu__panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 13rem;
+  padding: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: var(--sc-surface);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.sc-account-menu__link {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding: 0 0.75rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--sc-ink);
+}
+
+.sc-account-menu__link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--sc-ink-strong);
+}
+
+.sc-account-menu__link[aria-current="page"] {
+  background: rgba(198, 255, 98, 0.1);
+  color: var(--sc-ink-strong);
+}
+
+.sc-account-menu__link.is-admin,
+.sc-menu-link.is-admin {
+  color: var(--sc-admin-ink);
+}
+
+/* Menu (below 1024px) */
+
+.sc-site-header__menu {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--sc-surface);
+}
+
+.sc-site-header__menu-inner {
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.5rem;
+  padding-bottom: 1rem;
+}
+
+.sc-menu-link {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  border-left: 3px solid transparent;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--sc-ink-muted);
+}
+
+.sc-menu-link:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--sc-ink-strong);
+}
+
+.sc-menu-link[aria-current="page"] {
+  border-left-color: var(--sc-accent);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--sc-ink-strong);
+}
+
+/* Separates the public pages from the signed-in ones. */
+.sc-site-header__menu-divider {
+  margin: 0.5rem 0;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.75);
+}
+
+.sc-site-header__menu-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.sc-site-header__menu-actions > * {
+  flex: 1;
+  height: 2.75rem;
+}
+
+/* Breakpoints */
+
+.sc-site-header__desktop-only {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .sc-site-header__nav {
+    display: flex;
+  }
+
+  .sc-site-header__desktop-only {
+    display: inline-flex;
+  }
+
+  .sc-site-header__mobile-only {
+    display: none;
+  }
+
+  /* Between 1024 and 1440 the links need the room; the tagline returns
+     once it fits on one line again. */
+  .sc-site-header__tagline {
+    display: none;
+  }
+}
+
+@media (min-width: 1440px) {
+  .sc-site-header__tagline {
+    display: inline;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Home page
+   Scoped to the home page on purpose: calmer surfaces, one heading style, and
+   colour reserved for meaning (pink = live now, lime = actions and scores).
+   On a dark page the dividers are light — the dark-theme equivalent of dark
+   rules on a white page — and size, weight, italics and underlines carry the
+   hierarchy. Corners are kept small (--home-radius) rather than pill-shaped.
+   The shared tokens and MatchCard used elsewhere are left untouched.
+   --------------------------------------------------------------------------- */
+
+.home-page {
+  --home-surface: rgba(6, 22, 18, 0.55);
+  --home-surface-strong: rgba(8, 28, 22, 0.8);
+  --home-border: rgba(255, 255, 255, 0.28);
+  --home-border-strong: rgba(255, 255, 255, 0.45);
+  --home-divider: rgba(255, 255, 255, 0.16);
+  --home-rule: rgba(255, 255, 255, 0.75);
+  --home-band: rgba(255, 255, 255, 0.06);
+  --home-radius: 6px;
+  --home-radius-sm: 3px;
+  --home-row-hover: rgba(232, 244, 237, 0.05);
+  --home-gap: 1.75rem;
+  padding-bottom: 2.5rem;
+  /* Loaded from Fontshare in index.html; Satoshi has no 600/800, so those
+     weights resolve to its Bold (700) and Black (900). */
+  font-family: "Satoshi", var(--sc-font-body);
+}
+
+.home-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.home-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--home-gap);
+  min-width: 0;
+}
+
+.home-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+
+/* A lazy section whose content decided to render nothing takes no space. */
+.home-lazy-section:empty {
+  display: none;
+}
+
+.home-anchor {
+  scroll-margin-top: 1rem;
+}
+
+/* Sections and headings */
+
+.home-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  padding-top: 0.6rem;
+  border-top: 2px solid var(--home-rule);
+}
+
+.home-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.home-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--sc-ink-strong);
+}
+
+.home-section-count {
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--sc-live-border);
+  border-radius: var(--home-radius-sm);
+  background: var(--sc-live-bg);
+  color: var(--sc-live-ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-section-desc {
+  margin: 0.2rem 0 0;
+  font-size: 0.875rem;
+  font-style: italic;
+  color: var(--sc-ink-muted);
+}
+
+.home-see-all {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 44px;
+  padding: 0 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--sc-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.home-see-all:hover {
+  color: var(--sc-ink-strong);
+  text-decoration-thickness: 2px;
+}
+
+/* Buttons keep their colours but lose the pill shape and glow here. */
+.home-page .sc-button {
+  border-radius: var(--home-radius);
+  box-shadow: none;
+}
+
+.home-page .sc-button:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.home-page .sc-button.is-ghost {
+  border-color: var(--home-border-strong);
+}
+
+/* The global a:hover rule would otherwise turn a lime button's text lime too. */
+.home-page a.sc-button:not(.is-ghost),
+.home-page a.sc-button:not(.is-ghost):hover {
+  color: var(--sc-button-ink);
+}
+
+.home-action {
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+
+/* Live indicator and tags */
+
+.home-live-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--sc-live);
+  box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.2);
+  vertical-align: middle;
+  animation: home-live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes home-live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.home-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--home-border-strong);
+  border-radius: var(--home-radius-sm);
+  background: rgba(232, 244, 237, 0.06);
+  color: var(--sc-ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.home-tag.is-compact {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.6875rem;
+}
+
+.home-tag.is-live {
+  border-color: var(--sc-live-border);
+  background: var(--sc-live-bg);
+  color: var(--sc-live-ink);
+}
+
+.home-tag .home-live-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  box-shadow: none;
+}
+
+/* Welcome band */
+
+.home-welcome {
+  position: relative;
+  padding: 1.25rem 1rem 1.1rem;
+  border: 1px solid var(--home-border-strong);
+  border-radius: var(--home-radius);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(99, 255, 160, 0.14), transparent 55%),
+    radial-gradient(circle at 90% 10%, rgba(198, 255, 98, 0.1), transparent 45%),
+    linear-gradient(150deg, #0c261d, #0a1814);
+}
+
+.home-welcome__title {
+  margin: 0;
+  padding-right: 4.5rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--sc-ink-strong);
+}
+
+.home-welcome__lead {
+  max-width: 38rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.975rem;
+  line-height: 1.5;
+  color: var(--sc-ink);
+}
+
+.home-welcome__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.home-welcome__actions .sc-button {
+  flex: 1 1 auto;
+  min-height: 44px;
+}
+
+.home-welcome__stats {
+  margin: 0.9rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--home-divider);
+  font-size: 0.8125rem;
+  font-style: italic;
+  font-variant-numeric: tabular-nums;
+  color: var(--sc-ink-muted);
+}
+
+.home-welcome__dismiss {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: var(--sc-radius-md);
+  background: transparent;
+  color: var(--sc-ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.home-welcome__dismiss:hover {
+  background: rgba(232, 244, 237, 0.06);
+  color: var(--sc-ink-strong);
+}
+
+.home-welcome__dismiss:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
+/* Quick links */
+
+.home-quick-links {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--home-border-strong);
+  border-radius: var(--home-radius);
+  background: var(--home-surface);
+}
+
+.home-quick-link + .home-quick-link {
+  border-left: 1px solid var(--home-border);
+}
+
+.home-quick-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 4.25rem;
+  padding: 0.6rem 0.25rem;
+  color: var(--sc-ink);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-align: center;
+  transition:
+    border-color var(--sc-transition-fast),
+    background var(--sc-transition-fast);
+}
+
+.home-quick-link:hover {
+  background: var(--home-band);
+  color: var(--sc-ink-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.home-quick-link__icon {
+  display: inline-flex;
+  color: var(--sc-accent);
+}
+
+/* Featured match (hero) */
+
+.home-feature {
+  overflow: hidden;
+  border: 1px solid var(--home-border-strong);
+  border-radius: var(--home-radius);
+  background: var(--home-surface-strong);
+}
+
+.home-feature.is-live {
+  border-color: var(--sc-live-border);
+  background: linear-gradient(160deg, rgba(63, 13, 16, 0.55), rgba(10, 26, 21, 0.92));
+  box-shadow: 0 18px 40px rgba(251, 113, 133, 0.14);
+}
+
+.home-feature__link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+  color: var(--sc-ink);
+  transition: background var(--sc-transition-fast);
+}
+
+.home-feature__link:hover {
+  background: var(--home-row-hover);
+  color: var(--sc-ink);
+}
+
+.home-feature__link:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: -2px;
+  border-radius: var(--home-radius) var(--home-radius) 0 0;
+}
+
+.home-feature__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.75rem;
+}
+
+.home-feature__when {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--sc-accent);
+}
+
+.home-feature__event {
+  font-size: 0.8125rem;
+  font-style: italic;
+  color: var(--sc-ink-muted);
+}
+
+.home-feature__matchup {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  color: var(--sc-ink-strong);
+}
+
+.home-feature__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.home-feature__meta {
+  min-width: 0;
+  font-style: italic;
+  color: var(--sc-ink-muted);
+}
+
+.home-feature__cta {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--sc-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.home-feature__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid var(--home-divider);
+}
+
+.home-feature-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.home-status-message {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--sc-accent);
+}
+
+/* Scoreboard: stacked team rows with right-aligned scores */
+
+.home-scoreboard {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.home-scoreboard__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.home-scoreboard__team {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  color: var(--sc-ink-strong);
+}
+
+.home-scoreboard__score {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--sc-accent);
+}
+
+.home-scoreboard.is-lg {
+  gap: 0.35rem;
+}
+
+.home-scoreboard.is-lg .home-scoreboard__team {
+  font-size: 1.2rem;
+  line-height: 1.25;
+}
+
+.home-scoreboard.is-lg .home-scoreboard__score {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+/* List-in-card: one surface per section, hairlines between rows */
+
+.home-card {
+  overflow: hidden;
+  border: 1px solid var(--home-border);
+  border-radius: var(--home-radius);
+  background: var(--home-surface);
+}
+
+.home-card--cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.home-card__cta-text {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--sc-ink);
+}
+
+.home-row__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.home-row__score {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--sc-accent);
+}
+
+.home-vs {
+  font-size: 0.85em;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--sc-ink-muted);
+}
+
+.home-match-row__time {
+  flex-shrink: 0;
+  min-width: 3.25rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--sc-ink-strong);
+}
+
+/* Card lists ("Coming up" and "Events"): small-capital headings over
+   default-style cards. The cards use the shared Panel (sc-panel) and the
+   MatchCard type styles; only their inner layout is home-specific. */
+
+.home-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.home-card-list__heading {
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--home-divider);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sc-ink-strong);
+}
+
+.home-card-list__items {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-list-card {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 3.25rem;
+  padding: 0.75rem 1rem;
+  color: var(--sc-ink);
+}
+
+.home-list-card:hover {
+  color: var(--sc-ink);
+}
+
+.home-list-card:hover .home-list-card__title {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.home-list-card:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
+.home-list-card.is-live {
+  border-color: var(--sc-live-border);
+}
+
+.home-list-card__title {
+  font-size: 1rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+/* Followed teams: name, then Record / Next / Last as label + bold value. */
+.home-team-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.home-team-card:hover .home-list-card__title {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.home-team-card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1rem;
+  font-size: 0.75rem;
+  color: var(--sc-ink-muted);
+}
+
+.home-jersey {
+  font-weight: 500;
+  color: var(--sc-ink-muted);
+}
+
+.home-team-card__facts strong {
+  font-weight: 600;
+  color: var(--sc-ink);
+}
+
+.home-list-card__title .home-live-dot {
+  margin-right: 0.45rem;
+}
+
+/* Events on now: a live bar down the left edge, as well as the dot. */
+.home-list-card.is-on-now {
+  border-left: 3px solid var(--sc-live);
+}
+
+.home-card-list__empty {
+  margin: 0;
+  font-size: 0.875rem;
+  font-style: italic;
+  color: var(--sc-ink-muted);
+}
+
+.home-card-list__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -0.25rem;
+}
+
+/* Signed-out notifications: one line and a small Log in button. */
+
+.home-promo-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.home-promo-card__text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--sc-ink);
+}
+
+.home-promo-card .sc-header-button {
+  flex-shrink: 0;
+}
+
+/* Latest results and Watch use the shared StandardEventMatchCard. */
+
+.home-match-cards {
+  display: grid;
+  gap: 0.75rem;
+}
+
+/* Shared cards (Panel / MatchCard) on this page take its smaller corners. */
+.home-page .rounded-2xl {
+  border-radius: var(--home-radius);
+}
+
+/* Loading and notices */
+
+.home-skeleton__row {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.85rem 1rem;
+}
+
+.home-skeleton__row + .home-skeleton__row {
+  border-top: 1px solid var(--home-divider);
+}
+
+.home-skeleton__bar {
+  display: block;
+  width: 70%;
+  height: 0.75rem;
+  border-radius: 2px;
+  background: rgba(232, 244, 237, 0.08);
+  animation: home-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.home-skeleton__bar.is-short {
+  width: 35%;
+  height: 0.6rem;
+}
+
+@keyframes home-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.home-notice {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--home-border);
+  border-radius: var(--home-radius);
+  background: var(--home-surface);
+  font-size: 0.875rem;
+  color: var(--sc-ink);
+}
+
+.home-notice.is-error {
+  border-color: var(--sc-alert-error-border);
+  background: var(--sc-alert-error-bg);
+  color: var(--sc-live-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-live-dot,
+  .home-skeleton__bar {
+    animation: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .home-shell {
+    padding: 0.75rem 1rem 0;
+  }
+}
+
+@media (min-width: 640px) {
+  .home-page {
+    --home-gap: 2rem;
+    padding-bottom: 4rem;
+  }
+
+  .home-shell {
+    gap: 1.25rem;
+    padding-top: 1.5rem;
+  }
+
+  .home-section-title {
+    font-size: 1.6rem;
+  }
+
+  .home-welcome {
+    padding: 2rem 2rem 1.75rem;
+  }
+
+  .home-welcome__title {
+    padding-right: 5rem;
+    font-size: 2rem;
+  }
+
+  .home-welcome__lead {
+    font-size: 1.05rem;
+  }
+
+  .home-welcome__actions .sc-button {
+    flex: 0 0 auto;
+  }
+
+  .home-quick-link {
+    flex-direction: row;
+    gap: 0.6rem;
+    min-height: 3.25rem;
+    font-size: 0.9375rem;
+  }
+
+  .home-feature__link {
+    padding: 1.25rem;
+  }
+
+  .home-feature__actions {
+    padding: 0.75rem 1.25rem 1.25rem;
+  }
+
+  .home-feature-grid {
+    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  }
+
+  .home-match-cards {
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  }
+
+  .home-scoreboard.is-lg .home-scoreboard__team,
+  .home-feature__matchup {
+    font-size: 1.35rem;
+  }
+
+  .home-scoreboard.is-lg .home-scoreboard__score {
+    font-size: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .home-welcome__title {
+    max-width: 40rem;
+    font-size: 2.25rem;
   }
 }
 
