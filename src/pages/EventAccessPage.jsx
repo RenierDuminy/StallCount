@@ -21,7 +21,12 @@ import {
   searchAccessControlUsers,
 } from "../services/userService";
 import { getTeamsLinkedToEvent } from "../services/teamService";
-import { isTeamScopedRole } from "../utils/roleScope";
+import {
+  isAdminPrivilegeRole,
+  isTeamScopedRole,
+  isUserRole,
+  normalizePermissionKey,
+} from "../utils/roleScope";
 import usePersistentState from "../hooks/usePersistentState";
 
 const PAGE_SIZE = 20;
@@ -49,43 +54,6 @@ function formatPermissionLabel(permission) {
   if (!permission) return "Permission";
   if (permission.description) return permission.description;
   return String(permission.key || "permission").replace(/_/g, " ");
-}
-
-function normalizePermissionKey(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function roleHasPermission(role, permissionKey) {
-  const required = normalizePermissionKey(permissionKey);
-  if (!required) return false;
-  const permissions = Array.isArray(role?.permissions) ? role.permissions : [];
-  return permissions.some((permission) => {
-    const candidate =
-      typeof permission === "string"
-        ? permission
-        : permission?.key || permission?.name || permission?.value || "";
-    return normalizePermissionKey(candidate) === required;
-  });
-}
-
-function isAdminPrivilegeRole(role) {
-  if (!role) return false;
-  if (roleHasPermission(role, "admin_override")) return true;
-  const normalizedName = normalizePermissionKey(role?.name || role?.roleName || "");
-  return (
-    normalizedName === "admin" ||
-    normalizedName === "administrator" ||
-    normalizedName === "sys_admin"
-  );
-}
-
-function isUserRole(role) {
-  const normalizedName = normalizePermissionKey(role?.name || role?.roleName || "");
-  return normalizedName === "user";
 }
 
 function formatEventRoleLabel(entry) {

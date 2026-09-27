@@ -15,9 +15,12 @@ import {
 import {
   buildPoolGroupStandings,
   isFinishedMatch,
+  isLiveMatch,
 } from "../../utils/standings";
 import { getMatchesByEvent } from "../../services/matchService";
 import { getEventHierarchy } from "../../services/leagueService";
+import { getBracketsByEvent } from "../../services/playoffStructureService";
+import BracketStructureView from "../playoff/BracketStructureView";
 
 export const EVENT_ID = "c2a36eb4-6a6f-4467-8ef9-edad5351aad9";
 export const EVENT_SLUG = "ctfda-mx-regionals";
@@ -173,9 +176,31 @@ const buildPoolStandings = (pool, matches) =>
   // Plain pool table: no league points, so WFDF ranking leads on games won.
   buildPoolGroupStandings([pool], matches);
 
+const BRACKET_TYPE_LABELS = {
+  placement: "Placement",
+  single_elim: "Single elimination",
+  double_elim: "Double elimination",
+  play_in: "Play-in",
+  custom: "Custom",
+};
+
+// Human label for a bracket's `type` column, shown beside its name when the
+// event publishes more than one bracket.
+function formatBracketType(value) {
+  if (!value) return "Bracket";
+  return (
+    BRACKET_TYPE_LABELS[value] ||
+    value
+      .toString()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase())
+  );
+}
+
 export default function CptMxRegionalsWorkspacePage() {
   const [matches, setMatches] = useState([]);
   const [eventData, setEventData] = useState(null);
+  const [brackets, setBrackets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [copyToast, setCopyToast] = useState(null);
@@ -189,15 +214,19 @@ export default function CptMxRegionalsWorkspacePage() {
       setLoading(true);
       setError(null);
       try {
-        const [rows, hierarchy] = await Promise.all([
+        const [rows, hierarchy, bracketRows] = await Promise.all([
           getMatchesByEvent(EVENT_ID, MATCH_LIMIT, {
             includeFinished: true,
           }),
           getEventHierarchy(EVENT_ID),
+          // The bracket is supplementary: if it fails to load the rest of the
+          // workspace should still render.
+          getBracketsByEvent(EVENT_ID).catch(() => []),
         ]);
         if (!ignore) {
           setMatches(rows || []);
           setEventData(hierarchy || null);
+          setBrackets(bracketRows || []);
         }
       } catch (err) {
         if (!ignore) {
@@ -290,6 +319,60 @@ export default function CptMxRegionalsWorkspacePage() {
       })),
     }));
   }, [sortedVenues]);
+
+  // An event can carry several brackets (championship plus placement, or one
+  // per division). Show them all, skipping any that have no games yet so an
+  // empty scaffold bracket doesn't take up a heading.
+  const playoffBrackets = useMemo(
+    () => (brackets || []).filter((bracket) => (bracket?.nodes || []).length > 0),
+    [brackets],
+  );
+
+  // Lookups let bracket source labels resolve to human names ("Pool A #1",
+  // "Winner of Quarterfinal 1") instead of raw ids.
+  const bracketLookups = useMemo(() => {
+    const divisions = eventData?.divisions || [];
+    const divisionById = new Map(
+      divisions.filter((division) => division?.id).map((division) => [division.id, division]),
+    );
+    const poolById = new Map(
+      divisions
+        .flatMap((division) => division?.pools || [])
+        .filter((pool) => pool?.id)
+        .map((pool) => [pool.id, pool]),
+    );
+    // Pool teams arrive as { seed, team } entries, so unwrap before indexing.
+    const teamById = new Map(
+      divisions
+        .flatMap((division) => division?.pools || [])
+        .flatMap((pool) => pool?.teams || [])
+        .map((entry) => entry?.team || entry)
+        .filter((team) => team?.id)
+        .map((team) => [team.id, team]),
+    );
+    const nodeById = new Map(
+      (brackets || []).flatMap((bracket) =>
+        (bracket?.nodes || []).map((node) => [node.id, node]),
+      ),
+    );
+    return { divisionById, poolById, teamById, nodeById };
+  }, [brackets, eventData]);
+
+  const renderBracketMatchCard = (match, options = {}) => {
+    const liveOrFinal = isLiveMatch(match.status) || isFinishedMatch(match.status);
+    return (
+      <StandardEventMatchCard
+        key={match.id}
+        match={match}
+        title={options.title || formatMatchup(match)}
+        meta={match.start_time ? formatMatchTime(match.start_time) : "Time TBC"}
+        score={liveOrFinal ? formatScoreLine(match) : null}
+        status={formatMatchStatus(match.status, liveOrFinal ? "Final" : "Scheduled")}
+        hideEyebrow
+        compact
+      />
+    );
+  };
 
   const eventTitle = eventData?.name || EVENT_NAME;
 
@@ -554,6 +637,46 @@ export default function CptMxRegionalsWorkspacePage() {
             </Panel>
           )}
         </Card>
+
+        <section className="space-y-3 py-4 sm:py-5">
+          <SectionHeader title="Playoffs" />
+          {playoffBrackets.length > 1 ? (
+            // Several brackets (e.g. championship + placement, or one per
+            // division): head each with its own name so they stay distinct.
+            <div className="space-y-3 sm:space-y-6">
+              {playoffBrackets.map((bracket) => (
+                <div
+                  key={bracket.id}
+                  className="space-y-2 rounded-2xl border border-[var(--sc-border-strong)] bg-[var(--sc-surface)]/40 p-2 sm:space-y-3 sm:p-4"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-[var(--sc-border-strong)] pb-1.5 sm:pb-2">
+                    <h3 className="text-sm font-semibold text-[var(--sc-ink)] sm:text-lg">
+                      {bracket.name || "Bracket"}
+                    </h3>
+                    <Chip>{formatBracketType(bracket.type)}</Chip>
+                  </div>
+                  <BracketStructureView
+                    bracket={bracket}
+                    lookups={bracketLookups}
+                    renderMatchCard={renderBracketMatchCard}
+                    emptyMessage="No games in this bracket yet."
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <BracketStructureView
+              bracket={playoffBrackets[0] || null}
+              lookups={bracketLookups}
+              renderMatchCard={renderBracketMatchCard}
+              emptyMessage={
+                loading
+                  ? "Loading the playoff bracket..."
+                  : "The playoff bracket has not been published yet."
+              }
+            />
+          )}
+        </section>
       </SectionShell>
     </div>
   );

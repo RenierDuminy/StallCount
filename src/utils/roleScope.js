@@ -37,6 +37,45 @@ function roleSlugsOf(source) {
   );
 }
 
+export function normalizePermissionKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+export function roleHasPermission(role, permissionKey) {
+  const required = normalizePermissionKey(permissionKey);
+  if (!required) return false;
+  const permissions = Array.isArray(role?.permissions) ? role.permissions : [];
+  return permissions.some((permission) => {
+    const candidate =
+      typeof permission === "string"
+        ? permission
+        : permission?.key || permission?.name || permission?.value || "";
+    return normalizePermissionKey(candidate) === required;
+  });
+}
+
+/** True when a role catalog entry grants admin-level privileges. */
+export function isAdminPrivilegeRole(role) {
+  if (!role) return false;
+  if (roleHasPermission(role, "admin_override")) return true;
+  const normalizedName = normalizePermissionKey(role?.name || role?.roleName || "");
+  return (
+    normalizedName === "admin" ||
+    normalizedName === "administrator" ||
+    normalizedName === "sys_admin"
+  );
+}
+
+/** True when a role catalog entry is the default "user" role. */
+export function isUserRole(role) {
+  const normalizedName = normalizePermissionKey(role?.name || role?.roleName || "");
+  return normalizedName === "user";
+}
+
 /** Which table an assignment came from, inferred from the ids it carries. */
 export function assignmentScopeOf(assignment) {
   if (assignment?.teamId) return "team";

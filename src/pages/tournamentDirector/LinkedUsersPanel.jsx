@@ -9,6 +9,7 @@ import {
   TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS,
 } from "../../utils/accessControl";
 import { TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY } from "./persistenceKeys";
+import BulkRoleAssignmentPanel from "./BulkRoleAssignmentPanel";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
@@ -87,6 +88,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
 
   // Team grants carry their parent event, so resolveAccessScope widens event
   // access to cover them (see roleScope.js).
@@ -155,6 +157,23 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
       active = false;
     };
   }, [eventOptionsReady, selectedEvent, selectedEventId]);
+
+  function refreshUsers() {
+    if (!selectedEventId) return;
+    setLoading(true);
+    setError("");
+    loadLinkedCrew(selectedEventId)
+      .then((crew) => {
+        setUsers(crew);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Unable to refresh linked users.");
+        setUsers([]);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }
 
   const groupedUsers = useMemo(
     () =>
@@ -232,31 +251,20 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
           title="Event-linked crew"
           action={
             <>
-              <Link to="/admin/event-access" className="sc-button">
-                Event access control
-              </Link>
               <button
                 type="button"
-                onClick={() => {
-                  if (!selectedEventId) return;
-                  setLoading(true);
-                  setError("");
-                  loadLinkedCrew(selectedEventId)
-                    .then((crew) => {
-                      setUsers(crew);
-                    })
-                    .catch((err) => {
-                      setError(err instanceof Error ? err.message : "Unable to refresh linked users.");
-                      setUsers([]);
-                    })
-                    .finally(() => {
-                      setLoading(false);
-                    });
-                }}
+                onClick={() => setBulkAddOpen((prev) => !prev)}
                 className="sc-button"
+                disabled={!selectedEventId}
               >
+                {bulkAddOpen ? "Hide add users" : "+ Add users"}
+              </button>
+              <button type="button" onClick={refreshUsers} className="sc-button">
                 Refresh users
               </button>
+              <Link to="/admin/event-access" className="sc-button is-ghost text-xs">
+                Manage individual access
+              </Link>
             </>
           }
         />
@@ -296,6 +304,10 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
           </Panel>
         ) : null}
       </Card>
+
+      {bulkAddOpen ? (
+        <BulkRoleAssignmentPanel eventId={selectedEventId} onAssigned={refreshUsers} />
+      ) : null}
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2">
         {groupedUsers.map((group) => (
