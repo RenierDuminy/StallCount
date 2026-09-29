@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import useInstallPrompt from "../hooks/useInstallPrompt";
 import { useAuth } from "../context/AuthContext";
@@ -36,72 +36,6 @@ function isLinkActive(linkTo, location) {
 
 function isAdminToneLink(linkTo) {
   return linkTo === "/admin" || linkTo === "/tournament-director";
-}
-
-/**
- * Desktop account menu: one button instead of a row of role links, so the
- * bar has a fixed width however many roles the user holds.
- */
-function AccountMenu({ links, location }) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef(null);
-  const hasActiveLink = links.some((link) => isLinkActive(link.to, location));
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function handlePointerDown(event) {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
-        setOpen(false);
-      }
-    }
-    function handleKeyDown(event) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
-
-  return (
-    <div ref={containerRef} className="sc-account-menu">
-      <button
-        type="button"
-        className={`sc-header-button${hasActiveLink ? " is-current" : ""}`}
-        aria-expanded={open}
-        aria-controls="sc-account-menu-panel"
-        onClick={() => setOpen((prev) => !prev)}
-      >
-        Account
-        <svg
-          className={`sc-account-menu__chevron${open ? " is-open" : ""}`}
-          width="12"
-          height="12"
-          viewBox="0 0 12 12"
-          aria-hidden="true"
-        >
-          <path d="M3 4.5 6 8l3-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-      {open && (
-        <div id="sc-account-menu-panel" className="sc-account-menu__panel">
-          {links.map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              aria-current={isLinkActive(link.to, location) ? "page" : undefined}
-              className={`sc-account-menu__link${isAdminToneLink(link.to) ? " is-admin" : ""}`}
-              onClick={() => setOpen(false)}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 export default function SiteHeader() {
@@ -186,14 +120,24 @@ export default function SiteHeader() {
           </nav>
 
           <div className="sc-site-header__actions">
+            {user && (
+              <nav className="sc-account-links sc-site-header__desktop-only" aria-label="Account">
+                {accountLinks.map((link) => (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    aria-current={isLinkActive(link.to, location) ? "page" : undefined}
+                    className={`sc-account-link${isAdminToneLink(link.to) ? " is-admin" : ""}`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </nav>
+            )}
             <button type="button" onClick={handleInstallClick} className="sc-header-button sc-site-header__desktop-only">
               Install app
             </button>
-            {user ? (
-              <div className="sc-site-header__desktop-only">
-                <AccountMenu links={accountLinks} location={location} />
-              </div>
-            ) : (
+            {!user && (
               <Link to="/login" className="sc-header-button is-primary sc-site-header__desktop-only">
                 Log in
               </Link>

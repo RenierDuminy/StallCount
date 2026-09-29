@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Card, Field, Panel, SectionHeader, SectionShell, Select } from "../components/ui/primitives";
 import { getEventRosterDivisions, getEventsList } from "../services/leagueService";
 import { getEventRosters } from "../services/playerService";
-import { getEventWorkspacePath } from "./eventWorkspaces";
+import { getEventPagePath } from "./eventWorkspaces";
 
 export default function EventRostersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -197,7 +197,7 @@ export default function EventRostersPage() {
 
   const selectedEvent = events.find((evt) => evt.id === selectedEventId) || null;
   const selectedEventPath = selectedEventId
-    ? getEventWorkspacePath(selectedEventId) ||
+    ? getEventPagePath(selectedEvent) ||
       `/events?eventId=${encodeURIComponent(selectedEventId)}`
     : "";
 

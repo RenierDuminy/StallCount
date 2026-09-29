@@ -5,7 +5,7 @@ import { getMatchesByEvent } from "../services/matchService";
 import { hydrateVenueLookup } from "../services/venueService";
 import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
 import { StandardEventMatchCard } from "../components/StandardEventMatchCard";
-import { getEventWorkspacePath } from "./eventWorkspaces";
+import { getEventPagePath } from "./eventWorkspaces";
 import { CLOSED_STATUSES, IN_PROGRESS_STATUSES, PENDING_STATUSES, isForfeitStatus } from "../constants/statusCodes";
 
 const isMatchLive = (status) => {
@@ -378,7 +378,7 @@ export default function EventsPage() {
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredEvents.map((event) => {
                   const isActive = event.id === selectedEventId;
-                  const eventWorkspacePath = getEventWorkspacePath(event.id);
+                  const eventWorkspacePath = getEventPagePath(event);
                   const wrapClass = `${
                     isActive ? "sc-button is-square" : "sc-button is-ghost is-square"
                   } flex min-h-[88px] w-full overflow-hidden rounded-[var(--sc-radius-md)] p-0`;

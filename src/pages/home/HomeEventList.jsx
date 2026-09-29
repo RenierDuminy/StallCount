@@ -1,12 +1,12 @@
 import { memo } from "react";
 import { Link } from "react-router-dom";
 import { Panel } from "../../components/ui/primitives";
-import { getEventWorkspacePath } from "../eventWorkspaces";
+import { getEventPagePath } from "../eventWorkspaces";
 import { formatDateRange, formatEventType } from "./homeFormat";
 
 const HomeEventCard = memo(function HomeEventCard({ event, statusTab, onNow }) {
   const searchParams = new URLSearchParams({ eventId: event.id, status: statusTab });
-  const href = getEventWorkspacePath(event.id) || `/events?${searchParams.toString()}`;
+  const href = getEventPagePath(event) || `/events?${searchParams.toString()}`;
   const meta = [formatDateRange(event.start_date, event.end_date), event.location].filter(Boolean).join(" · ");
   const type = formatEventType(event.type);
 

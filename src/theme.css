@@ -318,7 +318,7 @@ a:focus-visible {
 
 .sc-nav-link:focus-visible,
 .sc-menu-link:focus-visible,
-.sc-account-menu__link:focus-visible {
+.sc-account-link:focus-visible {
   outline: 2px solid var(--sc-accent);
   outline-offset: -2px;
   border-radius: 4px;
@@ -383,57 +383,44 @@ a:focus-visible {
   padding: 0;
 }
 
-/* Account menu (desktop) */
+/* Account links (desktop): a compact row set off from the main nav by an
+   accent rule, rather than a dropdown. */
 
-.sc-account-menu {
-  position: relative;
-}
-
-.sc-account-menu__chevron {
-  transition: transform var(--sc-transition-fast);
-}
-
-.sc-account-menu__chevron.is-open {
-  transform: rotate(180deg);
-}
-
-.sc-account-menu__panel {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  right: 0;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  min-width: 13rem;
-  padding: 0.35rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  background: var(--sc-surface);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
-}
-
-.sc-account-menu__link {
-  display: flex;
+.sc-account-links {
   align-items: center;
-  min-height: 2.5rem;
-  padding: 0 0.75rem;
-  border-radius: 6px;
-  font-size: 0.875rem;
+  gap: 0.75rem;
+  margin-right: 0.5rem;
+  padding-left: 1rem;
+  border-left: 2px solid rgba(198, 255, 98, 0.7);
+}
+
+.sc-account-link {
+  padding: 0.25rem 0;
+  border-bottom: 2px solid transparent;
+  font-size: 0.75rem;
   font-weight: 600;
-  color: var(--sc-ink);
+  white-space: nowrap;
+  color: var(--sc-ink-muted);
+  transition:
+    color var(--sc-transition-fast),
+    border-color var(--sc-transition-fast);
 }
 
-.sc-account-menu__link:hover {
-  background: rgba(255, 255, 255, 0.06);
+.sc-account-link:hover {
   color: var(--sc-ink-strong);
+  border-bottom-color: rgba(255, 255, 255, 0.25);
 }
 
-.sc-account-menu__link[aria-current="page"] {
-  background: rgba(198, 255, 98, 0.1);
+.sc-account-link[aria-current="page"] {
   color: var(--sc-ink-strong);
+  border-bottom-color: var(--sc-accent);
 }
 
-.sc-account-menu__link.is-admin,
+.sc-account-link.is-admin[aria-current="page"] {
+  color: var(--sc-admin-ink);
+  border-bottom-color: var(--sc-admin);
+}
+
 .sc-menu-link.is-admin {
   color: var(--sc-admin-ink);
 }

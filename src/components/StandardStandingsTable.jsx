@@ -17,15 +17,34 @@ const FORM_DOT_SIZE_PX = 7;
 const FORM_DOT_GAP_PX = 2;
 // Horizontal padding on the form <th>/<td> (px-1 = 0.25rem each side).
 const FORM_COL_PADDING_PX = 8;
+// Width of a stage separator (" - ") between groups of dots, e.g. pool play
+// and each playoff round in final standings. Form entries shaped
+// `{ separator: true }` render as one.
+const FORM_SEPARATOR_WIDTH_PX = 7;
 
-const getFormRowWidthPx = (dotCount) =>
-  dotCount <= 0 ? 0 : dotCount * FORM_DOT_SIZE_PX + (dotCount - 1) * FORM_DOT_GAP_PX;
+const getFormRowWidthPx = (form = []) => {
+  if (!form.length) return 0;
+  const itemsWidth = form.reduce(
+    (total, entry) =>
+      total + (entry?.separator ? FORM_SEPARATOR_WIDTH_PX : FORM_DOT_SIZE_PX),
+    0,
+  );
+  return itemsWidth + (form.length - 1) * FORM_DOT_GAP_PX;
+};
 
 export function FormDots({ form, className = "", dotClassName = "h-1.5 w-1.5" }) {
   if (!form?.length) return null;
   return (
-    <div className={cx("flex flex-nowrap gap-0.5", className)} aria-hidden="true">
-      {form.map((entry, index) => (
+    <div className={cx("flex flex-nowrap items-center gap-0.5", className)} aria-hidden="true">
+      {form.map((entry, index) =>
+        entry?.separator ? (
+          <span
+            key={index}
+            className="inline-block w-[7px] text-center text-[10px] leading-none text-ink-muted"
+          >
+            -
+          </span>
+        ) : (
         <span
           key={index}
           title={entry.title}
@@ -34,7 +53,8 @@ export function FormDots({ form, className = "", dotClassName = "h-1.5 w-1.5" })
             backgroundColor: FORM_DOT_COLORS[entry.outcome] || FORM_DOT_COLORS.scheduled,
           }}
         />
-      ))}
+        ),
+      )}
     </div>
   );
 }
@@ -66,9 +86,11 @@ export function StandardStandingsLegend({ className = "" }) {
  * Rows come from `buildPoolGroupStandings` in utils/standings. Column set is
  * driven by props so a plain pool table and a full league table share one
  * implementation:
- *  - `showRank`   adds the leading "#" position column.
+ *  - `showRank`   adds the leading "#" position column (a row's own `rank`
+ *                  wins over its index, for final placings).
  *  - `showPoints` adds the "Pts" column (league-points events only).
  *  - `showForm`   renders the form-guide dots (off for events that don't use them).
+ *  - `showScoreDiff` renders the "+/-" column (on by default).
  *
  * The form column is sized to fit the longest form line on a single row, and
  * `sc-standings-form-col` / `sc-standings-form-inline` (theme.css) move the
@@ -79,6 +101,7 @@ export function StandardStandingsTable({
   showRank = false,
   showPoints = false,
   showForm = true,
+  showScoreDiff = true,
   emptyLabel = "No standings available yet.",
   className = "",
 }) {
@@ -86,8 +109,9 @@ export function StandardStandingsTable({
     return <p className="text-sm text-ink-muted">{emptyLabel}</p>;
   }
 
-  const maxFormLength = rows.reduce((max, row) => Math.max(max, row.form?.length || 0), 0);
-  const formColWidthPx = getFormRowWidthPx(maxFormLength) + FORM_COL_PADDING_PX;
+  const formColWidthPx =
+    rows.reduce((max, row) => Math.max(max, getFormRowWidthPx(row.form)), 0) +
+    FORM_COL_PADDING_PX;
 
   return (
     <div
@@ -115,7 +139,9 @@ export function StandardStandingsTable({
               <th className="w-10 px-0.5 py-1 text-center font-semibold">Pts</th>
             ) : null}
             <th className="w-10 px-0.5 py-1 text-center font-semibold">W-L</th>
-            <th className="w-9 px-0.5 py-1 text-center font-semibold">+/-</th>
+            {showScoreDiff ? (
+              <th className="w-9 px-0.5 py-1 text-center font-semibold">+/-</th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -129,7 +155,7 @@ export function StandardStandingsTable({
             >
               {showRank ? (
                 <td className="px-0.5 py-1 text-center align-top tabular-nums text-ink-muted">
-                  {index + 1}
+                  {row.rank ?? index + 1}
                 </td>
               ) : null}
               <td className="min-w-0 px-1 py-1 align-top" title={row.name}>
@@ -166,9 +192,11 @@ export function StandardStandingsTable({
               <td className="px-0.5 py-1 text-center align-top tabular-nums">
                 {`${row.wins}-${row.losses}`}
               </td>
-              <td className="px-0.5 py-1 text-center align-top tabular-nums">
-                {formatScoreDiff(row.scoreDiff)}
-              </td>
+              {showScoreDiff ? (
+                <td className="px-0.5 py-1 text-center align-top tabular-nums">
+                  {formatScoreDiff(row.scoreDiff)}
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>

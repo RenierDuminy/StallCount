@@ -1,6 +1,8 @@
+import { isStandardTemplateEvent } from "./standardEventTemplates";
+
 const workspaceModules = import.meta.glob("./events workspace/*.jsx", { eager: true });
 
-const slugify = (value) => {
+export const slugify = (value) => {
   if (typeof value !== "string") return null;
   return value
     .toLowerCase()
@@ -32,6 +34,9 @@ const eventWorkspaces = Object.entries(workspaceModules)
       path: `/events/${derivedSlug}`,
       Component,
       priority,
+      // Listed in standardEventTemplates.js: this URL renders the standard
+      // event page and `Component` is kept only as a backup.
+      usesStandardTemplate: isStandardTemplateEvent(eventId),
       meta: {
         eventName: eventName || derivedSlug.replace(/-/g, " "),
         sourcePath: path.replace(/^\.\//, "src/pages/"),
@@ -51,5 +56,18 @@ const eventWorkspacePathByEventId = eventWorkspaces.reduce((acc, workspace) => {
 }, {});
 
 export const getEventWorkspacePath = (eventId) => eventWorkspacePathByEventId[eventId] || null;
+
+/**
+ * Where an event's page lives: its workspace URL when it has one (custom, or a
+ * listed event now on the standard page), otherwise the standard page at
+ * `/events/<slug of its name>`, which StandardEventPage resolves by name.
+ */
+export const getEventPagePath = (event) => {
+  if (!event?.id) return null;
+  const workspacePath = getEventWorkspacePath(event.id);
+  if (workspacePath) return workspacePath;
+  const slug = slugify(event.name);
+  return slug ? `/events/${slug}` : null;
+};
 
 export { eventWorkspaces, eventWorkspacePathByEventId };

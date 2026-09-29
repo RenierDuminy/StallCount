@@ -48,9 +48,25 @@ const PlayoffStructurePage = lazy(() => import("./pages/PlayoffStructurePage"));
 const MediaAdminPage = lazy(() => import("./pages/MediaAdminPage"));
 const EventRostersPageLazy = lazy(() => import("./pages/EventRostersPage"));
 const EventRulesPageLazy = lazy(() => import("./pages/EventRulesPage"));
+const StandardEventPage = lazy(() => import("./pages/StandardEventPage"));
+const StandardEventWorkspace = lazy(() =>
+  import("./pages/StandardEventPage").then((mod) => ({ default: mod.StandardEventWorkspace })),
+);
 const cptMxLeagueWorkspace = eventWorkspaces.find(
   (workspace) => workspace.path === "/events/ctfda-mx-league",
 );
+
+// Events listed in standardEventTemplates.js keep their workspace URL but render
+// the standard page; their custom component stays bundled only as a backup.
+const renderWorkspace = (workspace) =>
+  workspace.usesStandardTemplate ? (
+    <StandardEventWorkspace
+      eventId={workspace.eventId}
+      fallbackName={workspace.meta.eventName}
+    />
+  ) : (
+    <workspace.Component />
+  );
 
 const routeFallback = (
   <div className="sc-shell flex min-h-[40vh] items-center justify-center text-sm text-[var(--sc-ink-muted)]">
@@ -114,7 +130,7 @@ export default function AppRoutes() {
           {cptMxLeagueWorkspace ? (
             <Route
               path="/events/ctfda-mx-league"
-              element={<Guarded name="CPT MX League workspace"><cptMxLeagueWorkspace.Component /></Guarded>}
+              element={<Guarded name="CPT MX League workspace">{renderWorkspace(cptMxLeagueWorkspace)}</Guarded>}
             />
           ) : null}
           {eventWorkspaces
@@ -123,9 +139,12 @@ export default function AppRoutes() {
             <Route
               key={workspace.path}
               path={workspace.path}
-              element={<Guarded name={`Event workspace: ${workspace.path}`}><workspace.Component /></Guarded>}
+              element={<Guarded name={`Event workspace: ${workspace.path}`}>{renderWorkspace(workspace)}</Guarded>}
             />
           ))}
+          {/* Every other event gets the standard page by name. Static
+              workspace routes above outrank this dynamic one. */}
+          <Route path="/events/:slug" element={<Guarded name="Event"><StandardEventPage /></Guarded>} />
           <Route
             path="/notifications"
             element={
