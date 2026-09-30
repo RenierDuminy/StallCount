@@ -49,21 +49,22 @@ const MediaAdminPage = lazy(() => import("./pages/MediaAdminPage"));
 const EventRostersPageLazy = lazy(() => import("./pages/EventRostersPage"));
 const EventRulesPageLazy = lazy(() => import("./pages/EventRulesPage"));
 const StandardEventPage = lazy(() => import("./pages/StandardEventPage"));
-const StandardEventWorkspace = lazy(() =>
-  import("./pages/StandardEventPage").then((mod) => ({ default: mod.StandardEventWorkspace })),
+const StandardEventRedirect = lazy(() =>
+  import("./pages/StandardEventPage").then((mod) => ({ default: mod.StandardEventRedirect })),
+);
+const LegacyEventSlugRedirect = lazy(() =>
+  import("./pages/StandardEventPage").then((mod) => ({ default: mod.LegacyEventSlugRedirect })),
 );
 const cptMxLeagueWorkspace = eventWorkspaces.find(
   (workspace) => workspace.path === "/events/ctfda-mx-league",
 );
 
-// Events listed in standardEventTemplates.js keep their workspace URL but render
-// the standard page; their custom component stays bundled only as a backup.
+// Events listed in standardEventTemplates.js live on the standard page at
+// /event/<name>; their old workspace URL redirects there, and the custom
+// component stays bundled only as a backup.
 const renderWorkspace = (workspace) =>
   workspace.usesStandardTemplate ? (
-    <StandardEventWorkspace
-      eventId={workspace.eventId}
-      fallbackName={workspace.meta.eventName}
-    />
+    <StandardEventRedirect eventId={workspace.eventId} />
   ) : (
     <workspace.Component />
   );
@@ -142,9 +143,11 @@ export default function AppRoutes() {
               element={<Guarded name={`Event workspace: ${workspace.path}`}>{renderWorkspace(workspace)}</Guarded>}
             />
           ))}
-          {/* Every other event gets the standard page by name. Static
-              workspace routes above outrank this dynamic one. */}
-          <Route path="/events/:slug" element={<Guarded name="Event"><StandardEventPage /></Guarded>} />
+          {/* Every other event gets the standard page by name. The static
+              workspace routes above outrank the /events/:slug catch-all,
+              which only forwards stray old links to /event/:slug. */}
+          <Route path="/event/:slug" element={<Guarded name="Event"><StandardEventPage /></Guarded>} />
+          <Route path="/events/:slug" element={<Guarded name="Event"><LegacyEventSlugRedirect /></Guarded>} />
           <Route
             path="/notifications"
             element={

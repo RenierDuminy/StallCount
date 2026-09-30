@@ -45,8 +45,12 @@ const eventWorkspaces = Object.entries(workspaceModules)
   })
   .filter(Boolean);
 
+// Only custom workspaces own an event's URL. Events listed in
+// standardEventTemplates.js are served by the standard page at /event/<name>
+// instead; their old workspace URL just redirects there.
 const eventWorkspacePriorityByEventId = {};
 const eventWorkspacePathByEventId = eventWorkspaces.reduce((acc, workspace) => {
+  if (workspace.usesStandardTemplate) return acc;
   const currentPriority = eventWorkspacePriorityByEventId[workspace.eventId];
   if (currentPriority === undefined || workspace.priority > currentPriority) {
     acc[workspace.eventId] = workspace.path;
@@ -55,19 +59,24 @@ const eventWorkspacePathByEventId = eventWorkspaces.reduce((acc, workspace) => {
   return acc;
 }, {});
 
+/** An event's custom workspace URL, or null when it uses the standard page. */
 export const getEventWorkspacePath = (eventId) => eventWorkspacePathByEventId[eventId] || null;
 
+/** Base path of the standard event page: `/event/<slug of the event name>`. */
+export const STANDARD_EVENT_BASE_PATH = "/event";
+
+export const getStandardEventPath = (eventName) => {
+  const slug = slugify(eventName);
+  return slug ? `${STANDARD_EVENT_BASE_PATH}/${slug}` : null;
+};
+
 /**
- * Where an event's page lives: its workspace URL when it has one (custom, or a
- * listed event now on the standard page), otherwise the standard page at
- * `/events/<slug of its name>`, which StandardEventPage resolves by name.
+ * Where an event's page lives: its custom workspace URL when it has one,
+ * otherwise the standard page at `/event/<slug of its name>`.
  */
 export const getEventPagePath = (event) => {
   if (!event?.id) return null;
-  const workspacePath = getEventWorkspacePath(event.id);
-  if (workspacePath) return workspacePath;
-  const slug = slugify(event.name);
-  return slug ? `/events/${slug}` : null;
+  return getEventWorkspacePath(event.id) || getStandardEventPath(event.name);
 };
 
 export { eventWorkspaces, eventWorkspacePathByEventId };

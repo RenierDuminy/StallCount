@@ -38,6 +38,8 @@ const STANDARD_TEMPLATE_EVENTS = {
   "aac5921d-ff3a-44ac-9962-dc5d8017ea1f": {},
   // Cape Town Mixed League 2026 (backup: CPT_MX_league_2026.jsx)
   "1952f80d-f534-46d8-93ef-136e045429fc": {},
+  // Mixed Western Regionals 2026 (backup: CPT_MX_regionals_2026.jsx)
+  "c2a36eb4-6a6f-4467-8ef9-edad5351aad9": {},
 };
 
 /** True when a custom workspace for this event is overridden by the standard page. */
