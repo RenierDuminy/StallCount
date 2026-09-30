@@ -52,9 +52,9 @@ export const isCanceledMatch = (status) => CANCELED_STATUSES.has(normaliseStatus
 
 /**
  * WFDF-style league scoring used by the Stellenbosch Residence League: 3 for a
- * win, 2 for losing by <= 4, 1 for any other loss. A forfeit is recorded as a
- * canceled match with a 5-0 line; the innocent team takes 2 points and the
- * guilty team 0.
+ * win, 2 for losing by <= 4, 1 for any other loss. A forfeit is recorded with a
+ * `forfeit_teamA`/`forfeit_teamB` status (or, for older rows, a canceled match
+ * with a 5-0 line); the innocent team takes 2 points and the guilty team 0.
  */
 export const LEAGUE_POINTS_SCORING = Object.freeze({
   winPoints: 3,
@@ -71,12 +71,23 @@ const DEFAULT_FORFEIT_SCORE = 5;
 
 const getForfeitScore = (scoring) => scoring?.forfeitScore ?? DEFAULT_FORFEIT_SCORE;
 
+const FORFEIT_STATUSES = new Set(["forfeit", "forfeit_teama", "forfeit_teamb"]);
+
+/** True when the status itself declares the match a forfeit. */
+export const isForfeitStatus = (status) => FORFEIT_STATUSES.has(normaliseStatus(status));
+
 /**
- * A forfeit is a canceled match recorded with a `forfeitScore`-0 line in either
- * direction. Kept as a score heuristic because the explicit forfeit_teamA /
- * forfeit_teamB statuses are not yet written by the app everywhere.
+ * A forfeit is either declared by the status (`forfeit`, `forfeit_teamA`,
+ * `forfeit_teamB`) or inferred from a canceled match carrying a
+ * `forfeitScore`-0 line in either direction.
+ *
+ * The score heuristic is kept for rows written before the explicit statuses
+ * existed, and for events that record a forfeit as a plain cancellation. It is
+ * only a fallback: a `forfeit_teamA`/`forfeit_teamB` match counts as a forfeit
+ * whatever score line it carries.
  */
 export const isForfeitMatch = (match, scoring) => {
+  if (isForfeitStatus(match?.status)) return true;
   if (!isCanceledMatch(match?.status)) return false;
   const scoreA = match?.score_a;
   const scoreB = match?.score_b;
@@ -135,15 +146,40 @@ export const FORM_LEGEND_ITEMS = Object.freeze([
 ]);
 
 /**
- * `forfeit_teama` / `forfeit_teamb` name the guilty team explicitly once that
- * status is set. Until then the 5-0 heuristic can flag a forfeit but cannot say
- * which side is guilty, so both teams fall back to the plain "canceled" dot.
+ * `forfeit_teama` / `forfeit_teamb` name the guilty team explicitly. A plain
+ * `forfeit` (or a 5-0 cancellation caught by the score heuristic) does not say
+ * which side is to blame, so both teams fall back to the "canceled" dot and
+ * neither has the forfeit counted against them.
  */
 const getForfeitGuiltyTeamId = (match) => {
   const status = normaliseStatus(match?.status);
   if (status === "forfeit_teama") return match?.team_a?.id ?? null;
   if (status === "forfeit_teamb") return match?.team_b?.id ?? null;
   return null;
+};
+
+/**
+ * The score line a forfeit should be counted and displayed with.
+ *
+ * An attributed forfeit stands on its status alone, so when the recorded score
+ * is missing or level the configured forfeit line is substituted to give the
+ * result a direction — a TD who sets `forfeit_teamB` without touching the
+ * score still awards the win. An unattributed forfeit has no direction to
+ * infer, and any other match keeps its real score.
+ */
+export const resolveMatchScores = (match, scoring) => {
+  const scoreA = match?.score_a;
+  const scoreB = match?.score_b;
+  if (!isForfeitMatch(match, scoring)) return { scoreA, scoreB };
+  const guiltyTeamId = getForfeitGuiltyTeamId(match);
+  if (!guiltyTeamId) return { scoreA, scoreB };
+  if (scoreA > scoreB || scoreB > scoreA) return { scoreA, scoreB };
+  const forfeitScore = getForfeitScore(scoring);
+  const guiltyIsA = guiltyTeamId === match?.team_a?.id;
+  return {
+    scoreA: guiltyIsA ? 0 : forfeitScore,
+    scoreB: guiltyIsA ? forfeitScore : 0,
+  };
 };
 
 export const getTeamMatchOutcome = (match, teamId, teamScore, oppScore, scoring) => {
@@ -261,10 +297,15 @@ export const formatScoreDiff = (value) => {
 /**
  * WFDF tie-break criteria, applied in order to a group of teams level on wins.
  *
- * Each returns a Map of teamId -> numeric score, higher ranking better. A
- * criterion only separates teams it can actually measure; `null` means "no
- * data" and is treated as unrankable, so those teams stay level and fall
- * through to the next criterion.
+ * Each returns a Map of teamId -> numeric score, higher ranking better.
+ *
+ * Counts and differences follow WFDF's wording literally: a tied team that has
+ * not played the other tied teams has won 0 of those games with a goal
+ * difference of 0 — it is not "unmeasurable" and is not pushed to the bottom.
+ * (That only happens mid-season or on uneven schedules; in a finished round
+ * robin every tied team has played every other.) Goals *per game* has no value
+ * without games, so it returns `null` for such a team, and a criterion with any
+ * `null` is skipped as unable to separate the group.
  *
  * `tied` is the current subgroup under consideration. Criteria scoped "between
  * the tied teams" look only at games inside it; "common opponents" looks at
@@ -296,20 +337,18 @@ const getCommonOpponents = (group) => {
 
 const winsAgainst = (group, opponentIds) =>
   new Map(
-    group.map((team) => {
-      const results = resultsAgainst(team, opponentIds);
-      if (!results.length) return [team.id, null];
-      return [team.id, sumBy(results, (r) => (r.scoreFor > r.scoreAgainst ? 1 : 0))];
-    }),
+    group.map((team) => [
+      team.id,
+      sumBy(resultsAgainst(team, opponentIds), (r) => (r.scoreFor > r.scoreAgainst ? 1 : 0)),
+    ]),
   );
 
 const goalDiffAgainst = (group, opponentIds) =>
   new Map(
-    group.map((team) => {
-      const results = resultsAgainst(team, opponentIds);
-      if (!results.length) return [team.id, null];
-      return [team.id, sumBy(results, (r) => r.scoreFor - r.scoreAgainst)];
-    }),
+    group.map((team) => [
+      team.id,
+      sumBy(resultsAgainst(team, opponentIds), (r) => r.scoreFor - r.scoreAgainst),
+    ]),
   );
 
 const goalsPerGameAgainst = (group, opponentIds) =>
@@ -360,50 +399,48 @@ const WFDF_CRITERIA = [
  *
  * Walks the WFDF criteria in order. The first one that splits the group at all
  * partitions it into score buckets; each bucket with more than one team is then
- * re-ranked *from the top of the criteria list* (WFDF: "if a criterion splits
- * the group only partly, the teams still level start again from the top").
+ * re-ranked *from the top of the criteria list* (WFDF B3.3.2: each subgroup
+ * "is then to be ranked separately, starting with the first ranking
+ * criterion").
  *
- * `depth` guards against a pathological cycle where a subgroup never shrinks.
+ * Recursion always terminates: a criterion is only applied when it yields at
+ * least two distinct scores, so every bucket is strictly smaller than the
+ * group. (An earlier depth cap of one level per criterion could cut a large tie
+ * short — 8+ teams level on wins peeling off one at a time — and fall back to
+ * alphabetical order early.)
  */
-const rankTiedGroup = (group, depth = 0) => {
+const rankTiedGroup = (group) => {
   if (group.length <= 1) return group;
-  if (depth > WFDF_CRITERIA.length) {
-    return [...group].sort((a, b) => a.name.localeCompare(b.name));
-  }
 
   for (const criterion of WFDF_CRITERIA) {
     const scores = criterion.score(group);
-    // Teams with no measurable data cannot be separated by this criterion.
-    const ranked = group.filter((team) => scores.get(team.id) !== null);
-    if (ranked.length < 2) continue;
+    // A criterion that cannot be measured for every tied team cannot
+    // separate them (only goals-per-game returns null, for a team with no
+    // games in scope).
+    if (group.some((team) => scores.get(team.id) === null)) continue;
 
-    const distinct = new Set(ranked.map((team) => scores.get(team.id)));
+    const distinct = new Set(group.map((team) => scores.get(team.id)));
     if (distinct.size < 2) continue; // criterion did not split anything
 
-    // Partition into buckets by score, best first. Teams the criterion could
-    // not measure sort last, still level with each other.
+    // Partition into buckets by score, best first.
     const buckets = new Map();
     group.forEach((team) => {
       const score = scores.get(team.id);
-      const key = score === null ? "__unranked__" : score;
-      if (!buckets.has(key)) buckets.set(key, []);
-      buckets.get(key).push(team);
+      if (!buckets.has(score)) buckets.set(score, []);
+      buckets.get(score).push(team);
     });
 
-    const orderedKeys = [...buckets.keys()]
-      .filter((key) => key !== "__unranked__")
-      .sort((a, b) => b - a);
-    if (buckets.has("__unranked__")) orderedKeys.push("__unranked__");
-
-    return orderedKeys.flatMap((key) => {
-      const bucket = buckets.get(key);
-      // A bucket that still contains the whole group would recurse forever;
-      // the distinct-size check above means that cannot happen here.
-      return bucket.length > 1 ? rankTiedGroup(bucket, depth + 1) : bucket;
-    });
+    return [...buckets.keys()]
+      .sort((a, b) => b - a)
+      .flatMap((key) => {
+        const bucket = buckets.get(key);
+        return bucket.length > 1 ? rankTiedGroup(bucket) : bucket;
+      });
   }
 
-  // Nothing separated them — stable, predictable fallback.
+  // Nothing separated them. WFDF's last criterion (B3.4.7) is a disc throw to
+  // the brick mark, which cannot be recorded here, so fall back to a stable,
+  // predictable order.
   return [...group].sort((a, b) => a.name.localeCompare(b.name));
 };
 
@@ -492,26 +529,43 @@ export const buildPoolGroupStandings = (pools, matches, options = {}) => {
     const teamBStanding = teamBId ? standingsByTeam.get(teamBId) : null;
 
     // Record a form dot for every match (played, canceled, or still scheduled).
+    // The resolved scores are used so a forfeit's tooltip shows the same line
+    // the table counted.
+    const formScores = resolveMatchScores(match, scoring);
     if (teamAStanding) {
       teamAStanding.form.push(
-        buildTeamFormEntry(match, teamAId, match.team_b, match.score_a, match.score_b, scoring),
+        buildTeamFormEntry(
+          match,
+          teamAId,
+          match.team_b,
+          formScores.scoreA,
+          formScores.scoreB,
+          scoring,
+        ),
       );
     }
     if (teamBStanding) {
       teamBStanding.form.push(
-        buildTeamFormEntry(match, teamBId, match.team_a, match.score_b, match.score_a, scoring),
+        buildTeamFormEntry(
+          match,
+          teamBId,
+          match.team_a,
+          formScores.scoreB,
+          formScores.scoreA,
+          scoring,
+        ),
       );
     }
 
     if (!isFinishedMatch(match?.status) && !forfeit) return;
-    if (typeof match?.score_a !== "number" || typeof match?.score_b !== "number") {
-      return;
-    }
 
     // Which side forfeited, when the status names them. Used by the WFDF
-    // "fewest games forfeited" criterion; an unattributed forfeit (5-0 with no
-    // forfeit_teamA/B status) counts against neither team.
+    // "fewest games forfeited" criterion; an unattributed forfeit (a plain
+    // `forfeit`, or a 5-0 cancellation) counts against neither team.
     const guiltyTeamId = forfeit ? getForfeitGuiltyTeamId(match) : null;
+
+    const { scoreA, scoreB } = resolveMatchScores(match, scoring);
+    if (typeof scoreA !== "number" || typeof scoreB !== "number") return;
 
     const applyResult = (standing, opponentId, scoreFor, scoreAgainst) => {
       if (!standing) return;
@@ -536,8 +590,8 @@ export const buildPoolGroupStandings = (pools, matches, options = {}) => {
       }
     };
 
-    applyResult(teamAStanding, teamBId, match.score_a, match.score_b);
-    applyResult(teamBStanding, teamAId, match.score_b, match.score_a);
+    applyResult(teamAStanding, teamBId, scoreA, scoreB);
+    applyResult(teamBStanding, teamAId, scoreB, scoreA);
   });
 
   const rows = Array.from(standingsByTeam.values());

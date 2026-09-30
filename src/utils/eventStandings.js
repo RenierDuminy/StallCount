@@ -1,10 +1,10 @@
 /**
  * Division and final standings for the generic event workspace.
  *
- * Division standings (`buildPoolStandings`) are one table per pool covering
- * everything except the playoffs: the pool's own games, then " - ", then the
- * team's games that belong to no pool (crossovers). Games linked to a bracket
- * node are playoff games and never count here.
+ * Division standings (`buildPoolStandings`) are one table per pool, ranked by
+ * WFDF on the pool's own games. The form line also shows each team's games
+ * that belong to no pool (crossovers) after a " - ", for context only. Games
+ * linked to a bracket node are playoff games and never appear here.
  *
  * Final standings (`buildFinalStandings`) are decided per division
  * (`getFinalStandingsModes`) and come in two scopes:
@@ -203,9 +203,11 @@ const joinStages = (stages) =>
     .flatMap((entries, index) => (index === 0 ? entries : [FORM_SEPARATOR, ...entries]));
 
 /**
- * Division standings for one pool: the pool's games, then (after " - ") each
- * team's no-pool games. Playoff games are excluded. W-L, +/- and the ranking
- * cover both stages.
+ * Division standings for one pool. The ranking, W-L and +/- cover the pool's
+ * own games only — WFDF B3.1 ranks a pool "after round robin pool play", and
+ * the playoff seeding uses the same pool-only table. The form line shows the
+ * pool's games, then (after " - ") each team's no-pool games for context.
+ * Playoff games are excluded throughout.
  */
 export const buildPoolStandings = (pool, matches, playoffMatchIds = new Set()) => {
   const nonPlayoff = (matches || []).filter((match) => !playoffMatchIds.has(match.id));
@@ -216,13 +218,7 @@ export const buildPoolStandings = (pool, matches, playoffMatchIds = new Set()) =
       !match.pool_id && (teamIds.has(match.team_a?.id) || teamIds.has(match.team_b?.id)),
   );
 
-  // buildPoolGroupStandings selects games by pool_id, so the no-pool games are
-  // tagged with this pool to be counted. Only this pool's teams get a row, so
-  // an opponent from elsewhere is simply not tallied.
-  return buildPoolGroupStandings(
-    [pool],
-    [...poolGames, ...noPoolGames.map((match) => ({ ...match, pool_id: pool?.id }))],
-  ).map((row) => ({
+  return buildPoolGroupStandings([pool], poolGames).map((row) => ({
     ...row,
     form: joinStages(
       [poolGames, noPoolGames].map((games) =>

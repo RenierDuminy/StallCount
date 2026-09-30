@@ -26,6 +26,7 @@ import {
 } from "../utils/eventStandings";
 import { getBracketsByEvent } from "../services/playoffStructureService";
 import BracketStructureView from "../pages/playoff/BracketStructureView";
+import StandingsRulesInfo from "./StandingsRulesInfo";
 
 // Generic event workspace, modelled on the Stellenbosch Internal Draft League VI
 // page. Everything except the rule documents is read from the database, so the
@@ -582,9 +583,12 @@ export default function EventWorkspaceTemplate({
           {showDivisionStandings ? (
           <div className="border-t border-white/30 pt-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                Division standings
-              </p>
+              <div className="flex items-center gap-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Division standings
+                </p>
+                <StandingsRulesInfo />
+              </div>
               <StandardStandingsLegend />
             </div>
           {loading && standingsByPool.length === 0 ? (

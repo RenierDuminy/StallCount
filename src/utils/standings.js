@@ -286,10 +286,15 @@ export const formatScoreDiff = (value) => {
 /**
  * WFDF tie-break criteria, applied in order to a group of teams level on wins.
  *
- * Each returns a Map of teamId -> numeric score, higher ranking better. A
- * criterion only separates teams it can actually measure; `null` means "no
- * data" and is treated as unrankable, so those teams stay level and fall
- * through to the next criterion.
+ * Each returns a Map of teamId -> numeric score, higher ranking better.
+ *
+ * Counts and differences follow WFDF's wording literally: a tied team that has
+ * not played the other tied teams has won 0 of those games with a goal
+ * difference of 0 — it is not "unmeasurable" and is not pushed to the bottom.
+ * (That only happens mid-season or on uneven schedules; in a finished round
+ * robin every tied team has played every other.) Goals *per game* has no value
+ * without games, so it returns `null` for such a team, and a criterion with any
+ * `null` is skipped as unable to separate the group.
  *
  * `tied` is the current subgroup under consideration. Criteria scoped "between
  * the tied teams" look only at games inside it; "common opponents" looks at
@@ -321,20 +326,18 @@ const getCommonOpponents = (group) => {
 
 const winsAgainst = (group, opponentIds) =>
   new Map(
-    group.map((team) => {
-      const results = resultsAgainst(team, opponentIds);
-      if (!results.length) return [team.id, null];
-      return [team.id, sumBy(results, (r) => (r.scoreFor > r.scoreAgainst ? 1 : 0))];
-    }),
+    group.map((team) => [
+      team.id,
+      sumBy(resultsAgainst(team, opponentIds), (r) => (r.scoreFor > r.scoreAgainst ? 1 : 0)),
+    ]),
   );
 
 const goalDiffAgainst = (group, opponentIds) =>
   new Map(
-    group.map((team) => {
-      const results = resultsAgainst(team, opponentIds);
-      if (!results.length) return [team.id, null];
-      return [team.id, sumBy(results, (r) => r.scoreFor - r.scoreAgainst)];
-    }),
+    group.map((team) => [
+      team.id,
+      sumBy(resultsAgainst(team, opponentIds), (r) => r.scoreFor - r.scoreAgainst),
+    ]),
   );
 
 const goalsPerGameAgainst = (group, opponentIds) =>
@@ -385,50 +388,48 @@ const WFDF_CRITERIA = [
  *
  * Walks the WFDF criteria in order. The first one that splits the group at all
  * partitions it into score buckets; each bucket with more than one team is then
- * re-ranked *from the top of the criteria list* (WFDF: "if a criterion splits
- * the group only partly, the teams still level start again from the top").
+ * re-ranked *from the top of the criteria list* (WFDF B3.3.2: each subgroup
+ * "is then to be ranked separately, starting with the first ranking
+ * criterion").
  *
- * `depth` guards against a pathological cycle where a subgroup never shrinks.
+ * Recursion always terminates: a criterion is only applied when it yields at
+ * least two distinct scores, so every bucket is strictly smaller than the
+ * group. (An earlier depth cap of one level per criterion could cut a large tie
+ * short — 8+ teams level on wins peeling off one at a time — and fall back to
+ * alphabetical order early.)
  */
-const rankTiedGroup = (group, depth = 0) => {
+const rankTiedGroup = (group) => {
   if (group.length <= 1) return group;
-  if (depth > WFDF_CRITERIA.length) {
-    return [...group].sort((a, b) => a.name.localeCompare(b.name));
-  }
 
   for (const criterion of WFDF_CRITERIA) {
     const scores = criterion.score(group);
-    // Teams with no measurable data cannot be separated by this criterion.
-    const ranked = group.filter((team) => scores.get(team.id) !== null);
-    if (ranked.length < 2) continue;
+    // A criterion that cannot be measured for every tied team cannot
+    // separate them (only goals-per-game returns null, for a team with no
+    // games in scope).
+    if (group.some((team) => scores.get(team.id) === null)) continue;
 
-    const distinct = new Set(ranked.map((team) => scores.get(team.id)));
+    const distinct = new Set(group.map((team) => scores.get(team.id)));
     if (distinct.size < 2) continue; // criterion did not split anything
 
-    // Partition into buckets by score, best first. Teams the criterion could
-    // not measure sort last, still level with each other.
+    // Partition into buckets by score, best first.
     const buckets = new Map();
     group.forEach((team) => {
       const score = scores.get(team.id);
-      const key = score === null ? "__unranked__" : score;
-      if (!buckets.has(key)) buckets.set(key, []);
-      buckets.get(key).push(team);
+      if (!buckets.has(score)) buckets.set(score, []);
+      buckets.get(score).push(team);
     });
 
-    const orderedKeys = [...buckets.keys()]
-      .filter((key) => key !== "__unranked__")
-      .sort((a, b) => b - a);
-    if (buckets.has("__unranked__")) orderedKeys.push("__unranked__");
-
-    return orderedKeys.flatMap((key) => {
-      const bucket = buckets.get(key);
-      // A bucket that still contains the whole group would recurse forever;
-      // the distinct-size check above means that cannot happen here.
-      return bucket.length > 1 ? rankTiedGroup(bucket, depth + 1) : bucket;
-    });
+    return [...buckets.keys()]
+      .sort((a, b) => b - a)
+      .flatMap((key) => {
+        const bucket = buckets.get(key);
+        return bucket.length > 1 ? rankTiedGroup(bucket) : bucket;
+      });
   }
 
-  // Nothing separated them — stable, predictable fallback.
+  // Nothing separated them. WFDF's last criterion (B3.4.7) is a disc throw to
+  // the brick mark, which cannot be recorded here, so fall back to a stable,
+  // predictable order.
   return [...group].sort((a, b) => a.name.localeCompare(b.name));
 };
 
