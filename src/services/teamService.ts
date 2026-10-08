@@ -790,3 +790,61 @@ export async function getSpiritScoresForMatches(matchIds: string[]): Promise<Spi
 
   return (data ?? []) as SpiritScoreRow[];
 }
+
+export type EventSpiritScoreRow = {
+  match_id: string;
+  rated_team_id: string;
+  rules_knowledge: number | null;
+  fouls_contact: number | null;
+  positive_attitude: number | null;
+  communication: number | null;
+  self_control: number | null;
+  submitted_at: string | null;
+};
+
+const EVENT_SPIRIT_CACHE_TTL_MS = 60 * 1000;
+
+/**
+ * Finalised spirit rows for every match in an event (public, read-only).
+ * Drafts (`is_final = false`) are excluded; de-duplication per match/team is
+ * left to `buildSpiritRanking`.
+ */
+export async function getSpiritScoresByEvent(eventId: string): Promise<EventSpiritScoreRow[]> {
+  const normalizedEventId = typeof eventId === "string" ? eventId.trim() : "";
+  if (!normalizedEventId) return [];
+
+  return getCachedQuery(
+    `spirit-scores:event:${normalizedEventId}`,
+    async () => {
+      const { data: matchRows, error: matchError } = await supabase
+        .from("matches")
+        .select("id")
+        .eq("event_id", normalizedEventId);
+
+      if (matchError) {
+        throw new Error(matchError.message || "Failed to load event matches");
+      }
+
+      const matchIds = (matchRows ?? [])
+        .map((row) => row?.id)
+        .filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+
+      if (!matchIds.length) return [];
+
+      const { data, error } = await supabase
+        .from("spirit_scores")
+        .select(
+          "match_id, rated_team_id, rules_knowledge, fouls_contact, positive_attitude, communication, self_control, submitted_at",
+        )
+        .eq("is_final", true)
+        .in("match_id", matchIds);
+
+      if (error) {
+        throw new Error(error.message || "Failed to load spirit scores");
+      }
+
+      return (data ?? []) as EventSpiritScoreRow[];
+    },
+    { ttlMs: EVENT_SPIRIT_CACHE_TTL_MS },
+  );
+}

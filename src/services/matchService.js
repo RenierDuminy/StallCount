@@ -231,6 +231,10 @@ export async function createMatch(payload = {}) {
     score_b: Number.isInteger(payload.scoreB) ? payload.scoreB : 0,
     captains_confirmed: Boolean(payload.captainsConfirmed),
     confirmed_at: payload.confirmedAt || null,
+    team_a_confirmed_at: payload.teamAConfirmedAt || null,
+    team_a_confirmed_by: payload.teamAConfirmedBy || null,
+    team_b_confirmed_at: payload.teamBConfirmedAt || null,
+    team_b_confirmed_by: payload.teamBConfirmedBy || null,
     scorekeeper: payload.scorekeeperId || null,
   };
 
@@ -286,6 +290,12 @@ export async function updateMatch(matchId, payload = {}) {
   if ("scoreB" in payload) updatePayload.score_b = payload.scoreB;
   if ("captainsConfirmed" in payload) updatePayload.captains_confirmed = Boolean(payload.captainsConfirmed);
   if ("confirmedAt" in payload) updatePayload.confirmed_at = payload.confirmedAt || null;
+  // Per-team captain confirmations (captain portal). captains_confirmed is
+  // derived from these by the caller, so pass all of them together.
+  if ("teamAConfirmedAt" in payload) updatePayload.team_a_confirmed_at = payload.teamAConfirmedAt || null;
+  if ("teamAConfirmedBy" in payload) updatePayload.team_a_confirmed_by = payload.teamAConfirmedBy || null;
+  if ("teamBConfirmedAt" in payload) updatePayload.team_b_confirmed_at = payload.teamBConfirmedAt || null;
+  if ("teamBConfirmedBy" in payload) updatePayload.team_b_confirmed_by = payload.teamBConfirmedBy || null;
   if ("scorekeeperId" in payload) updatePayload.scorekeeper = payload.scorekeeperId || null;
   if ("startingTeamId" in payload) updatePayload.starting_team_id = payload.startingTeamId || null;
   if ("abbaPattern" in payload) updatePayload.abba_pattern = payload.abbaPattern || null;

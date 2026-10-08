@@ -90,7 +90,8 @@ const TOPIC_EVENT_CODES: Record<string, string[]> = {
   match_start: ["match_start"],
   match_end: ["match_end"],
   score: ["score", "callahan"],
-  turnover: ["turnover", "block"],
+  turnover: ["turnover"],
+  block: ["block"],
   halftime: ["halftime_start", "halftime_end"],
   timeout: ["timeout_start", "timeout_end"],
   stoppage: ["stoppage_start", "stoppage_end"],
@@ -124,7 +125,34 @@ function topicMatchesEventCode(topic: string, eventCode: string) {
 
 type TargetMap = Map<string, Set<string>>;
 
-function buildTargetMap(event: LiveEventRow): TargetMap {
+type MatchScope = {
+  event_id: string | null;
+  division_id: string | null;
+  team_a: string | null;
+  team_b: string | null;
+};
+
+// A live_events row names only the acting team (the scorer's, the thrower's,
+// the team calling the timeout) and carries no event or division id. Without
+// the match, a team follow misses the opponent's points and every match-wide
+// event, and event/division follows match nothing. Fetched per dispatch, not
+// cached across invocations: playoff resolution rewrites team_a/team_b.
+async function fetchMatchScopes(matchIds: string[]): Promise<Map<string, MatchScope>> {
+  const scopes = new Map<string, MatchScope>();
+  const ids = Array.from(new Set(matchIds.filter(Boolean)));
+  if (!ids.length) return scopes;
+  const { data, error } = await supabase
+    .from("matches")
+    .select("id, event_id, division_id, team_a, team_b")
+    .in("id", ids);
+  if (error) throw error;
+  for (const row of (data ?? []) as Array<MatchScope & { id: string }>) {
+    scopes.set(row.id, row);
+  }
+  return scopes;
+}
+
+function buildTargetMap(event: LiveEventRow, scope?: MatchScope): TargetMap {
   const map: TargetMap = new Map();
   const add = (type: string, id?: unknown) => {
     if (!id) return;
@@ -144,6 +172,12 @@ function buildTargetMap(event: LiveEventRow): TargetMap {
   add("player", data.secondary_player_id ?? data.secondaryPlayerId ?? data.secondaryPlayer);
   add("event", data.event_id ?? data.eventId);
   add("division", data.division_id ?? data.divisionId);
+  if (scope) {
+    add("event", scope.event_id);
+    add("division", scope.division_id);
+    add("team", scope.team_a);
+    add("team", scope.team_b);
+  }
 
   if (Array.isArray(data.targets)) {
     for (const target of data.targets) {
@@ -204,7 +238,7 @@ function buildPayload(event: LiveEventRow) {
   const url =
     (typeof data.url === "string" && data.url) ||
     (typeof data.link === "string" && data.link) ||
-    (event.match_id ? `/matches/${event.match_id}` : "/notifications");
+    (event.match_id ? `/matches?matchId=${encodeURIComponent(event.match_id)}` : "/notifications");
 
   const decorate = (value: string | undefined, fallback: string) => {
     if (value && fallbackName && !value.toLowerCase().includes(fallbackName.toLowerCase())) {
@@ -294,7 +328,7 @@ function backoffElapsed(event: LiveEventRow) {
   return Date.now() - last >= waitMs;
 }
 
-async function processEvent(event: LiveEventRow) {
+async function processEvent(event: LiveEventRow, scope?: MatchScope) {
   const attempts = (event.attempts ?? 0) + 1;
   const now = new Date().toISOString();
 
@@ -308,7 +342,7 @@ async function processEvent(event: LiveEventRow) {
     return { eventId: event.id, status: "expired", delivered: 0, endpoints: 0 };
   }
 
-  const targets = buildTargetMap(event);
+  const targets = buildTargetMap(event, scope);
   const matchingSubs = await fetchMatchingSubscriptions(targets, event.event_type);
   const profileIds = Array.from(new Set(matchingSubs.map((sub) => sub.profile_id)));
   const endpoints = await fetchPushEndpoints(profileIds);
@@ -393,10 +427,15 @@ serve(async (req) => {
   if (!isAuthorised(req)) return json({ error: "Forbidden" }, 403);
   try {
     const events = await fetchPendingEvents(config.batchSize);
+    // A failed lookup must not block match and player follows, which need no scope.
+    const scopes = await fetchMatchScopes(events.map((event) => event.match_id)).catch((err) => {
+      console.error("Failed to load match scopes", err);
+      return new Map<string, MatchScope>();
+    });
     const reports = [];
     for (const event of events) {
       try {
-        reports.push(await processEvent(event));
+        reports.push(await processEvent(event, scopes.get(event.match_id)));
       } catch (err) {
         console.error("Failed to process live event", event.id, err);
         reports.push({ eventId: event.id, status: "error", error: (err as Error).message });

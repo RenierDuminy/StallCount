@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WFDF Competitive Overlay</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        display: block;
+      }
+
+      #viewport {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      #canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        transform-origin: top left;
+      }
+
+      #canvas .overlay-root {
+        transform: none;
+        position: relative;
+        z-index: 2;
+      }
+    </style>
+    <script>
+      if (new URLSearchParams(window.location.search).has('preview')) document.head.insertAdjacentHTML('beforeend', '<style>' +
+        '#canvas{outline:1px solid rgba(255,255,255,0.4);background-image:repeating-linear-gradient(45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 12px),repeating-linear-gradient(-45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 12px),url(/overlay-demo.jpg);background-size:auto,auto,cover;background-position:0 0,0 0,center}' +
+      '</style>');
+    </script>
+  </head>
+  <body class="overlay-fixed">
+    <div id="viewport">
+      <div id="canvas">
+        <div class="overlay-root">
+          <div class="overlay-bar" id="overlayBar">
+            <div class="overlay-logo">
+              <img id="eventLogo" alt="League logo" src="/assets/stallcount-logo.png" />
+              <span class="overlay-logo-fallback" id="eventLogoFallback">SC</span>
+            </div>
+
+            <div class="overlay-team overlay-team--home" id="teamABox">
+              <span class="team-name" id="teamAName">Team A</span>
+              <div class="team-scorebox">
+                <span class="team-score" id="scoreA">0</span>
+              </div>
+              <div class="overlay-timeout overlay-timeout--team-a" id="timeoutBannerA" aria-live="polite">
+                <span class="timeout-label">TIMEOUT</span>
+              </div>
+              <div class="overlay-break-chance overlay-break-chance--team-a" id="breakChanceBannerA" aria-live="polite">
+                <span class="break-chance-label">BREAK CHANCE</span>
+              </div>
+            </div>
+
+            <div class="overlay-team overlay-team--away" id="teamBBox">
+              <span class="team-name" id="teamBName">Team B</span>
+              <div class="team-scorebox">
+                <span class="team-score team-score--away" id="scoreB">0</span>
+              </div>
+              <div class="overlay-timeout overlay-timeout--team-b" id="timeoutBannerB" aria-live="polite">
+                <span class="timeout-label">TIMEOUT</span>
+              </div>
+              <div class="overlay-break-chance overlay-break-chance--team-b" id="breakChanceBannerB" aria-live="polite">
+                <span class="break-chance-label">BREAK CHANCE</span>
+              </div>
+            </div>
+
+            <div class="overlay-status">
+              <span class="status-label" id="statusLabel" data-role="status-label">LIVE</span>
+            </div>
+
+            <div class="overlay-clock">
+              <span class="match-clock" id="matchClock">--:--</span>
+            </div>
+
+            <div class="overlay-field-call" id="fieldCallBanner" aria-live="polite">
+              <span class="timeout-label" id="fieldCallBannerLabel">FIELD CALL</span>
+            </div>
+          </div>
+
+          <div class="overlay-banner" id="overlayBanner" aria-live="polite">
+            <div class="banner-left">
+              <div class="banner-flag" aria-hidden="true"></div>
+              <div>
+                <div class="banner-name" id="bannerPlayerName">PLAYER NAME</div>
+              </div>
+            </div>
+            <div class="banner-stats">
+              <div class="banner-stat">
+                <span class="banner-stat__label">GLS</span>
+                <span class="banner-stat__value" id="bannerStatGls">0</span>
+              </div>
+              <div class="banner-divider" aria-hidden="true"></div>
+              <div class="banner-stat">
+                <span class="banner-stat__label">AST</span>
+                <span class="banner-stat__value" id="bannerStatAst">0</span>
+              </div>
+              <div class="banner-divider" aria-hidden="true"></div>
+              <div class="banner-stat">
+                <span class="banner-stat__label">BLK</span>
+                <span class="banner-stat__value" id="bannerStatBlk">0</span>
+              </div>
+              <div class="banner-divider" aria-hidden="true"></div>
+              <div class="banner-stat">
+                <span class="banner-stat__label">TRN</span>
+                <span class="banner-stat__value" id="bannerStatTrn">0</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="overlay-match-event-banner" id="matchEventBanner" aria-live="polite">
+            <span class="overlay-match-event-banner__label" id="matchEventBannerLabel">MATCH EVENT</span>
+          </div>
+
+          <div class="overlay-matchstats-banner" id="matchStatsBanner" aria-live="polite">
+            <div class="matchstats-card">
+              <div class="matchstats-title" id="matchStatsTitle">Match stats</div>
+              <div class="matchstats-body">
+                <div class="matchstats-column matchstats-column--team" id="matchStatsColumnA">
+                  <div class="matchstats-team" id="matchStatsTeamA">Team A</div>
+                  <div class="matchstats-value" id="matchStatsHoldsA">--</div>
+                  <div class="matchstats-value" id="matchStatsBreaksA">--</div>
+                  <div class="matchstats-value" id="matchStatsTurnoversA">--</div>
+                  <div class="matchstats-value" id="matchStatsBlocksA">--</div>
+                </div>
+                <div class="matchstats-column matchstats-column--metrics">
+                  <div class="matchstats-label matchstats-label--scoreline" id="matchStatsScoreline">0 - 0</div>
+                  <div class="matchstats-label">Holds</div>
+                  <div class="matchstats-label">Breaks</div>
+                  <div class="matchstats-label">Turnovers</div>
+                  <div class="matchstats-label">Blocks</div>
+                </div>
+                <div class="matchstats-column matchstats-column--team" id="matchStatsColumnB">
+                  <div class="matchstats-team" id="matchStatsTeamB">Team B</div>
+                  <div class="matchstats-value" id="matchStatsHoldsB">--</div>
+                  <div class="matchstats-value" id="matchStatsBreaksB">--</div>
+                  <div class="matchstats-value" id="matchStatsTurnoversB">--</div>
+                  <div class="matchstats-value" id="matchStatsBlocksB">--</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="overlay-roster-banner" id="teamRostersBanner" aria-live="polite">
+            <div class="matchstats-card roster-card">
+              <div class="matchstats-title" id="teamRostersTitle">Team rosters</div>
+              <div class="roster-banner-body">
+                <div class="roster-banner-column" id="teamRostersColumnA">
+                  <div class="matchstats-team roster-banner-team" id="teamRostersTeamA">Team A</div>
+                  <ul class="roster-banner-list" id="teamRostersListA"></ul>
+                </div>
+                <div class="roster-banner-column" id="teamRostersColumnB">
+                  <div class="matchstats-team roster-banner-team" id="teamRostersTeamB">Team B</div>
+                  <ul class="roster-banner-list" id="teamRostersListB"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="overlay-matchstatus-banner" id="matchStatusBanner" aria-live="polite">
+            <div class="matchstats-card matchstatus-card">
+              <div class="matchstatus-event" id="matchStatusEvent">Event</div>
+              <div class="matchstatus-header">
+                <div class="matchstatus-title">
+                  <span class="matchstatus-team" id="matchStatusTeamA">Team A</span>
+                  <span class="matchstatus-score" id="matchStatusScore">vs</span>
+                  <span class="matchstatus-team" id="matchStatusTeamB">Team B</span>
+                </div>
+                <span class="matchstatus-chip" id="matchStatusPhase">Upcoming</span>
+              </div>
+              <div class="matchstatus-meta">
+                <div class="matchstatus-meta-row" id="matchStatusKickoffRow">
+                  <span class="matchstatus-meta-label">Start</span>
+                  <span class="matchstatus-meta-value" id="matchStatusKickoff">--</span>
+                </div>
+                <div class="matchstatus-meta-row matchstatus-venue-row">
+                  <span class="matchstatus-meta-label">Venue -</span>
+                  <span class="matchstatus-meta-value" id="matchStatusVenue">--</span>
+                </div>
+                <div class="matchstatus-meta-row matchstatus-weather-row" id="matchStatusWeatherRow">
+                  <span class="matchstatus-meta-value" id="matchStatusWeather">--</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="overlay-event" id="eventName">Event Name</div>
+          <div class="meta" id="meta"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function scaleCanvas() {
+        const canvas = document.getElementById("canvas");
+        if (!canvas) return;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const scale = Math.min(vw / 1920, vh / 1080);
+        canvas.style.transform = `scale(${scale})`;
+      }
+
+      window.addEventListener("resize", scaleCanvas);
+      scaleCanvas();
+    </script>
+    <script type="module" src="/src/overlay/overlayRuntime.js"></script>
+  </body>
+</html>

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { getDivisions, getEventsList, getEventsByIds } from "../services/leagueService";
+import {
+  getDivisions,
+  getDivisionsByEvent,
+  getEventsList,
+  getEventsByIds,
+} from "../services/leagueService";
 import { getMatchesByEvent, getMatchesByIds } from "../services/matchService";
 import { getPlayerDirectory, getPlayersByIds } from "../services/playerService";
 import { getAllTeams, getTeamsByIds } from "../services/teamService";
@@ -10,28 +15,42 @@ import { supabase } from "../services/supabaseClient";
 import {
   deleteSubscriptionById,
   getSubscriptions,
-  resolveTopicsInput,
   upsertSubscription,
 } from "../services/subscriptionService";
 import { Panel, SectionHeader, SectionShell, Chip, Field, Input, Select } from "../components/ui/primitives";
+import { MATCH_STATUS } from "../constants/statusCodes";
 import {
-  DEFAULT_TOPICS,
-  TOPIC_DESCRIPTIONS,
-  TOPIC_LABELS,
-  TOPIC_PRESETS,
+  TARGET_TYPE_OPTIONS,
+  getDefaultTopics,
+  getTopicOptions,
+  isTopicOptionSelected,
+  resolveStoredTopics,
+  toggleTopicOption,
   topicMatchesEventCode,
+  topicsForTarget,
 } from "../constants/notificationTopics";
-
-const TARGET_OPTIONS = [
-  { value: "match", label: "Match" },
-  { value: "team", label: "Team" },
-  { value: "player", label: "Player" },
-  { value: "event", label: "Event" },
-  { value: "division", label: "Division" },
-];
 
 // Topic vocabulary lives in ../constants/notificationTopics so the UI, the
 // Edge Function and the fallback script agree on what a topic delivers.
+
+// Only events and matches that can still send a notification are offered.
+// `initialized` is a match set up in the console moments before kick-off;
+// leaving it out would hide a match during exactly the minute people look for it.
+const FOLLOWABLE_EVENT_STATUSES = [MATCH_STATUS.SCHEDULED, MATCH_STATUS.LIVE];
+const FOLLOWABLE_MATCH_STATUSES = [
+  MATCH_STATUS.SCHEDULED,
+  MATCH_STATUS.INITIALIZED,
+  MATCH_STATUS.LIVE,
+  MATCH_STATUS.HALFTIME,
+];
+
+// Status codes are compared lowercased: a legacy `Initialized` row still counts.
+function filterFollowable(rows, statuses) {
+  const allowed = new Set(statuses.map((status) => status.toLowerCase()));
+  return (rows || []).filter((row) =>
+    allowed.has(String(row?.status ?? "").trim().toLowerCase()),
+  );
+}
 
 const supportsPush = () =>
   typeof window !== "undefined" &&
@@ -76,7 +95,11 @@ function topicMatchesEventType(topic, eventType) {
   return topicMatchesEventCode(topic, eventType);
 }
 
-function eventMatchesSubscription(event, subscription) {
+// `scope` is the event's match ({ eventId, divisionId, teamIds }). A live_events
+// row only names the acting team and carries no event/division ids, so team,
+// event and division follows are resolved through the match - the same way
+// the dispatcher resolves them.
+function eventMatchesSubscription(event, subscription, scope) {
   if (!subscription?.target_type || !subscription?.target_id) return false;
   const type = String(subscription.target_type).toLowerCase();
   const targetId = String(subscription.target_id);
@@ -95,7 +118,8 @@ function eventMatchesSubscription(event, subscription) {
     case "team":
       matches =
         equalsTarget(event.team_id) ||
-        equalsTarget(getEventDataValue(data, "team_id", "teamId", "team"));
+        equalsTarget(getEventDataValue(data, "team_id", "teamId", "team")) ||
+        Boolean(scope?.teamIds?.some(equalsTarget));
       break;
     case "player":
       matches =
@@ -105,10 +129,13 @@ function eventMatchesSubscription(event, subscription) {
         equalsTarget(getEventDataValue(data, "secondary_player_id", "secondaryPlayerId", "secondaryPlayer"));
       break;
     case "event":
-      matches = equalsTarget(getEventDataValue(data, "event_id", "eventId"));
+      matches =
+        equalsTarget(getEventDataValue(data, "event_id", "eventId")) || equalsTarget(scope?.eventId);
       break;
     case "division":
-      matches = equalsTarget(getEventDataValue(data, "division_id", "divisionId"));
+      matches =
+        equalsTarget(getEventDataValue(data, "division_id", "divisionId")) ||
+        equalsTarget(scope?.divisionId);
       break;
     default:
       if (Array.isArray(data.targets)) {
@@ -142,13 +169,19 @@ export default function NotificationsPage() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  const [targetType, setTargetType] = useState(TARGET_OPTIONS[0].value);
+  const [targetType, setTargetType] = useState(TARGET_TYPE_OPTIONS[0].value);
   const [targetId, setTargetId] = useState("");
   const [matchEventId, setMatchEventId] = useState("");
   const [matchDivisionId, setMatchDivisionId] = useState("");
   const [matchEvents, setMatchEvents] = useState([]);
   const [matchDivisions, setMatchDivisions] = useState([]);
-  const [selectedTopics, setSelectedTopics] = useState(DEFAULT_TOPICS);
+  // Optional narrowing of an event follow; when set, the follow is saved as a
+  // division follow instead.
+  const [eventDivisionId, setEventDivisionId] = useState("");
+  const [eventDivisions, setEventDivisions] = useState([]);
+  const [selectedTopics, setSelectedTopics] = useState(() =>
+    getDefaultTopics(TARGET_TYPE_OPTIONS[0].value),
+  );
   const [topicEdits, setTopicEdits] = useState({});
   const [choices, setChoices] = useState([]);
   const [choiceLoading, setChoiceLoading] = useState(false);
@@ -166,17 +199,41 @@ export default function NotificationsPage() {
     busy: false,
     error: null,
   }));
-  const topicOptions = useMemo(
-    () =>
-      TOPIC_PRESETS.map((topic) => ({
-        value: topic,
-        label: TOPIC_LABELS[topic] || topic.replace(/_/g, " "),
-        description: TOPIC_DESCRIPTIONS[topic] || "",
-      })),
-    [],
+  const topicOptions = useMemo(() => getTopicOptions(targetType), [targetType]);
+  // matchEvents stays unfiltered: it also names the events of existing follows.
+  const followableEvents = useMemo(
+    () => filterFollowable(matchEvents, FOLLOWABLE_EVENT_STATUSES),
+    [matchEvents],
   );
   const liveEventsChannelRef = useRef(null);
   const prefillAppliedRef = useRef(false);
+  // match id -> { eventId, divisionId, teamIds }, or null when the match is gone.
+  const matchScopesRef = useRef(new Map());
+
+  const loadMatchScopes = useCallback(async (matchIds) => {
+    const scopes = matchScopesRef.current;
+    const missing = Array.from(new Set((matchIds || []).filter((id) => id && !scopes.has(id))));
+    if (missing.length) {
+      try {
+        const rows = await getMatchesByIds(missing);
+        (rows || []).forEach((row) => {
+          scopes.set(row.id, {
+            eventId: row.event_id ?? null,
+            divisionId: row.division_id ?? null,
+            teamIds: [row.team_a?.id, row.team_b?.id].filter(Boolean),
+          });
+        });
+        missing.forEach((id) => {
+          if (!scopes.has(id)) scopes.set(id, null);
+        });
+      } catch (err) {
+        // Without scopes, team/event/division follows fall back to the ids on
+        // the row itself; the list is still usable.
+        console.error("[Notifications] Failed to load match scopes", err);
+      }
+    }
+    return scopes;
+  }, []);
 
   useEffect(() => {
     if (prefillAppliedRef.current) return;
@@ -184,9 +241,10 @@ export default function NotificationsPage() {
     const idParam = searchParams.get("targetId");
     if (!typeParam || !idParam) return;
     const normalizedType = String(typeParam).toLowerCase();
-    const validType = TARGET_OPTIONS.some((option) => option.value === normalizedType);
+    const validType = TARGET_TYPE_OPTIONS.some((option) => option.value === normalizedType);
     if (!validType) return;
     setTargetType(normalizedType);
+    setSelectedTopics(getDefaultTopics(normalizedType));
     setTargetId(idParam);
     setChoiceSearch(idParam);
     prefillAppliedRef.current = true;
@@ -237,6 +295,27 @@ export default function NotificationsPage() {
     };
   }, [profileId]);
 
+  const eventIdForDivisions = targetType === "event" ? targetId : "";
+  useEffect(() => {
+    setEventDivisionId("");
+    if (!eventIdForDivisions) {
+      setEventDivisions([]);
+      return undefined;
+    }
+    let cancelled = false;
+    getDivisionsByEvent(eventIdForDivisions)
+      .then((rows) => {
+        if (!cancelled) setEventDivisions(rows || []);
+      })
+      .catch((err) => {
+        console.error("[Notifications] Failed to load event divisions", err);
+        if (!cancelled) setEventDivisions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [eventIdForDivisions]);
+
   const formatMatchChoiceLabel = useCallback((match) => {
     if (!match) return "";
     const teamA = match.team_a?.name || match.team_a?.short_name || "Team A";
@@ -265,15 +344,18 @@ export default function NotificationsPage() {
       try {
         let rows = [];
         if (targetType === "event") {
-          rows = await getEventsList(200);
+          rows = filterFollowable(await getEventsList(200), FOLLOWABLE_EVENT_STATUSES);
         } else if (targetType === "match") {
-          rows = matchEventId ? await getMatchesByEvent(matchEventId, 200) : [];
+          rows = matchEventId
+            ? filterFollowable(
+                await getMatchesByEvent(matchEventId, 200, { includeFinished: false }),
+                FOLLOWABLE_MATCH_STATUSES,
+              )
+            : [];
         } else if (targetType === "team") {
           rows = await getAllTeams(200);
         } else if (targetType === "player") {
           rows = await getPlayerDirectory();
-        } else if (targetType === "division") {
-          rows = await getDivisions(200);
         }
         if (!cancelled) {
           const nextRows = rows || [];
@@ -421,12 +503,15 @@ export default function NotificationsPage() {
       missingDivisionIds.forEach((id) => {
         const division = matchDivisions.find((item) => String(item.id) === String(id));
         if (division) {
-          next[`division:${id}`] = division.name || "Unknown division";
+          // A division follow is shown as part of its event.
+          const eventItem = matchEvents.find((item) => String(item.id) === String(division.event_id));
+          const divisionName = division.name || "Unknown division";
+          next[`division:${id}`] = eventItem?.name ? `${eventItem.name} · ${divisionName}` : divisionName;
         }
       });
       return next;
     });
-  }, [matchDivisions, subscriptions, targetLabels]);
+  }, [matchDivisions, matchEvents, subscriptions, targetLabels]);
 
   useEffect(() => {
     if (!pushState.supported) return undefined;
@@ -479,10 +564,12 @@ export default function NotificationsPage() {
     setRecentLoading(true);
     setRecentError(null);
     getRecentLiveEvents(50)
-      .then((events) => {
+      .then(async (events) => {
+        const rows = events || [];
+        const scopes = await loadMatchScopes(rows.map((event) => event.match_id));
         if (cancelled) return;
-        const filtered = (events || []).filter((event) =>
-          subscriptions.some((sub) => eventMatchesSubscription(event, sub)),
+        const filtered = rows.filter((event) =>
+          subscriptions.some((sub) => eventMatchesSubscription(event, sub, scopes.get(event.match_id))),
         );
         setRecentNotifications(filtered.slice(0, 5));
       })
@@ -496,21 +583,22 @@ export default function NotificationsPage() {
     return () => {
       cancelled = true;
     };
-  }, [profileId, subscriptions]);
+  }, [loadMatchScopes, profileId, subscriptions]);
 
   const isLoggedOut = !authLoading && !profileId;
 
-  function toggleTopic(value) {
-    setSelectedTopics((prev) => {
-      if (prev.includes(value)) {
-        return prev.filter((topic) => topic !== value);
-      }
-      return [...prev, value];
-    });
+  function toggleTopic(option) {
+    setSelectedTopics((prev) => toggleTopicOption(option, prev));
   }
 
-  function buildTopicsFromForm() {
-    return uniqueTopics(selectedTopics);
+  // An empty topic list means "everything" to the dispatcher, so unticking
+  // every box must not be allowed to save as a follow-all.
+  function topicsOrThrow(type, topics) {
+    const resolved = uniqueTopics(topicsForTarget(type, topics));
+    if (!resolved.length) {
+      throw new Error("Pick at least one notification type.");
+    }
+    return resolved;
   }
 
   const filteredChoices = useMemo(() => {
@@ -569,20 +657,22 @@ export default function NotificationsPage() {
     setError(null);
     setSuccess(null);
     try {
-      const topics = buildTopicsFromForm();
       const trimmedId = targetId.trim();
       if (!trimmedId) {
         throw new Error("Target ID is required.");
       }
+      const narrowedToDivision = targetType === "event" && Boolean(eventDivisionId);
+      const saveType = narrowedToDivision ? "division" : targetType;
+      const topics = topicsOrThrow(saveType, selectedTopics);
       await upsertSubscription({
         profileId,
-        targetType,
-        targetId: trimmedId,
+        targetType: saveType,
+        targetId: narrowedToDivision ? eventDivisionId : trimmedId,
         topics,
       });
       setSuccess("Follow preferences saved.");
       setTargetId("");
-      setSelectedTopics(DEFAULT_TOPICS);
+      setSelectedTopics(getDefaultTopics(targetType));
       const rows = await getSubscriptions(profileId);
       setSubscriptions(rows);
     } catch (err) {
@@ -598,13 +688,18 @@ export default function NotificationsPage() {
     setError(null);
     setSuccess(null);
     try {
-      const raw = topicEdits[sub.id] ?? (sub.topics || []).join(", ");
-      const topics = uniqueTopics(resolveTopicsInput(raw));
+      const edited = topicEdits[sub.id] ?? resolveStoredTopics(sub.target_type, sub.topics);
+      const topics = topicsOrThrow(sub.target_type, edited);
       await upsertSubscription({
         profileId,
         targetType: sub.target_type,
         targetId: sub.target_id,
         topics,
+      });
+      setTopicEdits((prev) => {
+        const next = { ...prev };
+        delete next[sub.id];
+        return next;
       });
       setSuccess("Topics updated.");
       const rows = await getSubscriptions(profileId);
@@ -627,18 +722,21 @@ export default function NotificationsPage() {
   );
 
   const handleRealtimeLiveEvent = useCallback(
-    (rawEvent) => {
+    async (rawEvent) => {
       if (!rawEvent || !subscriptions.length) return;
       const event = normalizeLiveEventRow(rawEvent);
       if (!event) return;
-      const matches = subscriptions.some((sub) => eventMatchesSubscription(event, sub));
+      const scopes = await loadMatchScopes([event.match_id]);
+      const matches = subscriptions.some((sub) =>
+        eventMatchesSubscription(event, sub, scopes.get(event.match_id)),
+      );
       if (!matches) return;
       setRecentNotifications((prev) => {
         const filtered = prev.filter((existing) => existing.id !== event.id);
         return [event, ...filtered].slice(0, 5);
       });
     },
-    [subscriptions],
+    [loadMatchScopes, subscriptions],
   );
 
   useEffect(() => {
@@ -836,6 +934,7 @@ export default function NotificationsPage() {
                   value={targetType}
                   onChange={(e) => {
                     setTargetType(e.target.value);
+                    setSelectedTopics(getDefaultTopics(e.target.value));
                     setTargetId("");
                     setChoiceSearch("");
                     if (e.target.value !== "match") {
@@ -845,7 +944,7 @@ export default function NotificationsPage() {
                   }}
                   disabled={saving || isLoggedOut}
                 >
-                  {TARGET_OPTIONS.map((option) => (
+                  {TARGET_TYPE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -869,7 +968,7 @@ export default function NotificationsPage() {
                         disabled={saving || isLoggedOut}
                       >
                         <option value="">Choose an event</option>
-                        {matchEvents.map((eventItem) => (
+                        {followableEvents.map((eventItem) => (
                           <option key={eventItem.id} value={eventItem.id}>
                             {eventItem.name}
                           </option>
@@ -914,7 +1013,15 @@ export default function NotificationsPage() {
                   ) : targetType === "match" && !matchEventId ? (
                     <p className="px-3 py-2 text-xs text-ink-muted">Choose an event to list matches.</p>
                   ) : filteredChoices.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-ink-muted">No results.</p>
+                    <p className="px-3 py-2 text-xs text-ink-muted">
+                      {choiceSearch.trim()
+                        ? "No results."
+                        : targetType === "event"
+                          ? "No scheduled or live events right now."
+                          : targetType === "match"
+                            ? "No scheduled or live matches in this event."
+                            : "No results."}
+                    </p>
                   ) : (
                     <ul className="divide-y divide-border/60 text-sm">
                       {filteredChoices.map((item) => (
@@ -957,6 +1064,24 @@ export default function NotificationsPage() {
                 <input type="hidden" value={targetId} required readOnly />
               </div>
 
+              {targetType === "event" && targetId ? (
+                <Field label="Division" htmlFor="notifications-event-division">
+                  <Select
+                    id="notifications-event-division"
+                    value={eventDivisionId}
+                    onChange={(e) => setEventDivisionId(e.target.value)}
+                    disabled={saving || isLoggedOut || eventDivisions.length === 0}
+                  >
+                    <option value="">Whole event</option>
+                    {eventDivisions.map((division) => (
+                      <option key={division.id} value={division.id}>
+                        {division.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              ) : null}
+
             </div>
 
             <div className="space-y-3">
@@ -964,10 +1089,10 @@ export default function NotificationsPage() {
                 <p className="text-sm font-semibold text-ink">Topics</p>
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {topicOptions.map((topic) => {
-                    const checked = selectedTopics.includes(topic.value);
+                    const checked = isTopicOptionSelected(topic, selectedTopics);
                     return (
                       <label
-                        key={topic.value}
+                        key={topic.key}
                         title={topic.description}
                         className={`flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
                           checked
@@ -978,7 +1103,7 @@ export default function NotificationsPage() {
                         <input
                           type="checkbox"
                           checked={checked}
-                          onChange={() => toggleTopic(topic.value)}
+                          onChange={() => toggleTopic(topic)}
                           className="mt-0.5 h-4 w-4 shrink-0 rounded border-border-strong bg-surface text-accent focus:ring-0"
                           disabled={saving || isLoggedOut}
                         />
@@ -1028,7 +1153,7 @@ export default function NotificationsPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-accent">
-                        {sub.target_type}
+                        {sub.target_type === "division" ? "event · division" : sub.target_type}
                       </p>
                       <p className="break-all font-semibold text-ink">
                         {getSubscriptionLabel(sub.target_type, sub.target_id)}
@@ -1044,38 +1169,66 @@ export default function NotificationsPage() {
                     </button>
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <p className="text-xs font-semibold text-ink-muted">Topics</p>
-                    <Input
-                      type="text"
-                      value={topicEdits[sub.id] ?? (sub.topics || []).join(", ")}
-                      onChange={(e) =>
-                        setTopicEdits((prev) => ({
-                          ...prev,
-                          [sub.id]: e.target.value,
-                        }))
-                      }
-                      placeholder="comma separated topics"
-                      disabled={saving}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateTopics(sub)}
-                        disabled={saving}
-                        className="sc-button text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Update topics
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTopicEdits((prev) => ({ ...prev, [sub.id]: (sub.topics || []).join(", ") }))}
-                        disabled={saving}
-                        className="sc-button is-ghost text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Reset
-                      </button>
+                    <div className="flex flex-wrap gap-1.5">
+                      {getTopicOptions(sub.target_type).map((option) => {
+                        const current =
+                          topicEdits[sub.id] ?? resolveStoredTopics(sub.target_type, sub.topics);
+                        const checked = isTopicOptionSelected(option, current);
+                        return (
+                          <label
+                            key={option.key}
+                            title={option.description}
+                            className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
+                              checked
+                                ? "border-[var(--sc-accent)]/70 bg-[var(--sc-accent)]/10 text-accent"
+                                : "border-border-strong text-ink-muted hover:border-[var(--sc-accent)]/40"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() =>
+                                setTopicEdits((prev) => ({
+                                  ...prev,
+                                  [sub.id]: toggleTopicOption(option, current),
+                                }))
+                              }
+                              className="h-3.5 w-3.5 shrink-0 rounded border-border-strong bg-surface text-accent focus:ring-0"
+                              disabled={saving}
+                            />
+                            {option.label}
+                          </label>
+                        );
+                      })}
                     </div>
+                    {topicEdits[sub.id] ? (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateTopics(sub)}
+                          disabled={saving}
+                          className="sc-button text-xs disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Save topics
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setTopicEdits((prev) => {
+                              const next = { ...prev };
+                              delete next[sub.id];
+                              return next;
+                            })
+                          }
+                          disabled={saving}
+                          className="sc-button is-ghost text-xs disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
 
                   <p className="text-xs text-ink-muted">
@@ -1141,9 +1294,12 @@ export default function NotificationsPage() {
                           {body || matchLabel || "Update"}
                         </p>
                         {event.match_id && (
-                          <a href={`/matches/${event.match_id}`} className="sc-button is-ghost text-[10px]">
+                          <Link
+                            to={`/matches?matchId=${encodeURIComponent(event.match_id)}`}
+                            className="sc-button is-ghost text-[10px]"
+                          >
                             Open
-                          </a>
+                          </Link>
                         )}
                       </div>
                     </div>

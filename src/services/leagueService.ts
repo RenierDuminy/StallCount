@@ -6,6 +6,7 @@ const EVENTS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 export type DivisionRow = {
   id: string;
+  event_id: string;
   name: string;
   level: string | null;
   created_at: string;
@@ -73,16 +74,38 @@ export type EventHierarchyRow = EventRow & {
 
 export async function getDivisions(limit = 6): Promise<DivisionRow[]> {
   return getCachedQuery(
-    `divisions:list:${limit}`,
+    // v2: rows gained event_id; older cached rows lack it.
+    `divisions:list:v2:${limit}`,
     async () => {
       const { data, error } = await supabase
         .from("divisions")
-        .select("id, name, level, created_at")
+        .select("id, event_id, name, level, created_at")
         .order("name", { ascending: true })
         .limit(limit);
 
       if (error) {
         throw new Error(error.message || "Failed to load divisions");
+      }
+
+      return (data ?? []) as DivisionRow[];
+    },
+    { ttlMs: DIVISIONS_CACHE_TTL_MS },
+  );
+}
+
+export async function getDivisionsByEvent(eventId: string): Promise<DivisionRow[]> {
+  if (!eventId) return [];
+  return getCachedQuery(
+    `divisions:event:${eventId}`,
+    async () => {
+      const { data, error } = await supabase
+        .from("divisions")
+        .select("id, event_id, name, level, created_at")
+        .eq("event_id", eventId)
+        .order("name", { ascending: true });
+
+      if (error) {
+        throw new Error(error.message || "Failed to load event divisions");
       }
 
       return (data ?? []) as DivisionRow[];

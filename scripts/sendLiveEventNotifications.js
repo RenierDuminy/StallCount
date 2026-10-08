@@ -60,7 +60,8 @@ const TOPIC_EVENT_CODES = {
   match_start: ["match_start"],
   match_end: ["match_end"],
   score: ["score", "callahan"],
-  turnover: ["turnover", "block"],
+  turnover: ["turnover"],
+  block: ["block"],
   halftime: ["halftime_start", "halftime_end"],
   timeout: ["timeout_start", "timeout_end"],
   stoppage: ["stoppage_start", "stoppage_end"],
@@ -92,7 +93,23 @@ function topicMatchesEventCode(topic, eventCode) {
   return canonical === eventCode;
 }
 
-function buildEventTargets(event) {
+// Same reason as the Edge Function: a live_events row names only the acting
+// team and no event/division, so team, event and division follows are resolved
+// through the match.
+async function fetchMatchScopes(matchIds) {
+  const scopes = new Map();
+  const ids = Array.from(new Set(matchIds.filter(Boolean)));
+  if (!ids.length) return scopes;
+  const { data, error } = await supabase
+    .from("matches")
+    .select("id, event_id, division_id, team_a, team_b")
+    .in("id", ids);
+  if (error) throw new Error(error.message || "Failed to load match scopes.");
+  (data || []).forEach((row) => scopes.set(row.id, row));
+  return scopes;
+}
+
+function buildEventTargets(event, scope) {
   const targets = new Map();
   const addTarget = (type, id) => {
     if (!id) return;
@@ -111,6 +128,12 @@ function buildEventTargets(event) {
   addTarget("player", data.secondary_player_id || data.secondaryPlayerId || data.secondaryPlayer);
   addTarget("event", data.event_id || data.eventId);
   addTarget("division", data.division_id || data.divisionId);
+  if (scope) {
+    addTarget("event", scope.event_id);
+    addTarget("division", scope.division_id);
+    addTarget("team", scope.team_a);
+    addTarget("team", scope.team_b);
+  }
 
   if (Array.isArray(data.targets)) {
     data.targets.forEach((target) => {
@@ -163,7 +186,7 @@ function buildNotificationPayload(event) {
   const data = event.data || {};
   const title = data.title || `Match update: ${event.event_type || "event"}`;
   const body = data.body || data.description || "Something just happened in StallCount.";
-  const url = data.url || data.link || (event.match_id ? `/matches/${event.match_id}` : "/notifications");
+  const url = data.url || data.link || (event.match_id ? `/matches?matchId=${encodeURIComponent(event.match_id)}` : "/notifications");
   return JSON.stringify({
     title,
     body,
@@ -222,7 +245,7 @@ function backoffElapsed(event) {
   return Date.now() - last >= Math.min(2 ** attempts, 30) * 60 * 1000;
 }
 
-async function processEvent(event) {
+async function processEvent(event, scope) {
   const attempts = (event.attempts ?? 0) + 1;
   const now = new Date().toISOString();
 
@@ -236,7 +259,7 @@ async function processEvent(event) {
     return { eventId: event.id, status: "expired", deliveries: 0, endpoints: 0 };
   }
 
-  const targets = buildEventTargets(event);
+  const targets = buildEventTargets(event, scope);
   const subscriptions = await fetchMatchingSubscriptions(targets, event.event_type);
   const profileIds = Array.from(new Set(subscriptions.map((sub) => sub.profile_id)));
   const endpoints = await fetchPushEndpoints(profileIds);
@@ -303,9 +326,13 @@ async function main() {
   }
 
   console.log(`Processing ${pending.length} live event(s)...`);
+  const scopes = await fetchMatchScopes(pending.map((event) => event.match_id)).catch((err) => {
+    console.error("Failed to load match scopes", err.message);
+    return new Map();
+  });
   for (const event of pending) {
     try {
-      const result = await processEvent(event);
+      const result = await processEvent(event, scopes.get(event.match_id));
       console.log(
         `Event ${result.eventId}: ${result.status} (${result.deliveries}/${result.endpoints})${
           result.summary ? ` ${result.summary}` : ""

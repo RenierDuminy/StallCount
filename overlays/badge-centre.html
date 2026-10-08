@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Badge Centre Overlay</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Semi+Condensed:wght@400;600;700&display=swap");
+
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
+        width: 100%; height: 100%;
+        background: transparent;
+        overflow: hidden;
+      }
+
+      #viewport {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      #canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        transform-origin: top left;
+      }
+
+      /* ── Badge-centre ── */
+      .bc-root {
+        position: absolute;
+        z-index: 2;
+        top: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-family: "Barlow Semi Condensed", sans-serif;
+      }
+
+      /* Main bar */
+      .bc-bar {
+        display: flex;
+        align-items: stretch;
+        height: 72px;
+        box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+      }
+
+      /* Team sides */
+      .bc-side-a {
+        display: flex;
+        align-items: center;
+        background: var(--team-bg, #034694);
+        color: var(--team-text, #ffffff);
+        padding: 0 22px 0 2px;
+        gap: 12px;
+        flex: 1 1 0;
+        position: relative;
+      }
+
+      /* ── Sub-row: TO + BC panels below the scoreboard ── */
+
+      /* Appended directly to .bc-scores so it inherits the 220px column width */
+      .bc-sub-row {
+        display: flex;
+        width: 100%;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+        border-radius: 0 0 10px 10px;
+        overflow: hidden;
+      }
+
+      /* Each half covers one team */
+      .bc-sub-cell {
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        min-width: 0;
+      }
+
+      /* Timeout panel */
+      .bc-timeout {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #1c1c1c;
+        border: 1px solid rgba(255,255,255,0.12);
+        border-top: 0;
+        gap: 0;
+        overflow: hidden;
+        max-height: 0;
+        padding: 0;
+        transition: max-height 0.18s ease-out, padding 0.18s ease-out;
+        pointer-events: none;
+      }
+
+      .bc-timeout.is-active {
+        max-height: 80px;
+        padding: 4px 8px 6px;
+      }
+
+      #timeoutBannerA { border-right: 1px solid rgba(255,255,255,0.08); }
+      #timeoutBannerB { }
+
+      .bc-timeout__label {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.45);
+        white-space: nowrap;
+      }
+
+      .bc-timeout__timer {
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 26px;
+        letter-spacing: 0.16em;
+        color: #ffffff;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .bc-timeout__who {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.45);
+        margin-top: 1px;
+        white-space: nowrap;
+      }
+
+
+      .bc-badge {
+        height: 95%;
+        aspect-ratio: 1;
+        overflow: hidden;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2px;
+        position: relative;
+      }
+
+      .bc-badge img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: none;
+      }
+
+      .bc-badge.has-image img { display: block; }
+
+      .bc-badge-fallback {
+        font-size: 14px;
+        font-weight: 700;
+        color: #111;
+        letter-spacing: 0.08em;
+      }
+
+      .bc-badge.has-image .bc-badge-fallback { display: none; }
+
+      .bc-team-name {
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--team-text, #ffffff);
+        white-space: nowrap;
+      }
+
+      /* Score blocks */
+      .bc-scores {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .bc-score-row {
+        display: flex;
+        align-items: stretch;
+      }
+
+      .bc-score-box {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 110px;
+        background: #1c1c1c;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 58px;
+        letter-spacing: 0.04em;
+        color: #ffffff;
+        border-left: 1px solid #333;
+        border-right: 1px solid #333;
+      }
+
+      .bc-side-b {
+        display: flex;
+        align-items: center;
+        flex-direction: row-reverse;
+        background: var(--team-bg, #da291c);
+        color: var(--team-text, #ffffff);
+        padding: 0 2px 0 22px;
+        gap: 12px;
+        flex: 1 1 0;
+        position: relative;
+      }
+
+      .bc-side-b .bc-badge { transform: none; }
+      .bc-side-b .bc-team-name { text-align: right; }
+
+      /* Clock pill — spans the full width of the two score boxes */
+      .bc-clock-pill {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #1c1c1c;
+        color: #ffffff;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 26px;
+        letter-spacing: 0.16em;
+        padding: 6px 0;
+        border-radius: 0 0 10px 10px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+        width: 100%;
+        text-align: center;
+        overflow: visible;
+        z-index: 1;
+      }
+
+      /* ── Field call strip — underneath everything ── */
+      .bc-field-call {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        background: #1a1000;
+        border: 1px solid #f59e0b;
+        border-top: 0;
+        padding: 5px 24px;
+        border-radius: 0 0 12px 12px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+        width: 100%;
+      }
+
+      .bc-field-call.is-active { display: flex; }
+
+      .bc-field-call__dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #f59e0b;
+        flex-shrink: 0;
+      }
+
+      .bc-field-call__label {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: #f59e0b;
+      }
+
+      /* ── Player stats banner ── */
+      #overlayBanner {
+        position: absolute;
+        left: 50%;
+        bottom: 48px;
+        transform: translateX(-50%) translateY(24px);
+        opacity: 0;
+        pointer-events: none;
+        display: flex;
+        align-items: stretch;
+        overflow: hidden;
+        box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+        min-width: 560px;
+        font-family: "Barlow Semi Condensed", sans-serif;
+      }
+
+      #overlayBanner.is-active {
+        animation: bc-banner-rise-hold-fade 6.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+
+      #overlayBanner.is-persistent {
+        animation: none;
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      @keyframes bc-banner-rise-hold-fade {
+        0%   { opacity: 0; transform: translateX(-50%) translateY(24px); }
+        12%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+        80%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+        100% { opacity: 0; transform: translateX(-50%) translateY(0); }
+      }
+
+      .bc-banner-team {
+        background: var(--banner-team-bg, #034694);
+        color: var(--banner-team-text, #ffffff);
+        display: flex;
+        align-items: center;
+        padding: 0 22px;
+        min-width: 200px;
+        gap: 12px;
+      }
+
+      #bannerPlayerName {
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .bc-banner-stats {
+        display: flex;
+        align-items: stretch;
+        background: #1c1c1c;
+        border-left: 1px solid #333;
+        border-right: 1px solid #333;
+      }
+
+      .bc-banner-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 12px 22px;
+        gap: 2px;
+        border-left: 1px solid #333;
+      }
+
+      .bc-banner-stat__label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.45);
+      }
+
+      .bc-banner-stat__value {
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 36px;
+        letter-spacing: 0.04em;
+        color: #ffffff;
+        line-height: 1;
+      }
+
+      /* ── Match stats banner ── */
+      #matchStatsBanner {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0.97);
+        opacity: 0;
+        pointer-events: none;
+        display: block;
+        width: 640px;
+        transition: opacity 0.18s ease, transform 0.18s ease;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        z-index: 10;
+      }
+
+      #matchStatsBanner.is-active {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .bc-matchstats-card {
+        background: #1c1c1c;
+        border: 1px solid #333;
+        box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+        overflow: hidden;
+        border-radius: 14px;
+      }
+
+      #matchStatsTitle {
+        display: block;
+        text-align: center;
+        padding: 10px 16px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        background: #111111;
+        color: rgba(255,255,255,0.6);
+        border-bottom: 1px solid #333;
+        border-radius: 14px 14px 0 0;
+      }
+
+      .bc-matchstats-body {
+        display: grid;
+        grid-template-columns: minmax(0,1fr) minmax(0,0.9fr) minmax(0,1fr);
+        align-items: stretch;
+      }
+
+      .bc-matchstats-col {
+        display: grid;
+        grid-template-rows: minmax(52px,auto) repeat(4, 46px);
+        min-width: 0;
+      }
+
+      .bc-matchstats-col--team {
+        background: var(--team-bg, #034694);
+        color: var(--team-text, #ffffff);
+      }
+
+      .bc-matchstats-col--team > * + * { border-top: 1px solid rgba(255,255,255,0.12); }
+
+      .bc-matchstats-col--metrics {
+        background: #1c1c1c;
+        color: rgba(255,255,255,0.8);
+        border-left: 1px solid #333;
+        border-right: 1px solid #333;
+      }
+
+      .bc-matchstats-col--metrics > * + * { border-top: 1px solid #2a2a2a; }
+
+      #matchStatsTeamA, #matchStatsTeamB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        text-align: center;
+        line-height: 1.1;
+      }
+
+      #matchStatsScoreline {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 30px;
+        letter-spacing: 0.16em;
+        color: #ffffff;
+      }
+
+      #matchStatsHoldsA, #matchStatsHoldsB,
+      #matchStatsBreaksA, #matchStatsBreaksB,
+      #matchStatsTurnoversA, #matchStatsTurnoversB,
+      #matchStatsBlocksA, #matchStatsBlocksB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 28px;
+        letter-spacing: 0.04em;
+      }
+
+      .bc-matchstats-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.45);
+        text-align: center;
+        padding: 0 4px;
+      }
+
+      /* ── Team rosters banner ── */
+      #teamRostersBanner {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0.97);
+        opacity: 0;
+        pointer-events: none;
+        display: block;
+        width: 900px;
+        transition: opacity 0.18s ease, transform 0.18s ease;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        z-index: 10;
+      }
+
+      #teamRostersBanner.is-active {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .bc-roster-card {
+        background: #1c1c1c;
+        border: 1px solid #333;
+        box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+        overflow: hidden;
+        border-radius: 14px;
+        max-height: 760px;
+      }
+
+      #teamRostersTitle {
+        display: block;
+        text-align: center;
+        padding: 10px 16px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        background: #111111;
+        color: rgba(255,255,255,0.6);
+        border-bottom: 1px solid #333;
+        border-radius: 14px 14px 0 0;
+      }
+
+      .bc-roster-body {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0,1fr));
+      }
+
+      #teamRostersColumnA, #teamRostersColumnB {
+        display: grid;
+        grid-template-rows: minmax(48px,auto) minmax(0,1fr);
+        background: var(--team-bg, #034694);
+        color: var(--team-text, #ffffff);
+      }
+
+      #teamRostersColumnB { border-left: 1px solid rgba(255,255,255,0.12); }
+
+      #teamRostersTeamA, #teamRostersTeamB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        border-bottom: 1px solid rgba(255,255,255,0.12);
+      }
+
+      #teamRostersListA, #teamRostersListB {
+        margin: 0;
+        padding: 12px;
+        list-style: none;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0,1fr));
+        gap: 6px 12px;
+        align-content: start;
+      }
+
+      .roster-banner-item {
+        display: flex;
+        justify-content: flex-start;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
+      }
+
+      .roster-banner-identity {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .roster-banner-tag {
+        min-width: 1.3rem;
+        height: 1.3rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.4);
+        background: rgba(255,255,255,0.1);
+      }
+
+      .roster-banner-tag--captain {
+        background: var(--team-text, #ffffff);
+        border-color: var(--team-text, #ffffff);
+        color: var(--team-bg, #111111);
+      }
+    </style>
+    <script>
+      if (new URLSearchParams(window.location.search).has('preview')) document.head.insertAdjacentHTML('beforeend', '<style>' +
+        '#canvas{outline:1px solid rgba(255,255,255,0.4);background-image:repeating-linear-gradient(45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 12px),repeating-linear-gradient(-45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 12px),url(/overlay-demo.jpg);background-size:auto,auto,cover;background-position:0 0,0 0,center}' +
+      '</style>');
+    </script>
+  </head>
+  <body class="overlay-fixed">
+    <div id="viewport">
+      <div id="canvas">
+        <div class="bc-root" id="overlayBar">
+          <div class="bc-bar">
+            <!-- Team A -->
+            <div class="bc-side-a" id="teamABox">
+              <div class="bc-badge" id="teamABadgeCell">
+                <img id="teamALogo" alt="" />
+                <span class="bc-badge-fallback" id="teamALogoFallback">A</span>
+              </div>
+              <span class="bc-team-name" id="teamAName">Team A</span>
+            </div>
+
+            <!-- Scores + clock stacked -->
+            <div class="bc-scores">
+              <div class="bc-score-row">
+                <div class="bc-score-box"><span id="scoreA">0</span></div>
+                <div class="bc-score-box"><span id="scoreB">0</span></div>
+              </div>
+              <div class="bc-clock-pill">
+                <span id="matchClock">00:00</span>
+              </div>
+              <!-- TO + BC panels below the scoreboard -->
+              <div class="bc-sub-row">
+                <div class="bc-sub-cell">
+                  <div class="bc-timeout" id="timeoutBannerA">
+                    <span class="bc-timeout__label">TO</span>
+                    <span class="bc-timeout__timer" id="toTimerA">75</span>
+                    <span class="bc-timeout__who" id="toWhoA">Team A</span>
+                  </div>
+                </div>
+                <div class="bc-sub-cell">
+                  <div class="bc-timeout" id="timeoutBannerB">
+                    <span class="bc-timeout__label">TO</span>
+                    <span class="bc-timeout__timer" id="toTimerB">75</span>
+                    <span class="bc-timeout__who" id="toWhoB">Team B</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Team B -->
+            <div class="bc-side-b" id="teamBBox">
+              <div class="bc-badge" id="teamBBadgeCell">
+                <img id="teamBLogo" alt="" />
+                <span class="bc-badge-fallback" id="teamBLogoFallback">B</span>
+              </div>
+              <span class="bc-team-name" id="teamBName">Team B</span>
+            </div>
+          </div>
+
+          <!-- Field call strip -->
+          <div class="bc-field-call" id="fieldCallBanner">
+            <span class="bc-field-call__dot"></span>
+            <span class="bc-field-call__label" id="fieldCallBannerLabel">Field Call</span>
+          </div>
+        </div>
+
+        <!-- Required stubs -->
+        <span id="statusLabel" data-role="status-label" style="display:none">LIVE</span>
+        <div id="eventLogo" style="display:none"></div>
+        <div id="eventLogoFallback" style="display:none"></div>
+        <div id="eventName" style="display:none"></div>        <div id="matchEventBanner" style="display:none"></div>
+        <div id="matchEventBannerLabel" style="display:none"></div>
+
+        <!-- Player stats banner -->
+        <div id="overlayBanner">
+          <div class="bc-banner-team">
+            <span id="bannerPlayerName">PLAYER NAME</span>
+          </div>
+          <div class="bc-banner-stats">
+            <div class="bc-banner-stat">
+              <span class="bc-banner-stat__label">GLS</span>
+              <span class="bc-banner-stat__value" id="bannerStatGls">0</span>
+            </div>
+            <div class="bc-banner-stat">
+              <span class="bc-banner-stat__label">AST</span>
+              <span class="bc-banner-stat__value" id="bannerStatAst">0</span>
+            </div>
+            <div class="bc-banner-stat">
+              <span class="bc-banner-stat__label">BLK</span>
+              <span class="bc-banner-stat__value" id="bannerStatBlk">0</span>
+            </div>
+            <div class="bc-banner-stat">
+              <span class="bc-banner-stat__label">TRN</span>
+              <span class="bc-banner-stat__value" id="bannerStatTrn">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Match stats banner -->
+        <div id="matchStatsBanner">
+          <div class="bc-matchstats-card">
+            <span id="matchStatsTitle">Match stats</span>
+            <div class="bc-matchstats-body">
+              <div class="bc-matchstats-col bc-matchstats-col--team" id="matchStatsColumnA">
+                <div id="matchStatsTeamA">Team A</div>
+                <div id="matchStatsHoldsA">--</div>
+                <div id="matchStatsBreaksA">--</div>
+                <div id="matchStatsTurnoversA">--</div>
+                <div id="matchStatsBlocksA">--</div>
+              </div>
+              <div class="bc-matchstats-col bc-matchstats-col--metrics">
+                <div id="matchStatsScoreline">0 - 0</div>
+                <div class="bc-matchstats-label">Holds</div>
+                <div class="bc-matchstats-label">Breaks</div>
+                <div class="bc-matchstats-label">Turnovers</div>
+                <div class="bc-matchstats-label">Blocks</div>
+              </div>
+              <div class="bc-matchstats-col bc-matchstats-col--team" id="matchStatsColumnB">
+                <div id="matchStatsTeamB">Team B</div>
+                <div id="matchStatsHoldsB">--</div>
+                <div id="matchStatsBreaksB">--</div>
+                <div id="matchStatsTurnoversB">--</div>
+                <div id="matchStatsBlocksB">--</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Team rosters banner -->
+        <div id="teamRostersBanner">
+          <div class="bc-roster-card">
+            <span id="teamRostersTitle">Team rosters</span>
+            <div class="bc-roster-body">
+              <div id="teamRostersColumnA">
+                <div id="teamRostersTeamA">Team A</div>
+                <ul id="teamRostersListA"></ul>
+              </div>
+              <div id="teamRostersColumnB">
+                <div id="teamRostersTeamB">Team B</div>
+                <ul id="teamRostersListB"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="meta" id="meta"></div>
+      </div>
+    </div>
+
+    <script>
+      function scaleCanvas() {
+        const canvas = document.getElementById('canvas');
+        if (!canvas) return;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const scale = Math.min(vw / 1920, vh / 1080);
+        canvas.style.transform = `scale(${scale})`;
+      }
+      window.addEventListener('resize', scaleCanvas);
+      scaleCanvas();
+
+      // Timeout countdown timers
+      (function () {
+        var TIMEOUT_SECONDS = 75;
+        var timers = {};
+
+        function startTimer(cardId, displayId) {
+          if (timers[cardId]) clearInterval(timers[cardId]);
+          var remaining = TIMEOUT_SECONDS;
+          var el = document.getElementById(displayId);
+          if (el) el.textContent = remaining;
+          timers[cardId] = setInterval(function () {
+            remaining--;
+            if (el) el.textContent = Math.max(0, remaining);
+            if (remaining <= 0) { clearInterval(timers[cardId]); delete timers[cardId]; }
+          }, 1000);
+        }
+
+        function stopTimer(cardId, displayId) {
+          if (timers[cardId]) { clearInterval(timers[cardId]); delete timers[cardId]; }
+          var el = document.getElementById(displayId);
+          if (el) el.textContent = TIMEOUT_SECONDS;
+        }
+
+        function watch(cardId, displayId, whoId, nameId) {
+          var card = document.getElementById(cardId);
+          if (!card) return;
+          new MutationObserver(function () {
+            if (card.classList.contains('is-active')) {
+              var whoEl = document.getElementById(whoId);
+              var nameEl = document.getElementById(nameId);
+              if (whoEl && nameEl) whoEl.textContent = nameEl.textContent;
+              startTimer(cardId, displayId);
+            } else {
+              stopTimer(cardId, displayId);
+            }
+          }).observe(card, { attributes: true, attributeFilter: ['class'] });
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+          watch('timeoutBannerA', 'toTimerA', 'toWhoA', 'teamAName');
+          watch('timeoutBannerB', 'toTimerB', 'toWhoB', 'teamBName');
+        });
+      })();
+
+      (function () {
+        // Both team logos must be present for the logo section to display.
+        // If either is missing, hide both logo cells entirely.
+        function readLogo(key) {
+          try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
+        }
+        function setSectionHidden(cellIds, hidden) {
+          cellIds.forEach(function (cellId) {
+            var cell = document.getElementById(cellId);
+            if (cell) cell.style.display = hidden ? 'none' : '';
+          });
+        }
+        function loadLogo(imgId, cellId, src) {
+          var img = document.getElementById(imgId);
+          var cell = document.getElementById(cellId);
+          if (!img || !cell) return;
+          img.src = src;
+          img.onload = function () { cell.classList.add('has-image'); };
+          img.onerror = function () { cell.classList.remove('has-image'); };
+        }
+
+        var cells = ['teamABadgeCell', 'teamBBadgeCell'];
+        var srcA = readLogo('stallcount:logo-team-a');
+        var srcB = readLogo('stallcount:logo-team-b');
+        if (srcA && srcB) {
+          setSectionHidden(cells, false);
+          loadLogo('teamALogo', 'teamABadgeCell', srcA);
+          loadLogo('teamBLogo', 'teamBBadgeCell', srcB);
+        } else {
+          setSectionHidden(cells, true);
+        }
+      })();
+    </script>
+    <script type="module" src="/src/overlay/overlayRuntime.js"></script>
+  </body>
+</html>

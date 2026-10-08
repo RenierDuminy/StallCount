@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Top-Right List Overlay</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Semi+Condensed:wght@400;600;700&display=swap");
+
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
+        width: 100%; height: 100%;
+        background: transparent;
+        overflow: hidden;
+      }
+
+      #viewport {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      #canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        transform-origin: top left;
+      }
+
+      /* â”€â”€ Top-right name list (athletics / esports bug) â”€â”€ */
+      .tr-root {
+        position: absolute;
+        z-index: 2;
+        top: 32px;
+        right: 32px;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        min-width: 360px;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+        overflow: hidden;
+      }
+
+      /* #teamABox / #teamBBox receive --team-bg / --team-text from overlay.js.
+         Left border uses --team-bg as the team accent colour. */
+      .tr-row {
+        display: grid;
+        grid-template-columns: 36px minmax(0,1fr) 52px;
+        align-items: center;
+        height: 52px;
+        background: rgba(10,10,10,0.92);
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        border-left: 4px solid var(--team-bg, transparent);
+        position: relative;
+      }
+
+      .tr-break-strip {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 100%;
+        padding: 5px 12px;
+        background: #dc2626;
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        text-align: center;
+        white-space: normal;
+        line-height: 1.15;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.18s ease;
+      }
+
+      .tr-break-strip.is-active,
+      .tr-break-strip.is-persistent {
+        opacity: 1;
+      }
+
+      .tr-row:last-child {
+        border-bottom: 0;
+      }
+
+      /* Flag / nationality */
+      .tr-flag {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        background: rgba(255,255,255,0.04);
+        border-right: 1px solid rgba(255,255,255,0.08);
+        font-size: 18px;   /* emoji flag */
+        line-height: 1;
+      }
+
+      /* Name */
+      .tr-name {
+        padding: 0 14px;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #ffffff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Score uses team colour from --team-bg / --team-text */
+      .tr-score {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 32px;
+        letter-spacing: 0.06em;
+        color: var(--team-text, #ffffff);
+        background: var(--team-bg, rgba(0,0,0,0.3));
+        height: 100%;
+        border-left: 1px solid rgba(255,255,255,0.08);
+        padding: 0 10px;
+      }
+
+      /* Leading indicator â€” coloured left border */
+      .tr-row.is-leading .tr-name {
+        color: #f59e0b;
+      }
+
+      .tr-row.is-leading {
+        border-left: 4px solid #f59e0b;
+      }
+
+      /* Footer caption (e.g. "Race to 5") */
+      .tr-caption {
+        padding: 6px 14px;
+        background: rgba(5,5,5,0.92);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #f59e0b;
+        text-align: right;
+        border-top: 1px solid rgba(255,255,255,0.06);
+      }
+
+      /* ── Player stats banner ── */
+      #overlayBanner {
+        position: absolute;
+        left: 50%;
+        bottom: 48px;
+        transform: translateX(-50%) translateY(24px);
+        opacity: 0;
+        pointer-events: none;
+        display: flex;
+        align-items: stretch;
+        overflow: hidden;
+        box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+        min-width: 560px;
+        font-family: "Barlow Semi Condensed", sans-serif;
+      }
+
+      #overlayBanner.is-active {
+        animation: tr-banner-rise-hold-fade 6.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+
+      #overlayBanner.is-persistent {
+        animation: none;
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      @keyframes tr-banner-rise-hold-fade {
+        0%   { opacity: 0; transform: translateX(-50%) translateY(24px); }
+        12%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+        80%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+        100% { opacity: 0; transform: translateX(-50%) translateY(0); }
+      }
+
+      .tr-banner-team {
+        background: var(--banner-team-bg, #1f2933);
+        color: var(--banner-team-text, #ffffff);
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        min-width: 180px;
+        border-left: 4px solid var(--banner-team-bg, #888);
+      }
+
+      #bannerPlayerName {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .tr-banner-stats {
+        display: flex;
+        align-items: stretch;
+        background: rgba(10,10,10,0.92);
+        border-top: 1px solid rgba(255,255,255,0.08);
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        border-right: 1px solid rgba(255,255,255,0.08);
+      }
+
+      .tr-banner-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 20px;
+        gap: 2px;
+        border-left: 1px solid rgba(255,255,255,0.08);
+      }
+
+      .tr-banner-stat__label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.45);
+      }
+
+      .tr-banner-stat__value {
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 32px;
+        letter-spacing: 0.06em;
+        color: #ffffff;
+        line-height: 1;
+      }
+
+      /* ── Match stats banner ── */
+      #matchStatsBanner {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0.97);
+        opacity: 0;
+        pointer-events: none;
+        display: block;
+        width: 640px;
+        transition: opacity 0.18s ease, transform 0.18s ease;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        z-index: 10;
+      }
+
+      #matchStatsBanner.is-active {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .tr-matchstats-card {
+        background: rgba(10,10,10,0.96);
+        border: 1px solid rgba(255,255,255,0.1);
+        box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+        overflow: hidden;
+      }
+
+      #matchStatsTitle {
+        display: block;
+        text-align: center;
+        padding: 10px 16px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        background: rgba(255,255,255,0.05);
+        color: rgba(255,255,255,0.6);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .tr-matchstats-body {
+        display: grid;
+        grid-template-columns: minmax(0,1fr) minmax(0,0.9fr) minmax(0,1fr);
+        align-items: stretch;
+      }
+
+      .tr-matchstats-col {
+        display: grid;
+        grid-template-rows: minmax(48px,auto) repeat(4, 44px);
+        min-width: 0;
+      }
+
+      .tr-matchstats-col--team {
+        background: var(--team-bg, #1f2933);
+        color: var(--team-text, #ffffff);
+        border-left: 4px solid var(--team-bg, #888);
+      }
+
+      .tr-matchstats-col--team > * + * { border-top: 1px solid rgba(255,255,255,0.1); }
+
+      .tr-matchstats-col--metrics {
+        background: rgba(15,15,15,0.92);
+        color: rgba(255,255,255,0.8);
+        border-left: 1px solid rgba(255,255,255,0.08);
+        border-right: 1px solid rgba(255,255,255,0.08);
+      }
+
+      .tr-matchstats-col--metrics > * + * { border-top: 1px solid rgba(255,255,255,0.07); }
+
+      #matchStatsTeamA, #matchStatsTeamB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        text-align: center;
+        line-height: 1.1;
+      }
+
+      #matchStatsScoreline {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 28px;
+        letter-spacing: 0.1em;
+        color: #ffffff;
+      }
+
+      #matchStatsHoldsA, #matchStatsHoldsB,
+      #matchStatsBreaksA, #matchStatsBreaksB,
+      #matchStatsTurnoversA, #matchStatsTurnoversB,
+      #matchStatsBlocksA, #matchStatsBlocksB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 26px;
+        letter-spacing: 0.06em;
+      }
+
+      .tr-matchstats-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.45);
+        text-align: center;
+        padding: 0 4px;
+      }
+
+      /* ── Team rosters banner ── */
+      #teamRostersBanner {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0.97);
+        opacity: 0;
+        pointer-events: none;
+        display: block;
+        width: 900px;
+        transition: opacity 0.18s ease, transform 0.18s ease;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        z-index: 10;
+      }
+
+      #teamRostersBanner.is-active {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .tr-roster-card {
+        background: rgba(10,10,10,0.96);
+        border: 1px solid rgba(255,255,255,0.1);
+        box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+        overflow: hidden;
+        max-height: 760px;
+      }
+
+      #teamRostersTitle {
+        display: block;
+        text-align: center;
+        padding: 10px 16px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        background: rgba(255,255,255,0.05);
+        color: rgba(255,255,255,0.6);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .tr-roster-body {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0,1fr));
+      }
+
+      #teamRostersColumnA, #teamRostersColumnB {
+        display: grid;
+        grid-template-rows: minmax(48px,auto) minmax(0,1fr);
+        background: var(--team-bg, #1f2933);
+        color: var(--team-text, #ffffff);
+        border-left: 4px solid var(--team-bg, #888);
+      }
+
+      #teamRostersColumnB {
+        border-left: 1px solid rgba(255,255,255,0.08);
+      }
+
+      #teamRostersTeamA, #teamRostersTeamB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+
+      #teamRostersListA, #teamRostersListB {
+        margin: 0;
+        padding: 12px;
+        list-style: none;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0,1fr));
+        gap: 6px 12px;
+        align-content: start;
+      }
+
+      .roster-banner-item {
+        display: flex;
+        justify-content: flex-start;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
+      }
+
+      .roster-banner-identity {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .roster-banner-tag {
+        min-width: 1.3rem;
+        height: 1.3rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.4);
+        background: rgba(255,255,255,0.1);
+      }
+
+      .roster-banner-tag--captain {
+        background: var(--team-text, #ffffff);
+        border-color: var(--team-text, #ffffff);
+        color: var(--team-bg, #111111);
+      }
+    </style>
+    <script>
+      if (new URLSearchParams(window.location.search).has('preview')) document.head.insertAdjacentHTML('beforeend', '<style>' +
+        '#canvas{outline:1px solid rgba(255,255,255,0.4);background-image:repeating-linear-gradient(45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 12px),repeating-linear-gradient(-45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 12px),url(/overlay-demo.jpg);background-size:auto,auto,cover;background-position:0 0,0 0,center}' +
+      '</style>');
+    </script>
+  </head>
+  <body class="overlay-fixed">
+    <div id="viewport">
+      <div id="canvas">
+        <div class="tr-root">
+          <!-- Row A -->
+          <div class="tr-row" id="teamABox">
+            <div class="tr-flag" id="teamAFlag">🏳</div>
+            <div class="tr-name" id="teamAName">Team A</div>
+            <div class="tr-score" id="scoreA">0</div>
+          </div>
+
+          <!-- Row B -->
+          <div class="tr-row" id="teamBBox">
+            <div class="tr-flag" id="teamBFlag">🏳</div>
+            <div class="tr-name" id="teamBName">Team B</div>
+            <div class="tr-score" id="scoreB">0</div>
+          </div>
+
+          <div class="tr-caption" id="eventName">LIVE</div>
+        </div>
+
+        <!-- Required stubs -->
+        <div id="overlayBar" style="display:none"></div>
+        <span id="statusLabel" data-role="status-label" style="display:none">LIVE</span>
+        <span id="matchClock" style="display:none">--:--</span>
+        <div id="eventLogo" style="display:none"></div>
+        <div id="eventLogoFallback" style="display:none"></div>        <div id="timeoutBannerA" style="display:none"></div>
+        <div id="timeoutBannerB" style="display:none"></div>
+        <div id="fieldCallBanner" style="display:none"></div>
+        <div id="fieldCallBannerLabel" style="display:none"></div>
+        <div id="matchEventBanner" style="display:none"></div>
+        <div id="matchEventBannerLabel" style="display:none"></div>
+
+        <!-- Player stats banner -->
+        <div id="overlayBanner">
+          <div class="tr-banner-team">
+            <span id="bannerPlayerName">PLAYER NAME</span>
+          </div>
+          <div class="tr-banner-stats">
+            <div class="tr-banner-stat">
+              <span class="tr-banner-stat__label">GLS</span>
+              <span class="tr-banner-stat__value" id="bannerStatGls">0</span>
+            </div>
+            <div class="tr-banner-stat">
+              <span class="tr-banner-stat__label">AST</span>
+              <span class="tr-banner-stat__value" id="bannerStatAst">0</span>
+            </div>
+            <div class="tr-banner-stat">
+              <span class="tr-banner-stat__label">BLK</span>
+              <span class="tr-banner-stat__value" id="bannerStatBlk">0</span>
+            </div>
+            <div class="tr-banner-stat">
+              <span class="tr-banner-stat__label">TRN</span>
+              <span class="tr-banner-stat__value" id="bannerStatTrn">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Match stats banner -->
+        <div id="matchStatsBanner">
+          <div class="tr-matchstats-card">
+            <span id="matchStatsTitle">Match stats</span>
+            <div class="tr-matchstats-body">
+              <div class="tr-matchstats-col tr-matchstats-col--team" id="matchStatsColumnA">
+                <div id="matchStatsTeamA">Team A</div>
+                <div id="matchStatsHoldsA">--</div>
+                <div id="matchStatsBreaksA">--</div>
+                <div id="matchStatsTurnoversA">--</div>
+                <div id="matchStatsBlocksA">--</div>
+              </div>
+              <div class="tr-matchstats-col tr-matchstats-col--metrics">
+                <div id="matchStatsScoreline">0 - 0</div>
+                <div class="tr-matchstats-label">Holds</div>
+                <div class="tr-matchstats-label">Breaks</div>
+                <div class="tr-matchstats-label">Turnovers</div>
+                <div class="tr-matchstats-label">Blocks</div>
+              </div>
+              <div class="tr-matchstats-col tr-matchstats-col--team" id="matchStatsColumnB">
+                <div id="matchStatsTeamB">Team B</div>
+                <div id="matchStatsHoldsB">--</div>
+                <div id="matchStatsBreaksB">--</div>
+                <div id="matchStatsTurnoversB">--</div>
+                <div id="matchStatsBlocksB">--</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Team rosters banner -->
+        <div id="teamRostersBanner">
+          <div class="tr-roster-card">
+            <span id="teamRostersTitle">Team rosters</span>
+            <div class="tr-roster-body">
+              <div id="teamRostersColumnA">
+                <div id="teamRostersTeamA">Team A</div>
+                <ul id="teamRostersListA"></ul>
+              </div>
+              <div id="teamRostersColumnB">
+                <div id="teamRostersTeamB">Team B</div>
+                <ul id="teamRostersListB"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="meta" id="meta"></div>
+      </div>
+    </div>
+
+    <script>
+            function scaleCanvas() {
+        const canvas = document.getElementById('canvas');
+        if (!canvas) return;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const scale = Math.min(vw / 1920, vh / 1080);
+        canvas.style.transform = `scale(${scale})`;
+      }
+      window.addEventListener('resize', scaleCanvas);
+      scaleCanvas();
+    </script>
+    <script type="module" src="/src/overlay/overlayRuntime.js"></script>
+  </body>
+</html>
+
+

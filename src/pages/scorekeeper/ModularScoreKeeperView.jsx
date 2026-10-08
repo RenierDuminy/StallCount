@@ -8,21 +8,7 @@ import { useScoreKeeperData } from "./modularScoreKeeperData";
 import { useScoreKeeperActions } from "./modularScoreKeeperActions";
 import { ScorekeeperPopups } from "./ModularScorekeeperPopup";
 import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
-import {
-  BlockEventCard,
-  CalahanEventCard,
-  HalftimeEndEventCard,
-  HalftimeStartEventCard,
-  MatchEndEventCard,
-  MatchStartEventCard,
-  ScoreEventCard,
-  StoppageEndEventCard,
-  StoppageStartEventCard,
-  TimeoutEndEventCard,
-  TimeoutStartEventCard,
-  TurnoverEventCard,
-  UnknownEventCard,
-} from "./eventCards";
+import { MatchLogEventCard } from "./eventCards";
 import {
   PHASE_TONES,
   SECONDARY_TIMER_KINDS,
@@ -351,42 +337,9 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
 
   const renderMatchEventCard = (log, options) => {
     const { chronologicalIndex, logRef } = options;
-    const normalizedEventCode = `${log.eventCode || ""}`.toLowerCase();
-    const normalizedEventDescription = `${log.eventDescription || ""}`.toLowerCase();
-    const isBlockLog =
-      normalizedEventCode === MATCH_LOG_EVENT_CODES.BLOCK ||
-      normalizedEventCode.includes("block") ||
-      normalizedEventDescription.includes("block");
-
-    let CardComponent = UnknownEventCard;
-    if (isBlockLog) {
-      CardComponent = BlockEventCard;
-    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.SCORE) {
-      CardComponent = ScoreEventCard;
-    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.CALAHAN) {
-      CardComponent = CalahanEventCard;
-    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TURNOVER) {
-      CardComponent = TurnoverEventCard;
-    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START) {
-      CardComponent = TimeoutStartEventCard;
-    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_END) {
-      CardComponent = TimeoutEndEventCard;
-    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START) {
-      CardComponent = HalftimeStartEventCard;
-    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
-      CardComponent = HalftimeEndEventCard;
-    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START) {
-      CardComponent = StoppageStartEventCard;
-    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_END) {
-      CardComponent = StoppageEndEventCard;
-    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.MATCH_START) {
-      CardComponent = MatchStartEventCard;
-    } else if (normalizedEventCode === MATCH_LOG_EVENT_CODES.MATCH_END) {
-      CardComponent = MatchEndEventCard;
-    }
 
     return (
-      <CardComponent
+      <MatchLogEventCard
         key={log.id}
         log={log}
         chronologicalIndex={chronologicalIndex}

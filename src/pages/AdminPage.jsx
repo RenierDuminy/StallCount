@@ -10,6 +10,7 @@ const ADMIN_MODULE_PRIORITY = [
   "Captain",
   "Event access control",
   "Media",
+  "Broadcast overlays",
   "Event setup",
   "Tournament director",
   "Match corrections",
@@ -46,7 +47,7 @@ const ADMIN_MODULES = [
   {
     label: "Captain",
     description:
-      "Manage rosters, submit spirit scores, and coordinate pre-game logistics.",
+      "Give spirit scores, confirm match results, and manage your team roster.",
     to: "/captain",
     accent: "border border-warning-border bg-warning-bg text-warning-ink",
     colorVar: "--sc-warning",
@@ -123,6 +124,14 @@ const ADMIN_MODULES = [
     description:
       "Attach stream links to matches and manage team branding colors for streaming overlays.",
     to: "/admin/media",
+    accent: "border border-media-border bg-media-bg text-media-ink",
+    colorVar: "--sc-media",
+  },
+  {
+    label: "Broadcast overlays",
+    description:
+      "Run the live-stream scoreboard: pick a match, copy the OBS overlay URL, and trigger on-screen banners.",
+    to: "/admin/overlays",
     accent: "border border-media-border bg-media-bg text-media-ink",
     colorVar: "--sc-media",
   },

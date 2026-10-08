@@ -1,4 +1,6 @@
 import { execSync } from "node:child_process";
+import { readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -21,6 +23,20 @@ function resolveCommitSha() {
 }
 
 const COMMIT_SHA = resolveCommitSha();
+
+// Broadcast overlays (OBS browser sources) are standalone pages, not React
+// routes: they need a transparent body and no app shell. Each overlays/*.html
+// becomes its own entry, served at /overlays/<name>.html.
+const OVERLAY_ENTRIES = Object.fromEntries([
+  ["overlayDebug", fileURLToPath(new URL("./overlay-debug.html", import.meta.url))],
+  ...readdirSync(new URL("./overlays/", import.meta.url))
+    .filter((file) => file.endsWith(".html"))
+    .map((file) => [
+      `overlay-${file.replace(/\.html$/, "")}`,
+      fileURLToPath(new URL(`./overlays/${file}`, import.meta.url)),
+    ]),
+]);
+const OVERLAY_PRECACHE_IGNORES = ["overlays/**", "overlay-debug.html", "assets/*[oO]verlay*"];
 
 // Stamp the SHA into index.html so a client can fetch it uncached and compare
 // it against its own build -- see checkBuildFreshness() in buildInfo.js.
@@ -78,7 +94,19 @@ export default defineConfig({
         enabled: true,
         suppressWarnings: true,
       },
-      injectManifest: {},
+      // The broadcast overlay pages are only ever opened by a handful of
+      // streaming operators, so keep them out of every user's precache.
+      injectManifest: {
+        globIgnores: OVERLAY_PRECACHE_IGNORES,
+      },
     }),
   ],
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        ...OVERLAY_ENTRIES,
+      },
+    },
+  },
 });

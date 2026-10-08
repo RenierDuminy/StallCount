@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import SeoManager from "./components/SeoManager";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -46,7 +46,11 @@ const TournamentDirectorPage = lazy(() => import("./pages/TournamentDirectorPage
 const MatchCorrectionsPage = lazy(() => import("./pages/MatchCorrectionsPage"));
 const PlayoffStructurePage = lazy(() => import("./pages/PlayoffStructurePage"));
 const MediaAdminPage = lazy(() => import("./pages/MediaAdminPage"));
+// Broadcast overlay control room. Its OBS output pages are separate HTML
+// entries (overlays/*.html), so none of this loads until the route is opened.
+const OverlayControlPage = lazy(() => import("./pages/OverlayControlPage"));
 const EventRostersPageLazy = lazy(() => import("./pages/EventRostersPage"));
+const EventSpiritPageLazy = lazy(() => import("./pages/EventSpiritPage"));
 const EventRulesPageLazy = lazy(() => import("./pages/EventRulesPage"));
 const StandardEventPage = lazy(() => import("./pages/StandardEventPage"));
 const StandardEventRedirect = lazy(() =>
@@ -109,6 +113,18 @@ function RedirectToScoreKeeper() {
   return <Navigate to={`/score-keeper${search}`} replace />;
 }
 
+/**
+ * `/matches/<id>` -> `/matches?matchId=<id>`.
+ *
+ * The match detail lives on the list page behind `?matchId=`, but push
+ * notifications linked the path form, and already-delivered notifications
+ * still carry it, so the path has to keep resolving.
+ */
+function RedirectToMatchDetail() {
+  const { matchId } = useParams();
+  return <Navigate to={`/matches?matchId=${encodeURIComponent(matchId ?? "")}`} replace />;
+}
+
 export default function AppRoutes() {
   return (
     <BrowserRouter>
@@ -124,10 +140,12 @@ export default function AppRoutes() {
           <Route path="/teams" element={<Guarded name="Teams"><Teams /></Guarded>} />
           <Route path="/teams/:teamId" element={<Guarded name="Team profile"><TeamProfilePage /></Guarded>} />
           <Route path="/matches" element={<Guarded name="Matches"><MatchesPage /></Guarded>} />
+          <Route path="/matches/:matchId" element={<RedirectToMatchDetail />} />
           <Route path="/events" element={<Guarded name="Events"><EventsPage /></Guarded>} />
           <Route path="/community" element={<Guarded name="Community"><CommunityPage /></Guarded>} />
           <Route path="/event-rosters" element={<Guarded name="Event rosters"><EventRostersPageLazy /></Guarded>} />
-          <Route path="/event-rules" element={<Guarded name="Event rules"><EventRulesPageLazy /></Guarded>} />
+          <Route path="/event-spirit" element={<Guarded name="Event spirit"><EventSpiritPageLazy /></Guarded>} />
+          <Route path="/event-rules"element={<Guarded name="Event rules"><EventRulesPageLazy /></Guarded>} />
           {cptMxLeagueWorkspace ? (
             <Route
               path="/events/ctfda-mx-league"
@@ -231,6 +249,14 @@ export default function AppRoutes() {
             element={
               <ProtectedRoute allowedPermissions={MEDIA_ACCESS_PERMISSIONS}>
                 <Guarded name="Media admin"><MediaAdminPage /></Guarded>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/overlays"
+            element={
+              <ProtectedRoute allowedPermissions={MEDIA_ACCESS_PERMISSIONS}>
+                <Guarded name="Broadcast overlays"><OverlayControlPage /></Guarded>
               </ProtectedRoute>
             }
           />

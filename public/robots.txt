@@ -8,5 +8,7 @@ Disallow: /notifications
 Disallow: /user
 Disallow: /tournament-director
 Disallow: /spirit-scores
+Disallow: /overlays/
+Disallow: /overlay-debug.html
 
 Sitemap: https://stallcount.vercel.app/sitemap.xml

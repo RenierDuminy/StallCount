@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Debug Overlay</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        display: block;
+      }
+
+      #viewport {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        transform-origin: center;
+      }
+
+      #canvas .overlay-root {
+        transform: none;
+      }
+
+      /* ── Debug panel ── */
+      #debugPanel {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 420px;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.82);
+        color: #e2e8f0;
+        font-family: "Menlo", "Consolas", monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        padding: 12px 14px;
+        overflow-y: auto;
+        z-index: 9999;
+        border-left: 2px solid rgba(99, 102, 241, 0.6);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      #debugPanel h2 {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #818cf8;
+        margin: 0 0 4px;
+        border-bottom: 1px solid rgba(99, 102, 241, 0.3);
+        padding-bottom: 4px;
+      }
+
+      .dbg-section {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .dbg-row {
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+      }
+
+      .dbg-key {
+        color: #94a3b8;
+        min-width: 130px;
+        flex-shrink: 0;
+      }
+
+      .dbg-val {
+        color: #f1f5f9;
+        word-break: break-all;
+      }
+
+      .dbg-val.is-true  { color: #34d399; }
+      .dbg-val.is-false { color: #f87171; }
+      .dbg-val.is-null  { color: #64748b; font-style: italic; }
+      .dbg-val.is-num   { color: #fbbf24; }
+
+      #debugBannerLog {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-height: 140px;
+        overflow-y: auto;
+      }
+
+      .dbg-banner-entry {
+        display: flex;
+        gap: 6px;
+        font-size: 10px;
+      }
+
+      .dbg-banner-ts { color: #64748b; flex-shrink: 0; }
+      .dbg-banner-type { color: #a78bfa; }
+      .dbg-banner-detail { color: #cbd5e1; }
+
+      #debugMatchLogCount {
+        font-size: 10px;
+        color: #64748b;
+      }
+    </style>
+  </head>
+  <body class="overlay-fixed">
+    <div id="viewport">
+      <div id="canvas">
+
+        <!-- ── WFDF overlay markup (identical to wfdf-competitive.html) ── -->
+        <div class="overlay-root">
+          <div class="overlay-bar" id="overlayBar">
+            <div class="overlay-logo">
+              <img id="eventLogo" alt="League logo" src="/assets/stallcount-logo.png" />
+              <span class="overlay-logo-fallback" id="eventLogoFallback">SC</span>
+            </div>
+
+            <div class="overlay-team overlay-team--home" id="teamABox">
+              <span class="team-name" id="teamAName">Team A</span>
+              <div class="team-scorebox">
+                <span class="team-score" id="scoreA">0</span>
+              </div>
+              <div class="overlay-timeout overlay-timeout--team-a" id="timeoutBannerA" aria-live="polite">
+                <span class="timeout-label">TIMEOUT</span>
+              </div>
+            </div>
+
+            <div class="overlay-team overlay-team--away" id="teamBBox">
+              <span class="team-name" id="teamBName">Team B</span>
+              <div class="team-scorebox">
+                <span class="team-score team-score--away" id="scoreB">0</span>
+              </div>
+              <div class="overlay-timeout overlay-timeout--team-b" id="timeoutBannerB" aria-live="polite">
+                <span class="timeout-label">TIMEOUT</span>
+              </div>
+            </div>
+
+            <div class="overlay-status">
+              <span class="status-label" id="statusLabel">LIVE</span>
+            </div>
+
+            <div class="overlay-clock">
+              <span class="match-clock" id="matchClock">--:--</span>
+            </div>
+
+            <div class="overlay-field-call" id="fieldCallBanner" aria-live="polite">
+              <span class="timeout-label" id="fieldCallBannerLabel">FIELD CALL</span>
+            </div>
+          </div>
+
+          <div class="overlay-banner" id="overlayBanner" aria-live="polite">
+            <div class="banner-left">
+              <div class="banner-flag" aria-hidden="true"></div>
+              <div>
+                <div class="banner-name" id="bannerPlayerName">PLAYER NAME</div>
+              </div>
+            </div>
+            <div class="banner-stats">
+              <div class="banner-stat">
+                <span class="banner-stat__label">GLS</span>
+                <span class="banner-stat__value" id="bannerStatGls">0</span>
+              </div>
+              <div class="banner-divider" aria-hidden="true"></div>
+              <div class="banner-stat">
+                <span class="banner-stat__label">AST</span>
+                <span class="banner-stat__value" id="bannerStatAst">0</span>
+              </div>
+              <div class="banner-divider" aria-hidden="true"></div>
+              <div class="banner-stat">
+                <span class="banner-stat__label">BLK</span>
+                <span class="banner-stat__value" id="bannerStatBlk">0</span>
+              </div>
+              <div class="banner-divider" aria-hidden="true"></div>
+              <div class="banner-stat">
+                <span class="banner-stat__label">TRN</span>
+                <span class="banner-stat__value" id="bannerStatTrn">0</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="overlay-match-event-banner" id="matchEventBanner" aria-live="polite">
+            <span class="overlay-match-event-banner__label" id="matchEventBannerLabel">MATCH EVENT</span>
+          </div>
+
+          <div class="overlay-matchstats-banner" id="matchStatsBanner" aria-live="polite">
+            <div class="matchstats-card">
+              <div class="matchstats-title" id="matchStatsTitle">Match stats</div>
+              <div class="matchstats-body">
+                <div class="matchstats-column matchstats-column--team" id="matchStatsColumnA">
+                  <div class="matchstats-team" id="matchStatsTeamA">Team A</div>
+                  <div class="matchstats-value" id="matchStatsHoldsA">--</div>
+                  <div class="matchstats-value" id="matchStatsBreaksA">--</div>
+                  <div class="matchstats-value" id="matchStatsTurnoversA">--</div>
+                  <div class="matchstats-value" id="matchStatsBlocksA">--</div>
+                </div>
+                <div class="matchstats-column matchstats-column--metrics">
+                  <div class="matchstats-label matchstats-label--scoreline" id="matchStatsScoreline">0 - 0</div>
+                  <div class="matchstats-label">Holds</div>
+                  <div class="matchstats-label">Breaks</div>
+                  <div class="matchstats-label">Turnovers</div>
+                  <div class="matchstats-label">Blocks</div>
+                </div>
+                <div class="matchstats-column matchstats-column--team" id="matchStatsColumnB">
+                  <div class="matchstats-team" id="matchStatsTeamB">Team B</div>
+                  <div class="matchstats-value" id="matchStatsHoldsB">--</div>
+                  <div class="matchstats-value" id="matchStatsBreaksB">--</div>
+                  <div class="matchstats-value" id="matchStatsTurnoversB">--</div>
+                  <div class="matchstats-value" id="matchStatsBlocksB">--</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="overlay-roster-banner" id="teamRostersBanner" aria-live="polite">
+            <div class="matchstats-card roster-card">
+              <div class="matchstats-title" id="teamRostersTitle">Team rosters</div>
+              <div class="roster-banner-body">
+                <div class="roster-banner-column" id="teamRostersColumnA">
+                  <div class="matchstats-team roster-banner-team" id="teamRostersTeamA">Team A</div>
+                  <ul class="roster-banner-list" id="teamRostersListA"></ul>
+                </div>
+                <div class="roster-banner-column" id="teamRostersColumnB">
+                  <div class="matchstats-team roster-banner-team" id="teamRostersTeamB">Team B</div>
+                  <ul class="roster-banner-list" id="teamRostersListB"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="overlay-event" id="eventName">Event Name</div>
+          <div class="meta" id="meta"></div>
+        </div>
+
+        <!-- ── Debug panel ── -->
+        <div id="debugPanel">
+          <div class="dbg-section">
+            <h2>Connection</h2>
+            <div class="dbg-row"><span class="dbg-key">matchId</span><span class="dbg-val" id="dbg-matchId">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">meta</span><span class="dbg-val" id="dbg-meta">—</span></div>
+          </div>
+
+          <div class="dbg-section">
+            <h2>Match</h2>
+            <div class="dbg-row"><span class="dbg-key">status</span><span class="dbg-val" id="dbg-status">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">score A / B</span><span class="dbg-val" id="dbg-score">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">team A</span><span class="dbg-val" id="dbg-teamA">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">team B</span><span class="dbg-val" id="dbg-teamB">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">starting team</span><span class="dbg-val" id="dbg-startingTeam">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">event</span><span class="dbg-val" id="dbg-event">—</span></div>
+          </div>
+
+          <div class="dbg-section">
+            <h2>Clock</h2>
+            <div class="dbg-row"><span class="dbg-key">clockText</span><span class="dbg-val is-num" id="dbg-clockText">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">secondsRemaining</span><span class="dbg-val is-num" id="dbg-secondsRemaining">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">hasStarted</span><span class="dbg-val" id="dbg-hasStarted">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">isPaused</span><span class="dbg-val" id="dbg-isPaused">—</span></div>
+          </div>
+
+          <div class="dbg-section">
+            <h2>Derived state</h2>
+            <div class="dbg-row"><span class="dbg-key">statusLabel</span><span class="dbg-val" id="dbg-statusLabel">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">stoppageActive</span><span class="dbg-val" id="dbg-stoppageActive">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">overlayInitialized</span><span class="dbg-val" id="dbg-overlayInit">—</span></div>
+          </div>
+
+          <div class="dbg-section">
+            <h2>Scoreboard snapshot</h2>
+            <div class="dbg-row"><span class="dbg-key">scoreA</span><span class="dbg-val is-num" id="dbg-sbScoreA">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">scoreB</span><span class="dbg-val is-num" id="dbg-sbScoreB">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">status</span><span class="dbg-val" id="dbg-sbStatus">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">period / half</span><span class="dbg-val" id="dbg-sbPeriod">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">clock</span><span class="dbg-val" id="dbg-sbClock">—</span></div>
+          </div>
+
+          <div class="dbg-section">
+            <h2>Match logs</h2>
+            <div class="dbg-row"><span class="dbg-key">total logs</span><span class="dbg-val is-num" id="dbg-logCount">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">last log</span><span class="dbg-val" id="dbg-lastLog">—</span></div>
+          </div>
+
+          <div class="dbg-section">
+            <h2>States / Triggers</h2>
+            <div class="dbg-row"><span class="dbg-key">playerStats active</span><span class="dbg-val" id="dbg-st-playerStats">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">playerStats key</span><span class="dbg-val" id="dbg-st-playerStatsKey">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">matchStats active</span><span class="dbg-val" id="dbg-st-matchStats">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">matchStats key</span><span class="dbg-val" id="dbg-st-matchStatsKey">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">teamRosters active</span><span class="dbg-val" id="dbg-st-teamRosters">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">teamRosters key</span><span class="dbg-val" id="dbg-st-teamRostersKey">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">timeout active</span><span class="dbg-val" id="dbg-st-timeout">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">timeout key</span><span class="dbg-val" id="dbg-st-timeoutKey">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">fieldCall active</span><span class="dbg-val" id="dbg-st-fieldCall">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">fieldCall key</span><span class="dbg-val" id="dbg-st-fieldCallKey">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">matchEvent active</span><span class="dbg-val" id="dbg-st-matchEvent">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">matchEvent key</span><span class="dbg-val" id="dbg-st-matchEventKey">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">last trigger type</span><span class="dbg-val" id="dbg-st-lastTrigger">—</span></div>
+            <div class="dbg-row"><span class="dbg-key">last trigger data</span><span class="dbg-val" id="dbg-st-lastTriggerData">—</span></div>
+          </div>
+
+          <div class="dbg-section">
+            <h2>Banner activity log</h2>
+            <div id="debugBannerLog"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <script>
+      function scaleCanvas() {
+        const canvas = document.getElementById("canvas");
+        if (!canvas) return;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const scale = Math.min(vw / 1920, vh / 1080);
+        canvas.style.transform = `scale(${scale})`;
+      }
+
+      window.addEventListener("resize", scaleCanvas);
+      scaleCanvas();
+    </script>
+    <script type="module" src="/src/overlay/overlayDebug.js"></script>
+  </body>
+</html>

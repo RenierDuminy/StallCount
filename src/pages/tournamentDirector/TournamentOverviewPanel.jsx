@@ -58,9 +58,8 @@ const EMPTY_MATCH_EDIT_FORM = {
   teamBId: "",
   scoreA: "0",
   scoreB: "0",
-  captainsConfirmed: false,
-  confirmedDate: "",
-  confirmedTime: "",
+  teamAConfirmed: false,
+  teamBConfirmed: false,
   scorekeeperId: "",
   startingTeamId: "",
   abbaPattern: "",
@@ -276,9 +275,55 @@ function normalizeEditForm(form) {
   };
 }
 
+/**
+ * When each side confirmed the result. Matches confirmed before per-team
+ * confirmation existed only carry captains_confirmed + confirmed_at, so those
+ * read as both sides confirmed at confirmed_at.
+ */
+function getTeamConfirmations(match) {
+  const legacy = match?.captains_confirmed ? match?.confirmed_at || null : null;
+  return {
+    teamA: match?.team_a_confirmed_at || legacy,
+    teamB: match?.team_b_confirmed_at || legacy,
+  };
+}
+
+/** "Yes" when both captains confirmed, "1/2" when one has, "No" otherwise. */
+function getConfirmationLabel(match) {
+  if (match?.captains_confirmed) return "Yes";
+  const { teamA, teamB } = getTeamConfirmations(match);
+  const count = Number(Boolean(teamA)) + Number(Boolean(teamB));
+  return count === 2 ? "Yes" : count === 1 ? "1/2" : "No";
+}
+
+/**
+ * Resolve one side's confirmation from the edit form's tick box. The time is
+ * never typed: a standing confirmation keeps its time, a new tick is stamped
+ * now, and unticking clears it. The confirming user is kept only while the
+ * confirmation stands — a TD tick has no captain to name.
+ */
+function resolveTeamConfirmation(confirmed, existingAt, existingBy) {
+  if (!confirmed) return { at: null, by: null };
+  if (existingAt) return { at: existingAt, by: existingBy || null };
+  return { at: new Date().toISOString(), by: null };
+}
+
+function formatConfirmationStamp(timestamp) {
+  if (!timestamp) return "";
+  const value = new Date(timestamp);
+  if (Number.isNaN(value.getTime())) return "";
+  return value.toLocaleString([], {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function buildEditForm(match) {
   const { date, time } = getLocalDateTimeParts(match?.start_time);
-  const { date: confirmedDate, time: confirmedTime } = getLocalDateTimeParts(match?.confirmed_at);
+  const confirmations = getTeamConfirmations(match);
   return {
     date,
     time,
@@ -290,9 +335,8 @@ function buildEditForm(match) {
     teamBId: match?.team_b?.id || "",
     scoreA: String(match?.score_a ?? 0),
     scoreB: String(match?.score_b ?? 0),
-    captainsConfirmed: Boolean(match?.captains_confirmed),
-    confirmedDate,
-    confirmedTime,
+    teamAConfirmed: Boolean(confirmations.teamA),
+    teamBConfirmed: Boolean(confirmations.teamB),
     scorekeeperId: match?.scorekeeper || "",
     startingTeamId: match?.starting_team_id || "",
     abbaPattern: match?.abba_pattern || "",
@@ -456,7 +500,7 @@ function getScheduleRowValues(match, divisionLookup, poolLookup) {
     scoreB: String(match?.score_b ?? 0),
     teamB: match?.displayTeamB || "TBD",
     spirit: spiritValue,
-    captain: match?.captains_confirmed ? "Yes" : "No",
+    captain: getConfirmationLabel(match),
   };
 }
 
@@ -1155,6 +1199,9 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
         if (nextForm.startingTeamId && ![nextForm.teamAId, nextForm.teamBId].includes(nextForm.startingTeamId)) {
           nextForm.startingTeamId = "";
         }
+        // A confirmation belongs to the team that gave it, not to the slot.
+        const side = field === "teamAId" ? "teamA" : "teamB";
+        nextForm[`${side}Confirmed`] = false;
         return nextForm;
       }
 
@@ -1214,6 +1261,8 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
         scoreB,
         captainsConfirmed: form.captainsConfirmed,
         confirmedAt,
+        teamAConfirmedAt: confirmedAt,
+        teamBConfirmedAt: confirmedAt,
         scorekeeperId: form.scorekeeperId,
         mediaLink,
         mediaProvider: form.mediaProvider,
@@ -1253,10 +1302,27 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
       const scoreB = normalizeMatchScore(form.scoreB, "Team B score");
       const spiritScoresA = normalizeSpiritCategoryScores(form.spiritScores.teamA, "Team A");
       const spiritScoresB = normalizeSpiritCategoryScores(form.spiritScores.teamB, "Team B");
-      const confirmedAt = form.captainsConfirmed
-        ? form.confirmedDate || form.confirmedTime
-          ? buildStartTime(form.confirmedDate, form.confirmedTime)
-          : editingMatch.confirmed_at || new Date().toISOString()
+      const existingConfirmations = getTeamConfirmations(editingMatch);
+      const teamAConfirmation = resolveTeamConfirmation(
+        form.teamAConfirmed,
+        existingConfirmations.teamA,
+        editingMatch.team_a_confirmed_by,
+      );
+      const teamBConfirmation = resolveTeamConfirmation(
+        form.teamBConfirmed,
+        existingConfirmations.teamB,
+        editingMatch.team_b_confirmed_by,
+      );
+      // The result is confirmed only when both sides are, exactly as the
+      // captain portal's confirm function decides it. confirmed_at keeps an
+      // existing value (other pages use it as a timestamp) and otherwise takes
+      // the later of the two confirmations.
+      const captainsConfirmed = Boolean(teamAConfirmation.at && teamBConfirmation.at);
+      const confirmedAt = captainsConfirmed
+        ? (editingMatch.captains_confirmed && editingMatch.confirmed_at) ||
+          (new Date(teamAConfirmation.at) > new Date(teamBConfirmation.at)
+            ? teamAConfirmation.at
+            : teamBConfirmation.at)
         : null;
       const mediaLink = buildCreateMediaLink(form);
 
@@ -1270,8 +1336,12 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
         teamBId: form.teamBId,
         scoreA,
         scoreB,
-        captainsConfirmed: form.captainsConfirmed,
+        captainsConfirmed,
         confirmedAt,
+        teamAConfirmedAt: teamAConfirmation.at,
+        teamAConfirmedBy: teamAConfirmation.by,
+        teamBConfirmedAt: teamBConfirmation.at,
+        teamBConfirmedBy: teamBConfirmation.by,
         scorekeeperId: form.scorekeeperId,
         startingTeamId: form.startingTeamId,
         abbaPattern: form.abbaPattern,
@@ -1583,12 +1653,15 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                       <td className="whitespace-nowrap px-2 py-1.5">
                         <span
                           className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
-                            match.captains_confirmed
+                            getConfirmationLabel(match) === "Yes"
                               ? "bg-emerald-100 text-emerald-800"
-                              : "bg-slate-200 text-slate-700"
+                              : getConfirmationLabel(match) === "1/2"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-slate-200 text-slate-700"
                           }`}
+                          title="Captain confirmations"
                         >
-                          {match.captains_confirmed ? "Yes" : "No"}
+                          {getConfirmationLabel(match)}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-2 py-1.5 text-right">
@@ -1875,7 +1948,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                   className="h-4 w-4"
                   style={{ accentColor: "#0a3d29" }}
                 />
-                Captain confirmed
+                Both captains confirmed
               </label>
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Confirmed date</span>
@@ -2215,38 +2288,79 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
               </label>
             </div>
 
-            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-3 rounded-lg border border-[var(--sc-surface-light-border)] bg-white p-3">
-              <label className="flex items-center gap-3 text-sm font-semibold text-[var(--sc-surface-light-ink)]">
-                <input
-                  type="checkbox"
-                  checked={normalizedEditForm.captainsConfirmed}
-                  onChange={(event) => handleEditField("captainsConfirmed", event.target.checked)}
-                  className="h-4 w-4"
-                  style={{ accentColor: "#0a3d29" }}
-                />
-                Captain confirmed
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Confirmed date</span>
-                <input
-                  type="date"
-                  value={normalizedEditForm.confirmedDate}
-                  onChange={(event) => handleEditField("confirmedDate", event.target.value)}
-                  disabled={!normalizedEditForm.captainsConfirmed}
-                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full disabled:bg-slate-100`}
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Confirmed time</span>
-                <input
-                  type="time"
-                  value={normalizedEditForm.confirmedTime}
-                  onChange={(event) => handleEditField("confirmedTime", event.target.value)}
-                  disabled={!normalizedEditForm.captainsConfirmed}
-                  className={`${LIGHT_INPUT_CLASS} mt-1 w-full disabled:bg-slate-100`}
-                />
-              </label>
-            </div>
+            {(() => {
+              const sides = [
+                {
+                  key: "teamA",
+                  name: getTeamOptionName(teamOptions, normalizedEditForm.teamAId, "Team A"),
+                },
+                {
+                  key: "teamB",
+                  name: getTeamOptionName(teamOptions, normalizedEditForm.teamBId, "Team B"),
+                },
+              ];
+              const confirmedCount =
+                Number(normalizedEditForm.teamAConfirmed) + Number(normalizedEditForm.teamBConfirmed);
+              const statusLabel =
+                confirmedCount === 2
+                  ? "Confirmed by both captains"
+                  : confirmedCount === 1
+                    ? "1 of 2 captains confirmed"
+                    : "Not confirmed";
+              const statusClass =
+                confirmedCount === 2
+                  ? "bg-emerald-100 text-emerald-800"
+                  : confirmedCount === 1
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-slate-200 text-slate-700";
+              return (
+                <div className="mt-3 space-y-3 rounded-lg border border-[var(--sc-surface-light-border)] bg-white p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">
+                      Result confirmation
+                    </span>
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusClass}`}
+                    >
+                      {statusLabel}
+                    </span>
+                  </div>
+                  {sides.map(({ key, name }) => {
+                    const confirmed = normalizedEditForm[`${key}Confirmed`];
+                    // Time is filled automatically: the standing confirmation's
+                    // time, or "on save" for a fresh tick.
+                    const existingAt = getTeamConfirmations(editingMatch)[key];
+                    const stamp = !confirmed
+                      ? "Not confirmed"
+                      : existingAt
+                        ? formatConfirmationStamp(existingAt)
+                        : "Time set on save";
+                    return (
+                      <div
+                        key={key}
+                        className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--sc-surface-light-border)]/20 pt-3"
+                      >
+                        <label className="flex items-center gap-3 text-sm font-semibold text-[var(--sc-surface-light-ink)]">
+                          <input
+                            type="checkbox"
+                            checked={confirmed}
+                            onChange={(event) => handleEditField(`${key}Confirmed`, event.target.checked)}
+                            className="h-4 w-4"
+                            style={{ accentColor: "#0a3d29" }}
+                          />
+                          {name} confirmed
+                        </label>
+                        <span className="text-xs text-[var(--sc-surface-light-ink)]/65">{stamp}</span>
+                      </div>
+                    );
+                  })}
+                  <p className="text-xs text-[var(--sc-surface-light-ink)]/65">
+                    Unticking a team reopens the result for that team&apos;s captain, including their spirit
+                    score. The result counts as confirmed only when both teams are ticked.
+                  </p>
+                </div>
+              );
+            })()}
 
             <div className="mt-3 space-y-3 rounded-lg border border-[var(--sc-surface-light-border)] bg-white p-3">
               <label className="flex items-center gap-3 text-sm font-semibold text-[var(--sc-surface-light-ink)]">

@@ -10,6 +10,7 @@ import {
   saveSpiritScoresSession,
 } from "../services/spiritScoreSessionStore";
 import { Card, Field, Input, SectionHeader, SectionShell, Select, Textarea } from "../components/ui/primitives";
+import SpiritScoreBlocks from "../components/SpiritScoreBlocks";
 import {
   ADMIN_OVERRIDE_PERMISSIONS,
   SPIRIT_SCORES_ACCESS_ROLES,
@@ -703,35 +704,29 @@ export default function SpiritScoresPage() {
                   <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">
                     Score for {teamKey === "teamA" ? teamLabels.teamA : teamLabels.teamB}:
                     {/* The WFDF total is what gets reported, so it belongs in the
-                        heading. It also replaces the per-slider value readouts:
-                        each slider's position and its detent already show the
-                        individual score. */}
+                        heading. The selected block already shows each category's
+                        own score. */}
                     <span className="ml-2 text-lg font-bold">{spiritTotals[teamKey]}</span>
                   </h3>
                 </div>
                 {SPIRIT_CATEGORIES.map((category) => (
-                  <label
+                  // Three quarters of the screen on a phone, centred, so the row
+                  // reads as a control rather than a full-width band. The label
+                  // shares the row's width so it lines up with the blocks.
+                  <div
                     key={`${teamKey}-${category.key}`}
-                    className="block text-sm font-semibold text-[var(--sc-surface-light-ink)]"
+                    className="mx-auto w-[75vw] max-w-full space-y-1 sm:w-80"
                   >
-                    <span className="block">{category.label}</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="4"
-                      step="1"
-                      value={teamScores[teamKey][category.key]}
-                      onChange={(event) => updateScore(teamKey, category.key, event.target.value)}
-                      className="sc-spirit-slider mt-0.5"
+                    <span className="block text-sm font-semibold text-[var(--sc-surface-light-ink)]">
+                      {category.label}
+                    </span>
+                    <SpiritScoreBlocks
+                      tone="light"
+                      label={category.label}
+                      value={Number(teamScores[teamKey][category.key])}
+                      onChange={(value) => updateScore(teamKey, category.key, value)}
                     />
-                    <div className="flex justify-between text-xs text-[var(--sc-surface-light-ink)]/60">
-                      <span>0</span>
-                      <span>1</span>
-                      <span>2</span>
-                      <span>3</span>
-                      <span>4</span>
-                    </div>
-                  </label>
+                  </div>
                 ))}
                 <Field label="Notes" htmlFor={`${teamKey}-notes`} className="is-light">
                   <Textarea

@@ -505,6 +505,12 @@ export default function EventWorkspaceTemplate({
             >
               Player standings
             </Link>
+            <Link
+              to={`/event-spirit?eventId=${encodeURIComponent(eventId)}`}
+              className="sc-button w-full whitespace-nowrap sm:w-auto"
+            >
+              Spirit scores
+            </Link>
             <a
               href="https://wfdf.sport/2025/01/wfdf-publishes-2025-2028-ultimate-rules/"
               target="_blank"

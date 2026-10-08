@@ -33,6 +33,7 @@ const routes = [
   "/community",
   "/event-rosters",
   "/event-rules",
+  "/event-spirit",
 ];
 
 const urlEntries = routes
@@ -63,6 +64,8 @@ Disallow: /notifications
 Disallow: /user
 Disallow: /tournament-director
 Disallow: /spirit-scores
+Disallow: /overlays/
+Disallow: /overlay-debug.html
 
 Sitemap: ${baseUrl}/sitemap.xml
 `;

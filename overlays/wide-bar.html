@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Wide Bar Overlay</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Semi+Condensed:wght@400;600;700&display=swap");
+
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
+        width: 100%; height: 100%;
+        background: transparent;
+        overflow: hidden;
+      }
+
+      #viewport {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      #canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        transform-origin: top left;
+      }
+
+      /* â”€â”€ Wide centre bar (football style) â”€â”€ */
+      .wb-root {
+        position: absolute;
+        z-index: 2;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      /* Main row */
+      .wb-bar {
+        display: grid;
+        /* [team-A-side] [score] [dash] [score] [team-B-side] */
+        grid-template-columns: minmax(0,1.6fr) 96px 36px 96px minmax(0,1.6fr);
+        align-items: stretch;
+        height: 72px;
+        background: #1a1a1a;
+        box-shadow: 0 -4px 0 rgba(255,255,255,0.08);
+      }
+
+      /* Each team side: #teamABox / #teamBBox wraps logo + name.
+         overlay.js writes --team-bg / --team-text directly onto these elements. */
+      .wb-team {
+        display: flex;
+        align-items: center;
+        background: var(--team-bg, #222222);
+        color: var(--team-text, #ffffff);
+        overflow: visible;
+        position: relative;
+      }
+
+      .wb-break-strip {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 100%;
+        padding: 6px 12px;
+        background: #dc2626;
+        color: #ffffff;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        text-align: center;
+        white-space: normal;
+        line-height: 1.15;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.18s ease;
+      }
+
+      .wb-break-strip.is-active,
+      .wb-break-strip.is-persistent {
+        opacity: 1;
+      }
+
+      .wb-team--away {
+        flex-direction: row-reverse;
+      }
+
+      .wb-logo {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 95%;
+        aspect-ratio: 1;
+        padding: 2px;
+      }
+
+      .wb-logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: none;
+      }
+
+      .wb-logo.has-image img { display: block; }
+
+      .wb-logo-fallback {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--team-text, #ffffff);
+        letter-spacing: 0.1em;
+      }
+
+      .wb-logo.has-image .wb-logo-fallback { display: none; }
+
+      .wb-name {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex: 1;
+        padding: 0 18px;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: inherit;
+        min-width: 0;
+      }
+
+      .wb-team--away .wb-name {
+        justify-content: flex-start;
+      }
+
+      .wb-score {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 54px;
+        letter-spacing: 0.04em;
+        color: #ffffff;
+        background: #1a1a1a;
+        border-left: 1px solid #333;
+        border-right: 1px solid #333;
+      }
+
+      .wb-divider {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 40px;
+        color: rgba(255,255,255,0.4);
+        background: #111111;
+        border-left: 1px solid #2a2a2a;
+        border-right: 1px solid #2a2a2a;
+      }
+
+      /* Sub-row for extra info (down & distance, half, etc.) */
+      .wb-subbar {
+        display: flex;
+        align-items: stretch;
+        height: 36px;
+        background: #111111;
+        border-top: 1px solid #2a2a2a;
+      }
+
+      .wb-subbar__cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 20px;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.85);
+        border-right: 1px solid #2a2a2a;
+        white-space: nowrap;
+      }
+
+      .wb-subbar__cell--accent {
+        background: #1a1a1a;
+        color: #ffffff;
+      }
+
+      /* possession dot on team name */
+      .wb-possession-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #f59e0b;
+        margin-left: 10px;
+        flex-shrink: 0;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+
+      .wb-possession-dot.is-visible { opacity: 1; }
+
+      /* ── Player stats banner ── */
+      #overlayBanner {
+        position: absolute;
+        left: 50%;
+        bottom: 120px; /* above the 72px main bar + 36px subbar + 12px gap */
+        transform: translateX(-50%) translateY(24px);
+        opacity: 0;
+        pointer-events: none;
+        display: flex;
+        align-items: stretch;
+        overflow: hidden;
+        box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+        min-width: 560px;
+        font-family: "Barlow Semi Condensed", sans-serif;
+      }
+
+      #overlayBanner.is-active {
+        animation: wb-banner-rise-hold-fade 6.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+
+      #overlayBanner.is-persistent {
+        animation: none;
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      @keyframes wb-banner-rise-hold-fade {
+        0%   { opacity: 0; transform: translateX(-50%) translateY(24px); }
+        12%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+        80%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+        100% { opacity: 0; transform: translateX(-50%) translateY(0); }
+      }
+
+      .wb-banner-team {
+        background: var(--banner-team-bg, #222222);
+        color: var(--banner-team-text, #ffffff);
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        min-width: 200px;
+        border-right: 1px solid rgba(255,255,255,0.1);
+      }
+
+      #bannerPlayerName {
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .wb-banner-stats {
+        display: flex;
+        align-items: stretch;
+        background: #1a1a1a;
+      }
+
+      .wb-banner-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 12px 22px;
+        gap: 2px;
+        border-left: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .wb-banner-stat__label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.45);
+      }
+
+      .wb-banner-stat__value {
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 36px;
+        letter-spacing: 0.04em;
+        color: #ffffff;
+        line-height: 1;
+      }
+
+      /* ── Match stats banner ── */
+      #matchStatsBanner {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0.97);
+        opacity: 0;
+        pointer-events: none;
+        display: block;
+        width: 640px;
+        transition: opacity 0.18s ease, transform 0.18s ease;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        z-index: 10;
+      }
+
+      #matchStatsBanner.is-active {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .wb-matchstats-card {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+        overflow: hidden;
+      }
+
+      #matchStatsTitle {
+        display: block;
+        text-align: center;
+        padding: 10px 16px;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        background: #111111;
+        color: rgba(255,255,255,0.65);
+        border-bottom: 1px solid #333;
+      }
+
+      .wb-matchstats-body {
+        display: grid;
+        grid-template-columns: minmax(0,1fr) minmax(0,0.9fr) minmax(0,1fr);
+        align-items: stretch;
+      }
+
+      .wb-matchstats-col {
+        display: grid;
+        grid-template-rows: minmax(52px,auto) repeat(4, 46px);
+        min-width: 0;
+      }
+
+      .wb-matchstats-col--team {
+        background: var(--team-bg, #222222);
+        color: var(--team-text, #ffffff);
+      }
+
+      .wb-matchstats-col--team > * + * { border-top: 1px solid rgba(255,255,255,0.1); }
+
+      .wb-matchstats-col--metrics {
+        background: #111111;
+        color: rgba(255,255,255,0.8);
+        border-left: 1px solid #2a2a2a;
+        border-right: 1px solid #2a2a2a;
+      }
+
+      .wb-matchstats-col--metrics > * + * { border-top: 1px solid #2a2a2a; }
+
+      #matchStatsTeamA, #matchStatsTeamB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        text-align: center;
+        line-height: 1.1;
+      }
+
+      #matchStatsScoreline {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 30px;
+        letter-spacing: 0.04em;
+        color: #ffffff;
+      }
+
+      #matchStatsHoldsA, #matchStatsHoldsB,
+      #matchStatsBreaksA, #matchStatsBreaksB,
+      #matchStatsTurnoversA, #matchStatsTurnoversB,
+      #matchStatsBlocksA, #matchStatsBlocksB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 28px;
+        letter-spacing: 0.04em;
+      }
+
+      .wb-matchstats-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.45);
+        text-align: center;
+        padding: 0 4px;
+      }
+
+      /* ── Team rosters banner ── */
+      #teamRostersBanner {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0.97);
+        opacity: 0;
+        pointer-events: none;
+        display: block;
+        width: 900px;
+        transition: opacity 0.18s ease, transform 0.18s ease;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        z-index: 10;
+      }
+
+      #teamRostersBanner.is-active {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .wb-roster-card {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+        overflow: hidden;
+        max-height: 760px;
+      }
+
+      #teamRostersTitle {
+        display: block;
+        text-align: center;
+        padding: 10px 16px;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        background: #111111;
+        color: rgba(255,255,255,0.65);
+        border-bottom: 1px solid #333;
+      }
+
+      .wb-roster-body {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0,1fr));
+      }
+
+      #teamRostersColumnA, #teamRostersColumnB {
+        display: grid;
+        grid-template-rows: minmax(48px,auto) minmax(0,1fr);
+        background: var(--team-bg, #222222);
+        color: var(--team-text, #ffffff);
+      }
+
+      #teamRostersColumnB { border-left: 1px solid rgba(255,255,255,0.1); }
+
+      #teamRostersTeamA, #teamRostersTeamB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+
+      #teamRostersListA, #teamRostersListB {
+        margin: 0;
+        padding: 12px;
+        list-style: none;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0,1fr));
+        gap: 6px 12px;
+        align-content: start;
+      }
+
+      .roster-banner-item {
+        display: flex;
+        justify-content: flex-start;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
+      }
+
+      .roster-banner-identity {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .roster-banner-tag {
+        min-width: 1.3rem;
+        height: 1.3rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.4);
+        background: rgba(255,255,255,0.1);
+      }
+
+      .roster-banner-tag--captain {
+        background: var(--team-text, #ffffff);
+        border-color: var(--team-text, #ffffff);
+        color: var(--team-bg, #111111);
+      }
+    </style>
+    <script>
+      if (new URLSearchParams(window.location.search).has('preview')) document.head.insertAdjacentHTML('beforeend', '<style>' +
+        '#canvas{outline:1px solid rgba(255,255,255,0.4);background-image:repeating-linear-gradient(45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 12px),repeating-linear-gradient(-45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 12px),url(/overlay-demo.jpg);background-size:auto,auto,cover;background-position:0 0,0 0,center}' +
+      '</style>');
+    </script>
+  </head>
+  <body class="overlay-fixed">
+    <div id="viewport">
+      <div id="canvas">
+        <div class="wb-root">
+          <div class="wb-bar" id="overlayBar">
+            <!-- Team A: #teamABox receives --team-bg / --team-text from overlay.js -->
+            <div class="wb-team" id="teamABox">
+              <div class="wb-logo">
+                <img id="teamALogo" alt="" />
+                <span class="wb-logo-fallback">A</span>
+              </div>
+              <div class="wb-name">
+                <span id="teamAName">Team A</span>
+                <span class="wb-possession-dot" id="possessionDotA"></span>
+              </div>
+            </div>
+
+            <div class="wb-score"><span id="scoreA">0</span></div>
+            <div class=”wb-divider”>&#x2013;</div>
+            <div class="wb-score"><span id="scoreB">0</span></div>
+
+            <!-- Team B: #teamBBox receives --team-bg / --team-text from overlay.js -->
+            <div class="wb-team wb-team--away" id="teamBBox">
+              <div class="wb-logo">
+                <img id="teamBLogo" alt="" />
+                <span class="wb-logo-fallback">B</span>
+              </div>
+              <div class="wb-name">
+                <span class="wb-possession-dot" id="possessionDotB"></span>
+                <span id="teamBName">Team B</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="wb-subbar">
+            <div class="wb-subbar__cell" id="statusLabel" data-role="status-label">LIVE</div>
+            <div class="wb-subbar__cell" id="matchClock">--:--</div>
+            <div class="wb-subbar__cell wb-subbar__cell--accent" id="eventName"></div>
+          </div>
+        </div>
+
+        <!-- Required stubs -->
+        <div id="eventLogo" style="display:none"></div>
+        <div id="eventLogoFallback" style="display:none"></div>
+        <div id="timeoutBannerA" style="display:none"></div>
+        <div id="timeoutBannerB" style="display:none"></div>
+        <div id="fieldCallBanner" style="display:none"></div>
+        <div id="fieldCallBannerLabel" style="display:none"></div>
+        <div id="matchEventBanner" style="display:none"></div>
+        <div id="matchEventBannerLabel" style="display:none"></div>
+
+        <!-- Player stats banner -->
+        <div id="overlayBanner">
+          <div class="wb-banner-team">
+            <span id="bannerPlayerName">PLAYER NAME</span>
+          </div>
+          <div class="wb-banner-stats">
+            <div class="wb-banner-stat">
+              <span class="wb-banner-stat__label">GLS</span>
+              <span class="wb-banner-stat__value" id="bannerStatGls">0</span>
+            </div>
+            <div class="wb-banner-stat">
+              <span class="wb-banner-stat__label">AST</span>
+              <span class="wb-banner-stat__value" id="bannerStatAst">0</span>
+            </div>
+            <div class="wb-banner-stat">
+              <span class="wb-banner-stat__label">BLK</span>
+              <span class="wb-banner-stat__value" id="bannerStatBlk">0</span>
+            </div>
+            <div class="wb-banner-stat">
+              <span class="wb-banner-stat__label">TRN</span>
+              <span class="wb-banner-stat__value" id="bannerStatTrn">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Match stats banner -->
+        <div id="matchStatsBanner">
+          <div class="wb-matchstats-card">
+            <span id="matchStatsTitle">Match stats</span>
+            <div class="wb-matchstats-body">
+              <div class="wb-matchstats-col wb-matchstats-col--team" id="matchStatsColumnA">
+                <div id="matchStatsTeamA">Team A</div>
+                <div id="matchStatsHoldsA">--</div>
+                <div id="matchStatsBreaksA">--</div>
+                <div id="matchStatsTurnoversA">--</div>
+                <div id="matchStatsBlocksA">--</div>
+              </div>
+              <div class="wb-matchstats-col wb-matchstats-col--metrics">
+                <div id="matchStatsScoreline">0 - 0</div>
+                <div class="wb-matchstats-label">Holds</div>
+                <div class="wb-matchstats-label">Breaks</div>
+                <div class="wb-matchstats-label">Turnovers</div>
+                <div class="wb-matchstats-label">Blocks</div>
+              </div>
+              <div class="wb-matchstats-col wb-matchstats-col--team" id="matchStatsColumnB">
+                <div id="matchStatsTeamB">Team B</div>
+                <div id="matchStatsHoldsB">--</div>
+                <div id="matchStatsBreaksB">--</div>
+                <div id="matchStatsTurnoversB">--</div>
+                <div id="matchStatsBlocksB">--</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Team rosters banner -->
+        <div id="teamRostersBanner">
+          <div class="wb-roster-card">
+            <span id="teamRostersTitle">Team rosters</span>
+            <div class="wb-roster-body">
+              <div id="teamRostersColumnA">
+                <div id="teamRostersTeamA">Team A</div>
+                <ul id="teamRostersListA"></ul>
+              </div>
+              <div id="teamRostersColumnB">
+                <div id="teamRostersTeamB">Team B</div>
+                <ul id="teamRostersListB"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="meta" id="meta"></div>
+      </div>
+    </div>
+
+    <script>
+      function scaleCanvas() {
+        const canvas = document.getElementById('canvas');
+        if (!canvas) return;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const scale = Math.min(vw / 1920, vh / 1080);
+        canvas.style.transform = `scale(${scale})`;
+      }
+      window.addEventListener('resize', scaleCanvas);
+      scaleCanvas();
+
+      (function () {
+        // Both team logos must be present for the logo section to display.
+        // If either is missing, hide both logo cells entirely.
+        function readLogo(key) {
+          try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
+        }
+        function setSectionHidden(hidden) {
+          ['teamALogo', 'teamBLogo'].forEach(function (imgId) {
+            var img = document.getElementById(imgId);
+            if (img && img.parentElement) img.parentElement.style.display = hidden ? 'none' : '';
+          });
+        }
+        function loadLogo(imgId, src) {
+          var img = document.getElementById(imgId);
+          if (!img || !img.parentElement) return;
+          img.src = src;
+          img.onload = function () { img.parentElement.classList.add('has-image'); };
+          img.onerror = function () { img.parentElement.classList.remove('has-image'); };
+        }
+
+        var srcA = readLogo('stallcount:logo-team-a');
+        var srcB = readLogo('stallcount:logo-team-b');
+        if (srcA && srcB) {
+          setSectionHidden(false);
+          loadLogo('teamALogo', srcA);
+          loadLogo('teamBLogo', srcB);
+        } else {
+          setSectionHidden(true);
+        }
+      })();
+    </script>
+    <script type="module" src="/src/overlay/overlayRuntime.js"></script>
+  </body>
+</html>
+
+
+

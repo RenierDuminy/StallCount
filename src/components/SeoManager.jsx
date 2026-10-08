@@ -16,6 +16,7 @@ const INDEXABLE_PATH_PATTERNS = [
   /^\/community$/,
   /^\/event-rules$/,
   /^\/event-rosters$/,
+  /^\/event-spirit$/,
 ];
 
 const ROUTE_META = [
@@ -69,6 +70,11 @@ const ROUTE_META = [
     pattern: /^\/event-rosters$/,
     title: "Event Rosters | StallCount",
     description: "Review event roster information by team and division.",
+  },
+  {
+    pattern: /^\/event-spirit$/,
+    title: "Event Spirit | StallCount",
+    description: "Spirit score rankings by team and division for an event.",
   },
   {
     pattern: /^\/login$/,

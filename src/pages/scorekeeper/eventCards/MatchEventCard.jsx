@@ -199,6 +199,8 @@ export const MatchEventCard = memo(function MatchEventCard({
   openPossessionEditModal,
   editLocation = "bottom-right",
   variantOverrides = null,
+  // Hides every edit control, for read-only feeds such as the overlay control room.
+  readOnly = false,
 }) {
   const flags = getEventFlags(log);
   // The 7v7 console identifies logs by an id-based ref; the 5v5 console still passes an
@@ -241,7 +243,7 @@ export const MatchEventCard = memo(function MatchEventCard({
     : flags.isPossessionLog
       ? () => openPossessionEditModal(log, resolvedLogRef)
       : () => openSimpleEventModal(log, resolvedLogRef);
-  const showEdit = editLocation !== "none";
+  const showEdit = !readOnly && editLocation !== "none";
   const editPositionClass = getEditPositionClass(editLocation);
   const editColorClass =
     variantOverrides?.editText ||
@@ -359,6 +361,7 @@ export const ScoreEventCard = memo(function ScoreEventCard({
   displayTeamBShort,
   getAbbaDescriptor,
   openScoreModal,
+  readOnly = false,
 }) {
   const resolvedLogRef = logRef ?? editIndex;
   const { resolvedTeamLabel } = resolveTeamLabels({
@@ -374,7 +377,7 @@ export const ScoreEventCard = memo(function ScoreEventCard({
   const eventTime = formatEventTime(log.timestamp);
 
   return (
-    <article className="relative rounded-2xl border border-[#16a34a]/70 bg-[#e5ffe8] px-4 py-3 text-black pr-12">
+    <article className={`relative rounded-2xl border border-[#16a34a]/70 bg-[#e5ffe8] px-4 py-3 text-black ${readOnly ? "" : "pr-12"}`}>
       <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <div className="text-center">
         <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide`}>Score</p>
@@ -402,14 +405,16 @@ export const ScoreEventCard = memo(function ScoreEventCard({
         </div>
       </div>
 
-      <EditButton
-        onClick={() => openScoreModal(log.team, "edit", resolvedLogRef)}
-        positionClass="right-3 top-1/2 -translate-y-1/2"
-        textClass="text-[#0f5132]"
-        borderClass="border-border"
-        hoverBorderClass="hover:border-[#0f5132]"
-        hoverBgClass="hover:bg-[#e6fffa]"
-      />
+      {readOnly ? null : (
+        <EditButton
+          onClick={() => openScoreModal(log.team, "edit", resolvedLogRef)}
+          positionClass="right-3 top-1/2 -translate-y-1/2"
+          textClass="text-[#0f5132]"
+          borderClass="border-border"
+          hoverBorderClass="hover:border-[#0f5132]"
+          hoverBgClass="hover:bg-[#e6fffa]"
+        />
+      )}
     </article>
   );
 });
@@ -425,6 +430,7 @@ export const CalahanEventCard = memo(function CalahanEventCard({
   displayTeamBShort,
   getAbbaDescriptor,
   openScoreModal,
+  readOnly = false,
 }) {
   const resolvedLogRef = logRef ?? editIndex;
   const { resolvedTeamLabel } = resolveTeamLabels({
@@ -440,7 +446,7 @@ export const CalahanEventCard = memo(function CalahanEventCard({
   const eventTime = formatEventTime(log.timestamp);
 
   return (
-    <article className="relative rounded-2xl border-4 border-[#facc15] bg-[#e5ffe8] px-4 py-3 text-[#b45309] pr-12">
+    <article className={`relative rounded-2xl border-4 border-[#facc15] bg-[#e5ffe8] px-4 py-3 text-[#b45309] ${readOnly ? "" : "pr-12"}`}>
       <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <div className="text-center">
         <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide text-[#b45309]`}>Score</p>
@@ -468,14 +474,16 @@ export const CalahanEventCard = memo(function CalahanEventCard({
         </div>
       </div>
 
-      <EditButton
-        onClick={() => openScoreModal(log.team, "edit", resolvedLogRef)}
-        positionClass="right-3 top-1/2 -translate-y-1/2"
-        textClass="text-[#b45309]"
-        borderClass="border-[#facc15]"
-        hoverBorderClass="hover:border-[#facc15]"
-        hoverBgClass="hover:bg-[#dcfce7]"
-      />
+      {readOnly ? null : (
+        <EditButton
+          onClick={() => openScoreModal(log.team, "edit", resolvedLogRef)}
+          positionClass="right-3 top-1/2 -translate-y-1/2"
+          textClass="text-[#b45309]"
+          borderClass="border-[#facc15]"
+          hoverBorderClass="hover:border-[#facc15]"
+          hoverBgClass="hover:bg-[#dcfce7]"
+        />
+      )}
     </article>
   );
 });
@@ -489,6 +497,7 @@ export const BlockEventCard = memo(function BlockEventCard({
   displayTeamAShort,
   displayTeamBShort,
   openPossessionEditModal,
+  readOnly = false,
 }) {
   const resolvedLogRef = logRef ?? editIndex;
   const { resolvedTeamLabel } = resolveTeamLabels({
@@ -516,14 +525,16 @@ export const BlockEventCard = memo(function BlockEventCard({
         <p className={`${TEXT_SIZES.s} font-semibold text-black/70`}>Credited: {creditedPlayerLabel}</p>
       </div>
 
-      <EditButton
-        onClick={() => openPossessionEditModal(log, resolvedLogRef)}
-        positionClass="right-3 top-3"
-        textClass="text-[#0f5132]"
-        borderClass="border-border"
-        hoverBorderClass="hover:border-[#0f5132]"
-        hoverBgClass="hover:bg-[#e6fffa]"
-      />
+      {readOnly ? null : (
+        <EditButton
+          onClick={() => openPossessionEditModal(log, resolvedLogRef)}
+          positionClass="right-3 top-3"
+          textClass="text-[#0f5132]"
+          borderClass="border-border"
+          hoverBorderClass="hover:border-[#0f5132]"
+          hoverBgClass="hover:bg-[#e6fffa]"
+        />
+      )}
     </article>
   );
 });
@@ -537,6 +548,7 @@ export const TurnoverEventCard = memo(function TurnoverEventCard({
   displayTeamAShort,
   displayTeamBShort,
   openPossessionEditModal,
+  readOnly = false,
 }) {
   const resolvedLogRef = logRef ?? editIndex;
   const { resolvedTeamLabel } = resolveTeamLabels({
@@ -564,14 +576,16 @@ export const TurnoverEventCard = memo(function TurnoverEventCard({
         <p className={`${TEXT_SIZES.s} font-semibold text-black/70`}>Credited: {creditedPlayerLabel}</p>
       </div>
 
-      <EditButton
-        onClick={() => openPossessionEditModal(log, resolvedLogRef)}
-        positionClass="right-3 top-3"
-        textClass="text-[#0f5132]"
-        borderClass="border-border"
-        hoverBorderClass="hover:border-[#0f5132]"
-        hoverBgClass="hover:bg-[#e6fffa]"
-      />
+      {readOnly ? null : (
+        <EditButton
+          onClick={() => openPossessionEditModal(log, resolvedLogRef)}
+          positionClass="right-3 top-3"
+          textClass="text-[#0f5132]"
+          borderClass="border-border"
+          hoverBorderClass="hover:border-[#0f5132]"
+          hoverBgClass="hover:bg-[#e6fffa]"
+        />
+      )}
     </article>
   );
 });

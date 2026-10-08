@@ -121,7 +121,7 @@ const QUICK_ACCESS_TOOLS = [
   {
     key: "captain",
     label: "Captain",
-    description: "Manage captain workflows.",
+    description: "Spirit scores, result confirmation and rosters.",
     to: "/captain",
     roles: CAPTAIN_ACCESS_ROLES,
     Icon: IconCaptain,
