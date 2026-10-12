@@ -5,9 +5,10 @@ import {
   updateSettings,
   onScoreUpdate,
   onBannerTrigger,
-  onMatchLogUpdate,
   onMetaMessage,
   onEventLogo,
+  onBreakChanceSetting,
+  getMatchLogs,
   manageBannerState,
   getOverlayPayloadKey,
   isAutoFadeEnabled,
@@ -24,6 +25,7 @@ import {
   STATUS_LABELS,
 } from "./overlayEngine";
 import { MATCH_LOG_EVENT_CODES } from "../services/matchLogService";
+import { getBreakChanceTeam } from "../utils/matchBreaks";
 
 const DEFAULT_LOGO_SRC = `${import.meta.env.BASE_URL}assets/stallcount-logo.png`;
 
@@ -240,11 +242,18 @@ function normalizeAttributes(attributes) {
   return null;
 }
 
+// Used when a team has no colour of its own, so Primary and Secondary still look
+// different. Keep in step with getTeamPalette in OverlayControlPage.jsx (the setup preview).
+const DEFAULT_PRIMARY = { background: "#0b1f19", text: "#e8f4ed" };
+const DEFAULT_SECONDARY = { background: "#f8fafc", text: "#0f172a" };
+
 function resolveTeamColors(attributes, theme) {
   const normalized = normalizeAttributes(attributes) || {};
   const isSecondary = theme === "secondary";
-  const background = isSecondary ? normalized.secondaryColor : normalized.primaryColor;
-  const text = isSecondary ? normalized.textOnSecondary : normalized.textOnPrimary;
+  const fallback = isSecondary ? DEFAULT_SECONDARY : DEFAULT_PRIMARY;
+  const background =
+    (isSecondary ? normalized.secondaryColor : normalized.primaryColor) || fallback.background;
+  const text = (isSecondary ? normalized.textOnSecondary : normalized.textOnPrimary) || fallback.text;
   return {
     background: background || null,
     text: text || null,
@@ -752,70 +761,27 @@ let _bcEnabled = (() => {
     return Boolean(s?.breakChanceEnabled);
   } catch { return false; }
 })();
-let _cachedMatchLogs = [];
 let _bcActiveTeam = null; // "A" | "B" | null — currently displayed break chance
 
-function _oppTeam(team) { return team === "A" ? "B" : team === "B" ? "A" : null; }
-
-function _syncBreakChance(logs, match) {
+// Reads the engine's live log list rather than a copy: the snapshot load and
+// deletions replace that array without firing matchLogUpdate.
+function _syncBreakChance(match) {
   if (!match) return;
   const teamAId = match.team_a?.id;
   const teamBId = match.team_b?.id;
   if (!teamAId || !teamBId) return;
 
   const cache = getEventTypeCache();
-  const toSlot = (id) => id === teamAId ? "A" : id === teamBId ? "B" : null;
+  const toSlot = (id) => (id === teamAId ? "A" : id === teamBId ? "B" : null);
+  const chronological = [...getMatchLogs()]
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    .map((log) => ({
+      id: log.id,
+      eventCode: (resolveEventCode(cache.get(log.event_type_id)) || "").toLowerCase(),
+      team: toSlot(log.team_id),
+    }));
 
-  let possession = match.starting_team_id === teamAId ? "B"
-    : match.starting_team_id === teamBId ? "A"
-    : null;
-  let lastScoringTeam = null;
-  let bcTeam = null;
-
-  const sorted = [...logs].sort((a, b) =>
-    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
-
-  for (const log of sorted) {
-    const eventType = cache.get(log.event_type_id);
-    const code = (resolveEventCode(eventType) || "").toLowerCase();
-    const team = toSlot(log.team_id);
-
-    if (code === MATCH_LOG_EVENT_CODES.SCORE || code === MATCH_LOG_EVENT_CODES.CALAHAN) {
-      lastScoringTeam = team;
-      bcTeam = null;
-      possession = _oppTeam(team) ?? possession;
-      continue;
-    }
-
-    if (code === MATCH_LOG_EVENT_CODES.HALFTIME_START || code === MATCH_LOG_EVENT_CODES.MATCH_END) {
-      lastScoringTeam = null;
-      bcTeam = null;
-      possession = null;
-      continue;
-    }
-
-    const isTurnover = code === MATCH_LOG_EVENT_CODES.TURNOVER;
-    const isBlock = code === MATCH_LOG_EVENT_CODES.BLOCK;
-    if (isTurnover || isBlock) {
-      // Infer the gaining team relative to who currently holds the disc.
-      // Block: reported team gained it. Turnover: if the reported team is the
-      // one holding the disc, they lost it (opponent gains); otherwise the
-      // reported team is the gainer. Mirrors the possession logic in App.jsx.
-      let gaining = team;
-      if (isTurnover && possession && team && team === possession) {
-        gaining = _oppTeam(team);
-      }
-      if (!gaining && possession) {
-        gaining = _oppTeam(possession);
-      }
-      if (gaining) possession = gaining;
-      bcTeam = (lastScoringTeam && possession === lastScoringTeam) ? lastScoringTeam : null;
-      continue;
-    }
-  }
-
-  _applyBreakChanceState(bcTeam);
+  _applyBreakChanceState(getBreakChanceTeam(chronological, toSlot(match.starting_team_id)));
 }
 
 function _applyBreakChanceState(newTeam) {
@@ -1160,12 +1126,24 @@ function handleOverlayBannerPayload(payload) {
 
 // ─── Engine callback registrations ───────────────────────────────────────────
 
-onMatchLogUpdate((logs) => { _cachedMatchLogs = logs; });
-
 onScoreUpdate((payload) => {
   updateOverlay(payload);
-  if (_bcEnabled) _syncBreakChance(_cachedMatchLogs, payload.match);
+  if (_bcEnabled) _syncBreakChance(payload.match);
 });
+
+// The control app's on/off switch. localStorage only reaches overlays in the same
+// browser, so it is also broadcast over realtime for OBS on another machine.
+function _setBreakChanceEnabled(enabled) {
+  const wasEnabled = _bcEnabled;
+  _bcEnabled = Boolean(enabled);
+  if (!_bcEnabled && wasEnabled) {
+    _applyBreakChanceState(null);
+  } else if (_bcEnabled && !wasEnabled) {
+    _syncBreakChance(getCurrentMatch());
+  }
+}
+
+onBreakChanceSetting(_setBreakChanceEnabled);
 
 onBannerTrigger((type, data) => {
   if (type === "syncStoppage") { syncStoppageBanner(); return; }
@@ -1230,15 +1208,7 @@ window.addEventListener("storage", (event) => {
       matchEventAutoFade: settings.matchEventAutoFade,
     };
 
-    const wasEnabled = _bcEnabled;
-    _bcEnabled = Boolean(settings.breakChanceEnabled);
-    if (!_bcEnabled && wasEnabled) {
-      // Turned off — clear any active banner immediately
-      _applyBreakChanceState(null);
-    } else if (_bcEnabled && !wasEnabled) {
-      // Turned on — re-evaluate against cached logs
-      _syncBreakChance(_cachedMatchLogs, getCurrentMatch());
-    }
+    _setBreakChanceEnabled(settings.breakChanceEnabled);
     return;
   }
 

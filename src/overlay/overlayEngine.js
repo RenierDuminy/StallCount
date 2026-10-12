@@ -103,6 +103,7 @@ const _callbacks = {
   clockTick: [],
   metaMessage: [],
   eventLogo: [],
+  breakChanceSetting: [],
 };
 
 function _fire(event, ...args) {
@@ -120,6 +121,8 @@ export function onMetaMessage(fn) { _callbacks.metaMessage.push(fn); }
 // Tournament logo sent by the control app over realtime ("" = removed).
 // Lets overlays in another browser (e.g. OBS) get the logo uploaded in the control app.
 export function onEventLogo(fn) { _callbacks.eventLogo.push(fn); }
+// Break chance on/off switch from the control app, sent over realtime for the same reason.
+export function onBreakChanceSetting(fn) { _callbacks.breakChanceSetting.push(fn); }
 
 // ─── Public getters ───────────────────────────────────────────────────────────
 
@@ -705,8 +708,12 @@ function _setupSubscriptions() {
     .on("broadcast", { event: "event-logo" }, ({ payload }) => {
       _fire("eventLogo", typeof payload?.dataUrl === "string" ? payload.dataUrl : "");
     })
+    .on("broadcast", { event: "break-chance-setting" }, ({ payload }) => {
+      _fire("breakChanceSetting", Boolean(payload?.enabled));
+    })
     .subscribe((status) => {
-      // Ask an open control app for the current tournament logo.
+      // Ask an open control app for the current tournament logo (it also
+      // answers with the break chance switch).
       if (status === "SUBSCRIBED") {
         overlayBannerChannel.send({ type: "broadcast", event: "event-logo-request", payload: {} });
       }

@@ -756,6 +756,7 @@ export function ControlView({
                     <MatchLogEventCard
                       key={log.id}
                       log={log}
+                      isBreak={log.isBreak}
                       chronologicalIndex={log.scoreOrderIndex}
                       displayTeamA={matchDetails?.team_a?.name || "Team A"}
                       displayTeamB={matchDetails?.team_b?.name || "Team B"}

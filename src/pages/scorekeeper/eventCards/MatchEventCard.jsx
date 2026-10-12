@@ -155,6 +155,66 @@ function EditButton({
   );
 }
 
+function ArrowIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-label="to"
+      role="img"
+      className="mx-1 inline-block h-4 w-4 align-[-2px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 12h16" />
+      <path d="m14 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+// Assist -> scorer, with an arrow icon between the two names.
+function ScorerLine({ log, className }) {
+  return (
+    <p className={className}>
+      {log.assistName ? (
+        <>
+          {log.assistName}
+          <ArrowIcon />
+        </>
+      ) : null}
+      {log.scorerName || "N/A"}
+    </p>
+  );
+}
+
+// Top-left markers on a scoring card: the line (M1/M2/F1/F2) in green, then a
+// grey "B" circle when the score was a break.
+function CornerBadges({ descriptor, isBreak }) {
+  if (!descriptor && !isBreak) return null;
+  const text = descriptor ? `${descriptor}`.trim() : "";
+  // Stored codes are already M1/M2/F1/F2; the console fallback reads "Male 1st".
+  const long = text.match(/^(male|female)\s+(\d)/i);
+  const label = long ? `${long[1].charAt(0)}${long[2]}`.toUpperCase() : text.toUpperCase();
+  const circle =
+    "flex h-8 min-w-8 items-center justify-center rounded-full px-1.5 text-sm font-extrabold text-white shadow-sm";
+  return (
+    <div className="absolute left-3 top-3 flex items-center gap-1.5">
+      {label ? (
+        <span className={`${circle} bg-[#16a34a]`} title={text} aria-label={`Line ${label}`}>
+          {label}
+        </span>
+      ) : null}
+      {isBreak ? (
+        <span className={`${circle} bg-[#6b7280]`} title="Break" aria-label="Break">
+          B
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 const SYNC_FAIL_THRESHOLD_MS = 60_000;
 
 function OptimisticBadge({ isOptimistic, timestamp }) {
@@ -201,6 +261,7 @@ export const MatchEventCard = memo(function MatchEventCard({
   variantOverrides = null,
   // Hides every edit control, for read-only feeds such as the overlay control room.
   readOnly = false,
+  isBreak = false,
 }) {
   const flags = getEventFlags(log);
   // The 7v7 console identifies logs by an id-based ref; the 5v5 console still passes an
@@ -234,7 +295,7 @@ export const MatchEventCard = memo(function MatchEventCard({
           ? "Match stoppage"
           : null;
   const creditedPlayerLabel = flags.isPossessionLog
-    ? log.scorerName || (log.scorerId ? "Unknown player" : "Unassigned")
+    ? log.scorerName || (log.scorerId ? "Unknown player" : "N/A")
     : null;
   const matchStartLayoutClass = flags.isMatchStartLog ? "flex flex-col justify-center" : "";
   const detailSpacingClass = flags.isMatchStartLog ? "mt-2" : "mt-3";
@@ -262,18 +323,18 @@ export const MatchEventCard = memo(function MatchEventCard({
       className={`relative rounded-2xl border px-4 py-3 transition ${eventStyles.bg} ${eventStyles.border} ${eventStyles.label} ${alignClass} ${matchStartLayoutClass} ${editSpacingClass}`}
     >
       <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
+      <CornerBadges descriptor={abbaDescriptor} isBreak={isBreak} />
       <div className={`w-full ${alignClass}`}>
         <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide ${eventStyles.label}`}>
-          {flags.isMatchStartLog ? "Match start" : log.eventDescription || "Match event"}
+          {flags.isMatchStartLog
+            ? "Match start"
+            : flags.isScoringDisplay
+              ? `$${resolvedTeamLabel} scored`
+              : log.eventDescription || "Match event"}
           {!flags.isScoringDisplay && !flags.isMatchStartLog && shortTeamLabel
             ? ` - ${shortTeamLabel}`
             : ""}
         </p>
-        {abbaDescriptor && (
-          <p className={`${TEXT_SIZES.l} font-extrabold uppercase tracking-wide ${eventStyles.label}`}>
-            {abbaDescriptor}
-          </p>
-        )}
         {description && <p className={`${TEXT_SIZES.s} ${eventStyles.label}`}>{description}</p>}
         <p className={`${TEXT_SIZES.s} ${eventStyles.label}`}>{eventTime}</p>
       </div>
@@ -282,11 +343,7 @@ export const MatchEventCard = memo(function MatchEventCard({
         <div className={`${detailSpacingClass} grid items-center gap-3 md:grid-cols-[1fr_auto_1fr]`}>
           {log.team === "A" ? (
             <div className={`text-left ${TEXT_SIZES.m} ${eventStyles.label}`}>
-              <p className={`font-semibold ${eventStyles.label}`}>{displayTeamA}</p>
-              <p className={`font-semibold ${eventStyles.label}`}>
-                {log.assistName ? `${log.assistName} -> ` : ""}
-                {log.scorerName || "Unassigned"}
-              </p>
+              <ScorerLine log={log} className={`font-semibold ${eventStyles.label}`} />
             </div>
           ) : (
             <div />
@@ -298,11 +355,7 @@ export const MatchEventCard = memo(function MatchEventCard({
 
           {log.team === "B" ? (
             <div className={`text-right ${TEXT_SIZES.m} ${eventStyles.label}`}>
-              <p className={`font-semibold ${eventStyles.label}`}>{displayTeamB}</p>
-              <p className={`font-semibold ${eventStyles.label}`}>
-                {log.assistName ? `${log.assistName} -> ` : ""}
-                {log.scorerName || "Unassigned"}
-              </p>
+              <ScorerLine log={log} className={`font-semibold ${eventStyles.label}`} />
             </div>
           ) : (
             <div />
@@ -362,6 +415,7 @@ export const ScoreEventCard = memo(function ScoreEventCard({
   getAbbaDescriptor,
   openScoreModal,
   readOnly = false,
+  isBreak = false,
 }) {
   const resolvedLogRef = logRef ?? editIndex;
   const { resolvedTeamLabel } = resolveTeamLabels({
@@ -372,37 +426,37 @@ export const ScoreEventCard = memo(function ScoreEventCard({
     displayTeamBShort,
   });
   const abbaDescriptor = resolveAbbaDescriptor({ log, chronologicalIndex, getAbbaDescriptor });
-  const descriptionAlignClass =
-    log.team === "A" ? "text-left" : log.team === "B" ? "text-right" : "text-center";
   const eventTime = formatEventTime(log.timestamp);
 
   return (
     <article className={`relative rounded-2xl border border-[#16a34a]/70 bg-[#e5ffe8] px-4 py-3 text-black ${readOnly ? "" : "pr-12"}`}>
       <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
+      <CornerBadges descriptor={abbaDescriptor} isBreak={isBreak} />
       <div className="text-center">
-        <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide`}>Score</p>
+        <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide`}>{resolvedTeamLabel} scored</p>
         <p className={`${TEXT_SIZES.s}`}>{eventTime}</p>
       </div>
 
-      <div className="mt-3 flex flex-col items-center gap-2">
-        <p className={`text-center ${TEXT_SIZES.l} font-semibold text-black`}>
-          {log.totalA} - {log.totalB}
-        </p>
-        <div className={`w-full ${TEXT_SIZES.m} text-black ${descriptionAlignClass}`}>
-          <p className="font-semibold text-black">
-            {log.team === "B" && abbaDescriptor ? (
-              <span className="mr-2 font-semibold uppercase">{abbaDescriptor} -</span>
-            ) : null}
-            {resolvedTeamLabel}
-            {log.team === "A" && abbaDescriptor ? (
-              <span className="ml-2 font-semibold uppercase">- {abbaDescriptor}</span>
-            ) : null}
+      <div className="mt-3 grid items-center gap-3 grid-cols-[1fr_auto_1fr]">
+          {log.team === "A" ? (
+            <div className={`text-left ${TEXT_SIZES.m} text-black`}>
+              <ScorerLine log={log} className="font-semibold text-black" />
+            </div>
+          ) : (
+            <div />
+          )}
+
+          <p className={`text-center ${TEXT_SIZES.l} font-semibold text-black`}>
+            {log.totalA} - {log.totalB}
           </p>
-          <p className="font-semibold text-black">
-            {log.assistName ? `${log.assistName} -> ` : ""}
-            {log.scorerName || "Unassigned"}
-          </p>
-        </div>
+
+          {log.team === "B" ? (
+            <div className={`text-right ${TEXT_SIZES.m} text-black`}>
+              <ScorerLine log={log} className="font-semibold text-black" />
+            </div>
+          ) : (
+            <div />
+          )}
       </div>
 
       {readOnly ? null : (
@@ -431,6 +485,7 @@ export const CalahanEventCard = memo(function CalahanEventCard({
   getAbbaDescriptor,
   openScoreModal,
   readOnly = false,
+  isBreak = false,
 }) {
   const resolvedLogRef = logRef ?? editIndex;
   const { resolvedTeamLabel } = resolveTeamLabels({
@@ -441,37 +496,37 @@ export const CalahanEventCard = memo(function CalahanEventCard({
     displayTeamBShort,
   });
   const abbaDescriptor = resolveAbbaDescriptor({ log, chronologicalIndex, getAbbaDescriptor });
-  const descriptionAlignClass =
-    log.team === "A" ? "text-left" : log.team === "B" ? "text-right" : "text-center";
   const eventTime = formatEventTime(log.timestamp);
 
   return (
     <article className={`relative rounded-2xl border-4 border-[#facc15] bg-[#e5ffe8] px-4 py-3 text-[#b45309] ${readOnly ? "" : "pr-12"}`}>
       <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
+      <CornerBadges descriptor={abbaDescriptor} isBreak={isBreak} />
       <div className="text-center">
-        <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide text-[#b45309]`}>Score</p>
+        <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide text-[#b45309]`}>{resolvedTeamLabel} scored (Callahan)</p>
         <p className={`${TEXT_SIZES.s} text-[#b45309]`}>{eventTime}</p>
       </div>
 
-      <div className="mt-3 flex flex-col items-center gap-2">
-        <p className={`text-center ${TEXT_SIZES.l} font-semibold text-[#b45309]`}>
-          {log.totalA} - {log.totalB}
-        </p>
-        <div className={`w-full ${TEXT_SIZES.m} text-[#b45309] ${descriptionAlignClass}`}>
-          <p className="font-semibold text-[#b45309]">
-            {log.team === "B" && abbaDescriptor ? (
-              <span className="mr-2 font-semibold uppercase">{abbaDescriptor} -</span>
-            ) : null}
-            {resolvedTeamLabel}
-            {log.team === "A" && abbaDescriptor ? (
-              <span className="ml-2 font-semibold uppercase">- {abbaDescriptor}</span>
-            ) : null}
+      <div className="mt-3 grid items-center gap-3 grid-cols-[1fr_auto_1fr]">
+          {log.team === "A" ? (
+            <div className={`text-left ${TEXT_SIZES.m} text-[#b45309]`}>
+              <ScorerLine log={log} className="font-semibold text-[#b45309]" />
+            </div>
+          ) : (
+            <div />
+          )}
+
+          <p className={`text-center ${TEXT_SIZES.l} font-semibold text-[#b45309]`}>
+            {log.totalA} - {log.totalB}
           </p>
-          <p className="font-semibold text-[#b45309]">
-            {log.assistName ? `${log.assistName} -> ` : ""}
-            {log.scorerName || "Unassigned"}
-          </p>
-        </div>
+
+          {log.team === "B" ? (
+            <div className={`text-right ${TEXT_SIZES.m} text-[#b45309]`}>
+              <ScorerLine log={log} className="font-semibold text-[#b45309]" />
+            </div>
+          ) : (
+            <div />
+          )}
       </div>
 
       {readOnly ? null : (
@@ -510,7 +565,7 @@ export const BlockEventCard = memo(function BlockEventCard({
   const alignClass =
     log.team === "A" ? "text-left" : log.team === "B" ? "text-right" : "text-center";
   const eventTime = formatEventTime(log.timestamp);
-  const creditedPlayerLabel = log.scorerName || (log.scorerId ? "Unknown player" : "Unassigned");
+  const creditedPlayerLabel = log.scorerName || (log.scorerId ? "Unknown player" : "N/A");
 
   return (
     <article className="relative rounded-2xl border border-[#06b6d4]/60 bg-[#cffafe] px-4 py-3 text-black">
@@ -561,7 +616,7 @@ export const TurnoverEventCard = memo(function TurnoverEventCard({
   const alignClass =
     log.team === "A" ? "text-left" : log.team === "B" ? "text-right" : "text-center";
   const eventTime = formatEventTime(log.timestamp);
-  const creditedPlayerLabel = log.scorerName || (log.scorerId ? "Unknown player" : "Unassigned");
+  const creditedPlayerLabel = log.scorerName || (log.scorerId ? "Unknown player" : "N/A");
 
   return (
     <article className="relative rounded-2xl border border-[#06b6d4]/60 bg-[#cffafe] px-4 py-3 text-black">

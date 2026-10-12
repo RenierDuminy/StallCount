@@ -57,31 +57,54 @@ function readRawDataUrl(file) {
   });
 }
 
-// Logos are stored in localStorage (~5 MB per origin, shared by all logos),
-// so downscale large images to keep the data URL small enough to save.
-async function readFileAsDataUrl(file, maxDimension = LOGO_MAX_DIMENSION) {
+// Logos are stored in localStorage (~5 MB per origin, shared by all logos), so every
+// upload is re-encoded to fit a size budget however large the original is. The
+// tournament logo is also sent over realtime, hence the tighter budget.
+const LOGO_MAX_BYTES = 300 * 1024;
+const EVENT_LOGO_MAX_BYTES = 120 * 1024;
+
+export const LOGO_LIMIT_HINT = `Any image works. It is resized automatically (team logos to ${LOGO_MAX_DIMENSION}px, tournament logo to ${EVENT_LOGO_MAX_DIMENSION}px) and compressed to under ${LOGO_MAX_BYTES / 1024} KB / ${EVENT_LOGO_MAX_BYTES / 1024} KB.`;
+
+function encodeCandidates(canvas) {
+  // Both keep transparency; webp is usually far smaller for detailed art.
+  return [canvas.toDataURL("image/webp", 0.9), canvas.toDataURL("image/webp", 0.75), canvas.toDataURL("image/png")]
+    .filter((url) => url.startsWith("data:image/"));
+}
+
+// Shrinks the image step by step until the encoded result fits maxBytes.
+async function readFileAsDataUrl(file, maxDimension = LOGO_MAX_DIMENSION, maxBytes = LOGO_MAX_BYTES) {
   const raw = await readRawDataUrl(file);
+  let image;
   try {
-    const image = await new Promise((resolve, reject) => {
+    image = await new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error("Failed to decode image"));
       img.src = raw;
     });
-    const { naturalWidth: width, naturalHeight: height } = image;
-    if (!width || !height) return raw;
-    const scale = Math.min(1, maxDimension / Math.max(width, height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(width * scale);
-    canvas.height = Math.round(height * scale);
-    canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
-    // Both keep transparency; use whichever encodes smaller.
-    const candidates = [raw, canvas.toDataURL("image/png"), canvas.toDataURL("image/webp", 0.92)]
-      .filter((url) => url.startsWith("data:image/"));
-    return candidates.reduce((best, url) => (url.length < best.length ? url : best));
   } catch {
-    return raw;
+    // Can't be resized (unsupported format); keep it only if it already fits.
+    if (raw.length <= maxBytes) return raw;
+    window.alert("This image format couldn't be read for resizing. Try a PNG, JPG or WebP.");
+    return null;
   }
+  const { naturalWidth: width, naturalHeight: height } = image;
+  if (!width || !height) return raw.length <= maxBytes ? raw : null;
+
+  let dimension = Math.min(maxDimension, Math.max(width, height));
+  let smallest = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const scale = dimension / Math.max(width, height);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+    const best = encodeCandidates(canvas).reduce((a, u) => (!a || u.length < a.length ? u : a), null);
+    if (best && (!smallest || best.length < smallest.length)) smallest = best;
+    if (best && best.length <= maxBytes) return best;
+    dimension = Math.floor(dimension * 0.75);
+  }
+  return smallest;
 }
 
 function formatDateTime(value) {
@@ -279,6 +302,8 @@ export function ConfigView({
             <div className="config-fieldgroup">
               <h2 className="config-fieldgroup__title">Branding &amp; appearance</h2>
 
+            <p className="overlay-option-note">{LOGO_LIMIT_HINT}</p>
+
             <Field label="Tournament logo">
               <Input
                 type="file"
@@ -287,8 +312,8 @@ export function ConfigView({
                 onChange={async (event) => {
                   const file = event.target.files?.[0];
                   if (!file) return;
-                  const dataUrl = await readFileAsDataUrl(file, EVENT_LOGO_MAX_DIMENSION);
-                  setEventLogo(dataUrl);
+                  const dataUrl = await readFileAsDataUrl(file, EVENT_LOGO_MAX_DIMENSION, EVENT_LOGO_MAX_BYTES);
+                  if (dataUrl) setEventLogo(dataUrl);
                 }}
               />
               {eventLogo ? (
@@ -358,8 +383,7 @@ export function ConfigView({
               </div>
             </Field>
 
-            {showTeamLogos ? (
-              <Field label="Team logos">
+            <Field label="Team logos">
                 <div className="overlay-team-toggle-grid">
                   <div className="overlay-team-toggle">
                     <span className="overlay-team-toggle__label">
@@ -373,7 +397,7 @@ export function ConfigView({
                         const file = event.target.files?.[0];
                         if (!file) return;
                         const dataUrl = await readFileAsDataUrl(file);
-                        setTeamALogo(dataUrl);
+                        if (dataUrl) setTeamALogo(dataUrl);
                       }}
                     />
                     {teamALogo ? (
@@ -397,7 +421,7 @@ export function ConfigView({
                         const file = event.target.files?.[0];
                         if (!file) return;
                         const dataUrl = await readFileAsDataUrl(file);
-                        setTeamBLogo(dataUrl);
+                        if (dataUrl) setTeamBLogo(dataUrl);
                       }}
                     />
                     {teamBLogo ? (
@@ -410,8 +434,12 @@ export function ConfigView({
                     ) : null}
                   </div>
                 </div>
+                {!showTeamLogos ? (
+                  <p className="overlay-option-note">
+                    The current overlay style doesn’t display team logos, but they’re saved and will be used if you switch to a style that does.
+                  </p>
+                ) : null}
               </Field>
-            ) : null}
             </div>
           </div>
 

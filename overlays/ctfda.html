@@ -319,6 +319,10 @@
         padding: 1px 1px 1px 2.3px;
       }
 
+      /* No team icon uploaded: drop the icon cell entirely and pad the name instead */
+      .cb-banner-logo-cell:not(.has-image) { display: none; }
+      .cb-banner-team.no-logo { padding-left: 20px; }
+
       .cb-banner-logo-circle {
         width: 100%;
         aspect-ratio: 1;
@@ -724,8 +728,8 @@
 
         <!-- Player stats banner -->
         <div id="overlayBanner">
-          <div class="cb-banner-team">
-            <div class="cb-banner-logo-cell">
+          <div class="cb-banner-team no-logo" id="bannerTeam">
+            <div class="cb-banner-logo-cell" id="bannerLogoSlot">
               <div class="cb-banner-logo-circle" id="bannerLogoCell">
                 <img id="bannerLogo" alt="" />
                 <span class="cb-banner-logo-fallback" id="bannerLogoFallback"></span>
@@ -896,7 +900,15 @@
           var img = document.getElementById('bannerLogo');
           var cell = document.getElementById('bannerLogoCell');
           var fallback = document.getElementById('bannerLogoFallback');
+          var slot = document.getElementById('bannerLogoSlot');
+          var teamBox = document.getElementById('bannerTeam');
           if (!banner || !img || !cell) return;
+          // The icon cell only exists while a logo is actually showing.
+          function setHasLogo(on) {
+            cell.classList.toggle('has-image', on);
+            if (slot) slot.classList.toggle('has-image', on);
+            if (teamBox) teamBox.classList.toggle('no-logo', !on);
+          }
           var key = banner.classList.contains('is-team-b')
             ? 'stallcount:logo-team-b'
             : 'stallcount:logo-team-a';
@@ -905,11 +917,11 @@
             : document.getElementById('teamAName');
           try {
             var src = localStorage.getItem(key);
-            cell.classList.remove('has-image');
+            setHasLogo(false);
             if (src) {
+              img.onload = function () { setHasLogo(true); };
+              img.onerror = function () { setHasLogo(false); };
               img.src = src;
-              img.onload = function () { cell.classList.add('has-image'); };
-              img.onerror = function () { cell.classList.remove('has-image'); };
             }
             if (fallback && teamNameEl) {
               var words = (teamNameEl.textContent || '').trim().split(/\s+/);

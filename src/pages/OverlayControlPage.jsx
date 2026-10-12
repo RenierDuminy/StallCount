@@ -6,6 +6,7 @@ import { LEGACY_TIMEOUT_CODE, resolveEventCode } from "../overlay/overlayEngine"
 import { ConfigView } from "../overlay/ConfigView";
 import { ControlView } from "../overlay/ControlView";
 import { readCachedWeatherForVenue, summarizeWeather, getVenueName } from "../overlay/WeatherCard";
+import { findBreakLogIds } from "../utils/matchBreaks";
 import "../overlay/overlayControl.css";
 
 const BASE_PATH = import.meta.env.BASE_URL || "/";
@@ -150,7 +151,7 @@ function saveLogoDataUrl(key, dataUrl) {
     return true;
   } catch (error) {
     console.warn(`Failed to save logo "${key}"`, error);
-    window.alert("This logo couldn't be saved for the overlay (the image is too large). Try a smaller image.");
+    window.alert("This logo couldn't be saved for the overlay (browser storage is full). Remove another logo and try again.");
     return false;
   }
 }
@@ -463,6 +464,19 @@ export default function OverlayControlPage() {
       ?.send({ type: "broadcast", event: "event-logo", payload: { dataUrl: dataUrl || "" } })
       .catch(() => {});
   };
+
+  // Same for the break chance switch, which overlays otherwise only see through
+  // localStorage.
+  const breakChanceEnabledRef = useRef(breakChanceEnabled);
+  const broadcastBreakChanceSetting = (enabled) => {
+    overlayBannerChannelRef.current
+      ?.send({ type: "broadcast", event: "break-chance-setting", payload: { enabled: Boolean(enabled) } })
+      .catch(() => {});
+  };
+  useEffect(() => {
+    breakChanceEnabledRef.current = breakChanceEnabled;
+    broadcastBreakChanceSetting(breakChanceEnabled);
+  }, [breakChanceEnabled]);
 
   const setEventLogo = (dataUrl) => {
     if (!saveLogoDataUrl(LOGO_STORAGE_KEY_EVENT, dataUrl)) return;
@@ -859,9 +873,12 @@ export default function OverlayControlPage() {
     channel
       .on("broadcast", { event: "event-logo-request" }, () => {
         if (eventLogoRef.current) broadcastEventLogo(eventLogoRef.current);
+        broadcastBreakChanceSetting(breakChanceEnabledRef.current);
       })
       .subscribe((status) => {
-        if (status === "SUBSCRIBED" && eventLogoRef.current) broadcastEventLogo(eventLogoRef.current);
+        if (status !== "SUBSCRIBED") return;
+        if (eventLogoRef.current) broadcastEventLogo(eventLogoRef.current);
+        broadcastBreakChanceSetting(breakChanceEnabledRef.current);
       });
 
     return () => {
@@ -1344,7 +1361,12 @@ export default function OverlayControlPage() {
           id: log.id,
           eventTypeId: log.event_type_id,
           // The shared event cards only know timeout_start; show legacy "timeout" rows as one.
-          eventCode: eventCode === LEGACY_TIMEOUT_CODE ? MATCH_LOG_EVENT_CODES.TIMEOUT_START : eventCode,
+          eventCode:
+            eventCode === LEGACY_TIMEOUT_CODE
+              ? MATCH_LOG_EVENT_CODES.TIMEOUT_START
+              : isScoreEvent && eventCode !== MATCH_LOG_EVENT_CODES.CALAHAN
+                ? MATCH_LOG_EVENT_CODES.SCORE
+                : eventCode,
           eventDescription,
           timestamp: log.created_at,
           team,
@@ -1359,11 +1381,21 @@ export default function OverlayControlPage() {
         };
       });
 
-    return chronologicalLogs.slice().reverse();
+    const startingPuller =
+      matchDetails?.starting_team_id && matchDetails.starting_team_id === teamAId
+        ? "A"
+        : matchDetails?.starting_team_id && matchDetails.starting_team_id === teamBId
+          ? "B"
+          : null;
+    const breakIds = findBreakLogIds(chronologicalLogs, startingPuller);
+    return chronologicalLogs
+      .map((entry) => ({ ...entry, isBreak: breakIds.has(entry.id) }))
+      .reverse();
   }, [
     sortedMatchLogs,
     matchDetails?.team_a?.id,
     matchDetails?.team_b?.id,
+    matchDetails?.starting_team_id,
     rosterPlayersById,
     resolvedEventCodeCache,
   ]);
