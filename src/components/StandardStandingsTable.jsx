@@ -17,6 +17,11 @@ const FORM_DOT_SIZE_PX = 7;
 const FORM_DOT_GAP_PX = 2;
 // Horizontal padding on the form <th>/<td> (px-1 = 0.25rem each side).
 const FORM_COL_PADDING_PX = 8;
+// Floor for the form column so the "FORM" heading (text-xs, uppercase,
+// tracking-wide) still fits before any match is played. Without it an event
+// with no results sizes the column to its padding alone and the heading
+// spills over "W-L".
+const FORM_COL_MIN_WIDTH_PX = 44;
 // Width of a stage separator (" - ") between groups of dots, e.g. pool play
 // and each playoff round in final standings. Form entries shaped
 // `{ separator: true }` render as one.
@@ -109,9 +114,11 @@ export function StandardStandingsTable({
     return <p className="text-sm text-ink-muted">{emptyLabel}</p>;
   }
 
-  const formColWidthPx =
+  const formColWidthPx = Math.max(
+    FORM_COL_MIN_WIDTH_PX,
     rows.reduce((max, row) => Math.max(max, getFormRowWidthPx(row.form)), 0) +
-    FORM_COL_PADDING_PX;
+      FORM_COL_PADDING_PX,
+  );
 
   return (
     <div

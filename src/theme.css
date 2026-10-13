@@ -2523,6 +2523,105 @@ details[open] > summary.wizard-cursor-pointer::before {
   border-top: 1px solid rgba(255, 255, 255, 0.7);
 }
 
+/* Game caps: time cap comes first, hard cap follows. A faint rail joins the
+   numbered markers so the order reads without shouting. */
+.wizard-cap-sequence {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.wizard-cap-step {
+  position: relative;
+  padding-left: 1.75rem;
+}
+
+.wizard-cap-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 0.5rem;
+  top: 1.35rem;
+  bottom: -1rem;
+  border-left: 1px dashed rgba(198, 255, 98, 0.35);
+}
+
+.wizard-cap-step-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem -1.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sc-ink-muted);
+}
+
+.wizard-cap-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  border: 1px solid rgba(198, 255, 98, 0.55);
+  border-radius: 999px;
+  font-size: 0.6rem;
+  color: var(--sc-accent);
+}
+
+.wizard-cap-note {
+  font-size: 0.75rem;
+  color: var(--sc-ink-muted);
+}
+
+.wizard-cap-note--warning {
+  color: var(--sc-warning-ink);
+}
+
+.wizard-cap-examples {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-left: 2px solid rgba(198, 255, 98, 0.35);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0 0.5rem 0.5rem 0;
+  font-size: 0.8rem;
+  color: var(--sc-ink-muted);
+}
+
+.wizard-cap-examples-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.wizard-cap-examples dl {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.wizard-cap-examples dl > div {
+  display: grid;
+  gap: 0.1rem 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .wizard-cap-examples dl > div {
+    grid-template-columns: 8.5rem 1fr;
+  }
+}
+
+.wizard-cap-examples dt {
+  font-weight: 600;
+  color: var(--sc-ink);
+}
+
+.wizard-cap-examples dd {
+  margin: 0;
+}
+
 .wizard-divider-top {
   border-top: 1px solid rgba(255, 255, 255, 0.7);
   padding-top: 0.75rem;

@@ -611,6 +611,7 @@ export default function MediaAdminPage() {
         <Card as="section" className="space-y-3 p-5">
           <SectionHeader
             title="Team color reference"
+            description="Primary is the dark variant: usually light text on a dark background. Secondary is the light variant: dark text on a light background."
           />
           {eventTeamsError ? <div className="sc-alert is-error">{eventTeamsError}</div> : null}
           {!selectedEventId ? (

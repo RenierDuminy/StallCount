@@ -9,6 +9,7 @@ import { useScoreKeeperActions } from "./modularScoreKeeperActions";
 import { ScorekeeperPopups } from "./ModularScorekeeperPopup";
 import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
 import { MatchLogEventCard } from "./eventCards";
+import { findBreakLogIds } from "../../utils/matchBreaks";
 import {
   PHASE_TONES,
   SECONDARY_TIMER_KINDS,
@@ -119,6 +120,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
     venueName,
     statusLabel,
     getAbbaDescriptor,
+    matchStartingTeamKey,
     remainingTimeouts,
     canEndMatch,
     possessionLeader,
@@ -335,6 +337,11 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
     return map;
   }, [logs]);
 
+  const breakLogIds = useMemo(
+    () => findBreakLogIds(logs, matchStartingTeamKey),
+    [logs, matchStartingTeamKey],
+  );
+
   const renderMatchEventCard = (log, options) => {
     const { chronologicalIndex, logRef } = options;
 
@@ -342,6 +349,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
       <MatchLogEventCard
         key={log.id}
         log={log}
+        isBreak={breakLogIds.has(log.id)}
         chronologicalIndex={chronologicalIndex}
         logRef={logRef}
         displayTeamA={displayTeamA}
