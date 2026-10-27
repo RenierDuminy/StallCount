@@ -910,7 +910,7 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
       setMatchesLoading(true);
       setMatchesError(null);
       try {
-        const data = await getMatchesByEvent(targetEventId, 24, {
+        const data = await getMatchesByEvent(targetEventId, null, {
           includeFinished: false,
         });
         const setupMatches = (data || []).filter(isSetupMatchStatus);

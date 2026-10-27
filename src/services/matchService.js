@@ -130,11 +130,19 @@ export async function getMatchesByEvent(eventId, limit = 24, options = {}) {
         .from("matches")
         .select(MATCH_FIELDS)
         .eq("event_id", eventId)
-        .order("start_time", { ascending: true })
-        .limit(limit);
+        .order("start_time", { ascending: true });
 
+      // `limit = null` fetches every row; callers that must not miss a match
+      // (the scorekeeper console) pass it.
+      if (limit != null) {
+        query = query.limit(limit);
+      }
+
+      // Exclude every closed status, not just the concluded ones. Forfeits and
+      // cancellations are the oldest rows, so leaving them to a client-side
+      // filter let them fill the limit window and push the newest fixtures out.
       if (!includeFinished) {
-        query = query.not("status", "in", `(${CONCLUDED_STATUSES.join(",")})`);
+        query = query.not("status", "in", `(${CLOSED_STATUSES.join(",")})`);
       }
 
       const { data, error } = await query;
