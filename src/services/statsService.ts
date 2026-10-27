@@ -1,9 +1,12 @@
 import { supabase } from "./supabaseClient";
 import { getCachedQuery } from "../utils/queryCache";
 
-const TABLE_COUNT_CACHE_TTL_MS = 5 * 60 * 1000;
+const TABLE_COUNT_CACHE_TTL_MS = 2 * 60 * 1000;
 
-export async function getTableCount(tableName: string): Promise<number> {
+export async function getTableCount(
+  tableName: string,
+  options: { forceRefresh?: boolean } = {},
+): Promise<number> {
   return getCachedQuery(
     `stats:count:${tableName}`,
     async () => {
@@ -17,6 +20,6 @@ export async function getTableCount(tableName: string): Promise<number> {
 
       return count ?? 0;
     },
-    { ttlMs: TABLE_COUNT_CACHE_TTL_MS },
+    { ttlMs: TABLE_COUNT_CACHE_TTL_MS, forceRefresh: Boolean(options.forceRefresh) },
   );
 }

@@ -5,7 +5,7 @@ import { supabase } from "../services/supabaseClient";
 // match scheduled for 17:00 has to be noticed by a tab that was opened at 16:45.
 // This is the only traffic the home page generates while the league is quiet,
 // so it is deliberately slow.
-const IDLE_POLL_INTERVAL_MS = 10 * 60 * 1000;
+const IDLE_POLL_INTERVAL_MS = 2 * 60 * 1000;
 
 // Fallback poll while a match is live, in case the realtime channel silently
 // drops (backgrounded tab, flaky network, dropped socket). Realtime should beat

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { MATCH_LOG_EVENT_CODES, getMatchLogs } from "../services/matchLogService";
 import { getMatchById, getMatchesByEvent } from "../services/matchService";
 import { getEventsList } from "../services/leagueService";
@@ -7,9 +7,21 @@ import { getSpiritScoresForMatches } from "../services/teamService";
 import { MatchMediaButton } from "../components/MatchMediaButton";
 import { getMatchMediaDetails } from "../utils/matchMedia";
 import { supabase } from "../services/supabaseClient";
-import { MATCH_STATUS, getDisplayStatus } from "../constants/statusCodes";
+import {
+  CLOSED_STATUSES,
+  MATCH_STATUS,
+  OPEN_MATCH_STATUSES,
+  getDisplayStatus,
+  isConcludedStatus,
+  isForfeitStatus,
+  isInProgressStatus,
+} from "../constants/statusCodes";
 import { SPIRIT_DIMENSIONS, SPIRIT_MAX_SCORE } from "../utils/spirit";
 import SpiritRadarChart from "../components/SpiritRadarChart";
+import { useAuth } from "../context/AuthContext";
+import { getRoleCatalog } from "../services/userService";
+import { getAccessibleScorekeeperEventIds } from "../utils/accessControl";
+import { MODULAR_SCOREKEEPER_MENU_PATH } from "./scorekeeper/scorekeeperConstants";
 
 const SERIES_COLORS = {
   teamA: "#1d4ed8",
@@ -29,6 +41,25 @@ const MATCH_EVENT_ID_HINTS = {
 const LIVE_MATCH_STATUSES = new Set(["live", "halftime"]);
 
 const isMatchLive = (status) => LIVE_MATCH_STATUSES.has((status || "").toLowerCase());
+
+// The event picker shows open events grouped by status; closed events sit in a
+// separate "Past" list so the default dropdown does not grow with every season.
+// Events share the match status vocabulary, which has no "paused" code: an event
+// between rounds is `halftime`, a delayed one `postponed`.
+const EVENT_LIST_LIMIT = 50;
+const CURRENT_EVENT_GROUPS = [
+  { label: "Live events", statuses: [MATCH_STATUS.LIVE] },
+  { label: "Paused events", statuses: [MATCH_STATUS.HALFTIME, MATCH_STATUS.POSTPONED] },
+  { label: "Upcoming events", statuses: [MATCH_STATUS.SCHEDULED, MATCH_STATUS.INITIALIZED] },
+];
+
+const groupCurrentEvents = (events) =>
+  CURRENT_EVENT_GROUPS.map((group) => ({
+    label: group.label,
+    events: events.filter((event) =>
+      group.statuses.includes((event.status || "").toString().trim().toLowerCase()),
+    ),
+  })).filter((group) => group.events.length > 0);
 
 // Statuses where there is no point-by-point log to show yet (or ever) — the
 // page swaps the analytics/timeline/log sections for a short explanatory
@@ -56,11 +87,29 @@ const MATCH_PLACEHOLDER_COPY = {
 const hasRecordedScore = (match) =>
   Number.isFinite(match?.score_a) && Number.isFinite(match?.score_b) && (match.score_a > 0 || match.score_b > 0);
 
+// Matches the scorekeeper console can still open: not yet started, or set up
+// and waiting for kick-off.
+const SCOREABLE_MATCH_STATUSES = new Set([MATCH_STATUS.SCHEDULED, MATCH_STATUS.INITIALIZED]);
+
 const resolveMatchVenueName = (match) => match?.venue?.name || match?.venue?.city || "Venue TBD";
 
 export default function MatchesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [events, setEvents] = useState([]);
+  const { session, roles } = useAuth();
+  const [roleCatalog, setRoleCatalog] = useState(null);
+  const hasRoles = !!session && Array.isArray(roles) && roles.length > 0;
+  // Event ids the user may score in, with the console's own rule. `null` means
+  // unrestricted (admin_override); an empty set means no scoring access at all.
+  const scorekeeperEventIds = useMemo(
+    () => (hasRoles && roleCatalog ? getAccessibleScorekeeperEventIds(roles, roleCatalog) : new Set()),
+    [hasRoles, roles, roleCatalog],
+  );
+  // A deep link names a match, not an event; its event is resolved below, so
+  // the first-load default must not pre-empt it.
+  const [linkedMatchId] = useState(() => searchParams.get("matchId"));
+  const [currentEvents, setCurrentEvents] = useState([]);
+  const [pastEvents, setPastEvents] = useState([]);
+  const [eventView, setEventView] = useState("current");
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsError, setEventsError] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState("");
@@ -81,11 +130,21 @@ export default function MatchesPage() {
       setEventsLoading(true);
       setEventsError(null);
       try {
-        const data = await getEventsList(50);
+        const [current, past] = await Promise.all([
+          getEventsList(EVENT_LIST_LIMIT, { status: OPEN_MATCH_STATUSES }),
+          getEventsList(EVENT_LIST_LIMIT, { status: CLOSED_STATUSES }),
+        ]);
         if (!ignore) {
-          setEvents(data ?? []);
-          if (!selectedEventId && data?.[0]?.id) {
-            setSelectedEventId(data[0].id);
+          setCurrentEvents(current ?? []);
+          setPastEvents(past ?? []);
+          if (!linkedMatchId) {
+            // Prefer a live event, then any open one, then the latest past one.
+            const defaultEvent =
+              groupCurrentEvents(current ?? [])[0]?.events[0] ?? past?.[0] ?? null;
+            if (defaultEvent) {
+              setSelectedEventId((prev) => prev || defaultEvent.id);
+              if (!current?.length) setEventView("past");
+            }
           }
         }
       } catch (err) {
@@ -102,7 +161,22 @@ export default function MatchesPage() {
     return () => {
       ignore = true;
     };
-  }, [selectedEventId]);
+  }, [linkedMatchId]);
+
+  // Only signed-in users with a role assignment can have scoring access, so
+  // nobody else pays for the catalog read.
+  useEffect(() => {
+    if (!hasRoles || roleCatalog) return undefined;
+    let ignore = false;
+    getRoleCatalog()
+      .then((catalog) => {
+        if (!ignore) setRoleCatalog(catalog ?? []);
+      })
+      .catch((err) => console.error("[MatchesPage] Failed to load role catalog", err));
+    return () => {
+      ignore = true;
+    };
+  }, [hasRoles, roleCatalog]);
 
   const loadMatchesForEvent = useCallback(
     async (eventId, preferredMatchId = null) => {
@@ -113,11 +187,22 @@ export default function MatchesPage() {
       }
       setMatchLoading(true);
       try {
-        const data = await getMatchesByEvent(eventId, 50, { includeFinished: true });
-        setMatches(data ?? []);
-        if (data?.length) {
+        // No limit: matches come oldest first, so a cap drops the newest fixtures.
+        const rows = await getMatchesByEvent(eventId, null, { includeFinished: true });
+        // Newest first; matches without a kick-off time go last.
+        const data = [...(rows ?? [])].sort(
+          (a, b) => (Date.parse(b.start_time) || 0) - (Date.parse(a.start_time) || 0),
+        );
+        setMatches(data);
+        if (data.length) {
           const exists = preferredMatchId && data.some((m) => m.id === preferredMatchId);
-          setSelectedMatchId(exists ? preferredMatchId : data[0].id);
+          // Default to a live match, else the latest one that has started.
+          const now = Date.now();
+          const fallback =
+            data.find((m) => isInProgressStatus(m.status)) ??
+            data.find((m) => (Date.parse(m.start_time) || 0) <= now) ??
+            data[0];
+          setSelectedMatchId(exists ? preferredMatchId : fallback.id);
         } else {
           setSelectedMatchId("");
         }
@@ -141,20 +226,21 @@ export default function MatchesPage() {
 
   useEffect(() => {
     const fromQuery = searchParams.get("matchId");
-    if (!fromQuery || !events.length || selectedEventId) return;
+    if (!fromQuery || eventsLoading || selectedEventId) return;
     // Try to resolve event from the match so we can load its matches.
     (async () => {
       try {
         const match = await getMatchById(fromQuery);
         if (match?.event_id) {
           setSelectedEventId(match.event_id);
+          setEventView(pastEvents.some((event) => event.id === match.event_id) ? "past" : "current");
           await loadMatchesForEvent(match.event_id, fromQuery);
         }
       } catch (err) {
         console.error("[MatchesPage] Failed to resolve match from query", err);
       }
     })();
-  }, [events.length, loadMatchesForEvent, searchParams, selectedEventId]);
+  }, [eventsLoading, pastEvents, loadMatchesForEvent, searchParams, selectedEventId]);
 
   useEffect(() => {
     if (selectedEventId) {
@@ -304,6 +390,16 @@ export default function MatchesPage() {
   const matchPlaceholder = selectedMatch
     ? MATCH_PLACEHOLDER_COPY[getDisplayStatus(selectedMatch.status)]
     : null;
+  const currentEventGroups = useMemo(() => groupCurrentEvents(currentEvents), [currentEvents]);
+  const visibleEventCount = eventView === "past" ? pastEvents.length : currentEvents.length;
+  // The console lists only live events the user is linked to, so the button is
+  // offered only where pressing it can actually lead to scoring this match.
+  const selectedEvent = currentEvents.find((event) => event.id === selectedEventId) || null;
+  const canScoreSelectedMatch =
+    !!selectedMatch &&
+    SCOREABLE_MATCH_STATUSES.has((selectedMatch.status || "").toLowerCase()) &&
+    (selectedEvent?.status || "").toLowerCase() === MATCH_STATUS.LIVE &&
+    (scorekeeperEventIds === null || scorekeeperEventIds.has(selectedEventId));
   const isUnloggedFinishedMatch =
     !matchPlaceholder &&
     !!selectedMatch &&
@@ -320,8 +416,34 @@ export default function MatchesPage() {
             </span>
           </div>
           <div className="grid gap-3 md:grid-cols-2 md:gap-4 md:items-start">
-            <label className="space-y-1 text-sm font-semibold text-ink">
-              <span>Select event</span>
+            <div className="space-y-1 text-sm font-semibold text-ink">
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor="matches-event-select">Select event</label>
+                <div
+                  role="group"
+                  aria-label="Event list"
+                  className="inline-flex rounded-full border border-border bg-black/20 p-0.5 text-xs"
+                >
+                  {[
+                    { key: "current", label: "Current" },
+                    { key: "past", label: "Past" },
+                  ].map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      aria-pressed={eventView === option.key}
+                      onClick={() => setEventView(option.key)}
+                      className={`rounded-full px-3.5 py-1 font-semibold transition ${
+                        eventView === option.key
+                          ? "bg-accent text-[var(--sc-button-ink)] shadow-[0_4px_14px_rgba(198,255,98,0.25)]"
+                          : "text-ink hover:bg-white/10"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="sc-card-muted relative flex items-center gap-3 p-3">
                 <div className="text-ink-muted" aria-hidden="true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -334,6 +456,7 @@ export default function MatchesPage() {
                   <p className="text-sm text-rose-600">{eventsError}</p>
                 ) : (
                   <select
+                    id="matches-event-select"
                     value={selectedEventId}
                     onChange={(event) => {
                       const value = event.target.value;
@@ -346,17 +469,32 @@ export default function MatchesPage() {
                     className="w-full appearance-none rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink shadow-inner outline-none focus:border-accent focus:ring-2 focus:ring-[var(--sc-accent)]/50"
                   >
                     <option value="" className="bg-surface text-ink">
-                      Pick an event...
+                      {visibleEventCount
+                        ? eventView === "past"
+                          ? "Pick a past event..."
+                          : "Pick an event..."
+                        : eventView === "past"
+                          ? "No past events"
+                          : "No current events"}
                     </option>
-                    {events.map((event) => (
-                      <option
-                        key={event.id}
-                        value={event.id}
-                        className="bg-surface text-ink"
-                      >
-                        {event.name}
-                      </option>
-                    ))}
+                    {eventView === "past"
+                      ? pastEvents.map((event) => (
+                          <option key={event.id} value={event.id} className="bg-surface text-ink">
+                            {event.name}
+                          </option>
+                        ))
+                      : currentEventGroups.map((group) => (
+                          // The lighter optgroup fill marks the section heading; its options
+                          // reset to the surface colour so only the heading row stands out.
+                          // Solid colours only: native dropdowns render alpha unpredictably.
+                          <optgroup key={group.label} label={group.label} className="bg-[#24493d] text-ink-strong">
+                            {group.events.map((event) => (
+                              <option key={event.id} value={event.id} className="bg-surface text-ink">
+                                {event.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
                   </select>
                 )}
                 <div className="text-ink-muted" aria-hidden="true">
@@ -365,7 +503,7 @@ export default function MatchesPage() {
                   </svg>
                 </div>
               </div>
-            </label>
+            </div>
             <label className="space-y-1 text-sm font-semibold text-ink">
               <span>Select match</span>
               <div className="sc-card-muted relative flex items-center gap-3 p-3">
@@ -442,19 +580,25 @@ export default function MatchesPage() {
           </p>
         )}
         {!selectedEventId ? (
-          <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">
-            Choose an event above to load its fixture list and associated telemetry.
+          <div className="sc-card-muted space-y-4 p-5 text-center text-sm text-ink-muted">
+            <p>Choose an event above to load its fixture list and associated telemetry.</p>
+            <MatchPickerSteps />
           </div>
         ) : !selectedMatchId ? (
-          <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">
-            Select a match to unlock the scoring timeline, possession map, and match log.
+          <div className="sc-card-muted space-y-4 p-5 text-center text-sm text-ink-muted">
+            <p>Select a match to unlock the scoring timeline, possession map, and match log.</p>
+            <MatchPickerSteps />
           </div>
         ) : logsLoading || !derived ? (
           <div className="sc-card-muted p-5 text-center text-sm text-ink-muted">
             Loading match intelligence...
           </div>
         ) : matchPlaceholder ? (
-          <MatchStatusPlaceholder match={selectedMatch} copy={matchPlaceholder} />
+          <MatchStatusPlaceholder
+            match={selectedMatch}
+            copy={matchPlaceholder}
+            showScoreButton={canScoreSelectedMatch}
+          />
         ) : (
           <>
             {isUnloggedFinishedMatch ? (
@@ -558,7 +702,21 @@ export default function MatchesPage() {
   );
 }
 
-function MatchStatusPlaceholder({ match, copy }) {
+const MATCH_PICKER_STEPS = ["Select an event.", "Select the match to view."];
+
+function MatchPickerSteps() {
+  return (
+    <ol className="mx-auto inline-flex flex-col gap-1.5 text-left">
+      {MATCH_PICKER_STEPS.map((step, index) => (
+        <li key={step} className="text-ink">
+          <span className="font-semibold">{index + 1}.</span> {step}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function MatchStatusPlaceholder({ match, copy, showScoreButton = false }) {
   const teamA = match?.team_a?.name || "Team A";
   const teamB = match?.team_b?.name || "Team B";
   return (
@@ -571,6 +729,14 @@ function MatchStatusPlaceholder({ match, copy }) {
       <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
         {formatKickoff(match?.start_time)} &middot; {resolveMatchVenueName(match)}
       </p>
+      {showScoreButton && (
+        <div className="flex justify-center pt-3">
+          {/* Opens the console menu, where the operator picks Casual or Competitive. */}
+          <Link to={MODULAR_SCOREKEEPER_MENU_PATH} className="sc-button">
+            Scorekeep for this match
+          </Link>
+        </div>
+      )}
     </section>
   );
 }
@@ -2286,11 +2452,42 @@ function buildTimeTicks(start, end) {
   return ticks;
 }
 
+const MATCH_OPTION_STATUS_LABELS = {
+  [MATCH_STATUS.LIVE]: "Live",
+  [MATCH_STATUS.HALFTIME]: "Halftime",
+  [MATCH_STATUS.COMPLETED]: "Final",
+  [MATCH_STATUS.FINISHED]: "Final",
+  [MATCH_STATUS.SCHEDULED]: "Scheduled",
+  [MATCH_STATUS.INITIALIZED]: "Starting",
+  [MATCH_STATUS.POSTPONED]: "Postponed",
+  [MATCH_STATUS.CANCELED]: "Canceled",
+};
+
+// "14 Oct 18:30 · Live · TeamA 6 – 5 TeamB". The score sits between the names
+// once there is one worth showing (finished or under way); otherwise "vs".
+// A finished match with a score drops its status and kick-off time: the score
+// already says it is over, and only the day matters for finding it.
 function formatMatchLabel(match) {
   const teamA = match.team_a?.short_name || match.team_a?.name || "Team A";
   const teamB = match.team_b?.short_name || match.team_b?.name || "Team B";
-  const kickoff = formatKickoff(match.start_time);
-  return `${kickoff} - ${teamA} vs ${teamB}`;
+  const hasScore = Number.isFinite(match.score_a) && Number.isFinite(match.score_b);
+  const concluded = isConcludedStatus(match.status);
+  const showScore = (concluded || isInProgressStatus(match.status)) && hasScore;
+  const fixture = showScore ? `${teamA} ${match.score_a} – ${match.score_b} ${teamB}` : `${teamA} vs ${teamB}`;
+  if (concluded && showScore) {
+    return [formatShortKickoff(match.start_time, { includeTime: false }), fixture].join(" · ");
+  }
+  const status = isForfeitStatus(match.status) ? "Forfeit" : MATCH_OPTION_STATUS_LABELS[(match.status || "").toLowerCase()];
+  return [formatShortKickoff(match.start_time), status, fixture].filter(Boolean).join(" · ");
+}
+
+function formatShortKickoff(timestamp, { includeTime = true } = {}) {
+  if (!timestamp) return "TBD";
+  const date = new Date(timestamp);
+  const day = date.toLocaleDateString([], { day: "numeric", month: "short" });
+  if (!includeTime) return day;
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${day} ${time}`;
 }
 
 function formatKickoff(timestamp) {

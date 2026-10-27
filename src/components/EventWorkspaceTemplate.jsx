@@ -15,8 +15,12 @@ import {
 import {
   isFinishedMatch,
 } from "../utils/standings";
-import { getMatchesByEvent } from "../services/matchService";
-import { getEventHierarchy, getEventLifecycle } from "../services/leagueService";
+import {
+  EVENT_PAGE_CACHE_TTL_MS,
+  getEventPageData,
+  getEventPageDataKey,
+} from "../services/eventPageService";
+import { useCachedQuery } from "../hooks/useCachedQuery";
 import {
   buildFinalStandings,
   buildPoolStandings,
@@ -24,7 +28,6 @@ import {
   getFinalStandingsModes,
   isCompletedEventStatus,
 } from "../utils/eventStandings";
-import { getBracketsByEvent } from "../services/playoffStructureService";
 import BracketStructureView from "../pages/playoff/BracketStructureView";
 import StandingsRulesInfo from "./StandingsRulesInfo";
 
@@ -34,7 +37,7 @@ import StandingsRulesInfo from "./StandingsRulesInfo";
 // rule PDFs as `ruleDocuments` ([{ name, href }]). The Rules card is hidden when
 // none are given. Once the event is marked completed, final standings (derived
 // from the playoff placement games) replace the per-pool division standings.
-const MATCH_LIMIT = 200;
+const EMPTY_LIST = [];
 const TEAM_STANDINGS_GRID_STYLE = {
   gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
 };
@@ -206,70 +209,31 @@ export default function EventWorkspaceTemplate({
   fallbackName = "Event",
   ruleDocuments = [],
 }) {
-  const [matches, setMatches] = useState([]);
-  const [eventData, setEventData] = useState(null);
-  const [brackets, setBrackets] = useState([]);
-  const [eventStatus, setEventStatus] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // One cached read for the whole page (see eventPageService). A revisit, or a
+  // visit from a link that warmed it, draws immediately and refreshes itself.
+  // Switching events changes the key, so old and new rows never mix.
+  const pageQuery = useCachedQuery(
+    eventId ? getEventPageDataKey(eventId) : null,
+    ({ forceRefresh }) => getEventPageData(eventId, { forceRefresh }),
+    { ttlMs: EVENT_PAGE_CACHE_TTL_MS },
+  );
+  const matches = pageQuery.data?.matches ?? EMPTY_LIST;
+  const eventData = pageQuery.data?.hierarchy ?? null;
+  const brackets = pageQuery.data?.brackets ?? EMPTY_LIST;
+  const eventStatus = pageQuery.data?.status ?? null;
+  const loading = pageQuery.isLoading;
+  // A failed refresh keeps the last good data; the error shows only when there
+  // is nothing else to show.
+  const error =
+    pageQuery.error && !pageQuery.data
+      ? pageQuery.error.message || "Unable to load matches for this event."
+      : null;
   const [copyToast, setCopyToast] = useState(null);
   const [copyToastVisible, setCopyToastVisible] = useState(false);
   const [venueFieldsOpen, setVenueFieldsOpen] = useState(false);
   // Schedule day sections the viewer has collapsed, keyed "divisionId:dayKey".
   // Everything starts expanded.
   const [collapsedScheduleDays, setCollapsedScheduleDays] = useState(() => new Set());
-
-  useEffect(() => {
-    let ignore = false;
-
-    async function loadWorkspace() {
-      setLoading(true);
-      setError(null);
-      // Clear the previous event's data so switching events never shows a
-      // mix of old and new rows while loading.
-      setMatches([]);
-      setEventData(null);
-      setBrackets([]);
-      setEventStatus(null);
-      if (!eventId) {
-        setLoading(false);
-        return;
-      }
-      try {
-        const [rows, hierarchy, bracketRows, lifecycle] = await Promise.all([
-          getMatchesByEvent(eventId, MATCH_LIMIT, {
-            includeFinished: true,
-          }),
-          getEventHierarchy(eventId),
-          // The bracket is supplementary: if it fails to load, the rest of
-          // the workspace should still render, so swallow the error.
-          getBracketsByEvent(eventId).catch(() => []),
-          // Null on failure, which reads as "not completed" and keeps the
-          // division standings.
-          getEventLifecycle(eventId),
-        ]);
-        if (!ignore) {
-          setMatches(rows || []);
-          setEventData(hierarchy || null);
-          setBrackets(bracketRows || []);
-          setEventStatus(lifecycle?.status || null);
-        }
-      } catch (err) {
-        if (!ignore) {
-          setError(err?.message || "Unable to load matches for this event.");
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadWorkspace();
-    return () => {
-      ignore = true;
-    };
-  }, [eventId]);
 
   // A firmer "hook" at each division boundary in the match schedule: proximity
   // snapping lets a scroll that comes to rest near a division's start settle

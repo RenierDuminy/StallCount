@@ -3,7 +3,7 @@ import { getCachedQuery } from "../utils/queryCache";
 
 // The role catalog is identical for every user and changes very rarely, so it
 // is cached rather than refetched by each page that needs it.
-const ROLE_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
+const ROLE_CATALOG_CACHE_TTL_MS = 2 * 60 * 1000;
 
 function mapRoleAssignments(assignments) {
   return (Array.isArray(assignments) ? assignments : []).map((assignment) => ({

@@ -66,13 +66,7 @@ import {
   getFlashRateMs,
   getSecondaryTimerTone,
 } from "./secondaryTimerPhases";
-import {
-  ADMIN_OVERRIDE_PERMISSIONS,
-  SCOREKEEPER_ACCESS_PERMISSIONS,
-  SCOREKEEPER_ACCESS_ROLES,
-  normalisePermissionList,
-  normaliseRoleList,
-} from "../../utils/accessControl";
+import { getAccessibleScorekeeperEventIds } from "../../utils/accessControl";
 
 // End codes that may occur more than once per match, mapped to the start they close.
 // Anything not listed here keeps the strict once-per-match guard in
@@ -628,91 +622,6 @@ function computeRemainingSeconds(anchor, isRunning, fallback = 0, options = {}) 
     return Math.max(minSeconds, raw);
   }
   return raw;
-}
-
-function buildRoleCatalogLookup(roleCatalog) {
-  const lookup = new Map();
-  (Array.isArray(roleCatalog) ? roleCatalog : []).forEach((role) => {
-    if (!role) return;
-    if (role.id !== undefined && role.id !== null) {
-      lookup.set(`id:${String(role.id)}`, role);
-    }
-    const roleSlug = normaliseRoleList(role.name || "")[0] || null;
-    if (roleSlug) {
-      lookup.set(`slug:${roleSlug}`, role);
-    }
-  });
-  return lookup;
-}
-
-function getRolePermissionKeys(role) {
-  return normalisePermissionList(
-    (Array.isArray(role?.permissions) ? role.permissions : []).map((permission) =>
-      typeof permission === "string"
-        ? permission
-        : permission?.key || permission?.name || permission?.value || "",
-    ),
-  );
-}
-
-/**
- * Events the user may score-keep in. `null` means unrestricted.
- *
- * Two conditions must BOTH hold for an assignment to grant access: the role
- * must be one of SCOREKEEPER_ACCESS_ROLES, and it must carry a match-write
- * permission. Matching the route gate keeps the dropdown and the page in sync.
- *
- * Console access is always event-scoped for these roles, so an assignment with
- * no event_id grants nothing — only a true admin_override holder is
- * unrestricted. This deliberately differs from roleScope.js, which treats
- * tournament_director and field_assistant as global override roles.
- */
-function getAccessibleScorekeeperEventIds(assignments, roleCatalog) {
-  const scorekeeperPermissionKeys = new Set(
-    normalisePermissionList(SCOREKEEPER_ACCESS_PERMISSIONS),
-  );
-  const overridePermissionKeys = new Set(normalisePermissionList(ADMIN_OVERRIDE_PERMISSIONS));
-  const allowedRoleSlugs = new Set(normaliseRoleList(SCOREKEEPER_ACCESS_ROLES));
-  const roleLookup = buildRoleCatalogLookup(roleCatalog);
-  const eventIds = new Set();
-  let hasAdminOverride = false;
-
-  (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
-    const roleId = assignment?.roleId;
-    const roleSlug =
-      normaliseRoleList(
-        assignment?.roleName || assignment?.role?.name || assignment?.name || "",
-      )[0] || null;
-    const role =
-      (roleId !== undefined && roleId !== null
-        ? roleLookup.get(`id:${String(roleId)}`)
-        : null) || (roleSlug ? roleLookup.get(`slug:${roleSlug}`) : null);
-    if (!role) return;
-
-    const permissionKeys = getRolePermissionKeys(role);
-
-    // admin_override ignores role slug and event scope alike.
-    if (permissionKeys.some((permissionKey) => overridePermissionKeys.has(permissionKey))) {
-      hasAdminOverride = true;
-      return;
-    }
-
-    const catalogSlug = normaliseRoleList(role.name || "")[0] || null;
-    const isAllowedRole =
-      (roleSlug && allowedRoleSlugs.has(roleSlug)) ||
-      (catalogSlug && allowedRoleSlugs.has(catalogSlug));
-    if (!isAllowedRole) return;
-
-    const hasScorekeeperPermission = permissionKeys.some((permissionKey) =>
-      scorekeeperPermissionKeys.has(permissionKey),
-    );
-    if (!hasScorekeeperPermission) return;
-
-    const eventId = assignment?.eventId ?? null;
-    if (eventId) eventIds.add(eventId);
-  });
-
-  return hasAdminOverride ? null : eventIds;
 }
 
 export function useScoreKeeperData(formatKey = DEFAULT_SCOREKEEPER_FORMAT) {

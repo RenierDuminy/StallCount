@@ -13,6 +13,7 @@
 // activity ends or on the next navigation.
 
 import { isLiveActivity, onLiveActivityChange } from "./liveActivity";
+import { rememberUpdateReload } from "./buildInfo";
 
 // How often to poll the server for a new service worker (a deploy that happens
 // while the tab stays open). 30 minutes is a reasonable balance.
@@ -32,6 +33,8 @@ let lastHiddenAt = 0;
 function doReload() {
   if (hasReloaded) return;
   hasReloaded = true;
+  // Lets the account page confirm "Updated to …" after a background update too.
+  rememberUpdateReload();
   window.location.reload();
 
   // reload() is asynchronous and can be refused (a beforeunload prompt the user

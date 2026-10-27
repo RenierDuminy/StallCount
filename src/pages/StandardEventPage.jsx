@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { Card, SectionShell } from "../components/ui/primitives";
 import EventWorkspaceTemplate from "../components/EventWorkspaceTemplate";
-import { getEventsList } from "../services/leagueService";
+import { getEventsList, getEventsListKey } from "../services/leagueService";
+import { useCachedQuery } from "../hooks/useCachedQuery";
+import { EVENT_LIST_LIMIT } from "../services/eventPageService";
 import {
   STANDARD_EVENT_BASE_PATH,
   getEventWorkspacePath,
@@ -11,28 +13,17 @@ import {
 } from "./eventWorkspaces";
 import { getStandardTemplateOptions } from "./standardEventTemplates";
 
-// Enough to cover every event; the list is cached by leagueService.
-const EVENT_LIST_LIMIT = 200;
+const EVENT_LIST_TTL_MS = 60 * 1000;
 
 /** The event list, for resolving a URL slug or id to an event. */
 function useEventsList() {
-  const [events, setEvents] = useState(null);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    let ignore = false;
-    getEventsList(EVENT_LIST_LIMIT)
-      .then((rows) => {
-        if (!ignore) setEvents(rows || []);
-      })
-      .catch((err) => {
-        if (!ignore) setError(err?.message || "Unable to load events.");
-      });
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
+  const query = useCachedQuery(
+    getEventsListKey(EVENT_LIST_LIMIT),
+    ({ forceRefresh }) => getEventsList(EVENT_LIST_LIMIT, { forceRefresh }),
+    { ttlMs: EVENT_LIST_TTL_MS },
+  );
+  const events = query.data ?? null;
+  const error = query.error && !query.data ? query.error.message || "Unable to load events." : null;
   return { events, error };
 }
 

@@ -9,10 +9,10 @@ import { getRecentLiveEvents } from "./liveEventService";
 import { getTableCount } from "./statsService";
 import { getCachedQuery } from "../utils/queryCache";
 
-const HOME_HERO_SUMMARY_CACHE_TTL_MS = 30 * 1000;
-const HOME_BELOW_FOLD_SUMMARY_CACHE_TTL_MS = 60 * 1000;
-const HOME_STREAMING_SUMMARY_CACHE_TTL_MS = 30 * 1000;
-const HOME_FINALS_SUMMARY_CACHE_TTL_MS = 60 * 1000;
+export const HOME_HERO_SUMMARY_CACHE_TTL_MS = 15 * 1000;
+export const HOME_BELOW_FOLD_SUMMARY_CACHE_TTL_MS = 60 * 1000;
+export const HOME_STREAMING_SUMMARY_CACHE_TTL_MS = 30 * 1000;
+export const HOME_FINALS_SUMMARY_CACHE_TTL_MS = 60 * 1000;
 
 const DEFAULT_HOME_HERO_LIMITS = {
   openMatches: 12,
@@ -92,6 +92,24 @@ function buildHomeFinalsSummaryCacheKey(limits) {
   ].join(":");
 }
 
+// The raw cache keys, so `useCachedQuery` can read and watch the same entries
+// these functions write.
+export function getHomeHeroSummaryKey(limits) {
+  return buildHomeHeroSummaryCacheKey(normalizeHomeHeroLimits(limits));
+}
+
+export function getHomeBelowFoldSummaryKey(limits) {
+  return buildHomeBelowFoldSummaryCacheKey(normalizeHomeBelowFoldLimits(limits));
+}
+
+export function getHomeStreamingSummaryKey(limits) {
+  return buildHomeStreamingSummaryCacheKey(normalizeHomeStreamingLimits(limits));
+}
+
+export function getHomeFinalsSummaryKey(limits) {
+  return buildHomeFinalsSummaryCacheKey(normalizeHomeFinalsLimits(limits));
+}
+
 function toSettled(promise) {
   return promise
     .then((value) => ({ status: "fulfilled", value }))
@@ -102,10 +120,20 @@ function getFulfilledValue(result, fallback) {
   return result.status === "fulfilled" ? result.value : fallback;
 }
 
+// A summary whose essential read failed must not be cached: it would replace
+// good data with an empty list, and a background refresh would now put that
+// empty list on screen. Throwing leaves the previous entry in place.
+function throwIfRejected(result) {
+  if (result.status === "rejected") {
+    throw result.reason instanceof Error ? result.reason : new Error(String(result.reason));
+  }
+}
+
 function collectHomeSummaryFailures(results, labels) {
   return results
     .map((result, index) => {
       if (result.status === "fulfilled") return null;
+      console.error(`[homeSummary] Failed to load ${labels[index]}:`, result.reason);
       return {
         key: labels[index],
         message: result.reason?.message || `Failed to load ${labels[index]}.`,
@@ -134,10 +162,10 @@ export async function getHomeHeroSummary(options = {}) {
   return getCachedQuery(
     cacheKey,
     async () => {
-      // Live refreshes pass forceRefresh, so the underlying match/live-event
-      // reads must skip their own caches too — otherwise the hero summary
-      // refetches but gets handed the same cached rows it already had.
-      const readOptions = { forceRefresh: Boolean(options.forceRefresh) };
+      // Whenever this summary actually fetches, the reads underneath must skip
+      // their own caches too — otherwise the summary refetches but gets handed
+      // the same cached rows it already had, and data ends up two TTLs old.
+      const readOptions = { forceRefresh: true };
       const results = await Promise.all([
         toSettled(getOpenMatches(limits.openMatches, readOptions)),
         toSettled(getRecentLiveEvents(limits.liveEvents, readOptions)),
@@ -147,6 +175,7 @@ export async function getHomeHeroSummary(options = {}) {
         openMatchesResult,
         liveEventsResult,
       ] = results;
+      throwIfRejected(openMatchesResult);
 
       return {
         openMatches: getFulfilledValue(openMatchesResult, []),
@@ -170,11 +199,12 @@ export async function getHomeBelowFoldSummary(options = {}) {
   return getCachedQuery(
     cacheKey,
     async () => {
+      const readOptions = { forceRefresh: true };
       const results = await Promise.all([
-        toSettled(getEventsList(limits.events)),
-        toSettled(getTableCount("player")),
-        toSettled(getTableCount("teams")),
-        toSettled(getTableCount("events")),
+        toSettled(getEventsList(limits.events, readOptions)),
+        toSettled(getTableCount("player", readOptions)),
+        toSettled(getTableCount("teams", readOptions)),
+        toSettled(getTableCount("events", readOptions)),
       ]);
 
       const [
@@ -183,6 +213,7 @@ export async function getHomeBelowFoldSummary(options = {}) {
         teamsCountResult,
         eventsCountResult,
       ] = results;
+      throwIfRejected(eventsResult);
 
       return {
         events: getFulfilledValue(eventsResult, []),
@@ -200,7 +231,11 @@ export async function getHomeBelowFoldSummary(options = {}) {
         loadedAt: new Date().toISOString(),
       };
     },
-    { ttlMs: HOME_BELOW_FOLD_SUMMARY_CACHE_TTL_MS, refreshOnPageReload: false },
+    {
+      ttlMs: HOME_BELOW_FOLD_SUMMARY_CACHE_TTL_MS,
+      refreshOnPageReload: false,
+      forceRefresh: Boolean(options.forceRefresh),
+    },
   );
 }
 
@@ -211,15 +246,19 @@ export async function getHomeStreamingSummary(options = {}) {
   return getCachedQuery(
     cacheKey,
     async () => {
+      const readOptions = { forceRefresh: true };
       const results = await Promise.all([
-        toSettled(getRecentMatches(limits.recentMatches)),
-        toSettled(getRecentMatchesWithMedia(limits.broadcastMatches)),
+        toSettled(getRecentMatches(limits.recentMatches, readOptions)),
+        toSettled(getRecentMatchesWithMedia(limits.broadcastMatches, readOptions)),
       ]);
 
       const [
         latestMatchesResult,
         recentBroadcastMatchesResult,
       ] = results;
+      if (results.every((result) => result.status === "rejected")) {
+        throwIfRejected(latestMatchesResult);
+      }
 
       return {
         latestMatches: getFulfilledValue(latestMatchesResult, []),
@@ -228,7 +267,11 @@ export async function getHomeStreamingSummary(options = {}) {
         loadedAt: new Date().toISOString(),
       };
     },
-    { ttlMs: HOME_STREAMING_SUMMARY_CACHE_TTL_MS, refreshOnPageReload: false },
+    {
+      ttlMs: HOME_STREAMING_SUMMARY_CACHE_TTL_MS,
+      refreshOnPageReload: false,
+      forceRefresh: Boolean(options.forceRefresh),
+    },
   );
 }
 
@@ -240,10 +283,11 @@ export async function getHomeFinalsSummary(options = {}) {
     cacheKey,
     async () => {
       const results = await Promise.all([
-        toSettled(getRecentFinalMatches(limits.finalMatches)),
+        toSettled(getRecentFinalMatches(limits.finalMatches, { forceRefresh: true })),
       ]);
 
       const [recentFinalMatchesResult] = results;
+      throwIfRejected(recentFinalMatchesResult);
 
       return {
         recentFinalMatches: getFulfilledValue(recentFinalMatchesResult, []),
@@ -251,6 +295,10 @@ export async function getHomeFinalsSummary(options = {}) {
         loadedAt: new Date().toISOString(),
       };
     },
-    { ttlMs: HOME_FINALS_SUMMARY_CACHE_TTL_MS, refreshOnPageReload: false },
+    {
+      ttlMs: HOME_FINALS_SUMMARY_CACHE_TTL_MS,
+      refreshOnPageReload: false,
+      forceRefresh: Boolean(options.forceRefresh),
+    },
   );
 }

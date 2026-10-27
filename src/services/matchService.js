@@ -9,8 +9,8 @@ import {
   OPEN_MATCH_STATUSES,
 } from "../constants/statusCodes";
 
-const RECENT_MATCHES_CACHE_TTL_MS = 30 * 1000;
-const OPEN_MATCHES_CACHE_TTL_MS = 30 * 1000;
+const RECENT_MATCHES_CACHE_TTL_MS = 15 * 1000;
+const OPEN_MATCHES_CACHE_TTL_MS = 15 * 1000;
 const EVENT_MATCHES_CACHE_TTL_MS = 60 * 1000;
 const MATCH_IDS_CACHE_TTL_MS = 30 * 1000;
 
@@ -66,7 +66,7 @@ const MATCH_FIELDS = `
   has_media
 `;
 
-export async function getRecentMatches(limit = 4) {
+export async function getRecentMatches(limit = 4, options = {}) {
   return getCachedQuery(
     `matches:recent:${limit}`,
     async () => {
@@ -82,7 +82,7 @@ export async function getRecentMatches(limit = 4) {
 
       return data ?? [];
     },
-    { ttlMs: RECENT_MATCHES_CACHE_TTL_MS },
+    { ttlMs: RECENT_MATCHES_CACHE_TTL_MS, forceRefresh: Boolean(options.forceRefresh) },
   );
 }
 
@@ -157,7 +157,7 @@ export async function getMatchesByEvent(eventId, limit = 24, options = {}) {
   );
 }
 
-export async function getRecentMatchesWithMedia(limit = 5) {
+export async function getRecentMatchesWithMedia(limit = 5, options = {}) {
   return getCachedQuery(
     `matches:recent-with-media:${limit}`,
     async () => {
@@ -174,11 +174,11 @@ export async function getRecentMatchesWithMedia(limit = 5) {
 
       return data ?? [];
     },
-    { ttlMs: RECENT_MATCHES_CACHE_TTL_MS },
+    { ttlMs: RECENT_MATCHES_CACHE_TTL_MS, forceRefresh: Boolean(options.forceRefresh) },
   );
 }
 
-export async function getRecentFinalMatches(limit = 16) {
+export async function getRecentFinalMatches(limit = 16, options = {}) {
   return getCachedQuery(
     `matches:recent-finals:${limit}`,
     async () => {
@@ -195,7 +195,7 @@ export async function getRecentFinalMatches(limit = 16) {
 
       return data ?? [];
     },
-    { ttlMs: RECENT_MATCHES_CACHE_TTL_MS },
+    { ttlMs: RECENT_MATCHES_CACHE_TTL_MS, forceRefresh: Boolean(options.forceRefresh) },
   );
 }
 

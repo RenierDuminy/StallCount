@@ -1,10 +1,10 @@
 import { supabase } from "./supabaseClient";
 import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
 
-const TEAMS_CACHE_TTL_MS = 10 * 60 * 1000;
-const TEAM_IDS_CACHE_TTL_MS = 10 * 60 * 1000;
-const TEAM_MATCHES_CACHE_TTL_MS = 30 * 1000;
-const PLAYER_MATCH_STATS_CACHE_TTL_MS = 5 * 60 * 1000;
+const TEAMS_CACHE_TTL_MS = 5 * 60 * 1000;
+const TEAM_IDS_CACHE_TTL_MS = 5 * 60 * 1000;
+const TEAM_MATCHES_CACHE_TTL_MS = 15 * 1000;
+const PLAYER_MATCH_STATS_CACHE_TTL_MS = 2 * 60 * 1000;
 
 export type TeamRow = {
   id: string;

@@ -29,13 +29,18 @@ export function publishBuildInfo() {
 
 // Compare the running build against the one the server is currently serving.
 //
-// index.html is fetched with cache: "no-store" so this bypasses both the HTTP
-// cache and any stale service-worker response, giving the true deployed build.
+// cache: "no-store" only bypasses the HTTP cache. The service worker's
+// precacheAndRoute intercepts a plain "/index.html" and answers from its own
+// precache -- i.e. the build the worker already holds -- so the check used to
+// report "latest" until the new worker had finished downloading, and the app
+// then updated itself seconds later. The throwaway query parameter matches no
+// precache entry, so the request goes to the network and reads the build the
+// server is actually deploying.
 // A mismatch means the client is running old code and has not yet reloaded onto
 // the new one -- the exact condition that is otherwise invisible.
 export async function fetchDeployedSha() {
   try {
-    const response = await fetch("/index.html", { cache: "no-store" });
+    const response = await fetch(`/index.html?build-check=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) return null;
     const html = await response.text();
     const match = html.match(/<meta name="build-sha" content="([^"]+)"/);
@@ -76,12 +81,21 @@ export async function applyAppUpdate() {
     // Cache clearing must never block the reload.
   }
 
+  rememberUpdateReload();
+
   if ("serviceWorker" in navigator) {
     try {
       const registration = await navigator.serviceWorker.getRegistration();
       if (registration) {
         // Pull the newest worker in case this tab has not noticed the deploy.
         await registration.update().catch(() => {});
+        // update() resolves once the new worker script is fetched, not once it
+        // has precached the bundle. Reloading mid-install comes back on the old
+        // build, so wait for the install to finish (capped: precaching a full
+        // bundle on a slow connection takes a while, but never forever).
+        if (registration.installing) {
+          await waitForInstalled(registration.installing, 30000);
+        }
         const waiting = registration.waiting;
         if (waiting) {
           // sw.js listens for SKIP_WAITING and activates immediately.
@@ -98,6 +112,51 @@ export async function applyAppUpdate() {
   }
 
   window.location.reload();
+}
+
+function waitForInstalled(worker, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    function finish() {
+      if (settled) return;
+      settled = true;
+      worker.removeEventListener("statechange", onStateChange);
+      resolve();
+    }
+    function onStateChange() {
+      if (worker.state !== "installing") finish();
+    }
+    worker.addEventListener("statechange", onStateChange);
+    setTimeout(finish, timeoutMs);
+  });
+}
+
+// "Updated from X to Y" notice, carried across the reload that applies an
+// update. Session-scoped and short-lived so it confirms the update just made,
+// not one from earlier in the day. Best-effort: storage can be unavailable.
+const UPDATE_NOTICE_KEY = "stallcount:update-from";
+const UPDATE_NOTICE_MAX_AGE_MS = 2 * 60 * 1000;
+
+export function rememberUpdateReload() {
+  try {
+    sessionStorage.setItem(UPDATE_NOTICE_KEY, JSON.stringify({ from: BUILD_SHA, at: Date.now() }));
+  } catch {
+    // Not worth failing an update over.
+  }
+}
+
+// Returns { from, to } once after an update reload landed on a new build, else null.
+export function consumeUpdateNotice() {
+  try {
+    const raw = sessionStorage.getItem(UPDATE_NOTICE_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(UPDATE_NOTICE_KEY);
+    const { from, at } = JSON.parse(raw);
+    if (!from || from === BUILD_SHA || Date.now() - at > UPDATE_NOTICE_MAX_AGE_MS) return null;
+    return { from, to: BUILD_SHA };
+  } catch {
+    return null;
+  }
 }
 
 function waitForControllerChange(timeoutMs) {

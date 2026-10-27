@@ -8,11 +8,20 @@ import {
 import { getSubscriptions } from "../services/subscriptionService";
 import { useAuth } from "../context/AuthContext";
 import {
+  HOME_BELOW_FOLD_SUMMARY_CACHE_TTL_MS,
+  HOME_FINALS_SUMMARY_CACHE_TTL_MS,
+  HOME_HERO_SUMMARY_CACHE_TTL_MS,
+  HOME_STREAMING_SUMMARY_CACHE_TTL_MS,
   getHomeBelowFoldSummary,
+  getHomeBelowFoldSummaryKey,
   getHomeFinalsSummary,
+  getHomeFinalsSummaryKey,
   getHomeHeroSummary,
+  getHomeHeroSummaryKey,
   getHomeStreamingSummary,
+  getHomeStreamingSummaryKey,
 } from "../services/homeSummaryService";
+import { useCachedQuery } from "../hooks/useCachedQuery";
 import { useHomeLiveRefresh } from "../hooks/useHomeLiveRefresh";
 import usePersistentState from "../hooks/usePersistentState";
 import {
@@ -82,6 +91,8 @@ const COMPACT_HOME_QUERY = "(max-width: 640px)";
 // Matches the desktop breakpoint in theme.css (.home-columns).
 const WIDE_HOME_QUERY = "(min-width: 1024px)";
 const WELCOME_DISMISSED_KEY = "home:welcome-dismissed";
+const EMPTY_STATS = { teams: 0, players: 0, events: 0 };
+const EMPTY_LIST = [];
 
 function LazyHomeSection({
   children,
@@ -157,17 +168,6 @@ function useMediaQuery(query) {
 }
 
 export default function HomePage() {
-  const [events, setEvents] = useState([]);
-  const [latestMatches, setLatestMatches] = useState([]);
-  const [openMatches, setOpenMatches] = useState([]);
-  const [recentBroadcastMatches, setRecentBroadcastMatches] = useState([]);
-  const [recentFinalMatches, setRecentFinalMatches] = useState([]);
-  const [liveEvents, setLiveEvents] = useState([]);
-  const [stats, setStats] = useState({ teams: 0, players: 0, events: 0 });
-  const [loading, setLoading] = useState(true);
-  const [belowFoldLoading, setBelowFoldLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [belowFoldError, setBelowFoldError] = useState(null);
   const [heroActionStatus, setHeroActionStatus] = useState(null);
 
   const [subscriptions, setSubscriptions] = useState([]);
@@ -185,11 +185,6 @@ export default function HomePage() {
   const [renderFinals, setRenderFinals] = useState(false);
   const [renderEventTimeline, setRenderEventTimeline] = useState(false);
   const [renderPersonalized, setRenderPersonalized] = useState(false);
-  // Start true: these sections render only once their data is in, and hide
-  // entirely when it comes back empty, so "not loaded yet" must not read as
-  // "loaded and empty".
-  const [streamsLoading, setStreamsLoading] = useState(true);
-  const [finalsLoading, setFinalsLoading] = useState(true);
   const isCompactHome = useMediaQuery(COMPACT_HOME_QUERY);
   const isWideHome = useMediaQuery(WIDE_HOME_QUERY);
   const [welcomeDismissed, setWelcomeDismissed] = usePersistentState(WELCOME_DISMISSED_KEY, false);
@@ -216,197 +211,81 @@ export default function HomePage() {
     return () => clearTimeout(timer);
   }, [personalizedMessage]);
 
-  // Shared by the initial load and every live/idle refresh. A background
-  // refresh must not flip the page back into its loading state or clear the
-  // cards already on screen, so `background` suppresses the spinner and keeps
-  // the last good data visible if the refetch fails.
-  const loadHeroData = useCallback(
-    async ({ background = false, signal } = {}) => {
-      if (!background) {
-        setLoading(true);
-        setError(null);
-      }
-
-      try {
-        const summary = await getHomeHeroSummary({
-          limits: {
-            openMatches: homeLimits.openMatches,
-            liveEvents: homeLimits.liveEvents,
-          },
-          forceRefresh: background,
-        });
-
-        if (signal?.cancelled) return;
-
-        setOpenMatches(summary.openMatches);
-        setLiveEvents(summary.liveEvents);
-
-        if (summary.failures.length > 0) {
-          summary.failures.forEach((failure) => {
-            console.error(`[HomePage] ${failure.message}`);
-          });
-          const criticalFailures = summary.failures
-            .map((failure) => failure.key)
-            .filter((key) => key !== "live events");
-          if (criticalFailures.length > 0 && !background) {
-            setError(`Unable to load ${criticalFailures.join(", ")}. Please refresh and try again.`);
-          }
-        } else if (background) {
-          // A successful background refresh clears a stale error banner left
-          // over from an earlier failed load.
-          setError(null);
-        }
-      } catch (err) {
-        if (signal?.cancelled) return;
-        console.error("[HomePage] Unexpected load error:", err);
-        if (!background) {
-          setError(err?.message || "Unable to load league data.");
-        }
-      } finally {
-        if (!signal?.cancelled && !background) {
-          setLoading(false);
-        }
-      }
-    },
+  // Each section reads the same cache entry its service writes, so a returning
+  // visitor sees the last data on the first frame, and a background refresh
+  // lands on screen by itself instead of waiting for a reload.
+  const heroLimits = useMemo(
+    () => ({ openMatches: homeLimits.openMatches, liveEvents: homeLimits.liveEvents }),
     [homeLimits.liveEvents, homeLimits.openMatches],
   );
-
-  useEffect(() => {
-    const signal = { cancelled: false };
-    void loadHeroData({ signal });
-    return () => {
-      signal.cancelled = true;
-    };
-  }, [loadHeroData]);
+  const heroQuery = useCachedQuery(
+    getHomeHeroSummaryKey(heroLimits),
+    ({ forceRefresh }) => getHomeHeroSummary({ limits: heroLimits, forceRefresh }),
+    { ttlMs: HOME_HERO_SUMMARY_CACHE_TTL_MS },
+  );
 
   // The welcome band shows the site-wide counts, which come from the same
   // summary as the events list — so while it is up, fetch now rather than
   // waiting for the events section to scroll into view.
   const loadBelowFold = renderEventTimeline || showWelcome;
+  const belowFoldLimits = useMemo(() => ({ events: homeLimits.events }), [homeLimits.events]);
+  const belowFoldQuery = useCachedQuery(
+    getHomeBelowFoldSummaryKey(belowFoldLimits),
+    ({ forceRefresh }) => getHomeBelowFoldSummary({ limits: belowFoldLimits, forceRefresh }),
+    { ttlMs: HOME_BELOW_FOLD_SUMMARY_CACHE_TTL_MS, enabled: loadBelowFold },
+  );
 
-  useEffect(() => {
-    if (!loadBelowFold) return undefined;
+  const streamingLimits = useMemo(
+    () => ({ recentMatches: homeLimits.recentMatches, broadcastMatches: homeLimits.broadcastMatches }),
+    [homeLimits.broadcastMatches, homeLimits.recentMatches],
+  );
+  const streamingQuery = useCachedQuery(
+    getHomeStreamingSummaryKey(streamingLimits),
+    ({ forceRefresh }) => getHomeStreamingSummary({ limits: streamingLimits, forceRefresh }),
+    { ttlMs: HOME_STREAMING_SUMMARY_CACHE_TTL_MS, enabled: renderStreaming },
+  );
 
-    let ignore = false;
+  const finalsLimits = useMemo(() => ({ finalMatches: homeLimits.finalMatches }), [homeLimits.finalMatches]);
+  const finalsQuery = useCachedQuery(
+    getHomeFinalsSummaryKey(finalsLimits),
+    ({ forceRefresh }) => getHomeFinalsSummary({ limits: finalsLimits, forceRefresh }),
+    { ttlMs: HOME_FINALS_SUMMARY_CACHE_TTL_MS, enabled: renderFinals },
+  );
 
-    async function loadBelowFoldData() {
-      setBelowFoldLoading(true);
-      setBelowFoldError(null);
-      try {
-        const summary = await getHomeBelowFoldSummary({
-          limits: {
-            events: homeLimits.events,
-          },
-        });
+  // Sections render before their data arrives, so every list defaults to the
+  // same empty array (stable, so memos keyed on it don't recompute).
+  const openMatches = heroQuery.data?.openMatches ?? EMPTY_LIST;
+  const liveEvents = heroQuery.data?.liveEvents ?? EMPTY_LIST;
+  const events = belowFoldQuery.data?.events ?? EMPTY_LIST;
+  const stats = belowFoldQuery.data?.stats ?? EMPTY_STATS;
+  const latestMatches = streamingQuery.data?.latestMatches ?? EMPTY_LIST;
+  const recentBroadcastMatches = streamingQuery.data?.recentBroadcastMatches ?? EMPTY_LIST;
+  const recentFinalMatches = finalsQuery.data?.recentFinalMatches ?? EMPTY_LIST;
 
-        if (ignore) return;
+  // "Loading" means nothing to show yet. These sections render only once their
+  // data is in, and hide entirely when it comes back empty, so "not loaded yet"
+  // must not read as "loaded and empty" — including before a lazy section has
+  // started fetching.
+  const loading = !heroQuery.data && !heroQuery.error;
+  const belowFoldLoading = !belowFoldQuery.data && !belowFoldQuery.error;
+  const streamsLoading = !streamingQuery.data && !streamingQuery.error;
+  const finalsLoading = !finalsQuery.data && !finalsQuery.error;
 
-        setEvents(summary.events);
-        setStats(summary.stats);
+  // A failed refresh keeps the last good data on screen; the error only shows
+  // when there is nothing else to show.
+  const error = heroQuery.data
+    ? null
+    : heroQuery.error
+      ? heroQuery.error.message || "Unable to load league data."
+      : null;
+  const belowFoldFailures = belowFoldQuery.data?.failures ?? [];
+  const belowFoldError =
+    belowFoldQuery.error && !belowFoldQuery.data
+      ? belowFoldQuery.error.message || "Unable to load event data."
+      : belowFoldFailures.length > 0
+        ? `Unable to load ${belowFoldFailures.map((failure) => failure.key).join(", ")}. Please refresh and try again.`
+        : null;
 
-        if (summary.failures.length > 0) {
-          summary.failures.forEach((failure) => {
-            console.error(`[HomePage] ${failure.message}`);
-          });
-          setBelowFoldError(
-            `Unable to load ${summary.failures.map((failure) => failure.key).join(", ")}. Please refresh and try again.`,
-          );
-        }
-      } catch (err) {
-        if (!ignore) {
-          console.error("[HomePage] Failed to load below-the-fold summary:", err);
-          setBelowFoldError(err?.message || "Unable to load event data.");
-        }
-      } finally {
-        if (!ignore) {
-          setBelowFoldLoading(false);
-        }
-      }
-    }
-
-    loadBelowFoldData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [homeLimits.events, loadBelowFold]);
-
-  useEffect(() => {
-    if (!renderStreaming) return undefined;
-
-    let ignore = false;
-
-    async function loadStreamData() {
-      setStreamsLoading(true);
-      try {
-        const summary = await getHomeStreamingSummary({
-          limits: {
-            recentMatches: homeLimits.recentMatches,
-            broadcastMatches: homeLimits.broadcastMatches,
-          },
-        });
-
-        if (ignore) return;
-
-        setLatestMatches(summary.latestMatches);
-        setRecentBroadcastMatches(summary.recentBroadcastMatches);
-
-        if (summary.failures.length > 0) {
-          summary.failures.forEach((failure) => {
-            console.error(`[HomePage] ${failure.message}`);
-          });
-        }
-      } catch (err) {
-        if (!ignore) {
-          console.error("[HomePage] Unable to load streaming data:", err);
-        }
-      } finally {
-        if (!ignore) {
-          setStreamsLoading(false);
-        }
-      }
-    }
-
-    loadStreamData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [homeLimits.broadcastMatches, homeLimits.recentMatches, renderStreaming]);
-
-  useEffect(() => {
-    if (!renderFinals) return undefined;
-
-    let ignore = false;
-    setFinalsLoading(true);
-
-    getHomeFinalsSummary({ limits: { finalMatches: homeLimits.finalMatches } })
-      .then((summary) => {
-        if (!ignore) {
-          setRecentFinalMatches(summary.recentFinalMatches);
-          if (summary.failures.length > 0) {
-            summary.failures.forEach((failure) => {
-              console.error(`[HomePage] ${failure.message}`);
-            });
-          }
-        }
-      })
-      .catch((err) => {
-        if (!ignore) {
-          console.error("[HomePage] Failed to load recent final matches:", err);
-          setRecentFinalMatches([]);
-        }
-      })
-      .finally(() => {
-        if (!ignore) {
-          setFinalsLoading(false);
-        }
-      });
-
-    return () => {
-      ignore = true;
-    };
-  }, [homeLimits.finalMatches, renderFinals]);
 
   useEffect(() => {
     const profileId = session?.user?.id ?? null;
@@ -691,14 +570,12 @@ export default function HomePage() {
 
   // Drives the live/idle cadence. While any match is live we hold a realtime
   // channel and poll every 30 s as a backstop; once the last one finishes this
-  // flips false, the channel is torn down and we fall back to a ~10 min poll
+  // flips false, the channel is torn down and we fall back to a ~2 min poll
   // that is what eventually notices the next scheduled match kicking off.
   const hasLiveMatches = liveHeroMatches.length > 0;
 
-  const handleLiveRefresh = useCallback(
-    () => loadHeroData({ background: true }),
-    [loadHeroData],
-  );
+  const refetchHero = heroQuery.refetch;
+  const handleLiveRefresh = useCallback(() => refetchHero({ force: true }), [refetchHero]);
 
   useHomeLiveRefresh({
     hasLiveMatches,

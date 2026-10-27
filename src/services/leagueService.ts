@@ -1,8 +1,8 @@
 import { supabase } from "./supabaseClient";
 import { getCachedQuery } from "../utils/queryCache";
 
-const DIVISIONS_CACHE_TTL_MS = 30 * 60 * 1000;
-const EVENTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const DIVISIONS_CACHE_TTL_MS = 10 * 60 * 1000;
+const EVENTS_CACHE_TTL_MS = 60 * 1000;
 
 export type DivisionRow = {
   id: string;
@@ -33,6 +33,7 @@ export type EventRow = {
 
 type GetEventsListOptions = {
   status?: string | string[] | null;
+  forceRefresh?: boolean;
 };
 
 export type EventPoolTeam = {
@@ -191,22 +192,32 @@ export async function getRecentEvents(limit = 4): Promise<EventRow[]> {
   );
 }
 
-export async function getEventsList(limit = 12, options: GetEventsListOptions = {}): Promise<EventRow[]> {
+function normalizeEventsListStatus(options: GetEventsListOptions): string | string[] | null {
   // NOTE: `events.Status` is case-sensitive in Postgres — status codes are
   // passed through verbatim here, not lowercased. Callers must pass the
   // constants (see constants/statusCodes.js) rather than retyping literals.
-  const normalizedStatus = Array.isArray(options.status)
+  return Array.isArray(options.status)
     ? options.status.filter((code): code is string => typeof code === "string" && code.trim().length > 0).map((code) => code.trim())
     : typeof options.status === "string" && options.status.trim().length > 0
       ? options.status.trim()
       : null;
-  const cacheKey = Array.isArray(normalizedStatus)
+}
+
+/** The raw cache key getEventsList uses, for `useCachedQuery`. */
+export function getEventsListKey(limit = 12, options: GetEventsListOptions = {}): string {
+  const normalizedStatus = normalizeEventsListStatus(options);
+  const statusKey = Array.isArray(normalizedStatus)
     ? normalizedStatus.length
       ? [...normalizedStatus].sort().join(",")
       : "all"
     : normalizedStatus || "all";
+  return `events:list:${limit}:${statusKey}`;
+}
+
+export async function getEventsList(limit = 12, options: GetEventsListOptions = {}): Promise<EventRow[]> {
+  const normalizedStatus = normalizeEventsListStatus(options);
   return getCachedQuery(
-    `events:list:${limit}:${cacheKey}`,
+    getEventsListKey(limit, options),
     async () => {
       let query = supabase
         .from("events")
@@ -230,7 +241,7 @@ export async function getEventsList(limit = 12, options: GetEventsListOptions = 
 
       return (data ?? []) as EventRow[];
     },
-    { ttlMs: EVENTS_CACHE_TTL_MS },
+    { ttlMs: EVENTS_CACHE_TTL_MS, forceRefresh: Boolean(options.forceRefresh) },
   );
 }
 

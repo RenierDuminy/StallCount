@@ -81,8 +81,8 @@ export default defineConfig({
         short_name: "StallCount",
         start_url: "/",
         display: "standalone",
-        background_color: "#ffffff",
-        theme_color: "#111827",
+        background_color: "#0a1916",
+        theme_color: "#17421f",
         description:
           "Supabase-backed score keeping with offline resilience and realtime sync.",
         icons: [

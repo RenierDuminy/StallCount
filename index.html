@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The app ships its own fixed dark theme. Declaring it stops browsers that
+         auto-darken "light" pages (Chrome Android, Samsung Internet, Opera,
+         Dark Reader) from recolouring it. Light panels opt back in via theme.css. -->
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#17421f" />
+    <meta name="darkreader-lock" />
+    <style>html{background:#0a1916}</style>
     <title>StallCount | Live Ultimate Frisbee Scoring</title>
     <meta
       name="description"

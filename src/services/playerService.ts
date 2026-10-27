@@ -1,8 +1,8 @@
 import { supabase, type PlayerRow } from "./supabaseClient";
 import { getCachedQuery, invalidateCachedQueries, invalidateCachedQuery } from "../utils/queryCache";
 
-const PLAYER_DIRECTORY_CACHE_TTL_MS = 10 * 60 * 1000;
-const PLAYER_IDS_CACHE_TTL_MS = 10 * 60 * 1000;
+const PLAYER_DIRECTORY_CACHE_TTL_MS = 5 * 60 * 1000;
+const PLAYER_IDS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 type TeamRosterRow = {
   id: string;
