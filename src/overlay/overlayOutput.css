@@ -18,6 +18,13 @@ body {
   padding: 24px;
 }
 
+/* theme.css paints the app's page gradient as a fixed body::before layer.
+   Overlays load theme.css too, and OBS must get only this page's own
+   background, so switch that layer off. */
+body::before {
+  content: none;
+}
+
 body.overlay-preview {
   background: transparent;
   min-height: 100%;

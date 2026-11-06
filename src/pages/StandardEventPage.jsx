@@ -77,8 +77,8 @@ export default function StandardEventPage() {
 }
 
 /**
- * The old workspace URL of an event that now uses the standard page (listed in
- * standardEventTemplates.js): redirects to `/event/<name>` so existing links
+ * The old workspace URL of an event that now uses the standard page (any
+ * workspace not listed as custom in standardEventTemplates.js): redirects to `/event/<name>` so existing links
  * and bookmarks keep working.
  */
 export function StandardEventRedirect({ eventId }) {

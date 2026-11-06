@@ -1,21 +1,29 @@
 /**
  * Which events use the standard event page (`EventWorkspaceTemplate`).
  *
- * Rule of thumb:
- *  - An event with NO custom workspace file uses the standard page, at
- *    `/events/<slug of its name>`. That covers every new event automatically.
- *  - An event WITH a custom workspace file in `events workspace/` keeps that
- *    custom page — the exception kept for older events...
- *  - ...unless it is listed below. Listed events render the standard page at
- *    their existing workspace URL, and their custom file is kept only as a
- *    backup (still bundled, no longer routed). Remove an entry to fall back to
- *    the custom page.
+ * Every event uses the standard page by default, at `/event/<slug of its
+ * name>`. A new event gets a working page the moment it exists in the
+ * database: nothing to add here, no file to write.
  *
- * The one thing the standard page cannot read from the database is an event's
- * rule PDFs, so each entry can carry `ruleDocuments: [{ name, href }]`. The
- * Rules card is hidden when there are none.
+ * The only exceptions are the events listed in CUSTOM_WORKSPACE_EVENTS: those
+ * render their own file from `events workspace/` at `/events/<slug>`. A
+ * workspace file for an event NOT listed there is ignored (kept as a backup,
+ * still bundled, not routed) and its old `/events/<slug>` URL redirects to the
+ * standard page.
  */
 
+/** Events that keep their custom workspace page instead of the standard one. */
+const CUSTOM_WORKSPACE_EVENTS = new Set([
+  // Stellenbosch Residence League 2025: hand-entered results, no live data
+  // (Stellenbosh residence league 2025.jsx)
+  "b0598bc7-fdd2-498c-ab8c-e5f4904ed03d",
+]);
+
+/**
+ * The one thing the standard page cannot read from the database is an event's
+ * rule PDFs, so they are listed here per event id. The Rules card is hidden
+ * for events with none.
+ */
 const STELLENBOSCH_5V5_RULES = [
   {
     name: "Rules-of-Ultimate - STB 5v5 edition (summary).pdf",
@@ -27,24 +35,15 @@ const STELLENBOSCH_5V5_RULES = [
   },
 ];
 
-const STANDARD_TEMPLATE_EVENTS = {
-  // Stellenbosch Residence League 2026 (backup: STB_RL_2026.jsx)
+const STANDARD_TEMPLATE_OPTIONS = {
+  // Stellenbosch Residence League 2026
   "e6a34716-f9d6-4d70-bc1a-b610a04e3eaf": { ruleDocuments: STELLENBOSCH_5V5_RULES },
-  // Stellenbosch Internal Draft League 5 (backup: STB_IDL5.jsx)
-  "2fb09ada-9a69-47ae-bfc5-96a3bca759e9": {},
-  // Stellenbosch Internal Draft League VI (backup: STB_IDL6.jsx)
+  // Stellenbosch Internal Draft League VI
   "abd01401-fba2-42f2-9bf9-7dfdce3e44d6": { ruleDocuments: STELLENBOSCH_5V5_RULES },
-  // Gauteng Mixed League 2026 (backup: GP_MX_league_2026.jsx)
-  "aac5921d-ff3a-44ac-9962-dc5d8017ea1f": {},
-  // Cape Town Mixed League 2026 (backup: CPT_MX_league_2026.jsx)
-  "1952f80d-f534-46d8-93ef-136e045429fc": {},
-  // Mixed Western Regionals 2026 (backup: CPT_MX_regionals_2026.jsx)
-  "c2a36eb4-6a6f-4467-8ef9-edad5351aad9": {},
 };
 
-/** True when a custom workspace for this event is overridden by the standard page. */
-export const isStandardTemplateEvent = (eventId) =>
-  Object.prototype.hasOwnProperty.call(STANDARD_TEMPLATE_EVENTS, eventId);
+/** True unless the event is listed as keeping its custom workspace page. */
+export const isStandardTemplateEvent = (eventId) => !CUSTOM_WORKSPACE_EVENTS.has(eventId);
 
 /** Standard-page options for an event; `{}` for events with none configured. */
-export const getStandardTemplateOptions = (eventId) => STANDARD_TEMPLATE_EVENTS[eventId] || {};
+export const getStandardTemplateOptions = (eventId) => STANDARD_TEMPLATE_OPTIONS[eventId] || {};

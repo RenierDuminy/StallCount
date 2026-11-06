@@ -63,9 +63,10 @@ const cptMxLeagueWorkspace = eventWorkspaces.find(
   (workspace) => workspace.path === "/events/ctfda-mx-league",
 );
 
-// Events listed in standardEventTemplates.js live on the standard page at
-// /event/<name>; their old workspace URL redirects there, and the custom
-// component stays bundled only as a backup.
+// Every event lives on the standard page at /event/<name> unless
+// standardEventTemplates.js lists it as custom. A workspace file for any other
+// event only keeps its old URL redirecting there; the component stays bundled
+// as a backup.
 const renderWorkspace = (workspace) =>
   workspace.usesStandardTemplate ? (
     <StandardEventRedirect eventId={workspace.eventId} />
@@ -161,6 +162,11 @@ export default function AppRoutes() {
               element={<Guarded name={`Event workspace: ${workspace.path}`}>{renderWorkspace(workspace)}</Guarded>}
             />
           ))}
+          {/* Old, misspelled slug of the Res League 2025 workspace. */}
+          <Route
+            path="/events/stellenbosh-residence-league-2026"
+            element={<Navigate to="/events/stellenbosch-residence-league-2025" replace />}
+          />
           {/* Every other event gets the standard page by name. The static
               workspace routes above outrank the /events/:slug catch-all,
               which only forwards stray old links to /event/:slug. */}

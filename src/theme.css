@@ -129,14 +129,28 @@
 body {
   margin: 0;
   font-family: var(--sc-font-body);
-  background: var(--sc-page-gradient),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 0, rgba(255, 255, 255, 0.02) 1px, transparent 1px, transparent 28px),
-    linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0, rgba(255, 255, 255, 0.02) 1px, transparent 1px, transparent 28px);
   background-color: var(--sc-bg);
-  background-attachment: fixed;
   color: var(--sc-ink);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+/* The page gradient and grid, pinned to the viewport. This used to be the
+   body background with `background-attachment: fixed`, which Chrome cannot
+   composite: every scroll frame repainted the whole viewport on the main
+   thread, so any concurrent work (a live refresh, a chart render) showed up as
+   scroll jitter, worst on phones. A fixed layer behind the content looks the
+   same and scrolls on the GPU. z-index -1 with no positioned/z-indexed body
+   puts it above the canvas colour and below all page content. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--sc-page-gradient),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 0, rgba(255, 255, 255, 0.02) 1px, transparent 1px, transparent 28px),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0, rgba(255, 255, 255, 0.02) 1px, transparent 1px, transparent 28px);
 }
 
 #root {

@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import "../divisionResults.css";
 
 export const EVENT_ID = "b0598bc7-fdd2-498c-ab8c-e5f4904ed03d";
-export const EVENT_SLUG = "stellenbosh-residence-league-2026";
+export const EVENT_SLUG = "stellenbosch-residence-league-2025";
 
 const residencePoolRounds = [
   {

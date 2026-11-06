@@ -34,8 +34,8 @@ const eventWorkspaces = Object.entries(workspaceModules)
       path: `/events/${derivedSlug}`,
       Component,
       priority,
-      // Listed in standardEventTemplates.js: this URL renders the standard
-      // event page and `Component` is kept only as a backup.
+      // Not listed as custom in standardEventTemplates.js: this URL redirects
+      // to the standard event page and `Component` is kept only as a backup.
       usesStandardTemplate: isStandardTemplateEvent(eventId),
       meta: {
         eventName: eventName || derivedSlug.replace(/-/g, " "),
@@ -45,9 +45,9 @@ const eventWorkspaces = Object.entries(workspaceModules)
   })
   .filter(Boolean);
 
-// Only custom workspaces own an event's URL. Events listed in
-// standardEventTemplates.js are served by the standard page at /event/<name>
-// instead; their old workspace URL just redirects there.
+// Only custom workspaces (listed in standardEventTemplates.js) own an event's
+// URL. Every other event is served by the standard page at /event/<name>; an
+// old workspace URL just redirects there.
 const eventWorkspacePriorityByEventId = {};
 const eventWorkspacePathByEventId = eventWorkspaces.reduce((acc, workspace) => {
   if (workspace.usesStandardTemplate) return acc;
