@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "../../components/ui/primitives";
 import {
+  columnHeading,
   formatMatchStatus,
   formatMatchup,
   formatSourceLabel,
   getNodeDisplayName,
+  getNodeNote,
   groupNodesByRound,
-  roundColumnLabel,
+  isByeNode,
 } from "./bracketFormat";
 
 /** Compact release time, e.g. "14 Sep 13:00". */
@@ -283,7 +285,7 @@ export default function BracketCanvas({
           <div key={column.round} className="flex w-[10rem] shrink-0 flex-col gap-1.5">
             <div className="flex items-baseline justify-between gap-1 border-b border-border pb-0.5">
               <span className="text-xs font-semibold uppercase tracking-wide text-ink">
-                {roundColumnLabel(column.round, totalRounds, columnIndex)}
+                {columnHeading(column, totalRounds, columnIndex, bracket?.type)}
               </span>
               <span className="text-[0.65rem] text-ink-muted">
                 {column.nodes.length} game{column.nodes.length === 1 ? "" : "s"}
@@ -350,15 +352,22 @@ export default function BracketCanvas({
                     <p className="text-xs text-ink-muted">
                       {formatSourceLabel(node.source_b, lookups)}
                     </p>
-                    <p className="mt-0.5 text-[0.7rem] text-ink-muted">
-                      {node.match ? (
-                        <>
-                          {formatMatchup(node.match)} · {formatMatchStatus(node.match.status)}
-                        </>
-                      ) : (
-                        <span className="text-amber-200/80">No linked match</span>
-                      )}
-                    </p>
+                    {getNodeNote(node) ? (
+                      <p className="mt-0.5 text-[0.7rem] font-semibold text-sky-200">{getNodeNote(node)}</p>
+                    ) : null}
+                    {/* A bye slot never has a match, so "No linked match" would
+                        read as a problem. */}
+                    {isByeNode(node) ? null : (
+                      <p className="mt-0.5 text-[0.7rem] text-ink-muted">
+                        {node.match ? (
+                          <>
+                            {formatMatchup(node.match)} · {formatMatchStatus(node.match.status)}
+                          </>
+                        ) : (
+                          <span className="text-amber-200/80">No linked match</span>
+                        )}
+                      </p>
+                    )}
                   </button>
                 );
               })}

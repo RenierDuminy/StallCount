@@ -33,18 +33,38 @@ import {
   updatePlayoffSchedule,
 } from "../services/playoffStructureService";
 import { instantiateTemplate } from "../services/bracketTemplateService";
-import { defaultSeedMap, getTemplateById, listTemplates } from "../data/bracketTemplates";
+import {
+  DEFAULT_SWISS_OPTIONS,
+  SWISS_FIRST_ROUND_PAIRINGS,
+  SWISS_FORMATS,
+  SWISS_MAX_MARGIN_CAP,
+  SWISS_MAX_WINS_OR_LOSSES,
+  SWISS_PAIRING_TIMING_OPTIONS,
+  SWISS_TIEBREAK_OPTIONS,
+  swissRoundCount,
+  SWISS_MAX_TEAMS,
+  SWISS_MIN_ROUNDS,
+  SWISS_MIN_TEAMS,
+  SWISS_TEMPLATE_ID,
+  defaultSeedMap,
+  getTemplateById,
+  listTemplates,
+  validateSwissOptions,
+} from "../data/bracketTemplates";
 import BracketCanvas from "./playoff/BracketCanvas";
 import {
+  columnHeading,
   formatAdvancementTarget,
   formatMatchStatus,
   formatMatchup,
   formatNodeFallbackLabel,
   formatSourceLabel,
+  formatSwissSourceLabel,
   getNodeDisplayName,
+  getNodeNote,
+  isByeNode,
   groupNodesByRound,
   nextSlotForColumn,
-  roundColumnLabel,
 } from "./playoff/bracketFormat";
 
 const PLAYOFF_STRUCTURE_EVENT_KEY = "stallcount.playoffStructure.eventId";
@@ -58,12 +78,28 @@ const BRACKET_TYPES = [
   { value: "single_elim", label: "Single elimination" },
   { value: "double_elim", label: "Double elimination" },
   { value: "play_in", label: "Play-in" },
+  { value: "swiss", label: "Swiss draw" },
 ];
 const SOURCE_TYPES = [
   { value: "pool_rank", label: "Pool or division rank" },
   { value: "winner", label: "Winner of node" },
   { value: "loser", label: "Loser of node" },
   { value: "static_team", label: "Static team" },
+  { value: "swiss", label: "Swiss pairing" },
+  { value: "swiss_rank", label: "Swiss standings position" },
+  { value: "swiss_bye", label: "Swiss bye (sits this round out)" },
+  { value: "bye", label: "Bye (no opponent)" },
+];
+// Source types that describe a Swiss bye slot rather than a team.
+const BYE_SOURCE_TYPES = new Set(["swiss_bye", "bye"]);
+const SWISS_SIDE_OPTIONS = [
+  { value: "A", label: "Higher-ranked team" },
+  { value: "B", label: "Lower-ranked team" },
+];
+const SEED_SOURCE_OPTIONS = [
+  { value: "pool", label: "Pool finishing positions" },
+  { value: "team", label: "Chosen teams" },
+  { value: "swiss", label: "Swiss draw standings" },
 ];
 const SIDE_OPTIONS = [
   { value: "", label: "None" },
@@ -151,6 +187,37 @@ function formatBracketType(value) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+// Teams in a Swiss draw, read off its first round: two per game plus the bye.
+function countSwissTeams(bracket) {
+  const nodes = bracket?.nodes || [];
+  const rounds = nodes.map((node) => Number(node.round)).filter(Number.isFinite);
+  if (!rounds.length) return 0;
+  const firstRound = Math.min(...rounds);
+  return nodes
+    .filter((node) => Number(node.round) === firstRound)
+    .reduce((sum, node) => sum + (isByeNode(node) ? 1 : 2), 0);
+}
+
+// One line describing a Swiss draw's rules, from brackets.settings.swiss.
+// Missing settings read as the defaults, matching api/_lib/swissDraw.js.
+function describeSwissSettings(settings) {
+  const swiss = settings?.swiss || {};
+  const parts = [];
+  parts.push(
+    swiss.mode === "advance"
+      ? `Advance at ${swiss.winsToAdvance || 3} wins, out at ${swiss.lossesToExit || 3} losses`
+      : "Fixed rounds",
+  );
+  parts.push(
+    swiss.tiebreak === "strength_of_schedule"
+      ? "ties: strength of schedule, then point difference"
+      : "ties: point difference",
+  );
+  if (Number(swiss.marginCap) > 0) parts.push(`margin capped at ${swiss.marginCap}`);
+  parts.push(Number(swiss.pairingLag) === 1 ? "paired one round behind" : "paired after each round");
+  return parts.join(" · ");
 }
 
 function formatMatchLabel(match) {
@@ -264,11 +331,22 @@ function toTimeInputValue(value) {
 function describeNodeResolveState(node, scheduled = null) {
   const chips = [];
 
-  if (!node?.match_id) {
+  // A Swiss bye slot never has a match; flagging it would be a false alarm.
+  if (!node?.match_id && !isByeNode(node)) {
     chips.push({
       key: "no-match",
       label: "No match linked",
       className: "border border-amber-300/35 bg-amber-500/10 text-amber-200",
+    });
+  }
+
+  // Informational, not a problem: "Bye: Team X", "Not needed this round".
+  const note = getNodeNote(node);
+  if (note) {
+    chips.push({
+      key: "note",
+      label: note,
+      className: "border border-sky-300/35 bg-sky-500/10 text-sky-100",
     });
   }
 
@@ -311,6 +389,9 @@ function createEmptySourceForm(type = "pool_rank") {
     rank: "1",
     nodeId: "",
     teamId: "",
+    game: "1",
+    side: "A",
+    bracketId: "",
   };
 }
 
@@ -373,6 +454,11 @@ function mapSourceToForm(source) {
     rank: String(source?.rank ?? source?.seed ?? 1),
     nodeId: source?.nodeId || source?.node_id || "",
     teamId: source?.teamId || source?.team_id || "",
+    game: String(source?.game ?? 1),
+    side: String(source?.side || "A").toUpperCase() === "B" ? "B" : "A",
+    bracketId: source?.bracketId || source?.bracket_id || "",
+    // Kept so re-saving a seeded Swiss game does not drop its tie-break seed.
+    templateSeed: source?.templateSeed ?? null,
   };
 }
 
@@ -414,11 +500,67 @@ function formatTemplateSource(source) {
   if (source.kind === "loser") {
     return `Loser of ${source.node}`;
   }
+  if (source.kind === "swiss") {
+    return formatSwissSourceLabel(source.game, source.side);
+  }
+  if (source.kind === "swiss_bye") {
+    return "Swiss bye";
+  }
+  if (source.kind === "bye") {
+    return "Bye";
+  }
   return "?";
 }
 
+// Re-attach the round 1 seed a template stamped on a source, so editing a
+// seeded game by hand keeps the Swiss ranking's final tie-break.
+function withTemplateSeed(payload, sourceForm) {
+  const seed = Number(sourceForm?.templateSeed);
+  return Number.isInteger(seed) && seed > 0 ? { ...payload, templateSeed: seed } : payload;
+}
+
 function buildSourcePayload(sourceForm, lookups, label) {
+  const payload = buildSourcePayloadForType(sourceForm, lookups, label);
+  return payload.type === "swiss" ? payload : withTemplateSeed(payload, sourceForm);
+}
+
+function buildSourcePayloadForType(sourceForm, lookups, label) {
   const type = normalizeText(sourceForm?.type) || "pool_rank";
+
+  if (type === "swiss") {
+    const game = toPositiveInteger(sourceForm?.game, 0);
+    if (!game) {
+      throw new Error(`${label}: Swiss game number must be 1 or higher.`);
+    }
+    return {
+      type: "swiss",
+      game,
+      side: sourceForm?.side === "B" ? "B" : "A",
+    };
+  }
+
+  if (type === "swiss_rank") {
+    const bracket = lookups.bracketById?.get(sourceForm?.bracketId || "") || null;
+    const rank = toPositiveInteger(sourceForm?.rank, 0);
+    if (!bracket || bracket.type !== "swiss") {
+      throw new Error(`${label}: choose a Swiss draw.`);
+    }
+    if (bracket.id === lookups.currentBracketId) {
+      throw new Error(`${label}: a Swiss draw cannot seed from its own standings.`);
+    }
+    if (!rank) {
+      throw new Error(`${label}: position must be 1 or higher.`);
+    }
+    const teamCount = countSwissTeams(bracket);
+    if (teamCount && rank > teamCount) {
+      throw new Error(`${label}: ${bracket.name} has only ${teamCount} teams.`);
+    }
+    return { type: "swiss_rank", bracketId: bracket.id, bracketName: bracket.name, rank };
+  }
+
+  if (BYE_SOURCE_TYPES.has(type)) {
+    return { type };
+  }
 
   if (type === "pool_rank") {
     const rank = toPositiveInteger(sourceForm?.rank, 0);
@@ -501,6 +643,19 @@ function summarizeResolveResult(result) {
 
   const parts = [];
   parts.push(updated ? `Updated ${updated} playoff match${updated === 1 ? "" : "es"}.` : "No playoff changes made.");
+
+  // A Swiss round paired with a rematch still fills in, but the operator should
+  // know. One warning per round is enough.
+  const warnings = [
+    ...new Set(
+      (Array.isArray(result?.updates) ? result.updates : [])
+        .map((entry) => entry.warning)
+        .filter(Boolean),
+    ),
+  ];
+  if (warnings.length) {
+    parts.push(`Note: ${warnings.join(" | ")}.`);
+  }
 
   if (skipped.length) {
     const preview = skipped
@@ -634,6 +789,7 @@ function SourceEditor({
   nodeOptions,
   teamOptions,
   currentNodeId,
+  swissBrackets = [],
 }) {
   const filteredPools = useMemo(() => {
     if (!value?.divisionId) {
@@ -660,6 +816,7 @@ function SourceEditor({
             onChange({
               ...createEmptySourceForm(event.target.value),
               divisionId: value.divisionId,
+              templateSeed: value.templateSeed,
             })
           }
         >
@@ -750,7 +907,152 @@ function SourceEditor({
           </Select>
         </Field>
       ) : null}
+
+      {value.type === "swiss" ? (
+        <>
+          <Field
+            label="Swiss game"
+            hint="Game 1 is the top pairing of this round, game 2 the next, and so on. Filled once every earlier round is finished."
+          >
+            <Input
+              type="number"
+              min="1"
+              value={value.game}
+              onChange={(event) => onChange({ ...value, game: event.target.value })}
+            />
+          </Field>
+          <Field label="Team in that game">
+            <Select value={value.side} onChange={(event) => onChange({ ...value, side: event.target.value })}>
+              {SWISS_SIDE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </>
+      ) : null}
+
+      {value.type === "swiss_rank" ? (
+        <>
+          <Field label="Swiss draw" hint="Fills once every game of that draw is finished.">
+            <Select
+              value={value.bracketId}
+              onChange={(event) => onChange({ ...value, bracketId: event.target.value })}
+            >
+              <option value="">Select Swiss draw</option>
+              {swissBrackets.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name} ({option.teamCount} teams)
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Finishing position">
+            <Input
+              type="number"
+              min="1"
+              value={value.rank}
+              onChange={(event) => onChange({ ...value, rank: event.target.value })}
+            />
+          </Field>
+          {!swissBrackets.length ? (
+            <p className="text-xs text-ink-muted">This event has no other Swiss draw to take standings from.</p>
+          ) : null}
+        </>
+      ) : null}
+
+      {BYE_SOURCE_TYPES.has(value.type) ? (
+        <p className="text-xs text-ink-muted">
+          {value.type === "bye"
+            ? "The empty side of a bye slot: this game is never played."
+            : "The Swiss draw puts the lowest-ranked team that has not had a bye here."}
+        </p>
+      ) : null}
     </div>
+  );
+}
+
+const SWISS_STATUS_LABELS = { advanced: "Advanced", out: "Out", active: "Still in" };
+
+// Standings for the selected Swiss draw, as the server's Swiss engine sees them
+// (from the resolve status endpoint, so it is exactly what pairing uses).
+function SwissStandingsPanel({ summary, statusError }) {
+  if (!summary) {
+    return (
+      <Panel variant="default" className="space-y-1 border-white/20 p-2">
+        <SectionHeader title="Swiss standings" />
+        <p className="text-sm text-ink-muted">
+          {statusError
+            ? `Standings could not be worked out: ${statusError}`
+            : "Standings appear once the draw has teams. Use Resolve playoffs, or refresh."}
+        </p>
+      </Panel>
+    );
+  }
+
+  const isAdvance = summary.settings?.mode === "advance";
+  const showSos = summary.settings?.tiebreak === "strength_of_schedule";
+  const hasByes = summary.rows.some((row) => row.byes > 0);
+
+  return (
+    <Panel variant="default" className="space-y-2 border-white/20 p-2">
+      <SectionHeader
+        title="Swiss standings"
+        description={describeSwissSettings({ swiss: summary.settings || {} })}
+        action={
+          <Chip>
+            {summary.complete
+              ? "Complete"
+              : `${summary.roundsPaired} of ${summary.totalRounds} rounds paired`}
+          </Chip>
+        }
+      />
+      {summary.reason ? (
+        <p className="text-sm text-ink-muted">
+          <span className="font-semibold text-ink">Waiting on:</span> {summary.reason}
+        </p>
+      ) : null}
+      {summary.warnings?.length ? (
+        <p className="text-sm text-amber-200">{summary.warnings.join(" | ")}</p>
+      ) : null}
+      {summary.rows.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[32rem] text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-wide text-ink-muted">
+                <th className="py-1 pr-2">#</th>
+                <th className="py-1 pr-2">Team</th>
+                <th className="py-1 pr-2">W-L</th>
+                {hasByes ? <th className="py-1 pr-2">Byes</th> : null}
+                {showSos ? <th className="py-1 pr-2">SoS</th> : null}
+                <th className="py-1 pr-2">+/-</th>
+                <th className="py-1 pr-2">Scored</th>
+                {isAdvance ? <th className="py-1">Status</th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {summary.rows.map((row) => (
+                <tr key={row.id} className="border-b border-border/60 text-ink">
+                  <td className="py-1 pr-2 text-ink-muted">{row.rank}</td>
+                  <td className="py-1 pr-2 font-semibold">{row.name}</td>
+                  <td className="py-1 pr-2">
+                    {row.wins}-{row.losses}
+                  </td>
+                  {hasByes ? <td className="py-1 pr-2">{row.byes || ""}</td> : null}
+                  {showSos ? <td className="py-1 pr-2">{row.sos}</td> : null}
+                  <td className="py-1 pr-2">{row.diff > 0 ? `+${row.diff}` : row.diff}</td>
+                  <td className="py-1 pr-2">{row.pointsFor}</td>
+                  {isAdvance ? (
+                    <td className="py-1">{SWISS_STATUS_LABELS[row.status] || ""}</td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </Panel>
   );
 }
 
@@ -859,6 +1161,9 @@ export default function PlayoffStructurePage() {
   const [matches, setMatches] = useState([]);
   const [brackets, setBrackets] = useState([]);
   const [selectedBracketId, setSelectedBracketId] = useState("");
+  // True while the bracket form is drafting a new bracket, so the auto-select
+  // below does not snap the empty selection back to the first bracket.
+  const [isCreatingBracket, setIsCreatingBracket] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [bracketForm, setBracketForm] = useState(createEmptyBracketForm);
   const [nodeForm, setNodeForm] = useState(createEmptyNodeForm);
@@ -890,6 +1195,17 @@ export default function PlayoffStructurePage() {
   const [templateId, setTemplateId] = useState("");
   const [templateBracketName, setTemplateBracketName] = useState("");
   const [templateSeedRows, setTemplateSeedRows] = useState([]);
+  // "pool": seeds are pool finishing positions (resolve after pool play).
+  // "team": seeds are chosen teams, for a draw that starts the event.
+  // "swiss": seeds are a Swiss draw's finishing positions (Swiss into playoffs).
+  const [templateSeedSource, setTemplateSeedSource] = useState("pool");
+  const [templateSwissSeed, setTemplateSwissSeed] = useState({ bracketId: "", startRank: "1" });
+  // Inputs hold strings; the template module parses and validates them.
+  const [swissOptions, setSwissOptions] = useState(() =>
+    Object.fromEntries(
+      Object.entries(DEFAULT_SWISS_OPTIONS).map(([key, value]) => [key, String(value)]),
+    ),
+  );
   const [applyTemplateBusy, setApplyTemplateBusy] = useState(false);
 
   // Deep link from the Event Setup wizard ("Open Playoff Structure"): preselect
@@ -1228,10 +1544,14 @@ export default function PlayoffStructurePage() {
       return;
     }
 
+    if (!selectedBracketId && isCreatingBracket) {
+      return;
+    }
+
     if (!selectedBracketId || !brackets.some((bracket) => bracket.id === selectedBracketId)) {
       setSelectedBracketId(brackets[0].id);
     }
-  }, [brackets, selectedBracketId]);
+  }, [brackets, isCreatingBracket, selectedBracketId]);
 
   const selectedBracket = useMemo(
     () => brackets.find((bracket) => bracket.id === selectedBracketId) || null,
@@ -1327,10 +1647,15 @@ export default function PlayoffStructurePage() {
 
   const venueOptions = useMemo(
     () =>
-      (eventData?.venues || []).map((venue) => ({
-        id: venue.id,
-        name: formatVenueLabel(venue),
-      })),
+      // Alphabetical by the label shown (numeric-aware: "Field 2" before "Field 10").
+      (eventData?.venues || [])
+        .map((venue) => ({
+          id: venue.id,
+          name: formatVenueLabel(venue),
+        }))
+        .sort((left, right) =>
+          left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" }),
+        ),
     [eventData?.venues],
   );
 
@@ -1405,14 +1730,34 @@ export default function PlayoffStructurePage() {
     [selectedBracketNodes],
   );
 
+  const bracketById = useMemo(
+    () => new Map(brackets.map((bracket) => [bracket.id, bracket])),
+    [brackets],
+  );
+
+  // Swiss draws other brackets can seed from. Their team count bounds the
+  // ranks a "Swiss standings" source can ask for.
+  const swissBracketOptions = useMemo(
+    () =>
+      brackets
+        .filter((bracket) => bracket.type === "swiss")
+        .map((bracket) => ({
+          id: bracket.id,
+          name: bracket.name || "Swiss draw",
+          teamCount: countSwissTeams(bracket),
+        })),
+    [brackets],
+  );
+
   const sourceLookups = useMemo(
     () => ({
       divisionById,
       poolById,
       teamById,
       nodeById,
+      bracketById,
     }),
-    [divisionById, nodeById, poolById, teamById],
+    [bracketById, divisionById, nodeById, poolById, teamById],
   );
 
   // The bottom summary spans every bracket, so winner/loser-of-node sources may
@@ -1431,8 +1776,9 @@ export default function PlayoffStructurePage() {
       poolById,
       teamById,
       nodeById: allNodesById,
+      bracketById,
     }),
-    [allNodesById, divisionById, poolById, teamById],
+    [allNodesById, bracketById, divisionById, poolById, teamById],
   );
 
   const createMatchPoolOptions = useMemo(() => {
@@ -1457,22 +1803,32 @@ export default function PlayoffStructurePage() {
   }, [brackets]);
 
   const templates = useMemo(() => listTemplates(), []);
-  const selectedTemplate = useMemo(() => getTemplateById(templateId), [templateId]);
+  const isSwissTemplate = templateId === SWISS_TEMPLATE_ID;
+  const swissOptionsError = isSwissTemplate ? validateSwissOptions(swissOptions) : "";
+  const selectedTemplate = useMemo(
+    () => getTemplateById(templateId, swissOptions),
+    [swissOptions, templateId],
+  );
 
   // Build the default seed -> pool/rank rows for a template using cross-pool
-  // seeding over the event's actual pools.
+  // seeding over the event's actual pools. Rows already in `existingRows` keep
+  // their edits, so resizing a Swiss draw does not wipe the mapping.
   const buildSeedRows = useCallback(
-    (template) => {
+    (template, existingRows = []) => {
       if (!template) return [];
       const map = defaultSeedMap(template.seedCount, poolOptions);
+      const existingBySeed = new Map(existingRows.map((row) => [row.seed, row]));
       return Array.from({ length: template.seedCount }, (_, index) => {
         const seedNumber = index + 1;
+        const existing = existingBySeed.get(seedNumber);
+        if (existing) return existing;
         const preset = map[seedNumber] || { poolIndex: 0, rank: seedNumber };
         const pool = poolOptions[preset.poolIndex] || null;
         return {
           seed: seedNumber,
           poolId: pool?.id || "",
           rank: String(preset.rank || 1),
+          teamId: "",
         };
       });
     },
@@ -1482,11 +1838,31 @@ export default function PlayoffStructurePage() {
   const handleSelectTemplate = useCallback(
     (id) => {
       setTemplateId(id);
-      const template = getTemplateById(id);
+      const template = getTemplateById(id, swissOptions);
       setTemplateBracketName(template?.label || "");
       setTemplateSeedRows(buildSeedRows(template));
     },
-    [buildSeedRows],
+    [buildSeedRows, swissOptions],
+  );
+
+  const handleChangeSwissOption = useCallback(
+    (key, value) => {
+      const nextOptions = { ...swissOptions, [key]: value };
+      // Advance-or-out cannot pair one round behind, and its timing control is
+      // disabled, so a lagged setting would leave an error nobody can clear.
+      if (key === "format" && value === "advance") {
+        nextOptions.pairingLag = "0";
+      }
+      setSwissOptions(nextOptions);
+      const nextTemplate = getTemplateById(SWISS_TEMPLATE_ID, nextOptions);
+      if (!nextTemplate) return;
+      // The default name carries the size, so follow it unless it was edited.
+      setTemplateBracketName((current) =>
+        !current || current === selectedTemplate?.label ? nextTemplate.label : current,
+      );
+      setTemplateSeedRows((rows) => buildSeedRows(nextTemplate, rows));
+    },
+    [buildSeedRows, selectedTemplate?.label, swissOptions],
   );
 
   const handleOpenTemplatePanel = useCallback(() => {
@@ -1504,34 +1880,81 @@ export default function PlayoffStructurePage() {
       setError("Choose an event before applying a template.");
       return;
     }
-    const template = getTemplateById(templateId);
+    if (swissOptionsError) {
+      setError(swissOptionsError);
+      return;
+    }
+    const template = getTemplateById(templateId, swissOptions);
     if (!template) {
       setError("Choose a template.");
       return;
     }
 
-    // Turn each seed row into a concrete pool_rank source payload, matching the
-    // shape buildSourcePayload produces for hand-authored pool_rank sources.
+    // Turn each seed row into a concrete source payload, matching the shape
+    // buildSourcePayload produces for hand-authored pool_rank / static_team
+    // sources.
     const seedMap = {};
-    for (const row of templateSeedRows) {
-      const pool = poolById.get(row.poolId) || null;
-      const rank = toPositiveInteger(row.rank, 0);
-      if (!pool) {
-        setError(`Seed ${row.seed}: choose a pool.`);
+    if (templateSeedSource === "swiss") {
+      const source = bracketById.get(templateSwissSeed.bracketId) || null;
+      const startRank = toPositiveInteger(templateSwissSeed.startRank, 0);
+      if (!source || source.type !== "swiss") {
+        setError("Choose the Swiss draw to seed from.");
         return;
       }
-      if (!rank) {
-        setError(`Seed ${row.seed}: rank must be 1 or higher.`);
+      if (!startRank) {
+        setError("Starting position must be 1 or higher.");
         return;
       }
-      seedMap[row.seed] = {
-        type: "pool_rank",
-        rank,
-        poolId: pool.id,
-        poolName: pool.name,
-        divisionId: pool.divisionId || undefined,
-        divisionName: pool.divisionName || undefined,
-      };
+      const lastRank = startRank + templateSeedRows.length - 1;
+      const available = countSwissTeams(source);
+      if (available && lastRank > available) {
+        setError(`${source.name} has ${available} teams, so positions ${startRank}-${lastRank} do not all exist.`);
+        return;
+      }
+      for (const row of templateSeedRows) {
+        seedMap[row.seed] = {
+          type: "swiss_rank",
+          bracketId: source.id,
+          bracketName: source.name,
+          rank: startRank + row.seed - 1,
+        };
+      }
+    } else if (templateSeedSource === "team") {
+      const seenTeamIds = new Set();
+      for (const row of templateSeedRows) {
+        const team = teamById.get(row.teamId) || null;
+        if (!team) {
+          setError(`Seed ${row.seed}: choose a team.`);
+          return;
+        }
+        if (seenTeamIds.has(team.id)) {
+          setError(`Seed ${row.seed}: ${team.name} is already seeded.`);
+          return;
+        }
+        seenTeamIds.add(team.id);
+        seedMap[row.seed] = { type: "static_team", teamId: team.id, teamName: team.name };
+      }
+    } else {
+      for (const row of templateSeedRows) {
+        const pool = poolById.get(row.poolId) || null;
+        const rank = toPositiveInteger(row.rank, 0);
+        if (!pool) {
+          setError(`Seed ${row.seed}: choose a pool.`);
+          return;
+        }
+        if (!rank) {
+          setError(`Seed ${row.seed}: rank must be 1 or higher.`);
+          return;
+        }
+        seedMap[row.seed] = {
+          type: "pool_rank",
+          rank,
+          poolId: pool.id,
+          poolName: pool.name,
+          divisionId: pool.divisionId || undefined,
+          divisionName: pool.divisionName || undefined,
+        };
+      }
     }
 
     setApplyTemplateBusy(true);
@@ -1547,6 +1970,7 @@ export default function PlayoffStructurePage() {
       });
       await loadSelectedEventData();
       if (result?.bracket?.id) {
+        setIsCreatingBracket(false);
         setSelectedBracketId(result.bracket.id);
       }
       setSelectedNodeId("");
@@ -1560,12 +1984,18 @@ export default function PlayoffStructurePage() {
       setApplyTemplateBusy(false);
     }
   }, [
+    bracketById,
     loadSelectedEventData,
     poolById,
     selectedEventId,
+    swissOptions,
+    swissOptionsError,
+    teamById,
     templateBracketName,
     templateId,
     templateSeedRows,
+    templateSeedSource,
+    templateSwissSeed,
   ]);
 
   const handleRefresh = useCallback(async () => {
@@ -1576,6 +2006,7 @@ export default function PlayoffStructurePage() {
   const handleStartNewBracket = useCallback(() => {
     setMessage("");
     setError("");
+    setIsCreatingBracket(true);
     setSelectedBracketId("");
     setSelectedNodeId("");
     setBracketForm(createEmptyBracketForm());
@@ -1620,6 +2051,7 @@ export default function PlayoffStructurePage() {
           isLocked: bracketForm.isLocked,
         });
         await loadSelectedEventData();
+        setIsCreatingBracket(false);
         if (created?.id) {
           setSelectedBracketId(created.id);
         }
@@ -1919,8 +2351,9 @@ export default function PlayoffStructurePage() {
     setMessage("");
 
     try {
-      const sourceA = buildSourcePayload(nodeForm.sourceA, sourceLookups, "Source A");
-      const sourceB = buildSourcePayload(nodeForm.sourceB, sourceLookups, "Source B");
+      const payloadLookups = { ...sourceLookups, currentBracketId: selectedBracketId };
+      const sourceA = buildSourcePayload(nodeForm.sourceA, payloadLookups, "Source A");
+      const sourceB = buildSourcePayload(nodeForm.sourceB, payloadLookups, "Source B");
       const round = toPositiveInteger(nodeForm.round, 1);
       const position = toPositiveInteger(nodeForm.position, 1);
       const name = nodeForm.name.trim() || null;
@@ -2187,6 +2620,7 @@ export default function PlayoffStructurePage() {
                   setSelectedEventId(event.target.value);
                   setMessage("");
                   setError("");
+                  setIsCreatingBracket(false);
                   setSelectedBracketId("");
                   setSelectedNodeId("");
                 }}
@@ -2241,7 +2675,7 @@ export default function PlayoffStructurePage() {
           <Panel variant="default" className="space-y-2 border-white/20 p-2">
             <SectionHeader
               title="Start from a template"
-              description="Pick a standard structure, map each seed to a pool, and apply. Creates the bracket and all nodes wired together. Link matches to each game afterward, then use Resolve playoffs."
+              description="Pick a standard structure, map each seed to a pool position or a team, and apply. Creates the bracket and all nodes wired together. Link matches to each game afterward, then use Resolve playoffs."
               action={
                 <button
                   type="button"
@@ -2276,19 +2710,242 @@ export default function PlayoffStructurePage() {
               </Field>
             </div>
 
+            {isSwissTemplate ? (
+              <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(12rem,1fr))]">
+                <Field label="Format">
+                  <Select
+                    value={swissOptions.format}
+                    onChange={(event) => handleChangeSwissOption("format", event.target.value)}
+                  >
+                    {SWISS_FORMATS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field
+                  label="Teams"
+                  hint="Each round has teams ÷ 2 games. With an odd number, one team has a bye each round."
+                >
+                  <Input
+                    type="number"
+                    min={SWISS_MIN_TEAMS}
+                    max={SWISS_MAX_TEAMS}
+                    value={swissOptions.teamCount}
+                    onChange={(event) => handleChangeSwissOption("teamCount", event.target.value)}
+                  />
+                </Field>
+                {swissOptions.format === "advance" ? (
+                  <>
+                    <Field label="Wins to advance">
+                      <Input
+                        type="number"
+                        min="1"
+                        max={SWISS_MAX_WINS_OR_LOSSES}
+                        value={swissOptions.winsToAdvance}
+                        onChange={(event) => handleChangeSwissOption("winsToAdvance", event.target.value)}
+                      />
+                    </Field>
+                    <Field
+                      label="Losses to be out"
+                      hint={`Up to ${Number.isFinite(swissRoundCount(swissOptions)) ? swissRoundCount(swissOptions) : "?"} rounds.`}
+                    >
+                      <Input
+                        type="number"
+                        min="1"
+                        max={SWISS_MAX_WINS_OR_LOSSES}
+                        value={swissOptions.lossesToExit}
+                        onChange={(event) => handleChangeSwissOption("lossesToExit", event.target.value)}
+                      />
+                    </Field>
+                  </>
+                ) : (
+                  <Field
+                    label="Rounds"
+                    hint="One column per round. Close to the maximum, the last rounds may need a rematch."
+                  >
+                    <Input
+                      type="number"
+                      min={SWISS_MIN_ROUNDS}
+                      value={swissOptions.roundCount}
+                      onChange={(event) => handleChangeSwissOption("roundCount", event.target.value)}
+                    />
+                  </Field>
+                )}
+                <Field label="Ranking tie-break" hint="After wins (and fewest losses).">
+                  <Select
+                    value={swissOptions.tiebreak}
+                    onChange={(event) => handleChangeSwissOption("tiebreak", event.target.value)}
+                  >
+                    {SWISS_TIEBREAK_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Margin cap" hint="Most points one game adds to point difference. Blank = no cap.">
+                  <Input
+                    type="number"
+                    min="1"
+                    max={SWISS_MAX_MARGIN_CAP}
+                    value={swissOptions.marginCap}
+                    placeholder="No cap"
+                    onChange={(event) => handleChangeSwissOption("marginCap", event.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Pair rounds"
+                  hint="One round behind lets a round be published before the one in play ends."
+                >
+                  <Select
+                    value={swissOptions.pairingLag}
+                    onChange={(event) => handleChangeSwissOption("pairingLag", event.target.value)}
+                    disabled={swissOptions.format === "advance"}
+                  >
+                    {SWISS_PAIRING_TIMING_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Round 1 pairing">
+                  <Select
+                    value={swissOptions.firstRoundPairing}
+                    onChange={(event) => handleChangeSwissOption("firstRoundPairing", event.target.value)}
+                  >
+                    {SWISS_FIRST_ROUND_PAIRINGS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+            ) : null}
+
+            {swissOptionsError ? (
+              <p className="text-sm text-amber-200">{swissOptionsError}</p>
+            ) : null}
+
             {selectedTemplate ? (
               <p className="text-sm text-ink-muted">{selectedTemplate.description}</p>
             ) : null}
 
+            {isSwissTemplate && selectedTemplate ? (
+              <p className="text-sm text-ink-muted">
+                Rules: {describeSwissSettings(selectedTemplate.settings)}. Ranking runs wins, fewest
+                losses, the tie-break, then points scored, then round 1 seed. Once any game of a round
+                has started, that round&apos;s teams stay put.
+              </p>
+            ) : null}
+
             {templateSeedRows.length ? (
               <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  Map seeds to pools
-                </p>
-                {!poolOptions.length ? (
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    {templateSeedSource === "team"
+                      ? "Choose a team for each seed"
+                      : templateSeedSource === "swiss"
+                        ? "Seed from a Swiss draw"
+                        : "Map seeds to pools"}
+                  </p>
+                  <Field label="Seeds come from">
+                    <Select
+                      value={templateSeedSource}
+                      onChange={(event) => setTemplateSeedSource(event.target.value)}
+                    >
+                      {SEED_SOURCE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                {templateSeedSource === "pool" ? (
+                  <p className="text-xs text-ink-muted">
+                    Fills in once those pools have finished. Use chosen teams when this draw starts the event.
+                  </p>
+                ) : null}
+                {templateSeedSource === "swiss" ? (
+                  swissBracketOptions.length ? (
+                    <div className="space-y-1">
+                      <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(12rem,1fr))]">
+                        <Field label="Swiss draw">
+                          <Select
+                            value={templateSwissSeed.bracketId}
+                            onChange={(event) =>
+                              setTemplateSwissSeed((current) => ({ ...current, bracketId: event.target.value }))
+                            }
+                          >
+                            <option value="">Select Swiss draw</option>
+                            {swissBracketOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.name} ({option.teamCount} teams)
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        <Field label="Starting position" hint="1 for the top teams; e.g. 9 for a 9th-16th bracket.">
+                          <Input
+                            type="number"
+                            min="1"
+                            value={templateSwissSeed.startRank}
+                            onChange={(event) =>
+                              setTemplateSwissSeed((current) => ({ ...current, startRank: event.target.value }))
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <p className="text-xs text-ink-muted">
+                        Seed 1 = position {toPositiveInteger(templateSwissSeed.startRank, 1)}, seed{" "}
+                        {templateSeedRows.length} = position{" "}
+                        {toPositiveInteger(templateSwissSeed.startRank, 1) + templateSeedRows.length - 1}. Fills
+                        once every game of the Swiss draw is finished.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-ink-muted">
+                      This event has no Swiss draw yet. Create one first, then seed this bracket from it.
+                    </p>
+                  )
+                ) : !poolOptions.length ? (
                   <p className="text-sm text-ink-muted">
                     This event has no pools yet. Add divisions and pools first.
                   </p>
+                ) : templateSeedSource === "team" ? (
+                  <div className="grid gap-1">
+                    {templateSeedRows.map((row, index) => (
+                      <div
+                        key={row.seed}
+                        className="grid items-end gap-1 [grid-template-columns:auto_minmax(0,1fr)]"
+                      >
+                        <span className="pb-1 text-sm font-semibold text-ink">Seed {row.seed}</span>
+                        <Field label="Team">
+                          <Select
+                            value={row.teamId || ""}
+                            onChange={(event) =>
+                              setTemplateSeedRows((rows) =>
+                                rows.map((entry, i) =>
+                                  i === index ? { ...entry, teamId: event.target.value } : entry,
+                                ),
+                              )
+                            }
+                          >
+                            <option value="">Select team</option>
+                            {teamOptions.map((team) => (
+                              <option key={team.id} value={team.id}>
+                                {team.name}
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <div className="grid gap-1">
                     {templateSeedRows.map((row, index) => (
@@ -2340,14 +2997,28 @@ export default function PlayoffStructurePage() {
             {selectedTemplate ? (
               <div className="space-y-0.5 rounded-2xl border border-white/15 bg-surface/60 p-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                  {selectedTemplate.nodes.length} games
+                  {selectedTemplate.nodes.filter((node) => node.sourceB?.kind !== "bye").length} games
+                  {selectedTemplate.nodes.some((node) => node.sourceB?.kind === "bye")
+                    ? ` + ${selectedTemplate.nodes.filter((node) => node.sourceB?.kind === "bye").length} bye slots`
+                    : ""}
                 </p>
-                {selectedTemplate.nodes.map((node) => (
+                {/* A Swiss draw can run to hundreds of games, and every game
+                    after round 1 reads the same, so preview round 1 only. */}
+                {(selectedTemplate.configurable
+                  ? selectedTemplate.nodes.filter((node) => node.round === 1)
+                  : selectedTemplate.nodes
+                ).map((node) => (
                   <p key={node.key} className="text-xs text-ink-muted">
                     <span className="text-ink">{node.name}:</span>{" "}
                     {formatTemplateSource(node.sourceA)} vs {formatTemplateSource(node.sourceB)}
                   </p>
                 ))}
+                {selectedTemplate.configurable ? (
+                  <p className="text-xs text-ink-muted">
+                    <span className="text-ink">Rounds 2 to {swissRoundCount(swissOptions)}:</span>{" "}
+                    up to {Math.floor(selectedTemplate.seedCount / 2)} games each, paired from results.
+                  </p>
+                ) : null}
               </div>
             ) : null}
 
@@ -2356,7 +3027,13 @@ export default function PlayoffStructurePage() {
                 type="button"
                 onClick={handleApplyTemplate}
                 className="sc-button"
-                disabled={applyTemplateBusy || !selectedEventId || !poolOptions.length}
+                disabled={
+                  applyTemplateBusy ||
+                  !selectedEventId ||
+                  // Swiss standings seed without pools; the other sources need them.
+                  (templateSeedSource !== "swiss" && !poolOptions.length) ||
+                  Boolean(swissOptionsError)
+                }
               >
                 {applyTemplateBusy ? "Applying..." : "Apply template"}
               </button>
@@ -2395,6 +3072,7 @@ export default function PlayoffStructurePage() {
                     key={bracket.id}
                     type="button"
                     onClick={() => {
+                      setIsCreatingBracket(false);
                       setSelectedBracketId(bracket.id);
                       setSelectedNodeId("");
                       setMessage("");
@@ -2440,6 +3118,14 @@ export default function PlayoffStructurePage() {
                   ) : null
                 }
               />
+
+              {selectedBracket?.type === "swiss" ? (
+                <p className="text-xs text-ink-muted">
+                  <span className="font-semibold text-ink">Swiss rules:</span>{" "}
+                  {describeSwissSettings(selectedBracket.settings)}. Set when the draw was created; to change
+                  them, create a new draw.
+                </p>
+              ) : null}
 
               <div className="grid gap-2 md:grid-cols-3">
                 <Field label="Bracket name">
@@ -2991,6 +3677,7 @@ export default function PlayoffStructurePage() {
                           nodeOptions={nodeOptions}
                           teamOptions={teamOptions}
                           currentNodeId={selectedNodeId}
+                          swissBrackets={swissBracketOptions.filter((option) => option.id !== selectedBracketId)}
                         />
                         <SourceEditor
                           label="Source B"
@@ -3001,6 +3688,7 @@ export default function PlayoffStructurePage() {
                           nodeOptions={nodeOptions}
                           teamOptions={teamOptions}
                           currentNodeId={selectedNodeId}
+                          swissBrackets={swissBracketOptions.filter((option) => option.id !== selectedBracketId)}
                         />
                       </div>
                     </EditorSection>
@@ -3178,6 +3866,15 @@ export default function PlayoffStructurePage() {
           </div>
         </div>
 
+        {selectedBracket?.type === "swiss" ? (
+          <SwissStandingsPanel
+            summary={(resolveStatus?.event?.swiss || []).find(
+              (entry) => entry.bracketId === selectedBracket.id,
+            )}
+            statusError={resolveStatus?.event?.swissError || ""}
+          />
+        ) : null}
+
         {selectedBracket ? (
           <Panel variant="default" className="space-y-2 border-white/20 p-2">
             <SectionHeader
@@ -3282,7 +3979,7 @@ export default function PlayoffStructurePage() {
                               >
                                 <div className="flex items-baseline justify-between gap-1 border-b border-border pb-0.5">
                                   <span className="text-xs font-semibold uppercase tracking-wide text-ink">
-                                    {roundColumnLabel(column.round, totalRounds, columnIndex)}
+                                    {columnHeading(column, totalRounds, columnIndex, bracket.type)}
                                   </span>
                                   <span className="text-[0.65rem] text-ink-muted">
                                     {column.nodes.length} node

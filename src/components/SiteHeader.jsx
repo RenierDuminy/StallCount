@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import useInstallPrompt from "../hooks/useInstallPrompt";
+import InstallSteps from "./InstallSteps";
+import { getInstallPlatform } from "../utils/installEnvironment";
 import { useAuth } from "../context/AuthContext";
 import { normaliseRoleList } from "../utils/accessControl";
 
@@ -89,6 +91,7 @@ export default function SiteHeader() {
         return;
       }
     }
+    setMenuOpen(false);
     setShowInstallGuide(true);
   }
 
@@ -203,32 +206,27 @@ export default function SiteHeader() {
       </header>
 
       {showInstallGuide && (
-        <div className="border-b border-warning-border bg-warning-bg text-warning-ink">
-          <div className="sc-shell flex flex-col gap-3 py-4 text-sm text-warning-ink">
+        <div className="border-b border-[var(--sc-border-strong)] bg-[var(--sc-surface)]">
+          <div className="sc-shell flex flex-col gap-3 py-4">
             <div className="flex items-start justify-between gap-4">
-              <p className="text-base font-semibold text-warning-ink">Install StallCount</p>
+              <p className="text-base font-semibold text-ink">Install StallCount</p>
               <button
                 type="button"
                 onClick={() => setShowInstallGuide(false)}
-                className="text-xs font-semibold uppercase tracking-wide text-warning-ink hover:text-white"
+                className="text-xs font-semibold uppercase tracking-wide text-ink-muted hover:text-ink"
               >
                 Close
               </button>
             </div>
-            <p>
-              Most browsers show an install option in the menu (Share sheet or browser menu). Follow these quick steps:
-            </p>
-            <ol className="list-decimal space-y-1 pl-5">
-              <li>Open your browser menu or share sheet.</li>
-              <li>Select &ldquo;Add to Home Screen&rdquo; or &ldquo;Install app&rdquo;.</li>
-              <li>Confirm the prompt to pin StallCount to your device.</li>
-            </ol>
-            {!canInstall && (
-              <p className="text-xs text-warning-ink">
-                If you do not see the option, make sure you are using the latest version of Chrome, Edge, Safari,
-                or Firefox on a supported device.
-              </p>
-            )}
+            {/* The exact steps for this device, shared with the event page's
+                "Install the app" card. */}
+            <InstallSteps
+              platform={getInstallPlatform()}
+              canInstall={canInstall}
+              onInstall={async () => {
+                if (await promptInstall()) setShowInstallGuide(false);
+              }}
+            />
           </div>
         </div>
       )}

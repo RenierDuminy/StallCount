@@ -27,6 +27,24 @@ function useEventsList() {
   return { events, error };
 }
 
+// Slug with every separator removed, so "sa-mx-nationals2026" and
+// "sa-mx-nationals-2026" name the same event.
+const compactSlug = (value) => (slugify(value) || "").replace(/-/g, "");
+
+/**
+ * The event a URL slug names: an exact match on the slugified name first, then
+ * a match ignoring hyphens. The list is newest first, so a shared name resolves
+ * to the newest event.
+ */
+function findEventBySlug(events, slug) {
+  if (!events?.length || !slug) return null;
+  const exact = events.find((row) => slugify(row.name) === slug);
+  if (exact) return exact;
+  const loose = compactSlug(slug);
+  if (!loose) return null;
+  return events.find((row) => compactSlug(row.name) === loose) || null;
+}
+
 function EventNotFound({ message }) {
   return (
     <SectionShell as="main" className="py-6">
@@ -54,13 +72,20 @@ export default function StandardEventPage() {
   const { slug } = useParams();
   const { events, error } = useEventsList();
 
-  const event = useMemo(
-    () => (events || []).find((row) => slugify(row.name) === slug) || null,
-    [events, slug],
-  );
+  const event = useMemo(() => findEventBySlug(events, slug), [events, slug]);
 
-  if (error || (events && !event)) return <EventNotFound message={error} />;
+  if (error) return <EventNotFound message={error} />;
+  // No event by that name: a shared link that went stale (renamed or removed
+  // event) lands on the events list rather than a dead end.
+  if (events && !event) return <Navigate to="/events" replace />;
   if (!event) return <EventLoading />;
+
+  // Matched loosely (e.g. a hyphen missing from a typed or printed link):
+  // settle on the canonical address so it is what gets shared on.
+  const canonicalSlug = slugify(event.name);
+  if (canonicalSlug && canonicalSlug !== slug) {
+    return <Navigate to={`${STANDARD_EVENT_BASE_PATH}/${canonicalSlug}`} replace />;
+  }
 
   const workspacePath = getEventWorkspacePath(event.id);
   if (workspacePath) return <Navigate to={workspacePath} replace />;

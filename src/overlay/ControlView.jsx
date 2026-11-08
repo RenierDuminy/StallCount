@@ -1,5 +1,6 @@
-import { useMemo, useState, useCallback, useEffect } from "react";
-import { Card, Chip, Field, Select, SectionHeader } from "../components/ui/primitives";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import { Card, Chip, Field, Input, Select, SectionHeader } from "../components/ui/primitives";
+import { normalizeOverlayAddons } from "./overlayAddons";
 import { MatchLogEventCard } from "../pages/scorekeeper/eventCards";
 import {
   WeatherCard,
@@ -161,15 +162,250 @@ function renderRulesValue(value, keyPrefix = "", depth = 0) {
   return <span className="rules-leaf">{String(value)}</span>;
 }
 
-function renderAutoFadeToggle(checked, onChange) {
+function renderSwitch(label, checked, onChange) {
   return (
     <label className="overlay-switch">
-      <span className="overlay-switch__label">Auto fade</span>
+      <span className="overlay-switch__label">{label}</span>
       <span className="overlay-switch__control">
         <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
         <span className="overlay-switch__slider" aria-hidden="true"></span>
       </span>
     </label>
+  );
+}
+
+// Inline "Label [12] unit" field; the values are at most two digits.
+function AddonNumberField({ label, unit, hint, value, onChange, min = 0, step = 1 }) {
+  return (
+    <label className="overlay-addon-num" title={hint}>
+      <span className="overlay-addon-num__label">{label}</span>
+      <Input
+        type="number"
+        inputMode="decimal"
+        min={min}
+        max={99}
+        step={step}
+        value={value ?? ""}
+        onChange={(event) => onChange(event.target.value)}
+        className="overlay-addon-num__input"
+      />
+      {unit ? <span className="overlay-addon-num__unit">{unit}</span> : null}
+    </label>
+  );
+}
+
+function AddonCheckbox({ label, checked, onChange }) {
+  return (
+    <label className="overlay-addon-check">
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+// One configurable item: name, its switches/test button, and its settings below.
+function ConfigRow({ title, description, active, actions, children }) {
+  return (
+    <div className={`overlay-addon ${active ? "is-enabled" : ""}`}>
+      <div className="overlay-addon__header">
+        <div className="overlay-addon__text">
+          <span className="overlay-addon__title">{title}</span>
+          {description ? <span className="overlay-addon__description">{description}</span> : null}
+        </div>
+        <div className="overlay-addon__actions">{actions}</div>
+      </div>
+      {children ? <div className="overlay-addon__panel">{children}</div> : null}
+    </div>
+  );
+}
+
+function AddonTestButton({ enabled, onClick, seconds = 5, label = "Test" }) {
+  return (
+    <TimedButton durationSeconds={seconds} autoFade disabled={!enabled} onClick={onClick} className="is-narrow">
+      {label}
+    </TimedButton>
+  );
+}
+
+// "Overlay configuration" dialog, opened from the Control header: every banner's
+// auto fade switch and every add-on's on/off switch and settings live here, so
+// the control cards only hold the buttons used on air.
+function OverlayConfigDialog({
+  onClose,
+  bannerAutoFade,
+  breakChanceEnabled,
+  setBreakChanceEnabled,
+  handleTriggerBreakChance,
+  overlayAddons,
+  setOverlayAddons,
+  handleTriggerAddonPreview,
+}) {
+  const closeRef = useRef(null);
+  useEffect(() => {
+    const handleKey = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    closeRef.current?.focus();
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  const update = (section, patch) =>
+    setOverlayAddons((prev) => normalizeOverlayAddons({ ...prev, [section]: { ...prev[section], ...patch } }));
+  const { pointDuration, scoreInfo, genderLine } = overlayAddons;
+
+  return (
+    <div
+      className="overlay-config-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="overlay-config" role="dialog" aria-modal="true" aria-labelledby="overlay-config-title">
+        <div className="overlay-config__header">
+          <h2 id="overlay-config-title" className="overlay-config__title">Overlay configuration</h2>
+          <button ref={closeRef} type="button" className="overlay-addon__edit" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="overlay-config__body">
+          <section className="overlay-config__section">
+            <h3 className="overlay-config__heading">Banners</h3>
+            <p className="overlay-config__hint">
+              Auto fade on: the banner leaves on its own. Off: its button latches, press it again to take the banner down.
+            </p>
+            <div className="overlay-addons__list">
+              {bannerAutoFade.map((banner) => (
+                <ConfigRow
+                  key={banner.title}
+                  title={banner.title}
+                  active={banner.value}
+                  actions={renderSwitch("Auto fade", banner.value, banner.onChange)}
+                />
+              ))}
+            </div>
+          </section>
+
+          <section className="overlay-config__section">
+            <h3 className="overlay-config__heading">Add-ons</h3>
+            <p className="overlay-config__hint">Automatic popups driven by the match log.</p>
+            <div className="overlay-addons__list">
+              <ConfigRow
+                title="Break chance"
+                description="Flags the team that pulled while it holds the disc."
+                active={breakChanceEnabled}
+                actions={
+                  <>
+                    {renderSwitch("Enabled", breakChanceEnabled, setBreakChanceEnabled)}
+                    <AddonTestButton
+                      enabled={breakChanceEnabled}
+                      onClick={handleTriggerBreakChance}
+                      seconds={BUTTON_DURATION_SECONDS.breakChance}
+                      label="Test BC"
+                    />
+                  </>
+                }
+              />
+
+              <ConfigRow
+                title="Point duration"
+                description="Running point clock once a point goes long, until the next score."
+                active={pointDuration.enabled}
+                actions={
+                  <>
+                    {renderSwitch("Enabled", pointDuration.enabled, (enabled) => update("pointDuration", { enabled }))}
+                    <AddonTestButton
+                      enabled={pointDuration.enabled}
+                      onClick={() => handleTriggerAddonPreview("pointDuration")}
+                    />
+                  </>
+                }
+              >
+                <AddonNumberField
+                  label="Show after"
+                  unit="min"
+                  hint="Playing time since the pull."
+                  step={0.5}
+                  value={pointDuration.showAfterMinutes}
+                  onChange={(value) => update("pointDuration", { showAfterMinutes: value })}
+                />
+              </ConfigRow>
+
+              <ConfigRow
+                title="Score info"
+                description="Team, scorer and assist after every goal."
+                active={scoreInfo.enabled}
+                actions={
+                  <>
+                    {renderSwitch("Enabled", scoreInfo.enabled, (enabled) => update("scoreInfo", { enabled }))}
+                    <AddonTestButton
+                      enabled={scoreInfo.enabled}
+                      onClick={() => handleTriggerAddonPreview("scoreInfo")}
+                      seconds={scoreInfo.displaySeconds}
+                    />
+                  </>
+                }
+              >
+                <AddonNumberField
+                  label="Duration"
+                  unit="s"
+                  hint="Seconds on screen."
+                  min={1}
+                  value={scoreInfo.displaySeconds}
+                  onChange={(value) => update("scoreInfo", { displaySeconds: value })}
+                />
+                <div className="overlay-addon-checks">
+                  <AddonCheckbox label="Team" checked={scoreInfo.showTeam} onChange={(showTeam) => update("scoreInfo", { showTeam })} />
+                  <AddonCheckbox label="Assist" checked={scoreInfo.showAssist} onChange={(showAssist) => update("scoreInfo", { showAssist })} />
+                  <AddonCheckbox
+                    label="Clean / hold / break"
+                    checked={scoreInfo.showPointType}
+                    onChange={(showPointType) => update("scoreInfo", { showPointType })}
+                  />
+                  <AddonCheckbox
+                    label="Turnovers"
+                    checked={scoreInfo.showTurnovers}
+                    onChange={(showTurnovers) => update("scoreInfo", { showTurnovers })}
+                  />
+                  <AddonCheckbox
+                    label="Point time"
+                    checked={scoreInfo.showPointTime}
+                    onChange={(showPointTime) => update("scoreInfo", { showPointTime })}
+                  />
+                  <AddonCheckbox label="Score" checked={scoreInfo.showScore} onChange={(showScore) => update("scoreInfo", { showScore })} />
+                </div>
+              </ConfigRow>
+
+              <ConfigRow
+                title="Gender line"
+                description="ABBA line code for the point, as the pull goes up."
+                active={genderLine.enabled}
+                actions={
+                  <>
+                    {renderSwitch("Enabled", genderLine.enabled, (enabled) => update("genderLine", { enabled }))}
+                    <AddonTestButton
+                      enabled={genderLine.enabled}
+                      onClick={() => handleTriggerAddonPreview("genderLine")}
+                      seconds={genderLine.displaySeconds}
+                    />
+                  </>
+                }
+              >
+                <AddonNumberField
+                  label="Duration"
+                  unit="s"
+                  hint="Seconds on screen."
+                  min={1}
+                  value={genderLine.displaySeconds}
+                  onChange={(value) => update("genderLine", { displaySeconds: value })}
+                />
+              </ConfigRow>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -214,6 +450,9 @@ export function ControlView({
   setMatchStatusAutoFade,
   breakChanceEnabled,
   setBreakChanceEnabled,
+  overlayAddons,
+  setOverlayAddons,
+  handleTriggerAddonPreview,
   handleTriggerBanner,
   handleTriggerMatchStats,
   handleTriggerMatchStatus,
@@ -222,9 +461,21 @@ export function ControlView({
   handleTriggerMatchEvent,
   handleTriggerFieldCall,
   handleTriggerBreakChance,
+  testMatchSimulator,
 }) {
   const teamARoster = rosterByTeam[matchDetails?.team_a?.id] || [];
   const teamBRoster = rosterByTeam[matchDetails?.team_b?.id] || [];
+  const [configOpen, setConfigOpen] = useState(false);
+  const closeConfig = useCallback(() => setConfigOpen(false), []);
+  const bannerAutoFade = [
+    { title: "Match info", value: matchStatusAutoFade, onChange: setMatchStatusAutoFade },
+    { title: "Player stats", value: playerStatsAutoFade, onChange: setPlayerStatsAutoFade },
+    { title: "Match stats", value: matchStatsAutoFade, onChange: setMatchStatsAutoFade },
+    { title: "Timeouts", value: timeoutAutoFade, onChange: setTimeoutAutoFade },
+    { title: "Events", value: matchEventAutoFade, onChange: setMatchEventAutoFade },
+    { title: "Field calls", value: fieldCallAutoFade, onChange: setFieldCallAutoFade },
+    { title: "Team rosters", value: teamRostersAutoFade, onChange: setTeamRostersAutoFade },
+  ];
 
   const bannerEventGroups = useMemo(() => {
     const scoreOnly = [];
@@ -268,6 +519,9 @@ export function ControlView({
           <h1 className="overlay-header__title overlay-header__title--compact">Control</h1>
         </div>
         <div className="overlay-header__actions">
+          <button type="button" className="sc-button is-ghost" onClick={() => setConfigOpen(true)}>
+            Overlay configuration
+          </button>
           <a className="sc-button is-ghost" href="#config">
             Back
           </a>
@@ -295,13 +549,23 @@ export function ControlView({
         {showControl ? (
           <div className="overlay-control-layout">
             <div className="overlay-control-stack">
+              {testMatchSimulator ? (
+                <Card className="overlay-card">
+                  <SectionHeader
+                    title="Test match"
+                    description="Simulated match log. Teams, rules and rosters are edited on the Setup page."
+                    divider
+                  />
+                  {testMatchSimulator}
+                </Card>
+              ) : null}
+
               <Card className="overlay-card overlay-matchstatus-card">
                 <SectionHeader
                   title="Match info"
                   description="On-air card with fixture, venue, and weather. Show before, at halftime, or after the match."
                   action={
                     <>
-                      {renderAutoFadeToggle(matchStatusAutoFade, setMatchStatusAutoFade)}
                       <TimedButton
                         durationSeconds={BUTTON_DURATION_SECONDS.matchStatus}
                         autoFade={matchStatusAutoFade}
@@ -386,7 +650,6 @@ export function ControlView({
                   <div className="overlay-banner-block">
                     <div className="overlay-banner-block__header">
                       <div className="overlay-banner-block__title">Player stats</div>
-                      {renderAutoFadeToggle(playerStatsAutoFade, setPlayerStatsAutoFade)}
                     </div>
                     <Field
                     >
@@ -429,7 +692,6 @@ export function ControlView({
                   <div className="overlay-banner-block">
                     <div className="overlay-banner-block__header">
                       <div className="overlay-banner-block__title">Match stats</div>
-                      {renderAutoFadeToggle(matchStatsAutoFade, setMatchStatsAutoFade)}
                     </div>
                     <div className="overlay-matchstats-table">
                       <table className="overlay-matchstats-table__grid">
@@ -481,7 +743,6 @@ export function ControlView({
                   <div className="overlay-banner-block">
                     <div className="overlay-banner-block__header">
                       <div className="overlay-banner-block__title">Timeouts</div>
-                      {renderAutoFadeToggle(timeoutAutoFade, setTimeoutAutoFade)}
                     </div>
                     <div className="overlay-banner-actions">
                       <TimedButton
@@ -504,7 +765,6 @@ export function ControlView({
                   <div className="overlay-banner-block">
                     <div className="overlay-banner-block__header">
                       <div className="overlay-banner-block__title">Events</div>
-                      {renderAutoFadeToggle(matchEventAutoFade, setMatchEventAutoFade)}
                     </div>
                     <div className="overlay-banner-actions">
                       <TimedButton
@@ -532,7 +792,6 @@ export function ControlView({
                   <div className="overlay-banner-block">
                     <div className="overlay-banner-block__header">
                       <div className="overlay-banner-block__title">Field calls</div>
-                      {renderAutoFadeToggle(fieldCallAutoFade, setFieldCallAutoFade)}
                     </div>
                     <div className="overlay-banner-actions overlay-banner-actions--four">
                       {FIELD_CALL_OPTIONS.map((callLabel) => (
@@ -548,31 +807,6 @@ export function ControlView({
                     </div>
                   </div>
 
-                  <div className="overlay-banner-block">
-                    <div className="overlay-banner-block__title">Break chance</div>
-                    <div className="overlay-banner-block__header">
-                      <label className="overlay-switch">
-                        <span className="overlay-switch__label">Enabled</span>
-                        <span className="overlay-switch__control">
-                          <input
-                            type="checkbox"
-                            checked={breakChanceEnabled}
-                            onChange={(event) => setBreakChanceEnabled(event.target.checked)}
-                          />
-                          <span className="overlay-switch__slider" aria-hidden="true"></span>
-                        </span>
-                      </label>
-                      <TimedButton
-                        durationSeconds={BUTTON_DURATION_SECONDS.breakChance}
-                        autoFade
-                        disabled={!breakChanceEnabled}
-                        onClick={handleTriggerBreakChance}
-                        className="is-narrow"
-                      >
-                        Test BC
-                      </TimedButton>
-                    </div>
-                  </div>
 
                   {bannerStatus ? (
                     <p className="overlay-banner-status">{bannerStatus}</p>
@@ -585,7 +819,6 @@ export function ControlView({
                   title="Team rosters"
                   action={
                     <>
-                      {renderAutoFadeToggle(teamRostersAutoFade, setTeamRostersAutoFade)}
                       <TimedButton durationSeconds={BUTTON_DURATION_SECONDS.teamRosters} autoFade={teamRostersAutoFade} onClick={handleTriggerTeamRosters}>
                         Show rosters
                       </TimedButton>
@@ -779,6 +1012,19 @@ export function ControlView({
           </Card>
         )}
       </section>
+
+      {configOpen ? (
+        <OverlayConfigDialog
+          onClose={closeConfig}
+          bannerAutoFade={bannerAutoFade}
+          breakChanceEnabled={breakChanceEnabled}
+          setBreakChanceEnabled={setBreakChanceEnabled}
+          handleTriggerBreakChance={handleTriggerBreakChance}
+          overlayAddons={overlayAddons}
+          setOverlayAddons={setOverlayAddons}
+          handleTriggerAddonPreview={handleTriggerAddonPreview}
+        />
+      ) : null}
     </>
   );
 }

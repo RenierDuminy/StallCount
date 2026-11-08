@@ -101,6 +101,84 @@
       /* Past the time cap: counting up, in red */
       .ce-tab--clock.is-overtime { color: #dc2626; }
 
+      /* ── Add-on popups: gender line left of the clock, point duration right ──
+         Same white tab and type as the clock, sliding out of it the way the call
+         strips slide out of the score box: the width grows from 0 with the text
+         pinned to the outer edge, so it appears from behind the clock. */
+      .ce-addons {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .ce-addons .overlay-addon-chip {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-start;
+        gap: 0;
+        max-width: 0;
+        overflow: hidden;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: #ffffff;
+        color: #000000;
+        box-shadow: none;
+        opacity: 1;
+        transform: none;
+        transition: max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .ce-addons .overlay-addon-chip.is-visible {
+        max-width: 420px;
+        transform: none;
+      }
+
+      /* Divider where an add-on tab meets the clock */
+      .ce-addons .overlay-addon-chip--genderLine {
+        right: 100%;
+        border-right: 2px solid #000000;
+      }
+
+      .ce-addons .overlay-addon-chip--pointDuration {
+        left: 100%;
+        justify-content: flex-end;
+        border-left: 2px solid #000000;
+      }
+
+      /* Collapsed (max-width 0) the divider would still draw a 2px sliver */
+      .ce-addons .overlay-addon-chip:not(.is-visible) { border-color: transparent; }
+
+      .ce-addons .overlay-addon-chip > span {
+        flex-shrink: 0;
+        padding-top: 2px;
+        color: #000000;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 38px;
+        font-weight: 400;
+        letter-spacing: 0.04em;
+        line-height: 1;
+        white-space: nowrap;
+        text-transform: uppercase;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .ce-addons .overlay-addon-chip__label { padding-left: 14px; padding-right: 8px; }
+
+      /* Descriptive text ("Point duration:") smaller than the time, centred vertically on it */
+      .ce-addons .overlay-addon-chip--pointDuration { align-items: center; }
+      .ce-addons .overlay-addon-chip--pointDuration .overlay-addon-chip__label {
+        font-size: 20px;
+        letter-spacing: 0.06em;
+      }
+      .ce-addons .overlay-addon-chip--pointDuration .overlay-addon-chip__value { padding-right: 14px; }
+      .ce-addons .overlay-addon-chip__value { padding-right: 22px; }
+      .ce-addons .overlay-addon-chip__label.is-hidden + .overlay-addon-chip__value { padding-left: 22px; }
+      .ce-addons .overlay-addon-chip__tag { display: none; }
+
       .ce-main {
         position: relative;
         display: flex;
@@ -647,6 +725,18 @@
       #matchStatusBanner .matchstatus-score:not(.matchstatus-score--pre) { font-size: 2.4rem; }
       /* Double the event name (0.95rem in overlay.css) */
       #matchStatusBanner .matchstatus-event { font-size: 1.9rem; }
+
+      /* ── Flat cards: no shading and no outlines. The only lines are the
+         dividers between sections (strip | strip, clock | add-on tab). ── */
+      .ce-tab,
+      .ce-main,
+      #overlayBanner,
+      #matchStatsBanner .cb-matchstats-card,
+      #matchStatusBanner .matchstats-card,
+      #teamRostersBanner .cb-roster-card {
+        box-shadow: none;
+      }
+      .ce-strips { filter: none; }
     </style>
     <script>
       if (new URLSearchParams(window.location.search).has('preview')) document.head.insertAdjacentHTML('beforeend', '<style>' +
@@ -679,7 +769,12 @@
               </div>
 
               <!-- Match clock (replaces the organiser text; parent gets .is-hidden from the engine) -->
-              <div class="ce-tab ce-tab--bottom ce-tab--clock"><span id="matchClock" data-clock-status>--:--</span></div>
+              <div class="ce-tab ce-tab--bottom ce-tab--clock">
+                <span id="matchClock" data-clock-status>--:--</span>
+                <!-- Add-on popups (point duration, gender line): the runtime fills this
+                     rail; data-position stops it applying the generic corner placement. -->
+                <div class="ce-addons" id="overlayAddonRail" data-position="ctfda"></div>
+              </div>
             </div>
 
             <div class="ce-scores">

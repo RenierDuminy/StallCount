@@ -2,7 +2,33 @@ import { supabase } from "./supabaseClient";
 import { getMatchesByIds, updateMatchParticipants } from "./matchService";
 
 const BRACKET_FIELDS = "id, event_id, name, type, is_locked, created_at";
+// brackets.settings comes with migration 20261105130000_swiss_variants.sql.
+// Reads fall back to BRACKET_FIELDS until it has run; a write that needs the
+// column refuses instead, because a Swiss draw silently losing its settings
+// would run under the wrong rules.
+const BRACKET_FIELDS_WITH_SETTINGS = `${BRACKET_FIELDS}, settings`;
+const SETTINGS_MIGRATION_MESSAGE =
+  "This needs the database update supabase/migrations/20261105130000_swiss_variants.sql. Run it in the Supabase SQL editor, then try again.";
 const BRACKET_NODE_FIELDS = "*";
+
+function isMissingSettingsColumn(error) {
+  const text = `${error?.message || ""} ${error?.details || ""}`.toLowerCase();
+  return error?.code === "42703" || error?.code === "PGRST204" || (text.includes("settings") && text.includes("column"));
+}
+
+// Run a brackets query selecting settings, retrying without it if the column
+// does not exist yet.
+async function withSettingsColumn(run) {
+  const result = await run(BRACKET_FIELDS_WITH_SETTINGS);
+  if (result.error && isMissingSettingsColumn(result.error)) {
+    return run(BRACKET_FIELDS);
+  }
+  return result;
+}
+
+function hasSettings(settings) {
+  return Boolean(settings && typeof settings === "object" && Object.keys(settings).length);
+}
 // Canceled matches still carry a recorded score line (e.g. a forfeit recorded
 // under the old convention), so they resolve a winner/loser for advancement
 // just like a played match does. The explicit forfeit codes (forfeit /
@@ -217,11 +243,13 @@ export async function getBracketsByEvent(eventId) {
     return [];
   }
 
-  const { data: bracketRows, error: bracketError } = await supabase
-    .from("brackets")
-    .select(BRACKET_FIELDS)
-    .eq("event_id", eventId)
-    .order("created_at", { ascending: true });
+  const { data: bracketRows, error: bracketError } = await withSettingsColumn((columns) =>
+    supabase
+      .from("brackets")
+      .select(columns)
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: true }),
+  );
 
   if (bracketError) {
     throw new Error(bracketError.message || "Failed to load brackets.");
@@ -287,12 +315,20 @@ export async function createBracket(payload = {}) {
     type: payload.type,
     is_locked: Boolean(payload.isLocked),
   };
+  if (hasSettings(payload.settings)) {
+    insertPayload.settings = payload.settings;
+  }
 
-  const { data, error } = await supabase
-    .from("brackets")
-    .insert(insertPayload)
-    .select(BRACKET_FIELDS)
-    .maybeSingle();
+  const insert = (columns) =>
+    supabase.from("brackets").insert(insertPayload).select(columns).maybeSingle();
+
+  let { data, error } = await insert(BRACKET_FIELDS_WITH_SETTINGS);
+  if (error && isMissingSettingsColumn(error)) {
+    if (insertPayload.settings) {
+      throw new Error(SETTINGS_MIGRATION_MESSAGE);
+    }
+    ({ data, error } = await insert(BRACKET_FIELDS));
+  }
 
   if (error) {
     throw new Error(error.message || "Failed to create bracket.");
@@ -311,12 +347,12 @@ export async function updateBracket(bracketId, payload = {}) {
   if ("type" in payload) updatePayload.type = payload.type;
   if ("isLocked" in payload) updatePayload.is_locked = Boolean(payload.isLocked);
 
-  const { data, error } = await supabase
-    .from("brackets")
-    .update(updatePayload)
-    .eq("id", bracketId)
-    .select(BRACKET_FIELDS)
-    .maybeSingle();
+  // Settings are fixed when a Swiss draw is created (changing its format
+  // mid-event would re-pair rounds under different rules), so this never
+  // writes them; it only reads them back.
+  const { data, error } = await withSettingsColumn((columns) =>
+    supabase.from("brackets").update(updatePayload).eq("id", bracketId).select(columns).maybeSingle(),
+  );
 
   if (error) {
     throw new Error(error.message || "Failed to update bracket.");
@@ -729,6 +765,21 @@ export async function clearBracketMatchAssignmentsForEvent({ eventId, brackets }
   const flatNodes = structure.flatMap((bracket) => bracket?.nodes || []);
   const cleared = [];
   const skipped = [];
+
+  // Swiss notes ("Bye: X", "Not needed this round") and stored byes describe
+  // the assignments being cleared, so they go too. Best-effort: they are
+  // rewritten on the next resolve anyway.
+  const notedNodes = flatNodes.filter((node) => node?.resolve_note || node?.bye_team_id);
+  for (const node of notedNodes) {
+    try {
+      await supabase
+        .from("bracket_nodes")
+        .update({ resolve_note: null, bye_team_id: null })
+        .eq("id", node.id);
+    } catch {
+      // Ignore — see above.
+    }
+  }
 
   for (const node of flatNodes) {
     const nodeName = getNodeDisplayName(node);

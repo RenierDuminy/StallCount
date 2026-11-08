@@ -5,6 +5,8 @@ import {
   createBracket,
   createBracketNode,
 } from "./playoffStructureService";
+import { instantiateTemplate } from "./bracketTemplateService";
+import { getTemplateById } from "../data/bracketTemplates";
 
 const normalizeText = (value) => {
   if (typeof value !== "string") {
@@ -1565,9 +1567,58 @@ export async function seedEventBracketsIfEmpty(eventId, brackets = []) {
     return { type: "pool_rank", ...resolved };
   };
 
+  // A sketch made from a template, with every one of its games still present,
+  // is built through the same instantiateTemplate as the Playoff Structure
+  // page, so it keeps its winner/loser wiring and connectors. The sketch only
+  // contributes what it can express: the seeds (taken from its seeded games'
+  // pool sources) and the game names. A sketch whose games were added or
+  // removed no longer matches the template and falls back to the plain path.
+  const buildFromTemplate = async (bracket) => {
+    const template = bracket?.templateId ? getTemplateById(bracket.templateId) : null;
+    const sketchNodes = Array.isArray(bracket.nodes) ? bracket.nodes : [];
+    if (!template || template.configurable || sketchNodes.length !== template.nodes.length) {
+      return null;
+    }
+    const sketchByKey = new Map(sketchNodes.map((node) => [node.templateKey, node]));
+    if (!template.nodes.every((node) => sketchByKey.has(node.key))) {
+      return null;
+    }
+
+    const seedMap = {};
+    const nodeNames = {};
+    template.nodes.forEach((node) => {
+      const sketch = sketchByKey.get(node.key);
+      nodeNames[node.key] = normalizeText(sketch.name);
+      [
+        [node.sourceA, sketch.sourceA],
+        [node.sourceB, sketch.sourceB],
+      ].forEach(([templateSource, sketchSource]) => {
+        if (templateSource?.kind === "seed") {
+          seedMap[templateSource.seed] = resolveSource(sketchSource);
+        }
+      });
+    });
+
+    return instantiateTemplate({
+      eventId: normalizedEventId,
+      template,
+      bracketName: normalizeText(bracket.name),
+      bracketType: template.bracketType,
+      seedMap,
+      nodeNames,
+    });
+  };
+
   let bracketCount = 0;
   let nodeCount = 0;
   for (const bracket of desired) {
+    const fromTemplate = await buildFromTemplate(bracket);
+    if (fromTemplate) {
+      bracketCount += 1;
+      nodeCount += fromTemplate.nodeCount || 0;
+      continue;
+    }
+
     const created = await createBracket({
       eventId: normalizedEventId,
       name: normalizeText(bracket.name),

@@ -1,9 +1,10 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+  columnHeading,
   formatSourceLabel,
   getNodeDisplayName,
+  getNodeNote,
   groupNodesByRound,
-  roundColumnLabel,
 } from "./bracketFormat";
 
 // A node can carry a linked match long before the teams that will play it are
@@ -62,30 +63,6 @@ const PLACEHOLDER_MAX_WIDTH_CLASS = "max-w-[17em]";
 // steepens every curve into an S-bend; widening it lets the links breathe.
 const COLUMN_GAP_CLASS = "gap-[4.5em]";
 
-// Derive a column heading from the nodes themselves. roundColumnLabel() infers
-// names positionally (last column = "Final"), which is wrong for a bracket that
-// also carries placement rounds -- the final column there might be a 15th-place
-// playoff. When every node in a column shares a leading word ("Quarterfinal 1",
-// "Quarterfinal 2" -> "Quarterfinal"), that shared prefix is the better label.
-function columnHeading(column, totalRounds, index) {
-  const names = (column.nodes || [])
-    .map((node) => (typeof node?.name === "string" ? node.name.trim() : ""))
-    .filter(Boolean);
-
-  if (names.length === column.nodes.length && names.length > 0) {
-    const firstWords = names.map((name) => name.split(/\s+/)[0]);
-    const shared = firstWords.every((word) => word === firstWords[0]);
-    if (shared && firstWords[0].length > 1) {
-      return firstWords[0];
-    }
-    if (names.length === 1) {
-      return names[0];
-    }
-  }
-
-  return roundColumnLabel(column.round, totalRounds, index);
-}
-
 // A node with no linked match yet: show where its two participants come from.
 // Border is deliberately heavier than the surrounding chrome so an unresolved
 // slot reads as a real card sitting alongside the live match cards.
@@ -126,8 +103,10 @@ function NodePlaceholderCard({ node, lookups, registerPlaceholder }) {
           {formatSourceLabel(node.source_b, lookups)}
         </p>
       </div>
+      {/* A resolver note ("Bye: Team X", "Not needed this round") is the
+          real state of the slot, so it replaces "To be confirmed". */}
       <p className="mt-[0.35em] border-t border-[var(--sc-border)] pt-[0.3em] text-[0.65em] uppercase tracking-wide text-[var(--sc-ink-muted)]">
-        To be confirmed
+        {getNodeNote(node) || "To be confirmed"}
       </p>
     </div>
   );
@@ -436,7 +415,7 @@ export default function BracketStructureView({
             >
               <div className="border-b-2 border-[var(--sc-border-strong)] pb-[0.4em]">
                 <span className="text-[0.875em] font-semibold uppercase tracking-wide text-[var(--sc-ink)]">
-                  {columnHeading(column, totalRounds, columnIndex)}
+                  {columnHeading(column, totalRounds, columnIndex, bracket?.type)}
                 </span>
               </div>
 

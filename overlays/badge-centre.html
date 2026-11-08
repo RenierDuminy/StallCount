@@ -598,7 +598,7 @@
       '</style>');
     </script>
   </head>
-  <body class="overlay-fixed">
+  <body class="overlay-fixed" data-addon-position="top-right">
     <div id="viewport">
       <div id="canvas">
         <div class="bc-root" id="overlayBar">
@@ -752,25 +752,30 @@
       window.addEventListener('resize', scaleCanvas);
       scaleCanvas();
 
-      // Timeout countdown timers
+      // Timeout countdown timers. They step on the runtime's shared clock heartbeat
+      // ("overlay:clock-tick") rather than their own setInterval, so they change
+      // on the same instant as the match clock and every other timer on screen.
       (function () {
         var TIMEOUT_SECONDS = 75;
-        var timers = {};
+        var timers = {}; // cardId -> { el, remaining }
+
+        window.addEventListener('overlay:clock-tick', function () {
+          Object.keys(timers).forEach(function (cardId) {
+            var timer = timers[cardId];
+            timer.remaining--;
+            if (timer.el) timer.el.textContent = Math.max(0, timer.remaining);
+            if (timer.remaining <= 0) delete timers[cardId];
+          });
+        });
 
         function startTimer(cardId, displayId) {
-          if (timers[cardId]) clearInterval(timers[cardId]);
-          var remaining = TIMEOUT_SECONDS;
           var el = document.getElementById(displayId);
-          if (el) el.textContent = remaining;
-          timers[cardId] = setInterval(function () {
-            remaining--;
-            if (el) el.textContent = Math.max(0, remaining);
-            if (remaining <= 0) { clearInterval(timers[cardId]); delete timers[cardId]; }
-          }, 1000);
+          if (el) el.textContent = TIMEOUT_SECONDS;
+          timers[cardId] = { el: el, remaining: TIMEOUT_SECONDS };
         }
 
         function stopTimer(cardId, displayId) {
-          if (timers[cardId]) { clearInterval(timers[cardId]); delete timers[cardId]; }
+          delete timers[cardId];
           var el = document.getElementById(displayId);
           if (el) el.textContent = TIMEOUT_SECONDS;
         }

@@ -1026,3 +1026,87 @@ body.overlay-fixed .overlay-event {
     height: 56px;
   }
 }
+
+/* ── Add-ons: point duration / gender line chips ──
+   Created by overlayRuntime.js next to #overlayBanner. A layout can pick the
+   default corner with <body data-addon-position="top-left">; the control room
+   can override it. */
+.overlay-addon-rail {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.overlay-addon-rail[data-position^="top"] { top: 32px; }
+.overlay-addon-rail[data-position^="bottom"] { bottom: 32px; flex-direction: column-reverse; }
+.overlay-addon-rail[data-position$="left"] { left: 32px; align-items: flex-start; }
+.overlay-addon-rail[data-position$="right"] { right: 32px; align-items: flex-end; }
+.overlay-addon-rail[data-position$="centre"] { left: 50%; transform: translateX(-50%); align-items: center; }
+
+.overlay-addon-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.94);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.32);
+  font-family: "Barlow Semi Condensed", var(--sc-font-body), sans-serif;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 260ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.overlay-addon-rail[data-position^="bottom"] .overlay-addon-chip { transform: translateY(8px); }
+
+.overlay-addon-chip.is-visible,
+.overlay-addon-rail[data-position^="bottom"] .overlay-addon-chip.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.overlay-addon-chip__label {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.overlay-addon-chip__label.is-hidden { display: none; }
+
+.overlay-addon-chip__value {
+  font-family: "Bebas Neue", "Barlow Semi Condensed", sans-serif;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.overlay-addon-chip__tag {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.overlay-addon-chip__tag.is-hidden { display: none; }
+
+/* Gender line: just the ABBA code (M1, F2), bold caps. */
+.overlay-addon-chip--genderLine .overlay-addon-chip__value {
+  font-family: "Barlow Semi Condensed", var(--sc-font-body), sans-serif;
+  font-weight: 700;
+  font-size: 24px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Score info borrows the player stats banner; the assist trails the scorer. */
+.overlay-score-info-assist {
+  opacity: 0.72;
+  font-weight: 600;
+}

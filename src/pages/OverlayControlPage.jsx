@@ -7,6 +7,21 @@ import { ConfigView } from "../overlay/ConfigView";
 import { ControlView } from "../overlay/ControlView";
 import { readCachedWeatherForVenue, summarizeWeather, getVenueName } from "../overlay/WeatherCard";
 import { findBreakLogIds } from "../utils/matchBreaks";
+import { isForfeitMatch } from "../utils/standings";
+import { normalizeOverlayAddons } from "../overlay/overlayAddons";
+import {
+  isTestMatchId,
+  createDefaultTestMatch,
+  createTestMatchFromMatch,
+  createTestMatchId,
+  readStoredTestMatch,
+  writeStoredTestMatch,
+  buildTestMatchRecords,
+  computeTestPlayerStats,
+  TEST_EVENT_TYPES,
+  TEST_MATCH_BROADCAST_EVENT,
+} from "../overlay/overlayTestMatch";
+import { TestMatchSimulator } from "../overlay/OverlayTestMatchPanel";
 import "../overlay/overlayControl.css";
 
 const BASE_PATH = import.meta.env.BASE_URL || "/";
@@ -19,18 +34,20 @@ const MATCH_DETAIL_FIELDS = `
   score_b,
   start_time,
   starting_team_id,
+  abba_pattern,
   venue_id,
   event:events!matches_event_id_fkey (id, name, type, start_date, end_date, location, rules, Status),
   venue:venues!matches_venue_id_fkey (id, name, location, latitude, longitude),
-  team_a:teams!matches_team_a_fkey (id, name, attributes),
-  team_b:teams!matches_team_b_fkey (id, name, attributes)
+  team_a:teams!matches_team_a_fkey (id, name, short_name, attributes),
+  team_b:teams!matches_team_b_fkey (id, name, short_name, attributes)
 `;
 const MATCH_LOG_FIELDS =
   "id, match_id, event_type_id, team_id, actor_id, secondary_actor_id, created_at, abba_line";
 const MATCH_LOG_PAGE_SIZE = 1000;
 const APP_SETTINGS_STORAGE_KEY = "stallcount:overlay-control-settings";
 
-const eventTypeCache = new Map();
+// Test match rows point at synthetic event types; their ids can't collide with the table's.
+const eventTypeCache = new Map(TEST_EVENT_TYPES.map((eventType) => [eventType.id, eventType]));
 let eventTypeCacheLoaded = false;
 const eventCache = new Map();
 const rosterCache = new Map();
@@ -408,6 +425,9 @@ export default function OverlayControlPage() {
   const [breakChanceEnabled, setBreakChanceEnabled] = useState(
     () => Boolean(readPersistedAppSettings().breakChanceEnabled),
   );
+  const [overlayAddons, setOverlayAddons] = useState(
+    () => normalizeOverlayAddons(readPersistedAppSettings().overlayAddons),
+  );
   const [playerStatsAutoFade, setPlayerStatsAutoFade] = useState(getInitialPopupAutoFade("playerStatsAutoFade"));
   const [matchStatsAutoFade, setMatchStatsAutoFade] = useState(getInitialPopupAutoFade("matchStatsAutoFade"));
   const [timeoutAutoFade, setTimeoutAutoFade] = useState(getInitialPopupAutoFade("timeoutAutoFade"));
@@ -419,9 +439,9 @@ export default function OverlayControlPage() {
   const [bannerStatus, setBannerStatus] = useState("");
   const [matchEventButtons, setMatchEventButtons] = useState([]);
   const [matchEventError, setMatchEventError] = useState("");
-  const [matchDetails, setMatchDetails] = useState(null);
-  const [eventDetails, setEventDetails] = useState(null);
-  const [matchLogs, setMatchLogs] = useState([]);
+  const [liveMatchDetails, setMatchDetails] = useState(null);
+  const [liveEventDetails, setEventDetails] = useState(null);
+  const [liveMatchLogs, setMatchLogs] = useState([]);
   const [eventTypesVersion, setEventTypesVersion] = useState(0);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
@@ -429,8 +449,19 @@ export default function OverlayControlPage() {
   const [detailsError, setDetailsError] = useState("");
   const [logsError, setLogsError] = useState("");
   const [rosterError, setRosterError] = useState("");
-  const [rosterPlayersById, setRosterPlayersById] = useState({});
-  const [rosterByTeam, setRosterByTeam] = useState({});
+  const [liveRosterPlayersById, setRosterPlayersById] = useState({});
+  const [liveRosterByTeam, setRosterByTeam] = useState({});
+  const [testMatch, setTestMatch] = useState(() => {
+    const stored = readStoredTestMatch();
+    const initialMatchId = getInitialMatchId();
+    if (isTestMatchId(initialMatchId) && stored?.id !== initialMatchId) {
+      return createDefaultTestMatch(initialMatchId);
+    }
+    return stored;
+  });
+  const [realMatchIdBeforeTest, setRealMatchIdBeforeTest] = useState(
+    () => (readPersistedAppSettings().realMatchIdBeforeTest || "").toString().trim(),
+  );
   const [teamALogo, setTeamALogoState] = useState(() => readLogoDataUrl(LOGO_STORAGE_KEY_A));
   const [teamBLogo, setTeamBLogoState] = useState(() => readLogoDataUrl(LOGO_STORAGE_KEY_B));
   const [eventLogo, setEventLogoState] = useState(() => readLogoDataUrl(LOGO_STORAGE_KEY_EVENT));
@@ -478,6 +509,18 @@ export default function OverlayControlPage() {
     broadcastBreakChanceSetting(breakChanceEnabled);
   }, [breakChanceEnabled]);
 
+  // And the other add-ons (point duration, score info, gender line).
+  const overlayAddonsRef = useRef(overlayAddons);
+  const broadcastAddonSettings = (addons) => {
+    overlayBannerChannelRef.current
+      ?.send({ type: "broadcast", event: "addon-settings", payload: { addons } })
+      .catch(() => {});
+  };
+  useEffect(() => {
+    overlayAddonsRef.current = overlayAddons;
+    broadcastAddonSettings(overlayAddons);
+  }, [overlayAddons]);
+
   const setEventLogo = (dataUrl) => {
     if (!saveLogoDataUrl(LOGO_STORAGE_KEY_EVENT, dataUrl)) return;
     setEventLogoState(dataUrl);
@@ -487,6 +530,68 @@ export default function OverlayControlPage() {
   const trimmedMatchId = matchId.trim();
   const hasMatchId = Boolean(trimmedMatchId);
   const resolvedOverlayFile = overlayChoice;
+
+  // A test match replaces every database read below with the editor's state.
+  const isTestMode = isTestMatchId(trimmedMatchId);
+  const testRecords = useMemo(
+    () => (isTestMode && testMatch?.id === trimmedMatchId ? buildTestMatchRecords(testMatch) : null),
+    [isTestMode, testMatch, trimmedMatchId],
+  );
+  const matchDetails = testRecords ? testRecords.match : liveMatchDetails;
+  const eventDetails = testRecords ? testRecords.event : liveEventDetails;
+  const matchLogs = testRecords ? testRecords.logs : liveMatchLogs;
+  const rosterPlayersById = testRecords ? testRecords.playersById : liveRosterPlayersById;
+  const rosterByTeam = testRecords ? testRecords.rosterByTeam : liveRosterByTeam;
+
+  // A pasted or bookmarked test id this browser has no state for starts from defaults.
+  useEffect(() => {
+    if (isTestMode && testMatch?.id !== trimmedMatchId) {
+      setTestMatch(createDefaultTestMatch(trimmedMatchId));
+    }
+  }, [isTestMode, testMatch?.id, trimmedMatchId]);
+
+  // Overlays read the test match from storage (same browser) and realtime (OBS).
+  // Editing changes it per keystroke, so realtime only gets the settled value.
+  const testMatchRef = useRef(testMatch);
+  const broadcastTestMatch = (state) => {
+    if (!state || !isTestMatchId(state.id)) return;
+    overlayBannerChannelRef.current
+      ?.send({ type: "broadcast", event: TEST_MATCH_BROADCAST_EVENT, payload: { state } })
+      .catch(() => {});
+  };
+  useEffect(() => {
+    testMatchRef.current = testMatch;
+    if (!testMatch) return undefined;
+    writeStoredTestMatch(testMatch);
+    const timer = window.setTimeout(() => broadcastTestMatch(testMatch), 250);
+    return () => window.clearTimeout(timer);
+  }, [testMatch]);
+
+  // Turning the test match on copies the selected real match (teams, colours,
+  // rosters, event, rules, log). The test id is kept so a copied OBS URL still
+  // works, and the real match comes back when the test match is turned off.
+  const handleSelectTestMatch = () => {
+    const testId = testMatch?.id || createTestMatchId();
+    let next = testMatch || createDefaultTestMatch(testId);
+    if (liveMatchDetails && !isTestMode) {
+      next = createTestMatchFromMatch(testId, {
+        match: liveMatchDetails,
+        rosterByTeam: liveRosterByTeam,
+        logs: liveMatchLogs,
+        resolveCode: (eventTypeId) =>
+          resolvedEventCodeCache.get(eventTypeId) ?? resolveEventCode(eventTypeCache.get(eventTypeId)),
+      });
+    }
+    if (!isTestMode) setRealMatchIdBeforeTest(trimmedMatchId);
+    setTestMatch(next);
+    setMatchId(next.id);
+  };
+  const handleSelectRealMatch = () => {
+    setMatchId(realMatchIdBeforeTest);
+  };
+  // Copying mid-load would give the test match an empty roster or log.
+  const testToggleBusy =
+    !isTestMode && hasMatchId && (isLoadingDetails || isLoadingRoster || isLoadingLogs);
 
   const overlayUrl = useMemo(
     () =>
@@ -639,12 +744,17 @@ export default function OverlayControlPage() {
     if (!trimmedMatchId || !selectedBannerPlayer?.id) return;
 
     try {
-      const { data, error } = await supabase
-        .from("player_match_stats")
-        .select("team_id, goals, assists, blocks, turnovers")
-        .eq("match_id", trimmedMatchId)
-        .eq("player_id", selectedBannerPlayer.id)
-        .maybeSingle();
+      const { data, error } = isTestMode && testMatch
+        ? {
+            data: { team_id: selectedBannerPlayer.teamId, ...computeTestPlayerStats(testMatch, selectedBannerPlayer.id) },
+            error: null,
+          }
+        : await supabase
+            .from("player_match_stats")
+            .select("team_id, goals, assists, blocks, turnovers")
+            .eq("match_id", trimmedMatchId)
+            .eq("player_id", selectedBannerPlayer.id)
+            .maybeSingle();
 
       if (error) {
         throw error;
@@ -844,6 +954,17 @@ export default function OverlayControlPage() {
     }
   };
 
+  const handleTriggerAddonPreview = async (addon) => {
+    try {
+      await publishOverlayPayload({ type: "addonPreview", addon, ts: Date.now() });
+      setBannerStatus("Add-on test queued.");
+      window.setTimeout(() => setBannerStatus(""), 3000);
+    } catch {
+      setBannerStatus("Unable to test add-on.");
+      window.setTimeout(() => setBannerStatus(""), 3000);
+    }
+  };
+
   const handleTriggerBreakChance = async () => {
     const payload = {
       type: "breakChance",
@@ -874,11 +995,15 @@ export default function OverlayControlPage() {
       .on("broadcast", { event: "event-logo-request" }, () => {
         if (eventLogoRef.current) broadcastEventLogo(eventLogoRef.current);
         broadcastBreakChanceSetting(breakChanceEnabledRef.current);
+        broadcastAddonSettings(overlayAddonsRef.current);
+        if (testMatchRef.current?.id === trimmedMatchId) broadcastTestMatch(testMatchRef.current);
       })
       .subscribe((status) => {
         if (status !== "SUBSCRIBED") return;
         if (eventLogoRef.current) broadcastEventLogo(eventLogoRef.current);
         broadcastBreakChanceSetting(breakChanceEnabledRef.current);
+        broadcastAddonSettings(overlayAddonsRef.current);
+        if (testMatchRef.current?.id === trimmedMatchId) broadcastTestMatch(testMatchRef.current);
       });
 
     return () => {
@@ -963,7 +1088,9 @@ export default function OverlayControlPage() {
 
       const { data, error } = await supabase
         .from("matches")
-        .select("id, status, start_time, team_a:teams!matches_team_a_fkey (name), team_b:teams!matches_team_b_fkey (name)")
+        .select(
+          "id, status, score_a, score_b, start_time, team_a:teams!matches_team_a_fkey (name), team_b:teams!matches_team_b_fkey (name)",
+        )
         .eq("event_id", selectedEventId)
         .order("start_time", { ascending: true });
 
@@ -976,8 +1103,12 @@ export default function OverlayControlPage() {
         return;
       }
 
+      // Forfeits never get played, so there is nothing to broadcast: neither the
+      // forfeit statuses nor older cancellations recorded with a forfeit line.
       const filtered = (data || []).filter(
-        (match) => !FINISHED_MATCH_STATUSES.has((match.status || "").toString().trim().toLowerCase()),
+        (match) =>
+          !FINISHED_MATCH_STATUSES.has((match.status || "").toString().trim().toLowerCase()) &&
+          !isForfeitMatch(match),
       );
       setEventMatches(filtered);
       setIsLoadingEventMatches(false);
@@ -1005,6 +1136,7 @@ export default function OverlayControlPage() {
       manualScoreA,
       manualScoreB,
       breakChanceEnabled,
+      overlayAddons,
       playerStatsAutoFade,
       matchStatsAutoFade,
       timeoutAutoFade,
@@ -1013,6 +1145,7 @@ export default function OverlayControlPage() {
       teamRostersAutoFade,
       matchStatusAutoFade,
       bannerPlayerId,
+      realMatchIdBeforeTest,
     };
 
     try {
@@ -1034,6 +1167,7 @@ export default function OverlayControlPage() {
     manualScoreA,
     manualScoreB,
     breakChanceEnabled,
+    overlayAddons,
     playerStatsAutoFade,
     matchStatsAutoFade,
     timeoutAutoFade,
@@ -1042,6 +1176,7 @@ export default function OverlayControlPage() {
     teamRostersAutoFade,
     matchStatusAutoFade,
     bannerPlayerId,
+    realMatchIdBeforeTest,
   ]);
 
   useEffect(() => {
@@ -1143,7 +1278,7 @@ export default function OverlayControlPage() {
       setIsLoadingLogs(false);
     };
 
-    if (!trimmedMatchId) {
+    if (!trimmedMatchId || isTestMatchId(trimmedMatchId)) {
       setMatchDetails(null);
       setEventDetails(null);
       setMatchLogs([]);
@@ -1155,6 +1290,12 @@ export default function OverlayControlPage() {
       setDetailsError("");
       setLogsError("");
       setRosterError("");
+      // A test match has no rows to load, but the Events banner buttons still
+      // come from the match_events table.
+      if (trimmedMatchId) {
+        loadEventTypesOnce();
+        loadMatchEventButtons();
+      }
       return () => {
         isActive = false;
       };
@@ -1172,8 +1313,8 @@ export default function OverlayControlPage() {
 
   useEffect(() => {
     let isActive = true;
-    const eventId = matchDetails?.event_id;
-    const teamIds = [matchDetails?.team_a?.id, matchDetails?.team_b?.id].filter(Boolean);
+    const eventId = liveMatchDetails?.event_id;
+    const teamIds = [liveMatchDetails?.team_a?.id, liveMatchDetails?.team_b?.id].filter(Boolean);
 
     if (!eventId) {
       setRosterPlayersById({});
@@ -1267,10 +1408,10 @@ export default function OverlayControlPage() {
     return () => {
       isActive = false;
     };
-  }, [matchDetails?.event_id, matchDetails?.team_a?.id, matchDetails?.team_b?.id]);
+  }, [liveMatchDetails?.event_id, liveMatchDetails?.team_a?.id, liveMatchDetails?.team_b?.id]);
 
   useEffect(() => {
-    if (!trimmedMatchId) return () => {};
+    if (!trimmedMatchId || isTestMatchId(trimmedMatchId)) return () => {};
 
     let retryTimer = null;
     let activeChannel = null;
@@ -1442,6 +1583,12 @@ export default function OverlayControlPage() {
             setTeamBLogo={setTeamBLogo}
             eventLogo={eventLogo}
             setEventLogo={setEventLogo}
+            isTestMode={isTestMode}
+            testMatch={testRecords ? testMatch : null}
+            setTestMatch={setTestMatch}
+            onSelectTestMatch={handleSelectTestMatch}
+            onSelectRealMatch={handleSelectRealMatch}
+            testToggleBusy={testToggleBusy}
           />
         ) : null}
 
@@ -1487,6 +1634,9 @@ export default function OverlayControlPage() {
             setMatchStatusAutoFade={setMatchStatusAutoFade}
             breakChanceEnabled={breakChanceEnabled}
             setBreakChanceEnabled={setBreakChanceEnabled}
+            overlayAddons={overlayAddons}
+            setOverlayAddons={setOverlayAddons}
+            handleTriggerAddonPreview={handleTriggerAddonPreview}
             handleTriggerBanner={handleTriggerBanner}
             handleTriggerMatchStats={handleTriggerMatchStats}
             handleTriggerMatchStatus={handleTriggerMatchStatus}
@@ -1495,6 +1645,9 @@ export default function OverlayControlPage() {
             handleTriggerMatchEvent={handleTriggerMatchEvent}
             handleTriggerFieldCall={handleTriggerFieldCall}
             handleTriggerBreakChance={handleTriggerBreakChance}
+            testMatchSimulator={
+              testRecords ? <TestMatchSimulator testMatch={testMatch} setTestMatch={setTestMatch} compact /> : null
+            }
           />
         ) : null}
       </SectionShell>

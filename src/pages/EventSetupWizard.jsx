@@ -25,6 +25,7 @@ import {
   isSeedOnlyNode,
   listTemplates,
 } from "../data/bracketTemplates";
+import { parseCoordinates } from "../utils/coordinateParser";
 
 const STEPS = [
   { key: "event", title: "Event", description: "Baseline context" },
@@ -293,6 +294,7 @@ const BRACKET_TYPES = [
   { value: "double_elim", label: "Double elimination" },
   { value: "placement", label: "Placement" },
   { value: "play_in", label: "Play-in" },
+  { value: "swiss", label: "Swiss draw" },
   { value: "custom", label: "Custom" },
 ];
 
@@ -1469,6 +1471,20 @@ export default function EventSetupWizardPage() {
     setVenueForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const [coordinatePaste, setCoordinatePaste] = useState("");
+  const [coordinateResult, setCoordinateResult] = useState(null);
+
+  const handleApplyCoordinates = () => {
+    const result = parseCoordinates(coordinatePaste);
+    setCoordinateResult(result);
+    if (result.error) return;
+    setVenueForm((prev) => ({
+      ...prev,
+      latitude: String(result.lat),
+      longitude: String(result.lng),
+    }));
+  };
+
   const handleAssignExistingVenue = (event) => {
     event.preventDefault();
     if (!selectedExistingVenueId) {
@@ -2207,8 +2223,11 @@ export default function EventSetupWizardPage() {
 
   // Apply a standard template as a wizard sketch. The wizard can only express
   // pool_rank sources, so seed-round nodes (all sources are seeds) get filled
-  // pool_rank sources via default cross-pool seeding; every other node is
-  // created as an empty placeholder for the TD to finish in Playoff Structure.
+  // pool_rank sources via default cross-pool seeding; every other node shows as
+  // an empty placeholder. The sketch remembers its template and each game's
+  // template key, so on save seedEventBracketsIfEmpty rebuilds it with the
+  // template's full winner/loser wiring (as long as no game was added or
+  // removed).
   const handleApplyWizardTemplate = (templateIdValue) => {
     const template = getTemplateById(templateIdValue);
     if (!template) return;
@@ -2228,6 +2247,7 @@ export default function EventSetupWizardPage() {
         : createEmptyBracketSource();
     const nodes = template.nodes.map((node) =>
       createEmptyBracketNode({
+        templateKey: node.key,
         name: node.name || "",
         round: node.round ? String(node.round) : "",
         position: node.position ? String(node.position) : "",
@@ -2246,6 +2266,7 @@ export default function EventSetupWizardPage() {
       createEmptyBracket({
         name: template.label,
         type: template.bracketType,
+        templateId: template.id,
         nodes,
       }),
     ]);
@@ -2944,6 +2965,73 @@ export default function EventSetupWizardPage() {
               placeholder="Field, complex, or address"
               disabled={eventFieldsDisabled}
             />
+            <label className="sc-fieldset wizard-span-2">
+              <span className="sc-field-label">Paste coordinates or map link</span>
+              <div className="wizard-flex wizard-gap-sm">
+                <input
+                  className="sc-input"
+                  value={coordinatePaste}
+                  onChange={(event) => {
+                    setCoordinatePaste(event.target.value);
+                    setCoordinateResult(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleApplyCoordinates();
+                    }
+                  }}
+                  placeholder={`-33.9321, 18.8602  ·  33°55'55.6"S 18°51'36.7"E  ·  Google Maps URL`}
+                  disabled={eventFieldsDisabled}
+                />
+                <button
+                  type="button"
+                  className="sc-button is-ghost"
+                  onClick={handleApplyCoordinates}
+                  disabled={eventFieldsDisabled || !coordinatePaste.trim()}
+                >
+                  Convert
+                </button>
+              </div>
+              {coordinateResult?.error && (
+                <span className="text-xs text-[var(--sc-warning-ink)]">{coordinateResult.error}</span>
+              )}
+              {coordinateResult && !coordinateResult.error && (
+                <span className="text-xs text-[var(--sc-ink-muted)]">
+                  Read as {coordinateResult.format}: {coordinateResult.lat}, {coordinateResult.lng} (WGS84).{" "}
+                  <a
+                    href={`https://www.google.com/maps?q=${coordinateResult.lat},${coordinateResult.lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Check on map
+                  </a>
+                  {coordinateResult.warnings.map((warning) => (
+                    <span key={warning} className="block text-[var(--sc-warning-ink)]">
+                      {warning}
+                    </span>
+                  ))}
+                </span>
+              )}
+              <details className="text-xs text-[var(--sc-ink-muted)]">
+                <summary className="cursor-pointer">What formats work?</summary>
+                <p className="mt-1">
+                  <strong>Works:</strong> decimal degrees (latitude first, e.g. -33.9321, 18.8602); degrees,
+                  minutes, seconds (33°55&apos;55.6&quot;S 18°51&apos;36.7&quot;E); degrees and decimal minutes
+                  (S 33° 55.926&apos; E 18° 51.612&apos;); full Google Maps, Apple Maps or OpenStreetMap URLs.
+                </p>
+                <p className="mt-1">
+                  <strong>Doesn&apos;t work:</strong> UTM or Lo-grid coordinates, plus codes, short share links
+                  (maps.app.goo.gl), and street addresses. Convert these in a map app first.
+                </p>
+                <p className="mt-1">
+                  <strong>Can&apos;t be detected:</strong> the datum (everything is treated as WGS84, which
+                  phones and web maps use; old survey datums can be off by a few hundred metres), and which
+                  number is latitude when both are under 90. Always put latitude first. Without N/S/E/W letters
+                  or a minus sign a value is read as north/east, so check the map link.
+                </p>
+              </details>
+            </label>
             <TextField
               label="Latitude"
               name="latitude"
@@ -2986,7 +3074,7 @@ export default function EventSetupWizardPage() {
                   !venueForm.location.trim()
                 }
               >
-                {venueForm.id ? "Save venue" : "Add venue"}
+                {venueForm.id ? "Update venue" : "Add venue"}
               </button>
               {venueForm.id && (
                 <button
@@ -5081,11 +5169,15 @@ export default function EventSetupWizardPage() {
                   disabled={divisions.length === 0}
                 >
                   <option value="">Choose a template…</option>
-                  {listTemplates().map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.label}
-                    </option>
-                  ))}
+                  {/* A Swiss draw needs its size chosen, which only the
+                      Playoff Structure tool offers. */}
+                  {listTemplates()
+                    .filter((template) => !template.configurable)
+                    .map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.label}
+                      </option>
+                    ))}
                 </select>
               </label>
               <button
@@ -5104,9 +5196,10 @@ export default function EventSetupWizardPage() {
             </p>
           )}
           <p className="wizard-text-muted-xs">
-            Templates fill the first round from pool seeds. Later rounds are added
-            as empty placeholders — wire their winner/loser sources and advancement
-            in the Playoff Structure tool after publishing.
+            Templates fill the seeded games from pool positions. Later games show
+            empty here but are saved fully wired (winner and loser links, as in
+            the Playoff Structure tool), provided no game is added or removed.
+            For a Swiss draw, use the Playoff Structure tool.
           </p>
         </Panel>
         {playoffsGuidance}

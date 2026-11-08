@@ -8,6 +8,9 @@ import {
   onMetaMessage,
   onEventLogo,
   onBreakChanceSetting,
+  onAddonSettings,
+  onClockTick,
+  getGameElapsedMs,
   getMatchLogs,
   manageBannerState,
   getOverlayPayloadKey,
@@ -19,13 +22,25 @@ import {
   isHalftimeActive,
   getTeamThemes,
   getEventTypeCache,
+  getTestPlayerName,
   resolveEventCode,
   APP_SETTINGS_STORAGE_KEY,
   VALID_OVERLAY_PAYLOAD_TYPES,
   STATUS_LABELS,
 } from "./overlayEngine";
 import { MATCH_LOG_EVENT_CODES } from "../services/matchLogService";
+import { supabase } from "../services/supabaseClient";
 import { getBreakChanceTeam } from "../utils/matchBreaks";
+import {
+  normalizeOverlayAddons,
+  resolveInterPointSeconds,
+  derivePointTimeline,
+  getCurrentPointElapsedMs,
+  describePointType,
+  formatDuration,
+  getAbbaLineForIndex,
+  resolveAbbaStartCode,
+} from "./overlayAddons";
 
 const DEFAULT_LOGO_SRC = `${import.meta.env.BASE_URL}assets/stallcount-logo.png`;
 
@@ -812,6 +827,331 @@ function _applyBreakChanceState(newTeam) {
   if (newTeam === "A") { breakChanceBannerHandleA = handle; } else { breakChanceBannerHandleB = handle; }
 }
 
+// ─── Add-ons: point duration, score info, gender line ────────────────────────
+//
+// Switched on in the control room's Add-ons section and driven by the match log,
+// like break chance. Settings arrive through localStorage (same browser) and the
+// "addon-settings" broadcast (OBS on another machine).
+//
+// Score info reuses the layout's player stats banner (#overlayBanner) so it looks
+// like that banner in every layout: the stat cells are relabelled while it shows
+// and put back the next time player stats are shown.
+
+let _addons = normalizeOverlayAddons(_readPersistedAppSettings().overlayAddons);
+let _addonTimer = null;
+let _addonRail = null;
+const _addonChips = {};
+// Epoch ms until which a control-room "Test" keeps a chip up, regardless of the match.
+const _addonPreviewUntil = { pointDuration: 0, genderLine: 0 };
+// Start of the sample point a point duration Test counts from when no point is running.
+let _pointDurationSampleStartMs = 0;
+const POINT_DURATION_SAMPLE_MS = 384000;
+let _seenScoreIds = null; // null until the first non-empty log list (the snapshot) arrives
+const _playerNames = new Map();
+let _playerBannerSnapshot = null;
+
+function _anyAddonEnabled() {
+  return _addons.pointDuration.enabled || _addons.scoreInfo.enabled || _addons.genderLine.enabled;
+}
+
+function _setAddonSettings(raw) {
+  _addons = normalizeOverlayAddons(raw);
+  _refreshAddonTimer();
+  _tickAddons();
+}
+
+// The tick also runs for previews, so they clear even with every add-on off.
+function _refreshAddonTimer() {
+  const needed = _anyAddonEnabled() || Object.values(_addonPreviewUntil).some((until) => until > Date.now());
+  if (needed && !_addonTimer) {
+    _addonTimer = window.setInterval(_tickAddons, 500);
+  } else if (!needed && _addonTimer) {
+    window.clearInterval(_addonTimer);
+    _addonTimer = null;
+  }
+}
+
+// ── Chips (point duration, gender line) ──
+
+function _ensureAddonRail() {
+  if (_addonRail) return _addonRail;
+  _addonRail = document.getElementById("overlayAddonRail");
+  if (!_addonRail) {
+    _addonRail = document.createElement("div");
+    _addonRail.id = "overlayAddonRail";
+    _addonRail.className = "overlay-addon-rail";
+    // Sit in the same (scaled) container as the layout's banners.
+    (elements.banner?.parentElement || document.body).append(_addonRail);
+  }
+  _applyAddonPosition();
+  return _addonRail;
+}
+
+// Each layout picks its corner with <body data-addon-position="top-left">, or
+// places its own #overlayAddonRail.
+function _applyAddonPosition() {
+  if (!_addonRail || _addonRail.dataset.position) return;
+  _addonRail.dataset.position = document.body.dataset.addonPosition || "top-right";
+}
+
+function _ensureAddonChip(name) {
+  if (_addonChips[name]) return _addonChips[name];
+  const rail = _ensureAddonRail();
+  const chip = document.createElement("div");
+  chip.className = `overlay-addon-chip overlay-addon-chip--${name}`;
+  const label = document.createElement("span");
+  label.className = "overlay-addon-chip__label";
+  const value = document.createElement("span");
+  value.className = "overlay-addon-chip__value";
+  const tag = document.createElement("span");
+  tag.className = "overlay-addon-chip__tag";
+  chip.append(label, value, tag);
+  rail.append(chip);
+  _addonChips[name] = { chip, label, value, tag };
+  return _addonChips[name];
+}
+
+function _showAddonChip(name, { label = "", value, tag = "" }) {
+  const parts = _ensureAddonChip(name);
+  parts.label.textContent = label;
+  parts.label.classList.toggle("is-hidden", !label);
+  parts.value.textContent = value;
+  parts.tag.textContent = tag;
+  parts.tag.classList.toggle("is-hidden", !tag);
+  parts.chip.classList.add("is-visible");
+}
+
+function _hideAddonChip(name) {
+  _addonChips[name]?.chip.classList.remove("is-visible");
+}
+
+// ── Timeline ──
+
+function _buildAddonTimeline() {
+  const match = getCurrentMatch();
+  if (!match) return null;
+  const teamAId = match.team_a?.id;
+  const teamBId = match.team_b?.id;
+  const toSlot = (id) => (id && id === teamAId ? "A" : id && id === teamBId ? "B" : null);
+  const cache = getEventTypeCache();
+  const logs = [...getMatchLogs()]
+    .filter((log) => log?.created_at)
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    .map((log) => ({
+      id: log.id,
+      eventCode: (resolveEventCode(log.eventType || cache.get(log.event_type_id)) || "").toLowerCase(),
+      team: toSlot(log.team_id),
+      ts: new Date(log.created_at).getTime(),
+      actorId: log.actor_id,
+      secondaryActorId: log.secondary_actor_id,
+      abbaLine: log.abba_line,
+    }));
+  const timeline = derivePointTimeline(logs, {
+    startingPuller: toSlot(match.starting_team_id),
+    interPointSeconds: resolveInterPointSeconds(match.event?.rules),
+  });
+  const scoreLines = logs
+    .filter((log) => log.eventCode === "score" || log.eventCode === "callahan")
+    .map((log) => log.abbaLine);
+  return { logs, timeline, abbaStart: resolveAbbaStartCode(match.abba_pattern, scoreLines) };
+}
+
+// Point time in whole game seconds, counted the same way as the match clock:
+// floor(game time now) - floor(game time at the pull). Both sides step on the
+// clock's second boundary, so the two always change together. Falls back to the
+// point's own count when the match has no match_start to measure from.
+function _pointElapsedOnClockMs(current, now) {
+  const elapsed = getCurrentPointElapsedMs(current, now);
+  if (elapsed === null) return null;
+  const gameNow = getGameElapsedMs(now);
+  const gameStart = getGameElapsedMs(current.startMs);
+  if (gameNow === null || gameStart === null) return elapsed;
+  return Math.max(0, Math.floor(gameNow / 1000) - Math.floor(gameStart / 1000)) * 1000;
+}
+
+// Redraws the point duration text. Only the clock heartbeat passes fromClock, so
+// the count never steps between clock seconds; other ticks may show or hide the
+// chip (a fresh chip is drawn at once) but leave a running count alone.
+function _drawPointDuration(value, fromClock) {
+  const chip = _addonChips.pointDuration?.chip;
+  if (!fromClock && chip?.classList.contains("is-visible")) return;
+  _showAddonChip("pointDuration", { label: "Point duration:", value });
+}
+
+function _tickAddons(fromClock = false) {
+  _refreshAddonTimer();
+  const now = Date.now();
+  const previewingPointDuration = _addonPreviewUntil.pointDuration > now;
+  const built = _anyAddonEnabled() || previewingPointDuration ? _buildAddonTimeline() : null;
+  const current = built?.timeline.current;
+
+  // Score info: a score row not seen before. The first non-empty log list is the
+  // snapshot load, so its scores are history, not news.
+  if (built) {
+    const { points } = built.timeline;
+    if (_seenScoreIds === null) {
+      if (built.logs.length) _seenScoreIds = new Set(points.map((p) => p.id));
+    } else {
+      const fresh = points.filter((p) => !_seenScoreIds.has(p.id));
+      fresh.forEach((p) => _seenScoreIds.add(p.id));
+      if (fresh.length && _addons.scoreInfo.enabled) _showScoreInfo(fresh[fresh.length - 1]);
+    }
+  }
+
+  // Point duration: once the point has run `showAfterMinutes` of playing time,
+  // until the next score (or halftime / match end) closes the point. It is redrawn
+  // every tick, so it counts up; a Test does the same, from the live point if one
+  // is running and from a sample point otherwise.
+  const elapsed = current ? _pointElapsedOnClockMs(current, now) : null;
+  if (previewingPointDuration) {
+    const shown = elapsed ?? Math.floor((now - _pointDurationSampleStartMs) / 1000) * 1000;
+    _drawPointDuration(formatDuration(shown), fromClock);
+  } else {
+    const pd = _addons.pointDuration;
+    const visible = pd.enabled && elapsed !== null && elapsed >= pd.showAfterMinutes * 60000;
+    if (visible) _drawPointDuration(formatDuration(elapsed), fromClock);
+    else _hideAddonChip("pointDuration");
+  }
+
+  // Gender line: for `displaySeconds` once the inter-point time has run out.
+  if (_addonPreviewUntil.genderLine <= now) {
+    const gl = _addons.genderLine;
+    const line = current ? getAbbaLineForIndex(built.abbaStart, current.index) : null;
+    const sinceStart = current?.open ? now - current.startMs : null;
+    const visible = gl.enabled && line && sinceStart !== null && sinceStart >= 0 && sinceStart < gl.displaySeconds * 1000;
+    if (visible) _showAddonChip("genderLine", { value: line });
+    else _hideAddonChip("genderLine");
+  }
+}
+
+// "Test" buttons in the control room: show the add-on now, with live values where
+// the match has them and sample values otherwise.
+function _previewAddon(addon) {
+  const built = _buildAddonTimeline();
+  const now = Date.now();
+  if (addon === "scoreInfo") {
+    const points = built?.timeline.points || [];
+    _showScoreInfo(
+      points[points.length - 1] ||
+        { id: "preview", team: "A", isBreak: true, turnovers: 2, durationMs: 102000, scoreA: 1, scoreB: 0 },
+    );
+    return;
+  }
+  if (addon === "pointDuration") {
+    _addonPreviewUntil.pointDuration = now + 5000;
+    _pointDurationSampleStartMs = now - POINT_DURATION_SAMPLE_MS;
+  } else if (addon === "genderLine") {
+    const line = (built && getAbbaLineForIndex(built.abbaStart, built.timeline.current.index)) || "M1";
+    _addonPreviewUntil.genderLine = now + _addons.genderLine.displaySeconds * 1000;
+    _showAddonChip("genderLine", { value: line });
+  }
+  _refreshAddonTimer();
+  // Draws the point duration chip at once; the timer keeps it counting.
+  if (addon === "pointDuration") _tickAddons();
+}
+
+// ── Score info (through the player stats banner) ──
+
+function _playerBannerCells() {
+  return [elements.bannerStatGls, elements.bannerStatAst, elements.bannerStatBlk, elements.bannerStatTrn]
+    .filter(Boolean)
+    .map((valueEl) => {
+      const cell = valueEl.parentElement;
+      const labelEl =
+        [...(cell?.children || [])].find((child) => child !== valueEl && /label/.test(child.className)) || null;
+      const prev = cell?.previousElementSibling;
+      const divider = prev && /divider/.test(prev.className) ? prev : null;
+      return { valueEl, cell, labelEl, divider };
+    });
+}
+
+function _restorePlayerBannerLayout() {
+  if (!_playerBannerSnapshot) return;
+  _playerBannerCells().forEach((cell, index) => {
+    if (cell.labelEl) cell.labelEl.textContent = _playerBannerSnapshot.labels[index] ?? cell.labelEl.textContent;
+    if (cell.cell) cell.cell.style.display = "";
+    if (cell.divider) cell.divider.style.display = "";
+  });
+  elements.banner?.classList.remove("is-score-info");
+  if (elements.banner) elements.banner.style.animationDuration = "";
+  _playerBannerSnapshot = null;
+}
+
+async function _resolvePlayerNames(ids) {
+  // A test match's players exist only in its roster, not in the player table.
+  ids.forEach((id) => {
+    const testName = id ? getTestPlayerName(id) : "";
+    if (testName) _playerNames.set(id, testName);
+  });
+  const missing = ids.filter((id) => id && !_playerNames.has(id));
+  if (missing.length) {
+    try {
+      const { data } = await supabase.from("player").select("id, name").in("id", missing);
+      (data || []).forEach((row) => _playerNames.set(row.id, (row.name || "").toString().trim()));
+    } catch { /* names are optional; the banner still shows the point */ }
+  }
+  return ids.map((id) => (id ? _playerNames.get(id) || "" : ""));
+}
+
+async function _showScoreInfo(point) {
+  if (!elements.banner || !point) return;
+  const opts = _addons.scoreInfo;
+  const match = getCurrentMatch();
+  const team = point.team === "A" ? match?.team_a : point.team === "B" ? match?.team_b : null;
+  const [scorer, assist] = await _resolvePlayerNames([point.actorId, point.isCallahan ? null : point.secondaryActorId]);
+
+  const cells = [];
+  if (opts.showPointType) cells.push({ label: "POINT", value: describePointType(point) });
+  if (opts.showTurnovers) cells.push({ label: "TRN", value: String(point.turnovers ?? 0) });
+  if (opts.showPointTime) cells.push({ label: "TIME", value: formatDuration(point.durationMs) });
+  if (opts.showScore) cells.push({ label: "SCORE", value: `${point.scoreA ?? 0}-${point.scoreB ?? 0}` });
+
+  const nameParts = [];
+  if (opts.showTeam && team) nameParts.push(formatTeamShortName(team));
+  nameParts.push(scorer || (point.isCallahan ? "CALLAHAN" : "GOAL"));
+  const assistText = opts.showAssist && assist ? ` · AST ${assist}` : "";
+  const seconds = opts.displaySeconds;
+
+  playerStatsBannerHandle?.cancel();
+  activePlayerStatsKey = `scoreInfo:${point.id}`;
+  playerStatsBannerHandle = manageBannerState({ type: "scoreInfo" }, {
+    targets: [{
+      element: elements.banner,
+      onPrepare: () => {
+        const bannerCells = _playerBannerCells();
+        if (!_playerBannerSnapshot) {
+          _playerBannerSnapshot = { labels: bannerCells.map((cell) => cell.labelEl?.textContent ?? "") };
+        }
+        applyBannerTheme({ teamSlot: point.team });
+        elements.banner.classList.add("is-score-info");
+        // The layouts' rise-hold-fade keyframes are percentage based, so stretching
+        // the animation stretches the hold.
+        elements.banner.style.animationDuration = `${seconds + 0.2}s`;
+        if (elements.bannerPlayerName) {
+          elements.bannerPlayerName.textContent = nameParts.join(" · ").toUpperCase();
+          if (assistText) {
+            const assistEl = document.createElement("span");
+            assistEl.className = "overlay-score-info-assist";
+            assistEl.textContent = assistText.toUpperCase();
+            elements.bannerPlayerName.append(assistEl);
+          }
+        }
+        bannerCells.forEach((cell, index) => {
+          const content = cells[index];
+          if (cell.cell) cell.cell.style.display = content ? "" : "none";
+          if (cell.divider) cell.divider.style.display = content ? "" : "none";
+          if (!content) return;
+          if (cell.labelEl) cell.labelEl.textContent = content.label;
+          cell.valueEl.textContent = content.value;
+        });
+      },
+    }],
+    timeout: seconds * 1000 + 200,
+  });
+}
+
+_refreshAddonTimer();
+
 // ─── Banner show functions ────────────────────────────────────────────────────
 
 function showBanner(payload) {
@@ -832,6 +1172,7 @@ function showBanner(payload) {
     targets: [{
       element: elements.banner,
       onPrepare: () => {
+        _restorePlayerBannerLayout();
         applyBannerTheme(payload);
         if (elements.bannerPlayerName) elements.bannerPlayerName.textContent = payload.playerName.toUpperCase();
         applyBannerStats(payload.stats);
@@ -1121,6 +1462,7 @@ function handleOverlayBannerPayload(payload) {
     return;
   }
   if (payload?.type === "fieldCall") { showFieldCallBanner(payload); return; }
+  if (payload?.type === "addonPreview") { _previewAddon(payload.addon); return; }
   if (payload?.type === "matchEvent") { showMatchEventBanner(payload); }
 }
 
@@ -1129,6 +1471,7 @@ function handleOverlayBannerPayload(payload) {
 onScoreUpdate((payload) => {
   updateOverlay(payload);
   if (_bcEnabled) _syncBreakChance(payload.match);
+  _tickAddons();
 });
 
 // The control app's on/off switch. localStorage only reaches overlays in the same
@@ -1144,6 +1487,14 @@ function _setBreakChanceEnabled(enabled) {
 }
 
 onBreakChanceSetting(_setBreakChanceEnabled);
+onAddonSettings((addons) => { if (addons) _setAddonSettings(addons); });
+
+// The shared heartbeat. Layout scripts with their own countdowns (badge-centre's
+// timeout timer) listen for this event instead of running a setInterval.
+onClockTick((info) => {
+  _tickAddons(true);
+  window.dispatchEvent(new CustomEvent("overlay:clock-tick", { detail: info }));
+});
 
 onBannerTrigger((type, data) => {
   if (type === "syncStoppage") { syncStoppageBanner(); return; }
@@ -1209,6 +1560,7 @@ window.addEventListener("storage", (event) => {
     };
 
     _setBreakChanceEnabled(settings.breakChanceEnabled);
+    if (settings.overlayAddons) _setAddonSettings(settings.overlayAddons);
     return;
   }
 

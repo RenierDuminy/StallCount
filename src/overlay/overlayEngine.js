@@ -1,5 +1,14 @@
 import { supabase } from "../services/supabaseClient";
 import { MATCH_LOG_EVENT_CODES } from "../services/matchLogService";
+import {
+  isTestMatchId,
+  buildTestMatchRecords,
+  normalizeTestMatch,
+  readStoredTestMatch,
+  TEST_EVENT_TYPES,
+  TEST_MATCH_STORAGE_KEY,
+  TEST_MATCH_BROADCAST_EVENT,
+} from "./overlayTestMatch";
 
 // Older match_events rows used a bare "timeout" code before the start/end
 // split; the shared constants no longer carry it, but historical logs do.
@@ -15,6 +24,7 @@ const MATCH_FIELDS = `
   score_b,
   start_time,
   starting_team_id,
+  abba_pattern,
   event:events!matches_event_id_fkey (id, name, rules),
   team_a:teams!matches_team_a_fkey (id, name, short_name, attributes),
   team_b:teams!matches_team_b_fkey (id, name, short_name, attributes)
@@ -63,6 +73,7 @@ export const VALID_OVERLAY_PAYLOAD_TYPES = new Set([
   "fieldCall",
   "matchEvent",
   "breakChance",
+  "addonPreview",
 ]);
 
 export const APP_SETTINGS_STORAGE_KEY = "stallcount:overlay-control-settings";
@@ -91,7 +102,15 @@ const _matchEventTypes = new Map();
 const _resolvedEventCodeCache = new Map();
 let _matchEventTypesLoaded = false;
 
-let _clockInterval = null;
+// One heartbeat drives every timer on screen (match clock, point duration,
+// timeout countdowns), so they all change on the same instant. See _scheduleClockTick.
+let _clockTimer = null;
+let _clockRunsScore = false;
+
+// Test match only: roster names (the runtime would otherwise look players up in
+// the player table) and whether the first state has been applied yet.
+const _testPlayerNames = new Map();
+let _testMatchLoaded = false;
 
 // ─── Callback system ─────────────────────────────────────────────────────────
 
@@ -104,6 +123,7 @@ const _callbacks = {
   metaMessage: [],
   eventLogo: [],
   breakChanceSetting: [],
+  addonSettings: [],
 };
 
 function _fire(event, ...args) {
@@ -116,6 +136,8 @@ export function onScoreUpdate(fn) { _callbacks.scoreUpdate.push(fn); }
 export function onBannerTrigger(fn) { _callbacks.bannerTrigger.push(fn); }
 export function onMatchUpdate(fn) { _callbacks.matchUpdate.push(fn); }
 export function onMatchLogUpdate(fn) { _callbacks.matchLogUpdate.push(fn); }
+// Fires once per second on the match clock's second boundary (wall-clock seconds
+// before kick-off). Anything that counts on screen should redraw from here.
 export function onClockTick(fn) { _callbacks.clockTick.push(fn); }
 export function onMetaMessage(fn) { _callbacks.metaMessage.push(fn); }
 // Tournament logo sent by the control app over realtime ("" = removed).
@@ -123,6 +145,8 @@ export function onMetaMessage(fn) { _callbacks.metaMessage.push(fn); }
 export function onEventLogo(fn) { _callbacks.eventLogo.push(fn); }
 // Break chance on/off switch from the control app, sent over realtime for the same reason.
 export function onBreakChanceSetting(fn) { _callbacks.breakChanceSetting.push(fn); }
+// Add-on settings (point duration, score info, gender line) from the control app.
+export function onAddonSettings(fn) { _callbacks.addonSettings.push(fn); }
 
 // ─── Public getters ───────────────────────────────────────────────────────────
 
@@ -130,6 +154,7 @@ export function getCurrentMatch() { return _currentMatch; }
 export function getCurrentScoreboard() { return _currentScoreboard; }
 export function getMatchLogs() { return _matchLogs; }
 export function getClockInfo() { return _getDerivedClockInfo(); }
+export function getGameElapsedMs(atMs = Date.now()) { return _gameElapsedAt(_getGameTiming(), atMs); }
 export function isStoppageActive() { return _stoppageActive; }
 export function getActiveTimeoutTeam() {
   if (!_timeoutActiveTeamId || !_currentMatch) return null;
@@ -142,6 +167,7 @@ export function getEventTypeCache() { return _matchEventTypes; }
 export function getTeamThemes() { return { teamATheme: _teamATheme, teamBTheme: _teamBTheme }; }
 export function getManualOverrides() { return _manualOverrides; }
 export function getOverlayInitialized() { return _overlayInitialized; }
+export function getTestPlayerName(playerId) { return _testPlayerNames.get(playerId) || ""; }
 
 // ─── Exported utilities ───────────────────────────────────────────────────────
 
@@ -350,43 +376,51 @@ export function formatSeconds(seconds) {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
+// Match start, stoppage windows and end, read from the log. Game time is wall
+// time since match_start minus stoppages; the clock and the point duration both
+// count it, which is what keeps them in step.
+function _getGameTiming() {
+  let matchStartMs = null;
+  const stoppages = []; // [startMs, endMs | null]
+  let hasMatchEnd = false;
+
+  _getMatchLogTimeline().forEach((log) => {
+    const eventCode = resolveEventCode(log?.eventType || _matchEventTypes.get(log?.event_type_id));
+    if (!eventCode) return;
+    const timestamp = new Date(log.created_at).getTime();
+    if (Number.isNaN(timestamp)) return;
+
+    if (!matchStartMs && eventCode === MATCH_LOG_EVENT_CODES.MATCH_START) matchStartMs = timestamp;
+    if (!matchStartMs) return;
+
+    const open = stoppages.length && stoppages[stoppages.length - 1][1] === null;
+    if (eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START && !open) stoppages.push([timestamp, null]);
+    if (eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_END && open) stoppages[stoppages.length - 1][1] = timestamp;
+    if (eventCode === MATCH_LOG_EVENT_CODES.MATCH_END) hasMatchEnd = true;
+  });
+
+  const last = stoppages[stoppages.length - 1];
+  return { matchStartMs, stoppages, hasMatchEnd, isPaused: Boolean(last && last[1] === null) };
+}
+
+function _gameElapsedAt(timing, atMs) {
+  if (!timing?.matchStartMs || !Number.isFinite(atMs) || atMs < timing.matchStartMs) return null;
+  let pausedMs = 0;
+  for (const [start, end] of timing.stoppages) {
+    if (start >= atMs) break;
+    pausedMs += Math.max(0, Math.min(end ?? atMs, atMs) - start);
+  }
+  return Math.max(0, atMs - timing.matchStartMs - pausedMs);
+}
+
 function _getDerivedClockInfo() {
   const timeCapSeconds = _getTimeCapSeconds();
   if (!Number.isFinite(timeCapSeconds)) {
     return { clockText: "", secondsRemaining: null, hasStarted: false, isPaused: false };
   }
 
-  const timeline = _getMatchLogTimeline();
-  let matchStartMs = null;
-  let pausedMs = 0;
-  let pauseStartMs = null;
-  let hasMatchEnd = false;
-
-  timeline.forEach((log) => {
-    const eventType = log?.eventType || _matchEventTypes.get(log?.event_type_id);
-    const eventCode = resolveEventCode(eventType);
-    if (!eventCode) return;
-
-    const timestamp = new Date(log.created_at).getTime();
-    if (Number.isNaN(timestamp)) return;
-
-    if (!matchStartMs && eventCode === MATCH_LOG_EVENT_CODES.MATCH_START) {
-      matchStartMs = timestamp;
-    }
-
-    if (!matchStartMs) return;
-
-    if (eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START && !pauseStartMs) {
-      pauseStartMs = timestamp;
-    }
-    if (eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_END && pauseStartMs) {
-      pausedMs += Math.max(0, timestamp - pauseStartMs);
-      pauseStartMs = null;
-    }
-    if (eventCode === MATCH_LOG_EVENT_CODES.MATCH_END) {
-      hasMatchEnd = true;
-    }
-  });
+  const timing = _getGameTiming();
+  const { matchStartMs, hasMatchEnd } = timing;
 
   if (!matchStartMs) {
     return {
@@ -397,15 +431,8 @@ function _getDerivedClockInfo() {
     };
   }
 
-  const now = Date.now();
-  let effectivePausedMs = pausedMs;
-  let isPaused = false;
-  if (pauseStartMs) {
-    effectivePausedMs += Math.max(0, now - pauseStartMs);
-    isPaused = true;
-  }
-
-  const elapsedMs = Math.max(0, now - matchStartMs - effectivePausedMs);
+  const { isPaused } = timing;
+  const elapsedMs = _gameElapsedAt(timing, Date.now()) ?? 0;
   let secondsRemaining = Math.max(0, Math.ceil(timeCapSeconds - elapsedMs / 1000));
   if (hasMatchEnd) secondsRemaining = 0;
   // Seconds past the time cap (0 until the cap is passed, and frozen once the match has ended)
@@ -516,22 +543,34 @@ function _buildScorePayload() {
 
 // ─── Clock interval ───────────────────────────────────────────────────────────
 
+// Lands just past the next whole second of game time, which is exactly when the
+// clock's text changes (ceil(cap - elapsed) and floor(elapsed - cap) both step on
+// whole seconds). Before kick-off, or during a stoppage when game time stands
+// still, it falls back to wall-clock seconds.
+const CLOCK_TICK_SLACK_MS = 20;
+
+function _msUntilNextClockSecond(now) {
+  const timing = _getGameTiming();
+  const elapsed = timing.isPaused ? null : _gameElapsedAt(timing, now);
+  const phase = Number.isFinite(elapsed) ? elapsed % 1000 : now % 1000;
+  return 1000 - phase + CLOCK_TICK_SLACK_MS;
+}
+
+function _scheduleClockTick() {
+  if (_clockTimer) window.clearTimeout(_clockTimer);
+  _clockTimer = window.setTimeout(() => {
+    _clockTimer = null;
+    _fire("clockTick", _getDerivedClockInfo());
+    if (_clockRunsScore && _currentMatch) _fire("scoreUpdate", _buildScorePayload());
+    _scheduleClockTick();
+  }, _msUntilNextClockSecond(Date.now()));
+}
+
+// The heartbeat always runs; this only decides whether it redraws the scoreboard.
 function _refreshClockInterval(clockInfo) {
   const hasManualClock = _manualOverrides?.enabled && _manualOverrides.clock;
-  const shouldRun = Boolean(clockInfo?.hasStarted) && !hasManualClock;
-
-  if (shouldRun && !_clockInterval) {
-    _clockInterval = window.setInterval(() => {
-      const info = _getDerivedClockInfo();
-      _fire("clockTick", info);
-      _fire("scoreUpdate", _buildScorePayload());
-    }, 1000);
-  }
-
-  if (!shouldRun && _clockInterval) {
-    window.clearInterval(_clockInterval);
-    _clockInterval = null;
-  }
+  _clockRunsScore = Boolean(clockInfo?.hasStarted) && !hasManualClock;
+  if (!_clockTimer) _scheduleClockTick();
 }
 
 // ─── Data loading ─────────────────────────────────────────────────────────────
@@ -697,9 +736,146 @@ async function _loadMatch() {
   return data;
 }
 
+// ─── Log changes ──────────────────────────────────────────────────────────────
+//
+// Shared by the match_logs realtime feed and the test match, so a simulated row
+// fires the same banners as a real one.
+
+function _afterLogsRemoved() {
+  _recomputeIncrementalState();
+  _fire("bannerTrigger", "syncStoppage", null);
+  _fire("bannerTrigger", "syncTimeout", null);
+  _fire("bannerTrigger", "syncHalftime", null);
+  if (_currentMatch) _fire("scoreUpdate", _buildScorePayload());
+}
+
+function _handleIncomingLog(incoming) {
+  _storeMatchLog(incoming);
+  const eventType = _matchEventTypes.get(incoming.event_type_id);
+  const eventCode = resolveEventCode(eventType);
+
+  // Legacy single-shot timeout code keeps its momentary banner behaviour.
+  if (eventCode === LEGACY_TIMEOUT_CODE) {
+    if (incoming.team_id && _currentMatch) {
+      const teamId = incoming.team_id;
+      if (teamId === _currentMatch.team_a?.id) _fire("bannerTrigger", "timeout", { team: "A" });
+      if (teamId === _currentMatch.team_b?.id) _fire("bannerTrigger", "timeout", { team: "B" });
+    }
+  }
+
+  if (
+    eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START ||
+    eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_END
+  ) {
+    _recomputeIncrementalState();
+    _fire("bannerTrigger", "syncStoppage", null);
+  }
+
+  if (
+    eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START ||
+    eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_END
+  ) {
+    _recomputeIncrementalState();
+    _fire("bannerTrigger", "syncTimeout", null);
+  }
+
+  if (
+    eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START ||
+    eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
+  ) {
+    _recomputeIncrementalState();
+    _fire("bannerTrigger", "syncHalftime", null);
+  }
+
+  _fire("matchLogUpdate", _matchLogs);
+  if (_currentMatch) {
+    const sp = _buildScorePayload();
+    _fire("scoreUpdate", sp);
+    _refreshClockInterval(sp?.clockInfo);
+  }
+}
+
+// ─── Test match ───────────────────────────────────────────────────────────────
+
+function _applyTestMatchState(rawState) {
+  const state = normalizeTestMatch(rawState);
+  if (!state || state.id !== _matchId) return;
+  const records = buildTestMatchRecords(state);
+
+  _testPlayerNames.clear();
+  Object.entries(records.playersById).forEach(([id, name]) => _testPlayerNames.set(id, name));
+  _currentMatch = records.match;
+  _cacheEventData(records.event);
+
+  // The first state is history, like the snapshot load of a real match.
+  if (!_testMatchLoaded) {
+    _testMatchLoaded = true;
+    records.logs.forEach((log) => _storeMatchLog(log));
+    _recomputeIncrementalState();
+    _fire("bannerTrigger", "syncStoppage", null);
+    _fire("bannerTrigger", "syncTimeout", null);
+    _fire("bannerTrigger", "syncHalftime", null);
+    _fire("matchUpdate", _currentMatch);
+    _fire("metaMessage", { text: "", isError: false });
+    const sp = _buildScorePayload();
+    _fire("scoreUpdate", sp);
+    _refreshClockInterval(sp?.clockInfo);
+    return;
+  }
+
+  const nextIds = new Set(records.logs.map((log) => log.id));
+  const removedIds = _matchLogs.map((log) => log.id).filter((id) => !nextIds.has(id));
+  removedIds.forEach((id) => _removeMatchLog(id));
+
+  // Rows already known may have moved in time ("advance time"); store them quietly.
+  const added = [];
+  records.logs.forEach((log) => {
+    if (_matchLogById.has(log.id)) _storeMatchLog(log);
+    else added.push(log);
+  });
+
+  _fire("matchUpdate", _currentMatch);
+  if (removedIds.length) _afterLogsRemoved();
+  added.forEach((log) => _handleIncomingLog(log));
+  _recomputeIncrementalState();
+  const sp = _buildScorePayload();
+  _fire("scoreUpdate", sp);
+  _refreshClockInterval(sp?.clockInfo);
+}
+
+function _initTestMatch() {
+  TEST_EVENT_TYPES.forEach((eventType) => {
+    _matchEventTypes.set(eventType.id, eventType);
+    _resolvedEventCodeCache.set(eventType.id, resolveEventCode(eventType));
+  });
+  _matchEventTypesLoaded = true;
+
+  const stored = readStoredTestMatch();
+  if (stored?.id === _matchId) {
+    _applyTestMatchState(stored);
+  } else {
+    _fire("metaMessage", { text: "Waiting for the test match from the control room...", isError: false });
+  }
+
+  const overlayBannerChannel = _setupBannerChannel();
+  window.addEventListener("storage", (event) => {
+    if (event.key !== TEST_MATCH_STORAGE_KEY || !event.newValue) return;
+    try {
+      _applyTestMatchState(JSON.parse(event.newValue));
+    } catch {
+      // ignore malformed state
+    }
+  });
+  window.addEventListener("beforeunload", () => {
+    supabase.removeChannel(overlayBannerChannel);
+  });
+}
+
 // ─── Supabase subscriptions ───────────────────────────────────────────────────
 
-function _setupSubscriptions() {
+// Shared by real and test matches: banners, logo, break chance and add-on
+// settings from the control app, plus the test match state itself.
+function _setupBannerChannel() {
   const overlayBannerChannel = supabase
     .channel(`overlay-banner:${_matchId}`)
     .on("broadcast", { event: "overlay-banner" }, ({ payload }) => {
@@ -711,13 +887,25 @@ function _setupSubscriptions() {
     .on("broadcast", { event: "break-chance-setting" }, ({ payload }) => {
       _fire("breakChanceSetting", Boolean(payload?.enabled));
     })
+    .on("broadcast", { event: "addon-settings" }, ({ payload }) => {
+      _fire("addonSettings", payload?.addons ?? null);
+    })
+    .on("broadcast", { event: TEST_MATCH_BROADCAST_EVENT }, ({ payload }) => {
+      if (isTestMatchId(_matchId)) _applyTestMatchState(payload?.state);
+    })
     .subscribe((status) => {
       // Ask an open control app for the current tournament logo (it also
-      // answers with the break chance switch).
+      // answers with the break chance switch, the add-on settings and, for a
+      // test match, the match itself).
       if (status === "SUBSCRIBED") {
         overlayBannerChannel.send({ type: "broadcast", event: "event-logo-request", payload: {} });
       }
     });
+  return overlayBannerChannel;
+}
+
+function _setupSubscriptions() {
+  const overlayBannerChannel = _setupBannerChannel();
 
   _loadMatchEventTypesOnce().then(() => {
     _hydrateStoredMatchLogs();
@@ -745,6 +933,7 @@ function _setupSubscriptions() {
           event_id: incoming.event_id ?? _currentMatch?.event_id,
           start_time: incoming.start_time ?? _currentMatch?.start_time,
           starting_team_id: incoming.starting_team_id ?? _currentMatch?.starting_team_id,
+          abba_pattern: incoming.abba_pattern ?? _currentMatch?.abba_pattern,
           event: incoming.event ?? _currentMatch?.event,
           score_a: incoming.score_a ?? _currentMatch?.score_a,
           score_b: incoming.score_b ?? _currentMatch?.score_b,
@@ -794,60 +983,10 @@ function _setupSubscriptions() {
       (payload) => {
         if (payload.eventType === "DELETE") {
           _removeMatchLog(payload.old?.id);
-          _recomputeIncrementalState();
-          _fire("bannerTrigger", "syncStoppage", null);
-          _fire("bannerTrigger", "syncTimeout", null);
-          _fire("bannerTrigger", "syncHalftime", null);
-          if (_currentMatch) _fire("scoreUpdate", _buildScorePayload());
+          _afterLogsRemoved();
           return;
         }
-
-        const incoming = payload.new;
-        if (!incoming) return;
-
-        _storeMatchLog(incoming);
-        const eventType = _matchEventTypes.get(incoming.event_type_id);
-        const eventCode = resolveEventCode(eventType);
-
-        // Legacy single-shot timeout code keeps its momentary banner behaviour.
-        if (eventCode === LEGACY_TIMEOUT_CODE) {
-          if (incoming.team_id && _currentMatch) {
-            const teamId = incoming.team_id;
-            if (teamId === _currentMatch.team_a?.id) _fire("bannerTrigger", "timeout", { team: "A" });
-            if (teamId === _currentMatch.team_b?.id) _fire("bannerTrigger", "timeout", { team: "B" });
-          }
-        }
-
-        if (
-          eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START ||
-          eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_END
-        ) {
-          _recomputeIncrementalState();
-          _fire("bannerTrigger", "syncStoppage", null);
-        }
-
-        if (
-          eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_START ||
-          eventCode === MATCH_LOG_EVENT_CODES.TIMEOUT_END
-        ) {
-          _recomputeIncrementalState();
-          _fire("bannerTrigger", "syncTimeout", null);
-        }
-
-        if (
-          eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START ||
-          eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
-        ) {
-          _recomputeIncrementalState();
-          _fire("bannerTrigger", "syncHalftime", null);
-        }
-
-        _fire("matchLogUpdate", _matchLogs);
-        if (_currentMatch) {
-          const sp = _buildScorePayload();
-          _fire("scoreUpdate", sp);
-          _refreshClockInterval(sp?.clockInfo);
-        }
+        if (payload.new) _handleIncomingLog(payload.new);
       },
     )
     .subscribe();
@@ -872,6 +1011,13 @@ export async function init(matchId, options = {}) {
 
   if (!_matchId) {
     _fire("metaMessage", { text: "Add ?matchId=<id> to the URL.", isError: true });
+    return;
+  }
+
+  _scheduleClockTick();
+
+  if (isTestMatchId(_matchId)) {
+    _initTestMatch();
     return;
   }
 

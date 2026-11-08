@@ -22,6 +22,7 @@ import { useAuth } from "../context/AuthContext";
 import { getRoleCatalog } from "../services/userService";
 import { getAccessibleScorekeeperEventIds } from "../utils/accessControl";
 import { MODULAR_SCOREKEEPER_MENU_PATH } from "./scorekeeper/scorekeeperConstants";
+import { buildVenueMapsUrl } from "../utils/mapsLink";
 
 const SERIES_COLORS = {
   teamA: "#1d4ed8",
@@ -719,6 +720,11 @@ function MatchPickerSteps() {
 function MatchStatusPlaceholder({ match, copy, showScoreButton = false }) {
   const teamA = match?.team_a?.name || "Team A";
   const teamB = match?.team_b?.name || "Team B";
+  // Directions only for a match people are still heading to; postponed and
+  // canceled matches share this card but have nowhere to go yet.
+  const mapsUrl = SCOREABLE_MATCH_STATUSES.has((match?.status || "").toLowerCase())
+    ? buildVenueMapsUrl(match?.venue)
+    : null;
   return (
     <section className="sc-card-base space-y-2 p-6 text-center sm:p-10">
       <p className="text-sm font-semibold text-ink-muted">
@@ -729,14 +735,21 @@ function MatchStatusPlaceholder({ match, copy, showScoreButton = false }) {
       <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
         {formatKickoff(match?.start_time)} &middot; {resolveMatchVenueName(match)}
       </p>
-      {showScoreButton && (
-        <div className="flex justify-center pt-3">
-          {/* Opens the console menu, where the operator picks Casual or Competitive. */}
-          <Link to={MODULAR_SCOREKEEPER_MENU_PATH} className="sc-button">
-            Scorekeep for this match
-          </Link>
+      {mapsUrl || showScoreButton ? (
+        <div className="flex flex-wrap justify-center gap-2 pt-3">
+          {mapsUrl ? (
+            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="sc-button is-ghost">
+              Open field in maps
+            </a>
+          ) : null}
+          {showScoreButton ? (
+            // Opens the console menu, where the operator picks Casual or Competitive.
+            <Link to={MODULAR_SCOREKEEPER_MENU_PATH} className="sc-button">
+              Scorekeep for this match
+            </Link>
+          ) : null}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

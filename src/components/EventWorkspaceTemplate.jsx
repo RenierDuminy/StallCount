@@ -30,6 +30,8 @@ import {
 } from "../utils/eventStandings";
 import BracketStructureView from "../pages/playoff/BracketStructureView";
 import StandingsRulesInfo from "./StandingsRulesInfo";
+import GetTheAppCard from "./GetTheAppCard";
+import EventFollowNotice from "./EventFollowNotice";
 
 // Generic event workspace, modelled on the Stellenbosch Internal Draft League VI
 // page. Everything except the rule documents is read from the database, so the
@@ -486,6 +488,13 @@ export default function EventWorkspaceTemplate({
           </div>
           {error && <div className="sc-alert is-error">{error}</div>}
         </Card>
+
+        {/* New visitors arrive here from shared links: install first (on
+            iPhone alerts need the installed app), then a pointer to follows.
+            Both can be dismissed. Completed events have nothing left to alert
+            about, so the follow notice is skipped. */}
+        <GetTheAppCard />
+        {!isEventCompleted ? <EventFollowNotice eventId={eventId} /> : null}
 
         {ruleDocuments.length ? (
         <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">

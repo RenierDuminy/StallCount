@@ -670,6 +670,86 @@
         border-color: var(--team-text, #ffffff);
         color: var(--team-bg, #111111);
       }
+
+      /* ── Add-on popups ──
+         Both tuck under the score box and slide out from behind it (the rail sits
+         at z-index -1 inside .cb-root, which is positioned but not a stacking
+         context, so the box paints over it). Same height and type as the timer bar.
+         Both sit right of the timer bar, at the top. They never show together:
+         the gender line is up for a few seconds at the pull, point duration only
+         once a point has run for minutes. */
+      .cb-root { position: relative; --cb-header-h: 57px; }
+      .cb-header { height: var(--cb-header-h); }
+
+      .cb-addons {
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+      }
+
+      .cb-addons .overlay-addon-chip {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: var(--cb-header-h);
+        padding: 6px 14px;
+        border: 0;
+        border-radius: 0;
+        background: #1a1a1a;
+        color: #ffffff;
+        box-shadow: none;
+        opacity: 1;
+        white-space: nowrap;
+        transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .cb-addons .overlay-addon-chip--genderLine,
+      .cb-addons .overlay-addon-chip--pointDuration {
+        top: 0;
+        left: 100%;
+        border-left: 1px solid #333333;
+        transform: translateX(-100%);
+      }
+
+      .cb-addons .overlay-addon-chip.is-visible { transform: none; }
+
+      /* Same type as the bar: period-style label, Bebas clock-style value */
+      .cb-addons .overlay-addon-chip__label {
+        font-family: "Barlow Semi Condensed", sans-serif;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        line-height: 1.1;
+        text-transform: uppercase;
+        color: #ffffff;
+      }
+
+      .cb-addons .overlay-addon-chip__value,
+      .cb-addons .overlay-addon-chip--genderLine .overlay-addon-chip__value {
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 44px;
+        font-weight: 400;
+        letter-spacing: 0.08em;
+        line-height: 1;
+        color: #ffffff;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .cb-addons .overlay-addon-chip__tag { display: none; }
+
+      /* ── No shading anywhere in this layout ── */
+      .cb-root,
+      .cb-header-strip,
+      .cb-timeout-strip,
+      .cb-break-strip,
+      #overlayBanner,
+      .cb-matchstats-card,
+      .cb-roster-card,
+      #matchStatusBanner .matchstats-card {
+        box-shadow: none;
+      }
     </style>
     <script>
       if (new URLSearchParams(window.location.search).has('preview')) document.head.insertAdjacentHTML('beforeend', '<style>' +
@@ -738,6 +818,10 @@
                 <span class="cb-break-strip__label">Break Chance</span>
               </div>
             </div>
+
+            <!-- Add-on popups (gender line, point duration): the runtime fills this
+                 rail; data-position stops it applying the generic corner placement. -->
+            <div class="cb-addons" id="overlayAddonRail" data-position="corner-box"></div>
           </div>
 
         </div>

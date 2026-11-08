@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Field, Input, Select } from "../components/ui/primitives";
+import { TestMatchEditor, TestMatchSimulator } from "./OverlayTestMatchPanel";
 
 const OVERLAY_OPTIONS = [
   { value: "overlays/badge-centre.html", label: "Badge centre", hasTeamLogos: true },
@@ -162,6 +163,12 @@ export function ConfigView({
   setTeamBLogo,
   eventLogo,
   setEventLogo,
+  isTestMode,
+  testMatch,
+  setTestMatch,
+  onSelectTestMatch,
+  onSelectRealMatch,
+  testToggleBusy,
 }) {
   const overlayOption = OVERLAY_OPTIONS.find((o) => o.value === overlayChoice);
   const showTeamLogos = Boolean(overlayOption?.hasTeamLogos);
@@ -174,6 +181,25 @@ export function ConfigView({
           <h1 className="overlay-header__title">Setup</h1>
         </div>
         <div className="overlay-header__actions">
+          <label
+            className="overlay-switch test-match-switch"
+            title={
+              testToggleBusy
+                ? "Wait for the selected match to finish loading"
+                : "Testing environment: copies the selected match (if any) into a test match you can fully edit, never saved to the database"
+            }
+          >
+            <span className="overlay-switch__label">Test match</span>
+            <span className="overlay-switch__control">
+              <input
+                type="checkbox"
+                checked={isTestMode}
+                disabled={configLocked || testToggleBusy}
+                onChange={(event) => (event.target.checked ? onSelectTestMatch() : onSelectRealMatch())}
+              />
+              <span className="overlay-switch__slider" aria-hidden="true"></span>
+            </span>
+          </label>
           {configLocked ? (
             <button type="button" className="sc-button is-ghost" onClick={handleUnlock}>
               Unlock
@@ -220,6 +246,15 @@ export function ConfigView({
               </Select>
             </Field>
 
+            {isTestMode ? (
+              <p className="overlay-option-note">
+                Test match <code>{trimmedMatchId}</code>. Edit it below; the overlay and OBS follow every change.
+                {testMatch?.sourceMatchId
+                  ? " Copied from the match that was selected; switching Test match off returns to it."
+                  : " Switch off Test match to pick a real match."}
+              </p>
+            ) : (
+            <>
             <Field label="Event">
               <Select
                 value={selectedEventId}
@@ -297,7 +332,16 @@ export function ConfigView({
                 )
               ) : null}
             </Field>
+            </>
+            )}
             </div>
+
+            {isTestMode && testMatch ? (
+              <>
+                <TestMatchSimulator testMatch={testMatch} setTestMatch={setTestMatch} />
+                <TestMatchEditor testMatch={testMatch} setTestMatch={setTestMatch} />
+              </>
+            ) : null}
 
             <div className="config-fieldgroup">
               <h2 className="config-fieldgroup__title">Branding &amp; appearance</h2>

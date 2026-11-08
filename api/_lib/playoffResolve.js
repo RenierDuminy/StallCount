@@ -28,6 +28,7 @@
  */
 
 import { buildPoolGroupStandings, rankByWfdf } from "./standings.js";
+import { computeSwissState, findSwissGame, findSwissRound, isSwissByeNode } from "./swissDraw.js";
 
 // Canceled matches still carry a recorded score line (e.g. a forfeit recorded
 // under the old convention), so they resolve a winner/loser for advancement
@@ -137,12 +138,33 @@ export async function loadEventMatches(supabase, eventId) {
  * Brackets + nodes for an event, with each node's linked match hydrated.
  * Port of getBracketsByEvent from the client service.
  */
+// brackets.settings arrives with the Swiss variants migration. Until it has
+// run, selecting it fails the whole query, so fall back to the old column list
+// (every Swiss draw then reads as the default settings).
+const BRACKET_COLUMNS = "id, event_id, name, type, is_locked, created_at";
+
+function isMissingColumnError(error, column) {
+  const text = `${error?.message || ""} ${error?.details || ""}`.toLowerCase();
+  return error?.code === "42703" || (text.includes(column) && text.includes("column"));
+}
+
+async function selectBracketRows(supabase, eventId) {
+  const query = (columns) =>
+    supabase
+      .from("brackets")
+      .select(columns)
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: true });
+
+  const withSettings = await query(`${BRACKET_COLUMNS}, settings`);
+  if (withSettings.error && isMissingColumnError(withSettings.error, "settings")) {
+    return query(BRACKET_COLUMNS);
+  }
+  return withSettings;
+}
+
 export async function loadBrackets(supabase, eventId, matches = null) {
-  const { data: bracketRows, error: bracketError } = await supabase
-    .from("brackets")
-    .select("id, event_id, name, type, is_locked, created_at")
-    .eq("event_id", eventId)
-    .order("created_at", { ascending: true });
+  const { data: bracketRows, error: bracketError } = await selectBracketRows(supabase, eventId);
 
   if (bracketError) {
     throw new Error(bracketError.message || "Failed to load brackets.");
@@ -461,6 +483,138 @@ function resolveMatchOutcomeSource(source, nodeLookup = new Map(), outcome = "wi
   };
 }
 
+// ---------------------------------------------------------------------------
+// Swiss draw
+// ---------------------------------------------------------------------------
+//
+// The pairing rules live in swissDraw.js (pure). This section adapts them to
+// the resolver: one engine run per Swiss bracket per pass, shared by both sides
+// of every game, the bye slot, and any bracket seeded from its standings.
+
+// A Swiss game's pairing is final once the game has started. Without this, a
+// score correction in an earlier round would re-pair the round and move teams
+// off a match that is already being played.
+const STARTED_MATCH_STATUSES = new Set([
+  "initialized",
+  "live",
+  "halftime",
+  ...FINISHED_MATCH_STATUSES,
+]);
+
+function isStartedStatus(status) {
+  return STARTED_MATCH_STATUSES.has(normalizeText(status));
+}
+
+function isSwissSource(source) {
+  return normalizeText(source?.type) === "swiss";
+}
+
+const CIRCULAR_SWISS_STATE = Object.freeze({
+  rounds: [],
+  rows: [],
+  teamsById: new Map(),
+  complete: false,
+  reason: "Swiss draws seed from each other in a circle",
+});
+
+export function getSwissState(bracket, context = {}) {
+  const cache = context.swissCache;
+  if (cache?.has(bracket.id)) return cache.get(bracket.id);
+
+  // A round 1 bye can be seeded from another Swiss draw's standings; guard
+  // against two draws waiting on each other forever.
+  const chain = context.swissChain || new Set();
+  if (chain.has(bracket.id)) return CIRCULAR_SWISS_STATE;
+  const innerContext = {
+    ...context,
+    node: null,
+    fromBracketId: bracket.id,
+    swissChain: new Set([...chain, bracket.id]),
+  };
+
+  const state = computeSwissState(bracket, {
+    resolveTeamSource: (source) => resolveBracketSource(source, innerContext),
+    isFinished: isFinishedStatus,
+    isStarted: isStartedStatus,
+  });
+  cache?.set(bracket.id, state);
+  return state;
+}
+
+/**
+ * { type: "swiss", game, side } — the team the engine pairs into this game.
+ * Game numbers order the round's pairings (1 = top); A is the higher ranked.
+ */
+function resolveSwissSource(source, context = {}) {
+  const node = context.node || null;
+  if (!node?.bracket) {
+    return { resolved: false, reason: "Swiss source is not on a bracket game" };
+  }
+  const side = String(source?.side || "").trim().toUpperCase();
+  if (side !== "A" && side !== "B") {
+    return { resolved: false, reason: "Swiss source has no side" };
+  }
+
+  const state = getSwissState(node.bracket, context);
+  const game = findSwissGame(state, node);
+  if (!game) {
+    return { resolved: false, reason: state.reason || `round ${node.round} is not paired yet` };
+  }
+  if (game.notNeeded) {
+    return { resolved: false, notNeeded: true, reason: "not needed this round" };
+  }
+
+  const teamId = side === "A" ? game.teamAId : game.teamBId;
+  if (!teamId) {
+    return { resolved: false, reason: "Swiss pairing is missing a team" };
+  }
+  const round = findSwissRound(state, node.round);
+  return {
+    resolved: true,
+    teamId,
+    teamName: state.teamsById.get(teamId)?.name || "Team",
+    warning: (round?.warnings || []).join(" | "),
+  };
+}
+
+/**
+ * { type: "swiss_rank", bracketId, rank } — the team finishing `rank` in a
+ * Swiss draw. Fills only once that draw is complete, so a playoff never seeds
+ * from a table that can still move.
+ */
+function resolveSwissRankSource(source, context = {}) {
+  const bracketId = source?.bracketId || source?.bracket_id || null;
+  const rank = Number(source?.rank);
+  if (!bracketId) {
+    return { resolved: false, reason: "Swiss standings source has no Swiss draw" };
+  }
+  if (!Number.isInteger(rank) || rank < 1) {
+    return { resolved: false, reason: "invalid rank" };
+  }
+  if (context.node?.bracket?.id === bracketId || context.fromBracketId === bracketId) {
+    return { resolved: false, reason: "a Swiss draw cannot seed from its own standings" };
+  }
+
+  const bracket = context.bracketsById?.get(bracketId) || null;
+  if (!bracket) {
+    return { resolved: false, reason: "Swiss draw not found" };
+  }
+  const label = bracket.name || "Swiss draw";
+  if (normalizeText(bracket.type) !== "swiss") {
+    return { resolved: false, reason: `${label} is not a Swiss draw` };
+  }
+
+  const state = getSwissState(bracket, context);
+  if (!state.complete) {
+    return { resolved: false, reason: `${label}: ${state.reason || "not finished"}` };
+  }
+  const row = state.rows[rank - 1];
+  if (!row) {
+    return { resolved: false, reason: `${label} has only ${state.rows.length} teams` };
+  }
+  return { resolved: true, teamId: row.id, teamName: row.name };
+}
+
 export function resolveBracketSource(source, context = {}) {
   if (!source || typeof source !== "object") {
     return { resolved: false, reason: "source missing" };
@@ -468,6 +622,10 @@ export function resolveBracketSource(source, context = {}) {
 
   const type = String(source.type || "").trim().toLowerCase();
   if (type === "pool_rank") return resolvePoolRankSource(source, context.standingsIndex);
+  if (type === "swiss") return resolveSwissSource(source, context);
+  if (type === "swiss_rank") return resolveSwissRankSource(source, context);
+  // Bye slots are filled by the Swiss engine, never resolved as a team source.
+  if (type === "bye" || type === "swiss_bye") return { resolved: false, reason: "bye slot" };
   if (type === "static_team") return resolveStaticTeamSource(source);
   if (type === "winner" || type === "match_winner") {
     return resolveMatchOutcomeSource(source, context.nodeLookup, "winner");
@@ -586,6 +744,21 @@ async function recordNodeOutcome(supabase, nodeId, errorMessage, attemptedAt) {
 }
 
 /**
+ * Persist a Swiss node's note ("Bye: X", "Not needed this round") and, for a
+ * bye slot, the team it went to. The stored bye is what keeps a started round's
+ * bye fixed if an earlier score is corrected later. Best-effort like
+ * recordNodeOutcome; before the migration adding these columns runs, the write
+ * fails quietly and the engine recomputes the bye each time.
+ */
+async function writeNodeNote(supabase, nodeId, patch) {
+  try {
+    await supabase.from("bracket_nodes").update(patch).eq("id", nodeId);
+  } catch {
+    // Ignore — see above.
+  }
+}
+
+/**
  * Resolve every eligible node for one event, repeating until nothing more
  * changes.
  *
@@ -615,6 +788,7 @@ export async function resolveEventPlayoffs(
   const updates = [];
   const skipped = [];
   const touchedNodeIds = new Set();
+  const noteWrites = new Map();
 
   const totalNodes = brackets.reduce((count, bracket) => count + (bracket.nodes?.length || 0), 0);
   if (!totalNodes) {
@@ -631,9 +805,14 @@ export async function resolveEventPlayoffs(
       (bracket.nodes || []).map((node) => ({ ...node, bracket })),
     );
     const nodeLookup = new Map(flatNodes.map((node) => [node.id, node]));
+    const bracketsById = new Map(brackets.map((bracket) => [bracket.id, bracket]));
+    // Each Swiss draw is worked out once per pass, so both sides of every game,
+    // its bye slot and any bracket seeded from it read the same answer.
+    const swissCache = new Map();
 
-    // Only the final pass's skip reasons are reported, so reset each time.
+    // Only the final pass's skip reasons and notes are kept, so reset each time.
     skipped.length = 0;
+    noteWrites.clear();
     let assignedThisPass = 0;
 
     for (const node of flatNodes) {
@@ -642,10 +821,70 @@ export async function resolveEventPlayoffs(
       const record = (reason, extra = {}) => {
         skipped.push({ nodeId: node.id, nodeName, bracketName, reason, ...extra });
       };
+      // Queue a note (and bye team) only when it differs from what is stored.
+      const setNote = (note, byeTeamId) => {
+        const patch = {};
+        if ((node.resolve_note ?? null) !== note) patch.resolve_note = note;
+        if (byeTeamId !== undefined && (node.bye_team_id ?? null) !== byeTeamId) {
+          patch.bye_team_id = byeTeamId;
+        }
+        if (Object.keys(patch).length) noteWrites.set(node.id, patch);
+      };
+      const sourceContext = { standingsIndex, nodeLookup, bracketsById, node, swissCache };
 
       if (node.bracket?.is_locked && !ignoreLock) {
         record("bracket is locked");
         continue;
+      }
+
+      // --- Swiss bye slot: no match; the engine names the team.
+      if (isSwissByeNode(node)) {
+        const schedule = getScheduleState(node.id, scheduleIndex, now, ignoreSchedule);
+        if (!schedule.due) {
+          record(`scheduled for ${schedule.at.toISOString()}`, {
+            pending: true,
+            resolveAt: schedule.at.toISOString(),
+            scheduleLabel: schedule.label || "",
+          });
+          continue;
+        }
+        const state = getSwissState(node.bracket, sourceContext);
+        const round = findSwissRound(state, node.round);
+        if (!round) {
+          record(state.reason || "round not paired yet", { blocked: true });
+          continue;
+        }
+        touchedNodeIds.add(node.id);
+        if (!round.byeTeamId) {
+          setNote("Not needed this round", null);
+          record("no bye this round", { settled: true });
+          continue;
+        }
+        const byeName = state.teamsById.get(round.byeTeamId)?.name || "Team";
+        setNote(`Bye: ${byeName}`, round.byeTeamId);
+        record(`bye: ${byeName}`, { settled: true });
+        continue;
+      }
+
+      const usesSwiss = isSwissSource(node.source_a) || isSwissSource(node.source_b);
+      const matchStarted = isStartedStatus(node.match?.status);
+      const matchHasTeams = Boolean(node.match?.team_a?.id || node.match?.team_b?.id);
+
+      // --- Swiss game the draw does not need this round (advance-or-out
+      // shrinks the field). Clear stale teams from an unstarted match.
+      if (usesSwiss) {
+        const swissGame = findSwissGame(getSwissState(node.bracket, sourceContext), node);
+        if (swissGame?.notNeeded) {
+          touchedNodeIds.add(node.id);
+          setNote("Not needed this round");
+          if (node.match_id && matchHasTeams && !matchStarted) {
+            await writeMatchParticipants(supabase, node.match_id, null, null);
+            assignedThisPass += 1;
+            updates.push({ nodeId: node.id, nodeName, bracketName, matchId: node.match_id, cleared: true });
+          }
+          record("not needed this round", { settled: true });
+          continue;
+        }
       }
 
       if (!node.match_id) {
@@ -664,8 +903,15 @@ export async function resolveEventPlayoffs(
         continue;
       }
 
-      const sourceA = resolveBracketSource(node.source_a, { standingsIndex, nodeLookup });
-      const sourceB = resolveBracketSource(node.source_b, { standingsIndex, nodeLookup });
+      if (usesSwiss && matchStarted && matchHasTeams) {
+        setNote(null);
+        record("game already started; pairing kept", { settled: true });
+        touchedNodeIds.add(node.id);
+        continue;
+      }
+
+      const sourceA = resolveBracketSource(node.source_a, sourceContext);
+      const sourceB = resolveBracketSource(node.source_b, sourceContext);
 
       if (!sourceA.resolved || !sourceB.resolved) {
         const reasons = [sourceA.reason, sourceB.reason].filter(Boolean);
@@ -680,6 +926,8 @@ export async function resolveEventPlayoffs(
         record("resolved teams are identical", { blocked: true });
         continue;
       }
+
+      if (usesSwiss) setNote(null);
 
       if (node.match?.team_a?.id === sourceA.teamId && node.match?.team_b?.id === sourceB.teamId) {
         record("match already assigned", { settled: true });
@@ -705,6 +953,7 @@ export async function resolveEventPlayoffs(
         teamAName: sourceA.teamName,
         teamBId: sourceB.teamId,
         teamBName: sourceB.teamName,
+        warning: sourceA.warning || sourceB.warning || "",
       });
 
       // Keep the in-memory match list in step so the next pass sees this write
@@ -723,11 +972,13 @@ export async function resolveEventPlayoffs(
   // Bookkeeping: stamp the blockers, clear anything that came good.
   const attemptedAt = now.toISOString();
   const blocked = skipped.filter((entry) => entry.blocked || entry.actionable);
+  const blockedIds = new Set(blocked.map((entry) => entry.nodeId));
   await Promise.all([
     ...blocked.map((entry) => recordNodeOutcome(supabase, entry.nodeId, entry.reason, attemptedAt)),
-    ...Array.from(touchedNodeIds).map((nodeId) =>
-      recordNodeOutcome(supabase, nodeId, null, attemptedAt),
-    ),
+    ...Array.from(touchedNodeIds)
+      .filter((nodeId) => !blockedIds.has(nodeId))
+      .map((nodeId) => recordNodeOutcome(supabase, nodeId, null, attemptedAt)),
+    ...Array.from(noteWrites.entries()).map(([nodeId, patch]) => writeNodeNote(supabase, nodeId, patch)),
   ]);
 
   return {
@@ -738,6 +989,54 @@ export async function resolveEventPlayoffs(
     skipped,
     passes,
   };
+}
+
+/**
+ * Standings and progress for every Swiss draw in an event, for the admin
+ * page's standings table. Read-only; uses exactly the engine the resolver uses.
+ */
+export function summarizeSwissDraws(eventData, matches, brackets) {
+  const swissBrackets = (brackets || []).filter((bracket) => normalizeText(bracket.type) === "swiss");
+  if (!swissBrackets.length) return [];
+
+  const flatNodes = brackets.flatMap((bracket) =>
+    (bracket.nodes || []).map((node) => ({ ...node, bracket })),
+  );
+  const context = {
+    standingsIndex: buildStandingsIndex(eventData, matches, brackets),
+    nodeLookup: new Map(flatNodes.map((node) => [node.id, node])),
+    bracketsById: new Map(brackets.map((bracket) => [bracket.id, bracket])),
+    swissCache: new Map(),
+  };
+
+  return swissBrackets.map((bracket) => {
+    const state = getSwissState(bracket, context);
+    const totalRounds = new Set((bracket.nodes || []).map((node) => Number(node.round))).size;
+    return {
+      bracketId: bracket.id,
+      name: bracket.name || "Swiss draw",
+      settings: state.settings || null,
+      complete: Boolean(state.complete),
+      reason: state.reason || "",
+      roundsPaired: (state.rounds || []).length,
+      totalRounds,
+      warnings: (state.rounds || []).flatMap((round) => round.warnings || []),
+      rows: (state.rows || []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        rank: row.rank,
+        wins: row.wins,
+        losses: row.losses,
+        byes: row.byes,
+        played: row.played,
+        diff: row.diff,
+        pointsFor: row.pointsFor,
+        pointsAgainst: row.pointsAgainst,
+        sos: row.sos,
+        status: row.status,
+      })),
+    };
+  });
 }
 
 /**

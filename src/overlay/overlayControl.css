@@ -2006,3 +2006,335 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ── Add-ons section ── */
+.overlay-addons__list {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.overlay-addon {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: var(--sc-radius-md);
+  background: #ffffff;
+}
+
+.overlay-addon.is-enabled {
+  border-color: rgba(0, 0, 0, 0.35);
+}
+
+.overlay-addon__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.overlay-addon__text {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.overlay-addon__title {
+  color: #111111;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.overlay-addon__description {
+  color: #555555;
+  font-size: 0.72rem;
+}
+
+.overlay-addon__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.overlay-addon__edit {
+  padding: 0.45rem 0.7rem;
+  border-radius: var(--sc-radius-md);
+  border: 1px solid #000000;
+  background: #ffffff;
+  color: #111111;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.overlay-addon__edit:hover,
+.overlay-addon__edit.is-open {
+  background: #f1f5f9;
+}
+
+.overlay-addon__panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Inline "Label [12] unit" number field */
+.overlay-addon-num {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #111111;
+  font-size: 0.78rem;
+}
+
+.overlay-addon-num__label {
+  font-weight: 700;
+}
+
+.overlay-addon-num__unit {
+  color: #555555;
+}
+
+.overlay-page .overlay-addon-num__input {
+  width: 3.4rem;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.overlay-addon__panel .sc-field-label {
+  color: #111111;
+}
+
+.overlay-addon__panel .sc-field-hint {
+  color: #555555;
+}
+
+.overlay-addon-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+}
+
+.overlay-addon-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #111111;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.overlay-addon-check input {
+  accent-color: #111111;
+}
+
+/* ── Overlay configuration dialog ── */
+.overlay-config-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3rem 1rem 1rem;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.overlay-config {
+  display: flex;
+  flex-direction: column;
+  width: min(44rem, 100%);
+  max-height: calc(100dvh - 4rem);
+  border-radius: var(--sc-radius-lg, 12px);
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.overlay-config__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.overlay-config__title {
+  margin: 0;
+  color: #111111;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.overlay-config__body {
+  display: grid;
+  gap: 1.25rem;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.overlay-config__section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.overlay-config__heading {
+  margin: 0;
+  color: #111111;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.overlay-config__hint {
+  margin: 0;
+  color: #555555;
+  font-size: 0.75rem;
+}
+
+/* ─── Test match (Setup page + Control page simulator) ─── */
+
+.overlay-page .test-match-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.overlay-page .test-match-grid {
+  display: grid;
+  gap: 0.9rem 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.overlay-page .test-match-team {
+  display: grid;
+  gap: 0.75rem;
+  align-content: start;
+}
+
+.overlay-page .test-match-team__title {
+  font-weight: 600;
+  color: var(--sc-ink);
+}
+
+.overlay-page .test-match-colours {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.overlay-page .test-match-colour {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--sc-ink-muted);
+  cursor: pointer;
+}
+
+.overlay-page .test-match-colour input[type="color"] {
+  width: 2.25rem;
+  height: 1.8rem;
+  padding: 0;
+  border: 1px solid var(--sc-border-strong);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+.overlay-page .test-match-sim {
+  display: grid;
+  gap: 1rem;
+}
+
+.overlay-page .test-match-picks {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.overlay-page .test-match-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.overlay-page .test-match-actions--split {
+  justify-content: space-between;
+}
+
+.overlay-page .test-match-actions__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sc-ink-muted);
+}
+
+.overlay-page .test-match-log {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 18rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.overlay-page .test-match-log__row {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--sc-ink);
+}
+
+.overlay-page .test-match-log__time {
+  font-variant-numeric: tabular-nums;
+  color: var(--sc-ink-muted);
+}
+
+.overlay-page .test-match-log__event {
+  overflow-wrap: anywhere;
+}
+
+.overlay-page .test-match-log__remove {
+  padding: 0 0.4rem;
+  border: 0;
+  background: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--sc-ink-muted);
+  cursor: pointer;
+}
+
+.overlay-page .test-match-log__remove:hover {
+  color: var(--sc-ink);
+}
+
+@media (max-width: 720px) {
+  .overlay-page .test-match-grid,
+  .overlay-page .test-match-picks {
+    grid-template-columns: 1fr;
+  }
+}
+
+.overlay-page .test-match-switch {
+  align-self: center;
+  margin-right: 0.25rem;
+}

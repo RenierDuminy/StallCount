@@ -7,7 +7,10 @@ import {
 } from "./playoffStructureService";
 
 // Resolve a template source into the pass-1 payload written at node creation.
-// - seed   -> the concrete pool_rank payload the caller supplied in `seedMap`.
+// - seed   -> the concrete payload the caller supplied in `seedMap`, stamped
+//             with the seed number (Swiss ranking breaks its last tie on it).
+// - swiss  -> { type: "swiss", game, side }; needs no node ids, the resolver
+//             reads the round from the node it sits on.
 // - winner -> placeholder {} (wired in pass 2 once real node ids exist).
 // - loser  -> placeholder {} (wired in pass 2).
 function resolvePass1Source(source, seedMap) {
@@ -19,7 +22,13 @@ function resolvePass1Source(source, seedMap) {
     if (!payload) {
       throw new Error(`No seed mapping provided for seed ${source.seed}.`);
     }
-    return payload;
+    return { ...payload, templateSeed: source.seed };
+  }
+  if (source.kind === "swiss") {
+    return { type: "swiss", game: source.game, side: source.side };
+  }
+  if (source.kind === "swiss_bye" || source.kind === "bye") {
+    return { type: source.kind };
   }
   // winner / loser sources are node references — resolved in pass 2.
   return {};
@@ -55,6 +64,8 @@ function buildNodeRefSource(source, keyToId, nodesByKey) {
 //   bracketType  - optional override; defaults to template.bracketType
 //   seedMap      - { [seedNumber]: poolRankPayload } already resolved by the
 //                  caller (e.g. via the page's buildSourcePayload pool_rank branch)
+//   nodeNames    - optional { [templateKey]: name } overriding game names (the
+//                  setup wizard lets operators rename sketched games)
 //
 // Two passes with best-effort rollback (no DB transaction spans these calls):
 //   pass 1: create every node (seed sources filled, node-ref sources blank)
@@ -66,6 +77,7 @@ export async function instantiateTemplate({
   bracketName,
   bracketType,
   seedMap,
+  nodeNames = {},
 }) {
   if (!eventId) {
     throw new Error("An event is required to apply a template.");
@@ -81,6 +93,7 @@ export async function instantiateTemplate({
     name: (bracketName || template.label || "Bracket").trim(),
     type: bracketType || template.bracketType || "single_elim",
     isLocked: false,
+    settings: template.settings,
   });
   if (!bracket?.id) {
     throw new Error("Failed to create the bracket.");
@@ -94,7 +107,7 @@ export async function instantiateTemplate({
     for (const node of template.nodes) {
       const created = await createBracketNode({
         bracketId: bracket.id,
-        name: node.name || null,
+        name: (nodeNames[node.key] || "").trim() || node.name || null,
         round: node.round,
         position: node.position,
         matchId: null,

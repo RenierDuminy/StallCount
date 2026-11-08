@@ -55,7 +55,7 @@ const MATCH_FIELDS = `
   starting_team_id,
   abba_pattern,
   venue_id,
-  venue:venues!matches_venue_id_fkey (id, name, city, location),
+  venue:venues!matches_venue_id_fkey (id, name, city, location, latitude, longitude),
   event:events!matches_event_id_fkey (id, name, rules, status:Status),
   team_a:teams!matches_team_a_fkey (id, name, short_name),
   team_b:teams!matches_team_b_fkey (id, name, short_name),

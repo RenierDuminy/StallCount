@@ -34,6 +34,13 @@ export function formatMatchup(match) {
   return `${left} vs ${right}`;
 }
 
+// A Swiss slot: the higher (A) or lower (B) ranked team of the game-th pairing
+// of its round, worked out from the earlier rounds (api/_lib/playoffResolve.js).
+export function formatSwissSourceLabel(game, side) {
+  const rank = String(side || "").toUpperCase() === "B" ? "lower" : "higher";
+  return `Swiss game ${game || "?"} (${rank} ranked)`;
+}
+
 export function formatSourceLabel(source, lookups = {}) {
   if (!source || typeof source !== "object") {
     return "Source missing";
@@ -69,6 +76,24 @@ export function formatSourceLabel(source, lookups = {}) {
     return `Loser of ${node ? getNodeDisplayName(node) : "node"}`;
   }
 
+  if (type === "swiss") {
+    return formatSwissSourceLabel(source.game, source.side);
+  }
+
+  if (type === "swiss_rank") {
+    const bracketId = source.bracketId || source.bracket_id || "";
+    const bracket = lookups.bracketById?.get(bracketId) || null;
+    return `${bracket?.name || source.bracketName || "Swiss draw"} #${source.rank || "?"}`;
+  }
+
+  if (type === "swiss_bye") {
+    return "Swiss bye (lowest-ranked team without one)";
+  }
+
+  if (type === "bye") {
+    return "Bye";
+  }
+
   if (type === "static_team") {
     const teamId = source.teamId || source.team_id || "";
     const team = lookups.teamById?.get(teamId) || null;
@@ -76,6 +101,17 @@ export function formatSourceLabel(source, lookups = {}) {
   }
 
   return `Unsupported source: ${source.type || "unknown"}`;
+}
+
+// A Swiss bye slot: no match ever; the resolver names its team in resolve_note.
+export function isByeNode(node) {
+  return normalizeText(node?.source_a?.type) === "bye" || normalizeText(node?.source_b?.type) === "bye";
+}
+
+// The resolver's informational note on a node ("Bye: Team X", "Not needed
+// this round"), or "". Written by api/_lib/playoffResolve.js.
+export function getNodeNote(node) {
+  return typeof node?.resolve_note === "string" ? node.resolve_note.trim() : "";
 }
 
 // Resolve where a node's winner / loser advances to, as a display string.
@@ -120,7 +156,9 @@ export function groupNodesByRound(nodes = []) {
     }));
 }
 
-export function roundColumnLabel(round, totalRounds, index) {
+export function roundColumnLabel(round, totalRounds, index, bracketType = "") {
+  // A Swiss draw has no final: every column is just a round.
+  if (normalizeText(bracketType) === "swiss") return `Round ${round}`;
   // Best-effort human label for a round column, keyed off distance from the
   // final round (which is typically the last column).
   const fromEnd = totalRounds - 1 - index;
@@ -128,6 +166,56 @@ export function roundColumnLabel(round, totalRounds, index) {
   if (fromEnd === 1) return "Semifinals";
   if (fromEnd === 2) return "Quarterfinals";
   return `Round ${round}`;
+}
+
+// Heading for a round column, read from the games' own names where they agree.
+// roundColumnLabel() guesses positionally (last column = "Final"), which is
+// wrong whenever a column is not a plain elimination round: the final column of
+// a placement bracket also holds 3rd-7th place games, and a double-elimination
+// column holds winners and losers games side by side. So:
+//   - one game: its name ("Grand final", "Losers semifinal");
+//   - several games sharing leading words: those words ("Quarterfinal 1/2" ->
+//     "Quarterfinal", "Winners round 1 game 1/2" -> "Winners round 1");
+//   - otherwise the positional guess, except where the bracket type makes that
+//     guess wrong (double elimination, Swiss) -- there, "Round N".
+export function columnHeading(column, totalRounds, index, bracketType = "") {
+  const type = normalizeText(bracketType);
+  if (type === "swiss") {
+    return roundColumnLabel(column.round, totalRounds, index, type);
+  }
+
+  const nodes = column?.nodes || [];
+  const names = nodes
+    .map((node) => (typeof node?.name === "string" ? node.name.trim() : ""))
+    .filter(Boolean);
+
+  if (names.length > 0 && names.length === nodes.length) {
+    if (names.length === 1) {
+      return names[0];
+    }
+    const words = names.map((name) => name.split(/\s+/));
+    const shared = [];
+    for (let i = 0; i < words[0].length; i += 1) {
+      if (!words.every((nameWords) => nameWords[i] === words[0][i])) break;
+      shared.push(words[0][i]);
+    }
+    // "Round of 16 game 1/2" shares "Round of 16 game"; the "game" is noise.
+    if (shared.length && normalizeText(shared[shared.length - 1]) === "game") {
+      shared.pop();
+    }
+    const heading = shared.join(" ");
+    if (heading.length > 1) {
+      // Several "Semifinal N" games are the "Semifinals", matching the plural
+      // the positional labels use. Only stage words are pluralised; "Round of
+      // 16" or "Pool A" stay as they are.
+      return /(final|play-in)$/i.test(heading) ? `${heading}s` : heading;
+    }
+  }
+
+  if (type === "double_elim") {
+    return `Round ${column.round}`;
+  }
+  return roundColumnLabel(column.round, totalRounds, index, type);
 }
 
 // Compute the round/position a new node would take if added to a given column.

@@ -4,9 +4,11 @@ import {
   buildScheduleIndex,
   listAutoResolveEvents,
   loadBrackets,
+  loadEventHierarchy,
   loadEventMatches,
   loadSchedules,
   resolveEventPlayoffs,
+  summarizeSwissDraws,
 } from "./_lib/playoffResolve.js";
 
 // Mirrors api/stb-rl-26-roster-sync.js. That route is the working precedent for
@@ -268,6 +270,19 @@ async function getStatus(supabase, eventId) {
     }),
   );
 
+  // Swiss standings are extra information; a failure here must not take the
+  // rest of the status panel down with it.
+  let swiss = [];
+  let swissError = "";
+  try {
+    if (brackets.some((bracket) => String(bracket.type || "").toLowerCase() === "swiss")) {
+      const eventData = await loadEventHierarchy(supabase, eventId);
+      swiss = summarizeSwissDraws(eventData, matches, brackets);
+    }
+  } catch (error) {
+    swissError = error instanceof Error ? error.message : String(error);
+  }
+
   const nextDue = schedules
     .filter((schedule) => schedule.enabled !== false)
     .map((schedule) => schedule.resolve_at)
@@ -281,6 +296,8 @@ async function getStatus(supabase, eventId) {
       name: eventRow?.name || "",
       autoResolve: Boolean(eventRow?.auto_resolve_playoffs),
       nodes,
+      swiss,
+      swissError,
       scheduleCount: schedules.length,
       nextDueAt: nextDue,
       blockedCount: nodes.filter((node) => node.lastError).length,
