@@ -60,6 +60,30 @@ export const CLOSED_EVENT_STATUSES = new Set([
 
 export const PLAYOFF_RESOLVE_JOB_KEY = "playoff_resolve_sweeper";
 
+// The minute-by-minute "resolve what is pending" run has its own lock, so it
+// never waits behind (or blocks) the 6-hourly sweep. Its last_successful_run_at
+// is the watermark public.check_pending_playoffs() reads for due release times.
+export const PLAYOFF_PENDING_JOB_KEY = "playoff_resolve_pending";
+
+/**
+ * Clear an event's "needs update" note (public.playoff_resolve_requests), but
+ * only if it was last stamped before `before`: a game that finished while this
+ * run was going stays pending for the next one. Best-effort; until the
+ * migration creating the table has run, the delete fails quietly.
+ */
+export async function clearResolveRequest(supabase, eventId, before) {
+  try {
+    const { error } = await supabase
+      .from("playoff_resolve_requests")
+      .delete()
+      .eq("event_id", eventId)
+      .lte("last_requested_at", before.toISOString());
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 function normalizeText(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
@@ -903,10 +927,36 @@ export async function resolveEventPlayoffs(
         continue;
       }
 
-      if (usesSwiss && matchStarted && matchHasTeams) {
-        setNote(null);
-        record("game already started; pairing kept", { settled: true });
-        touchedNodeIds.add(node.id);
+      // A game that has started (or been played) keeps its teams, whatever the
+      // bracket type. Without this, correcting a quarterfinal score while its
+      // semifinal is live would swap a team out of the live semifinal. Swiss
+      // pairings were already protected; this extends it to every source.
+      if (matchStarted && matchHasTeams) {
+        if (usesSwiss) {
+          setNote(null);
+          record("game already started; pairing kept", { settled: true });
+          touchedNodeIds.add(node.id);
+          continue;
+        }
+        // Tell the operator when the results now point at different teams, so
+        // a correction that came too late is visible instead of silent.
+        const nowA = resolveBracketSource(node.source_a, sourceContext);
+        const nowB = resolveBracketSource(node.source_b, sourceContext);
+        const currentA = node.match?.team_a?.id || null;
+        const currentB = node.match?.team_b?.id || null;
+        if (
+          nowA.resolved &&
+          nowB.resolved &&
+          (nowA.teamId !== currentA || nowB.teamId !== currentB)
+        ) {
+          record(
+            `game already started, but the results now give ${nowA.teamName} vs ${nowB.teamName}; teams kept`,
+            { blocked: true },
+          );
+        } else {
+          record("game already started; teams kept", { settled: true });
+          touchedNodeIds.add(node.id);
+        }
         continue;
       }
 

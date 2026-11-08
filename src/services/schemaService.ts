@@ -164,8 +164,21 @@ export function listSchemaTables(): string[] {
   return SCHEMA_TABLES;
 }
 
+// Columns the API roles are not allowed to read (column-level privileges), so
+// the table browser must neither show nor request them. player.birthday:
+// 20261108134000_hide_player_birthday.sql.
+const UNREADABLE_COLUMNS: Record<string, string[]> = {
+  "public.player": ["birthday"],
+};
+
+export function hasUnreadableColumns(tableName: string): boolean {
+  return Boolean(UNREADABLE_COLUMNS[tableName]?.length);
+}
+
 export function listTableColumns(tableName: string): string[] {
-  return SCHEMA_COLUMNS[tableName] ?? [];
+  const hidden = UNREADABLE_COLUMNS[tableName];
+  const columns = SCHEMA_COLUMNS[tableName] ?? [];
+  return hidden ? columns.filter((column) => !hidden.includes(column)) : columns;
 }
 
 export function listPrimaryKeyColumns(tableName: string): string[] {

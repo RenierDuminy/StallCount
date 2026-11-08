@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getPlayerDirectory,
+  getPlayerIdsWithBirthday,
   upsertPlayer,
   getRosterEntries,
   addPlayerToRoster,
@@ -21,9 +22,16 @@ const EMPTY_PLAYER_FORM = {
   name: "",
   gender_code: "",
   jersey_number: "",
+  // What the captain typed. The stored date is never sent to the browser
+  // (POPIA): it is only compared on the server, via getPlayerIdsWithBirthday.
   birthday: "",
+  // Whether the loaded player already has a date on file.
+  has_birthday: false,
   description: "",
 };
+
+// A complete <input type="date"> value; partial input is not checked.
+const FULL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const CAPTAIN_PLAYER_FORM_KEY = "stallcount:captain:player-form:v1";
 const CAPTAIN_ASSIGN_PLAYER_KEY = "stallcount:captain:assign-player:v1";
@@ -186,6 +194,10 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
   const [assigning, setAssigning] = useState(false);
   const [editingRosterEntryId, setEditingRosterEntryId] = useState("");
   const [playerEditorOpen, setPlayerEditorOpen] = useState(false);
+  // Players whose stored date of birth equals the date in the form. Replaces
+  // the old client-side comparison, which needed every player's birthday.
+  const [birthdayMatchIds, setBirthdayMatchIds] = useState(() => new Set());
+  const [birthdayCheckFailed, setBirthdayCheckFailed] = useState(false);
   const previousSelectionRef = useRef(`${selectedEventId}:${selectedTeamId}`);
 
   useEffect(() => {
@@ -211,6 +223,35 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
     }
     loadRoster(selectedTeamId, selectedEventId);
   }, [selectedTeamId, selectedEventId]);
+
+  useEffect(() => {
+    const value = String(playerForm.birthday || "").trim();
+    if (!FULL_DATE_PATTERN.test(value)) {
+      setBirthdayMatchIds(new Set());
+      setBirthdayCheckFailed(false);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const ids = await getPlayerIdsWithBirthday(value);
+        if (!cancelled) {
+          setBirthdayMatchIds(ids);
+          setBirthdayCheckFailed(false);
+        }
+      } catch {
+        // Without the check the duplicate search still works on names alone.
+        if (!cancelled) {
+          setBirthdayMatchIds(new Set());
+          setBirthdayCheckFailed(true);
+        }
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [playerForm.birthday]);
 
   const filteredPlayers = useMemo(() => {
     const term = playerForm.name.trim().toLowerCase();
@@ -243,8 +284,7 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
         const playerTokens = tokenizeName(player.name);
         const similarity = nameSimilarity(formName, playerName);
         const sharedTokens = playerTokens.filter((token) => formTokens.has(token)).length;
-        const birthdaysMatch =
-          Boolean(formBirthday) && Boolean(player.birthday) && player.birthday === formBirthday;
+        const birthdaysMatch = Boolean(formBirthday) && birthdayMatchIds.has(player.id);
         const namesEqual = Boolean(formName) && Boolean(playerName) && formName === playerName;
         const jerseyMatches = jerseyValue !== null && player.jersey_number === jerseyValue;
         const genderMatches = formGender && player.gender_code && player.gender_code === formGender;
@@ -311,6 +351,7 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
 
     return [...primary, ...fallback];
   }, [
+    birthdayMatchIds,
     playerDirectory,
     playerForm.birthday,
     playerForm.gender_code,
@@ -332,10 +373,13 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
 
     const hasPossibleDuplication = playerDirectory.some((player) => {
       if (!player || player.id === playerForm.id) return false;
+      const sameBirthday = playerForm.birthday
+        ? birthdayMatchIds.has(player.id)
+        : !player.has_birthday;
       return (
         normalizeName(player.name) === formName &&
         String(player.gender_code || "") === String(playerForm.gender_code || "") &&
-        String(player.birthday || "") === String(playerForm.birthday || "")
+        sameBirthday
       );
     });
 
@@ -350,7 +394,23 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
       tone: "caution",
       message: "Caution: Existing name found",
     };
-  }, [playerDirectory, playerForm.birthday, playerForm.gender_code, playerForm.id, playerForm.name]);
+  }, [birthdayMatchIds, playerDirectory, playerForm.birthday, playerForm.gender_code, playerForm.id, playerForm.name]);
+
+  // Dates of birth are never shown. When editing a player with one on file,
+  // the field is a check: type the date and it says whether it matches.
+  const birthdayFieldHint = useMemo(() => {
+    const typed = String(playerForm.birthday || "").trim();
+    if (!playerForm.id || !playerForm.has_birthday) {
+      return typed && birthdayCheckFailed ? "Could not check this date against existing players." : null;
+    }
+    if (!FULL_DATE_PATTERN.test(typed)) {
+      return "A date is on file. Leave blank to keep it, or enter it to confirm this is the right player.";
+    }
+    if (birthdayCheckFailed) return "Could not check this date against the one on file.";
+    return birthdayMatchIds.has(playerForm.id)
+      ? "Matches the date on file."
+      : "Does not match the date on file. Saving will replace it.";
+  }, [birthdayCheckFailed, birthdayMatchIds, playerForm.birthday, playerForm.has_birthday, playerForm.id]);
 
   const hasExistingPlayerLookupInput = Boolean(playerForm.name.trim());
 
@@ -429,7 +489,7 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
     const options = playerDirectory
       .filter((player) => player?.id)
       .filter((player) => {
-        const haystack = [player.name, player.gender_code, player.jersey_number, player.birthday]
+        const haystack = [player.name, player.gender_code, player.jersey_number]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -512,7 +572,8 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
       name: player.name || "",
       gender_code: player.gender_code || "",
       jersey_number: player.jersey_number ?? "",
-      birthday: player.birthday ?? "",
+      birthday: "",
+      has_birthday: Boolean(player.has_birthday),
       description: player.description ?? "",
     });
     setPlayerAlert(null);
@@ -549,9 +610,31 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
       setPlayerAlert({ tone: "error", message: "Gender is required." });
       return;
     }
-    if (!normalizedBirthday) {
+    // A date is needed unless the loaded player already has one on file, in
+    // which case a blank field keeps it.
+    const keepsStoredBirthday = Boolean(playerForm.id && playerForm.has_birthday);
+    if (!normalizedBirthday && !keepsStoredBirthday) {
       setPlayerAlert({ tone: "error", message: "Birthday is required." });
       return;
+    }
+
+    if (normalizedBirthday && keepsStoredBirthday) {
+      // A failed check counts as "does not match", so the captain is asked.
+      const matchesStored = await getPlayerIdsWithBirthday(normalizedBirthday)
+        .then((ids) => ids.has(playerForm.id))
+        .catch(() => false);
+      if (
+        !matchesStored &&
+        !window.confirm(
+          "This date of birth does not match the one on file for this player. Check that you have the right player. Replace the date on file?"
+        )
+      ) {
+        setPlayerAlert({
+          tone: "error",
+          message: "Player was not saved. The date of birth differs from the one on file.",
+        });
+        return;
+      }
     }
 
     if (!playerForm.id && duplicateBanner?.tone === "danger") {
@@ -578,7 +661,8 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
         id: playerForm.id || undefined,
         name: normalizedName,
         gender_code: normalizedGender,
-        birthday: normalizedBirthday,
+        // Blank keeps the stored date; upsertPlayer only writes a given date.
+        birthday: normalizedBirthday || undefined,
         description: playerForm.description || null,
         jersey_number: jerseyNumber ?? null,
       });
@@ -719,7 +803,7 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
               <Input
                 id="assign-player-search"
                 type="search"
-                placeholder="Search by name, jersey, birthday, or gender"
+                placeholder="Search by name, jersey, or gender"
                 value={assignPlayerFilter}
                 onChange={(event) => setAssignPlayerFilter(event.target.value)}
                 className="is-compact"
@@ -781,7 +865,7 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
                               {player.jersey_number != null ? ` #${player.jersey_number}` : ""}
                             </p>
                             <p className="truncate text-ink-muted">
-                              {player.birthday || "DOB unknown"} - {player.gender_code || "-"}
+                              {player.has_birthday ? "DOB on file" : "DOB unknown"} - {player.gender_code || "-"}
                             </p>
                           </div>
                         </div>
@@ -1033,7 +1117,8 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
                                   {entry.player.jersey_number != null ? ` #${entry.player.jersey_number}` : ""}
                                 </p>
                                 <p className="truncate text-ink-muted">
-                                  {entry.player.birthday || "DOB unknown"} - {entry.player.gender_code || "-"}
+                                  {entry.player.has_birthday ? "DOB on file" : "DOB unknown"} -{" "}
+                                  {entry.player.gender_code || "-"}
                                 </p>
                               </div>
                             </div>
@@ -1079,13 +1164,13 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
                       required
                     />
                   </Field>
-                  <Field label="Birthday" htmlFor="player-birthday">
+                  <Field label="Birthday" htmlFor="player-birthday" hint={birthdayFieldHint}>
                     <Input
                       id="player-birthday"
                       type="date"
                       value={playerForm.birthday}
                       onChange={(event) => handlePlayerFieldChange("birthday", event.target.value)}
-                      required
+                      required={!(playerForm.id && playerForm.has_birthday)}
                     />
                   </Field>
                   <div className="grid grid-cols-2 gap-3 md:col-span-2 md:gap-4">

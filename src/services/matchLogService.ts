@@ -474,8 +474,8 @@ export async function deleteMatchLogEntry(logId: string) {
   // not an error: it matches zero rows and returns `{ error: null }`. This is
   // the scorekeeper undo path, so a bare delete() meant a denied undo threw
   // nothing, the entry disappeared optimistically, and it reappeared on the
-  // next refresh. `match_logs` DELETE requires `match_delete`, which the
-  // console gate does not check for.
+  // next refresh. `match_logs` DELETE requires `match_log_delete` (split from
+  // `match_delete` on 2026-11-08), which the console gate does not check for.
   const { data, error } = await supabase
     .from("match_logs")
     .delete()

@@ -26,7 +26,9 @@ export type PlayerDirectoryRow = {
   name: string;
   gender_code: "M" | "W" | null;
   jersey_number: number | null;
-  birthday: string | null;
+  // Whether a date of birth is on file. The date itself is never readable
+  // through the API (POPIA); check one with getPlayerIdsWithBirthday().
+  has_birthday: boolean | null;
   description: string | null;
 };
 
@@ -60,7 +62,7 @@ export type EventRosterEntry = {
     name: string;
     jersey_number: number | null;
     gender_code: "M" | "W" | null;
-    birthday: string | null;
+    has_birthday: boolean | null;
   } | null;
   team: {
     id: string;
@@ -69,7 +71,9 @@ export type EventRosterEntry = {
   } | null;
 };
 
-const PLAYER_SELECT = "id, name, gender_code, jersey_number, birthday, description";
+// `birthday` is deliberately absent: anon/authenticated may not SELECT it
+// (20261108134000_hide_player_birthday.sql), and asking for it fails the query.
+const PLAYER_SELECT = "id, name, gender_code, jersey_number, has_birthday, description";
 
 function normalizePlayerWriteError(error: unknown, fallback: string) {
   const message =
@@ -233,9 +237,15 @@ export async function upsertPlayer(payload: UpsertPlayerPayload) {
       typeof payload.jersey_number === "number" && !Number.isNaN(payload.jersey_number)
         ? payload.jersey_number
         : null,
-    birthday: payload.birthday || null,
     description: payload.description?.trim() || null,
-  };
+  } as Record<string, unknown>;
+
+  // The stored date is never read back, so an edit form cannot know it. Only
+  // write the field when a date was actually entered; sending null here would
+  // wipe the date on file every time a player is edited.
+  if (payload.birthday) {
+    base.birthday = payload.birthday;
+  }
 
   if (!base.name) {
     throw new Error("Player name is required.");
@@ -265,6 +275,41 @@ export async function upsertPlayer(payload: UpsertPlayerPayload) {
   invalidateCachedQueries("players:ids");
 
   return data?.id as string;
+}
+
+/**
+ * Ids of the players whose stored date of birth equals `birthday`
+ * (YYYY-MM-DD). The date itself never leaves the database; this answers "is
+ * this the right player?" for captains, and is refused for anyone without
+ * roster rights.
+ */
+export async function getPlayerIdsWithBirthday(birthday: string): Promise<Set<string>> {
+  if (!birthday) return new Set();
+  const { data, error } = await supabase.rpc("players_with_birthday", { p_birthday: birthday });
+  if (error) {
+    throw new Error(error.message || "Unable to check the date of birth.");
+  }
+  return new Set(((data ?? []) as Array<{ player_id: string }>).map((row) => row.player_id));
+}
+
+/**
+ * For up to 20 players, a group number per stored date of birth: two players
+ * with the same number share a birthday. Null means no date on file. Used by
+ * the merge tool to compare variants without showing the dates.
+ */
+export async function getPlayerBirthdayGroups(ids: string[]): Promise<Map<string, number | null>> {
+  const uniqueIds = Array.from(new Set((ids || []).filter(Boolean)));
+  if (!uniqueIds.length) return new Map();
+  const { data, error } = await supabase.rpc("player_birthday_groups", { p_player_ids: uniqueIds });
+  if (error) {
+    throw new Error(error.message || "Unable to compare dates of birth.");
+  }
+  return new Map(
+    ((data ?? []) as Array<{ player_id: string; birthday_group: number | null }>).map((row) => [
+      row.player_id,
+      row.birthday_group,
+    ]),
+  );
 }
 
 export async function getRosterEntries(teamId: string, eventId?: string | null) {
@@ -312,7 +357,7 @@ export async function getEventRosters(eventId: string): Promise<EventRosterEntry
         team_id,
         is_captain,
         is_spirit_captain,
-        player:player(id, name, jersey_number, gender_code, birthday),
+        player:player(id, name, jersey_number, gender_code, has_birthday),
         team:teams(id, name, short_name)
       `
     )

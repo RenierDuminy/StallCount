@@ -139,7 +139,7 @@ export async function searchPlayersByName(term, limit = 50) {
 
   const { data, error } = await supabase
     .from("player")
-    .select("id, name, gender_code, jersey_number, birthday, description, created_at, updated_at")
+    .select("id, name, gender_code, jersey_number, has_birthday, description, created_at, updated_at")
     .ilike("name", `%${query}%`)
     .order("name", { ascending: true })
     .limit(limit);
@@ -164,7 +164,7 @@ export async function getPlayerComparisonProfile(playerId) {
     await Promise.all([
       supabase
         .from("player")
-        .select("id, name, gender_code, jersey_number, birthday, description, created_at, updated_at")
+        .select("id, name, gender_code, jersey_number, has_birthday, description, created_at, updated_at")
         .eq("id", playerId)
         .maybeSingle(),
       supabase

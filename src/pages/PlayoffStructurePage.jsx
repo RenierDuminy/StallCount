@@ -238,57 +238,10 @@ function formatVenueLabel(venue) {
   return parts.length ? parts.join(", ") : "Venue";
 }
 
-// The sweeper runs EVERY 6 HOURS, on SERVER TIME (pg_cron fires in UTC):
-// 00:00, 06:00, 12:00, 18:00 UTC — see
-// supabase/migrations/*_playoff_auto_resolve.sql.
-//
-// South Africa (SAST) is UTC+2 and has no daylight saving, so for local users
-// those sweeps land at 02:00, 08:00, 14:00 and 20:00. The times the dropdown
-// offers are derived from the UTC grid rather than hardcoded, so they stay
-// correct for an operator in any timezone.
-//
-// A release time between those points does not take effect until the next one,
-// so letting an operator type 14:30 and watch nothing happen until 16:00 SAST
-// would be misleading. The UI therefore only ever offers real sweep times.
-const SWEEP_INTERVAL_HOURS = 6;
-
-/** The sweep times of one local day, as Date objects. */
-function buildSweepTimesForDay(dayValue) {
-  const base = dayValue ? new Date(`${dayValue}T00:00`) : null;
-  if (!base || Number.isNaN(base.getTime())) {
-    return [];
-  }
-
-  const times = [];
-  // Walk UTC sweep points across a 48-hour window and keep the ones that land
-  // on the requested local day — the UTC grid does not align to local midnight
-  // in every timezone (SAST is +02:00, so sweeps fall at 02:00/08:00/14:00/20:00).
-  const startUtc = Date.UTC(
-    base.getFullYear(),
-    base.getMonth(),
-    base.getDate(),
-    0,
-    0,
-    0,
-    0,
-  );
-  for (let hour = -24; hour <= 48; hour += SWEEP_INTERVAL_HOURS) {
-    const candidate = new Date(startUtc + hour * 3600 * 1000);
-    const aligned = new Date(candidate);
-    aligned.setUTCMinutes(0, 0, 0);
-    aligned.setUTCHours(Math.floor(aligned.getUTCHours() / SWEEP_INTERVAL_HOURS) * SWEEP_INTERVAL_HOURS);
-    if (
-      aligned.getFullYear() === base.getFullYear() &&
-      aligned.getMonth() === base.getMonth() &&
-      aligned.getDate() === base.getDate() &&
-      !times.some((existing) => existing.getTime() === aligned.getTime())
-    ) {
-      times.push(aligned);
-    }
-  }
-
-  return times.sort((left, right) => left - right);
-}
+// Release times are free date + time values. Since the instant-resolution
+// migration (20261108136000) a check runs every minute, so a release fires
+// within about a minute of its time; the 6-hourly sweep is only the backup.
+// Times are the operator's local clock, stored as UTC.
 
 /** Local date key (YYYY-MM-DD) for a timestamp, for the date input. */
 function toDayInputValue(value) {
@@ -300,19 +253,7 @@ function toDayInputValue(value) {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-/**
- * The sweep times as they read on THIS operator's clock, e.g.
- * "02:00, 08:00, 14:00, 20:00". Derived rather than hardcoded so a TD working
- * from another timezone is not told SAST times that contradict the dropdown
- * in front of them.
- */
-function describeLocalSweepTimes() {
-  const today = new Date();
-  const times = buildSweepTimesForDay(toDayInputValue(today)).map(toTimeInputValue);
-  return times.join(", ");
-}
-
-/** Local HH:mm for a timestamp, matching the option values below. */
+/** Local HH:mm for a timestamp, for the time input. */
 function toTimeInputValue(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -1433,16 +1374,11 @@ export default function PlayoffStructurePage() {
     setMessage("");
 
     try {
-      // Default to the next real sweep after tomorrow, so a new row is never
-      // born already-due (which would release its games on the very next
-      // sweep) and never carries a time the sweeper does not actually run at.
+      // Default to tomorrow 09:00 local, so a new row is never born already
+      // due (which would release its games within the minute).
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      const sweeps = buildSweepTimesForDay(toDayInputValue(tomorrow));
-      const defaultAt = (
-        sweeps.find((sweep) => sweep.getTime() > Date.now()) ||
-        sweeps[0] ||
-        new Date(Date.now() + 6 * 60 * 60 * 1000)
-      ).toISOString();
+      tomorrow.setHours(9, 0, 0, 0);
+      const defaultAt = tomorrow.toISOString();
       await createPlayoffSchedule({
         eventId: selectedEventId,
         bracketId: selectedBracketId,
@@ -1472,17 +1408,15 @@ export default function PlayoffStructurePage() {
           throw new Error("A release date is required.");
         }
 
-        // Snap to a real sweep time: if the chosen one is not in the day's
-        // list (a changed date can orphan the previous selection), fall back
-        // to that day's first sweep rather than writing a time that would sit
-        // idle until the next one.
-        const sweeps = buildSweepTimesForDay(day);
-        if (!sweeps.length) {
-          throw new Error("That date has no sweep times.");
+        const time = draft.time ?? toTimeInputValue(schedule.resolve_at);
+        if (!/^\d{2}:\d{2}$/.test(time || "")) {
+          throw new Error("A release time is required.");
         }
-        const wanted = draft.time ?? toTimeInputValue(schedule.resolve_at);
-        const chosen =
-          sweeps.find((sweep) => toTimeInputValue(sweep) === wanted) || sweeps[0];
+        // Local date + time, as the operator sees them.
+        const chosen = new Date(`${day}T${time}`);
+        if (Number.isNaN(chosen.getTime())) {
+          throw new Error("That date and time could not be read.");
+        }
 
         await updatePlayoffSchedule(schedule.id, {
           label: draft.label ?? schedule.label ?? "",
@@ -2560,7 +2494,7 @@ export default function PlayoffStructurePage() {
                   onClick={handleToggleAutoResolve}
                   className={autoResolve ? "sc-button" : "sc-button is-ghost"}
                   disabled={autoResolveBusy || loading || !selectedEventId}
-                  title="Release games on their scheduled dates automatically, without anyone opening this page. Sweeps every 6 hours."
+                  title="Fill in games automatically, without anyone opening this page: a couple of minutes after each result, and within a minute of each release time. A full sweep also runs every 6 hours as a backup."
                 >
                   {autoResolveBusy
                     ? "Saving..."
@@ -2602,12 +2536,13 @@ export default function PlayoffStructurePage() {
               ) : null}
               {resolveStatus.job?.last_attempted_at ? (
                 <span>
-                  Last sweep {formatDateTime(resolveStatus.job.last_attempted_at)}
+                  {resolveStatus.job.kind === "pending" ? "Last run after results" : "Last sweep"}{" "}
+                  {formatDateTime(resolveStatus.job.last_attempted_at)}
                   {resolveStatus.job.last_ok === false ? " (failed)" : ""}
                   {resolveStatus.job.last_message ? ` - ${resolveStatus.job.last_message}` : ""}
                 </span>
               ) : (
-                <span>No scheduled sweep has run yet.</span>
+                <span>No automatic run yet.</span>
               )}
             </div>
           ) : null}
@@ -3207,7 +3142,7 @@ export default function PlayoffStructurePage() {
                   title="Release schedule"
                   description={
                     autoResolve
-                      ? `Dates when groups of games fill in their teams. The sweeper runs every 6 hours on server time (UTC) — ${describeLocalSweepTimes()} in your timezone — so only those times can be chosen.`
+                      ? "Dates when groups of games fill in their teams. Each group is released within about a minute of its time (your local time)."
                       : "Dates when groups of games fill in their teams. Turn on scheduled resolution above for these to run automatically."
                   }
                   action={
@@ -3250,9 +3185,6 @@ export default function PlayoffStructurePage() {
                               updateScheduleDraft(schedule.id, { label: changeEvent.target.value })
                             }
                           />
-                          {/* Date + sweep-time, not a free datetime: the
-                              sweeper only runs every 6 hours, so an arbitrary
-                              time would silently wait for the next one. */}
                           <input
                             type="date"
                             className="sc-input is-compact min-w-[8rem] flex-1"
@@ -3261,22 +3193,14 @@ export default function PlayoffStructurePage() {
                               updateScheduleDraft(schedule.id, { day: changeEvent.target.value })
                             }
                           />
-                          <Select
-                            className="is-compact min-w-[7rem]"
+                          <input
+                            type="time"
+                            className="sc-input is-compact min-w-[6.5rem]"
                             value={draft.time ?? toTimeInputValue(schedule.resolve_at)}
                             onChange={(changeEvent) =>
                               updateScheduleDraft(schedule.id, { time: changeEvent.target.value })
                             }
-                          >
-                            {buildSweepTimesForDay(day).map((sweep) => {
-                              const value = toTimeInputValue(sweep);
-                              return (
-                                <option key={value} value={value}>
-                                  {value}
-                                </option>
-                              );
-                            })}
-                          </Select>
+                          />
                           <button
                             type="button"
                             className="sc-button is-ghost text-xs"

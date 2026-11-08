@@ -18,6 +18,14 @@ import {
   preflightMergePermissions,
   searchPlayersByName,
 } from "../services/playerMergeService";
+import { getPlayerBirthdayGroups } from "../services/playerService";
+
+function birthdayGroupLabel(profile, ctx) {
+  if (!profile.player.has_birthday) return "—";
+  const group = ctx?.birthdayGroups?.get(profile.player.id);
+  if (group == null) return ctx?.birthdayGroupsFailed ? "On file" : "…";
+  return `Date ${String.fromCharCode(64 + group)}`;
+}
 
 const INPUT_CLASS =
   "rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink shadow-sm focus:border-border-strong focus:outline-none";
@@ -29,7 +37,9 @@ const COMPARISON_ROWS = [
   { key: "id", label: "Player ID", get: (p) => p.player.id, mono: true },
   { key: "gender", label: "Gender", get: (p) => p.player.gender_code || "—" },
   { key: "jersey", label: "Jersey", get: (p) => p.player.jersey_number ?? "—" },
-  { key: "birthday", label: "Birthday", get: (p) => p.player.birthday || "—" },
+  // Dates of birth are never shown (POPIA). The server says which selected
+  // players share one: "Date A" twice means the same birthday.
+  { key: "birthday", label: "Birthday", get: (p, ctx) => birthdayGroupLabel(p, ctx) },
   { key: "created", label: "Date created", get: (p) => formatDate(p.player.created_at) },
   { key: "updated", label: "Last updated", get: (p) => formatDate(p.player.updated_at) },
   { key: "events", label: "Events participated", get: (p) => p.eventCount, numeric: true },
@@ -100,6 +110,33 @@ export default function PlayerMergePage() {
     [profiles, selectedIds],
   );
   const keeperProfile = keeperId ? profiles[keeperId] : null;
+
+  const [birthdayGroups, setBirthdayGroups] = useState(() => new Map());
+  const [birthdayGroupsFailed, setBirthdayGroupsFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (selectedIds.length === 0) {
+      setBirthdayGroups(new Map());
+      return undefined;
+    }
+    getPlayerBirthdayGroups(selectedIds)
+      .then((groups) => {
+        if (!cancelled) {
+          setBirthdayGroups(groups);
+          setBirthdayGroupsFailed(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setBirthdayGroupsFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedIds]);
+  const comparisonContext = useMemo(
+    () => ({ birthdayGroups, birthdayGroupsFailed }),
+    [birthdayGroups, birthdayGroupsFailed],
+  );
   const duplicateIds = useMemo(
     () => selectedIds.filter((id) => id !== keeperId),
     [keeperId, selectedIds],
@@ -380,7 +417,7 @@ export default function PlayerMergePage() {
                     <span className="font-semibold">{row.name}</span>
                     <span className="text-xs text-ink-muted">
                       {row.gender_code || "—"} · #{row.jersey_number ?? "—"} ·{" "}
-                      {row.birthday || "no birthday"}
+                      {row.has_birthday ? "DOB on file" : "no birthday"}
                     </span>
                     <span className="ml-auto font-mono text-[11px] text-ink-muted">{row.id}</span>
                     {loading && <span className="text-xs text-ink-muted">Loading...</span>}
@@ -443,7 +480,7 @@ export default function PlayerMergePage() {
                   {COMPARISON_ROWS.map((rowDef) => {
                     // Highlight rows where the variants disagree — those are the
                     // fields worth reading before choosing.
-                    const values = selectedProfiles.map((profile) => rowDef.get(profile));
+                    const values = selectedProfiles.map((profile) => rowDef.get(profile, comparisonContext));
                     const differs = new Set(values.map((value) => String(value))).size > 1;
                     return (
                       <tr key={rowDef.key} className={differs ? "bg-warning-bg" : ""}>

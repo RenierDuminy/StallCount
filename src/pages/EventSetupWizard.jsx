@@ -193,6 +193,9 @@ const INITIAL_VENUE_FORM = {
 
 // Canonical codes from match_status(code); these are written to the database.
 const matchStatuses = ALL_STATUS_CODES;
+// Both modes create a new events row, which only admins may do.
+const ADMIN_ONLY_EVENT_MODES = new Set(["create", "duplicate"]);
+
 const WIZARD_DRAFT_STORAGE_KEY = "stallcount:event-setup-wizard:draft:v1";
 // The loaded-from-DB hierarchy snapshot is immutable between loads, so it is
 // persisted under its own key and only re-serialized when it actually changes
@@ -1066,11 +1069,13 @@ export default function EventSetupWizardPage() {
     }
   }, []);
 
-  // Creating a brand-new event is admin-only. If a non-admin lands here in
-  // "create" mode (default state, or a stale persisted draft from before they
-  // lost admin), bump them to "edit" instead of leaving a disabled flow active.
+  // Creating a brand-new event (from scratch or by duplicating one) is
+  // admin-only, so only considered events get made; RLS on public.events
+  // enforces the same. If a non-admin lands here in either mode (default state,
+  // or a stale persisted draft from before they lost admin), bump them to
+  // "edit" instead of leaving a flow active that the database would refuse.
   useEffect(() => {
-    if (!isAdmin && eventMode === "create") {
+    if (!isAdmin && ADMIN_ONLY_EVENT_MODES.has(eventMode)) {
       setEventMode("edit");
     }
   }, [isAdmin, eventMode]);
@@ -1333,9 +1338,9 @@ export default function EventSetupWizardPage() {
       if (nextMode === eventMode) {
         return;
       }
-      if (nextMode === "create" && !isAdmin) {
-        // Creating a brand-new event is admin-only; the option is disabled in
-        // the UI, but guard the handler too in case it's ever reached another way.
+      if (ADMIN_ONLY_EVENT_MODES.has(nextMode) && !isAdmin) {
+        // Creating a new event is admin-only; the options are disabled in the
+        // UI, but guard the handler too in case it's ever reached another way.
         return;
       }
       setEventMode(nextMode);
@@ -2680,7 +2685,7 @@ export default function EventSetupWizardPage() {
             },
           ].map((option) => {
             const isSelected = eventMode === option.key;
-            const isRestricted = option.key === "create" && !isAdmin;
+            const isRestricted = ADMIN_ONLY_EVENT_MODES.has(option.key) && !isAdmin;
             return (
               <label
                 key={option.key}
@@ -2691,7 +2696,7 @@ export default function EventSetupWizardPage() {
                 )}
                 title={
                   isRestricted
-                    ? "Only admins can create new events."
+                    ? "Only admins can create new events, including by duplicating one."
                     : undefined
                 }
               >

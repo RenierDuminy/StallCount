@@ -57,6 +57,10 @@ const ALL_PERMISSION_KEYS = Object.freeze([
   "match_insert",
   "match_update",
   "match_delete",
+  // Deleting single match_logs rows (scorekeeper undo, match corrections).
+  // Split from match_delete on 2026-11-08 so that only tournament directors
+  // can delete whole matches; see 20261108133000_split_match_log_delete.sql.
+  "match_log_delete",
   "admin_override",
 ]);
 
@@ -83,7 +87,7 @@ const ROLE_PERMISSIONS_SNAPSHOT = Object.freeze({
     "media_edit",
     "match_insert",
     "match_update",
-    "match_delete",
+    "match_log_delete",
   ]),
   captain: Object.freeze([
     "team_update",
@@ -112,8 +116,9 @@ const ROLE_PERMISSIONS_SNAPSHOT = Object.freeze({
     "match_insert",
     "match_update",
     "match_delete",
+    "match_log_delete",
   ]),
-  scorekeeper: Object.freeze(["match_insert", "match_update", "match_delete"]),
+  scorekeeper: Object.freeze(["match_insert", "match_update", "match_log_delete"]),
   team_manager: Object.freeze([
     "team_update",
     "roster_insert",

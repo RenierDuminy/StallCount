@@ -7,7 +7,7 @@ module.exports = async function stbRl26UpdateRostersLocal({
   log,
 }) {
   const EXPECTED_EVENT_ID = "e6a34716-f9d6-4d70-bc1a-b610a04e3eaf";
-  const SCRIPT_VERSION = "2026-05-23-local-womens-residence-1";
+  const SCRIPT_VERSION = "2026-11-08-local-hidden-birthday";
   const SIGNUP_CSV_URL_STORAGE_KEY = "stallcount:signup-management:csv-url:v1";
   const SIGNUP_DOB_MODE_STORAGE_KEY = "stallcount:signup-management:dob-mode:v1";
   const SCRIPT_STATE_STORAGE_KEY = "stallcount:custom-script:STB_RL_26_update_rosters_local:state:v1";
@@ -137,10 +137,24 @@ module.exports = async function stbRl26UpdateRostersLocal({
       return null;
     }
 
+    // player.birthday is not readable from the browser (POPIA,
+    // 20261108134000_hide_player_birthday.sql); the server answers which
+    // players were born on that date.
+    const { data: matches, error: matchError } = await supabase.rpc("players_with_birthday", {
+      p_birthday: birthday,
+    });
+    if (matchError) {
+      throw new Error(matchError.message || `Unable to look up player row for ${fullName}.`);
+    }
+    const ids = (matches || []).map((row) => row.player_id).filter(Boolean);
+    if (!ids.length) {
+      return null;
+    }
+
     const { data, error } = await supabase
       .from("player")
-      .select("id, name, gender_code, birthday, description")
-      .eq("birthday", birthday)
+      .select("id, name, gender_code, description")
+      .in("id", ids)
       .order("created_at", { ascending: true })
       .limit(20);
 
@@ -148,7 +162,8 @@ module.exports = async function stbRl26UpdateRostersLocal({
       throw new Error(error.message || `Unable to look up player row for ${fullName}.`);
     }
 
-    return (data || []).find((player) => normalizeName(player?.name) === normalizedPlayerName) || null;
+    const found = (data || []).find((player) => normalizeName(player?.name) === normalizedPlayerName);
+    return found ? { ...found, birthday } : null;
   }
 
   function normalizeTeamName(value) {
@@ -844,14 +859,26 @@ module.exports = async function stbRl26UpdateRostersLocal({
   };
 
     setBreadcrumb("players:load");
-    const { data: playerRows, error: playerError } = await supabase
+    const { data: playerRowsWithoutBirthday, error: playerError } = await supabase
       .from("player")
-      .select("id, name, gender_code, birthday, description")
+      .select("id, name, gender_code, description")
       .order("name", { ascending: true });
 
     if (playerError) {
       throw new Error(playerError.message || "Unable to load existing players.");
     }
+
+    // Matching signups to players is by name + date of birth. The dates are
+    // only readable by admins, through this function.
+    const { data: birthdayRows, error: birthdayError } = await supabase.rpc("admin_player_birthdays");
+    if (birthdayError) {
+      throw new Error(birthdayError.message || "Unable to load player birthdays (admin only).");
+    }
+    const birthdayById = new Map((birthdayRows || []).map((row) => [row.player_id, row.birthday]));
+    const playerRows = (playerRowsWithoutBirthday || []).map((player) => ({
+      ...player,
+      birthday: birthdayById.get(player.id) ?? null,
+    }));
 
     const playersByKey = new Map();
     for (const player of playerRows || []) {
@@ -885,7 +912,7 @@ module.exports = async function stbRl26UpdateRostersLocal({
           birthday,
           description: buildSignupDescription(signup),
         })
-        .select("id, name, gender_code, birthday, description")
+        .select("id, name, gender_code, description")
         .single();
 
       if (createPlayerError) {
@@ -900,9 +927,10 @@ module.exports = async function stbRl26UpdateRostersLocal({
         throw new Error(createPlayerError.message || `Unable to create player row for ${fullName}.`);
       }
 
-      cachePlayer(playersByKey, createdPlayer);
+      const createdWithBirthday = { ...createdPlayer, birthday };
+      cachePlayer(playersByKey, createdWithBirthday);
       summary.playersCreated += 1;
-      return createdPlayer;
+      return createdWithBirthday;
     }
 
     const playerUpdates = {};
@@ -925,14 +953,14 @@ module.exports = async function stbRl26UpdateRostersLocal({
       .from("player")
       .update(playerUpdates)
       .eq("id", player.id)
-      .select("id, name, gender_code, birthday, description")
+      .select("id, name, gender_code, description")
       .single();
 
     if (updatePlayerError) {
       throw new Error(updatePlayerError.message || `Unable to update player row for ${fullName}.`);
     }
 
-    player = updatedPlayer;
+    player = { ...updatedPlayer, birthday: player.birthday };
     cachePlayer(playersByKey, player);
     summary.playersUpdated += 1;
     return player;

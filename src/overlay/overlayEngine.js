@@ -88,6 +88,8 @@ let _isPreview = false;
 let _overlayInitialized = false;
 
 let _currentMatch = null;
+// Always null since the scoreboard_match_snapshots table was retired (nothing
+// ever wrote to it). Kept so the score fallbacks and the debug page still read.
 let _currentScoreboard = null;
 let _currentEvent = null;
 let _currentEventRules = null;
@@ -678,26 +680,6 @@ async function _loadMatchLogsSnapshot() {
   return _matchLogs;
 }
 
-async function _loadScoreboardSnapshot() {
-  if (!_matchId) return null;
-  const { data, error } = await supabase
-    .from("scoreboard_match_snapshots")
-    .select("payload, updated_at")
-    .eq("match_id", _matchId)
-    .maybeSingle();
-
-  if (error) return null;
-
-  const payload = data?.payload && typeof data.payload === "object" ? data.payload : null;
-  _currentScoreboard = payload;
-  if (_currentMatch) {
-    const sp = _buildScorePayload();
-    _fire("scoreUpdate", sp);
-    _refreshClockInterval(sp?.clockInfo);
-  }
-  if (data?.updated_at) _fire("metaMessage", { text: "", isError: false });
-  return payload;
-}
 
 async function _loadMatch() {
   if (!_matchId) {
@@ -953,28 +935,6 @@ function _setupSubscriptions() {
     )
     .subscribe();
 
-  const scoreboardChannel = supabase
-    .channel(`overlay:scoreboard:${_matchId}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "scoreboard_match_snapshots", filter: `match_id=eq.${_matchId}` },
-      (payload) => {
-        if (payload.eventType === "DELETE") {
-          _currentScoreboard = null;
-          if (_currentMatch) _fire("scoreUpdate", _buildScorePayload());
-          return;
-        }
-
-        const incoming = payload.new?.payload;
-        if (!incoming || typeof incoming !== "object") return;
-
-        _currentScoreboard = incoming;
-        if (_currentMatch) _fire("scoreUpdate", _buildScorePayload());
-        if (payload.new?.updated_at) _fire("metaMessage", { text: "", isError: false });
-      },
-    )
-    .subscribe();
-
   const matchLogsChannel = supabase
     .channel(`overlay:match_logs:${_matchId}`)
     .on(
@@ -994,7 +954,6 @@ function _setupSubscriptions() {
   window.addEventListener("beforeunload", () => {
     supabase.removeChannel(overlayBannerChannel);
     supabase.removeChannel(matchChannel);
-    supabase.removeChannel(scoreboardChannel);
     supabase.removeChannel(matchLogsChannel);
   });
 }
@@ -1024,7 +983,12 @@ export async function init(matchId, options = {}) {
   const match = await _loadMatch();
   _currentMatch = match;
 
-  _loadScoreboardSnapshot();
+  // First paint from the match row; the log snapshot below refines it.
+  if (_currentMatch) {
+    const sp = _buildScorePayload();
+    _fire("scoreUpdate", sp);
+    _refreshClockInterval(sp?.clockInfo);
+  }
 
   _loadMatchLogsSnapshot().then(() => {
     _recomputeIncrementalState();

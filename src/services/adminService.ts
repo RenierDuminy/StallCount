@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import { listTableColumns, pickRecencyColumn } from "./schemaService";
+import { hasUnreadableColumns, listTableColumns, pickRecencyColumn } from "./schemaService";
 import { fromSupabaseError } from "../utils/errorMessages";
 
 export type AuditLogEntry = {
@@ -34,7 +34,7 @@ export async function getRecentAuditLogs(limit = 20): Promise<AuditLogEntry[]> {
         action,
         change_data,
         created_at,
-        actor:user!audit_log_actor_id_fkey(id, full_name, email)
+        actor:profiles!audit_log_actor_id_fkey(id, full_name, email)
       `
     )
     .order("created_at", { ascending: false })
@@ -45,6 +45,14 @@ export async function getRecentAuditLogs(limit = 20): Promise<AuditLogEntry[]> {
   }
 
   return (data ?? []) as AuditLogEntry[];
+}
+
+// "*" unless the table has columns the API roles may not read; asking for
+// one of those fails the whole request, so list the readable ones instead.
+function readableSelect(tableName: string): string {
+  if (!hasUnreadableColumns(tableName)) return "*";
+  const columns = listTableColumns(tableName);
+  return columns.length ? columns.join(", ") : "*";
 }
 
 export function getBaseTableName(tableName: string): string {
@@ -62,7 +70,7 @@ export async function queryTableRows(
   const shouldOrder = !!(recencyColumn && columns.includes(recencyColumn));
 
   const buildQuery = (withOrdering: boolean) => {
-    let query = supabase.from(baseName).select("*").limit(limit);
+    let query = supabase.from(baseName).select(readableSelect(tableName)).limit(limit);
 
     if (
       withOrdering &&
@@ -106,7 +114,7 @@ export async function insertTableRow(
   const { data, error } = await supabase
     .from(getBaseTableName(tableName))
     .insert(payload)
-    .select("*")
+    .select(readableSelect(tableName))
     .maybeSingle();
 
   if (error) {
@@ -130,7 +138,7 @@ export async function updateTableRow(
     .from(getBaseTableName(tableName))
     .update(payload)
     .eq(primaryKey, recordId)
-    .select("*")
+    .select(readableSelect(tableName))
     .maybeSingle();
 
   if (error) {
@@ -154,7 +162,7 @@ export async function queryTableRowsExact(
 
   const { data, error, count } = await supabase
     .from(getBaseTableName(tableName))
-    .select("*", { count: "exact" })
+    .select(readableSelect(tableName), { count: "exact" })
     .eq(options.column, options.value)
     .limit(options.limit ?? 200);
 
@@ -183,7 +191,7 @@ export async function queryTableRowsByFilters(
 
   let query = supabase
     .from(getBaseTableName(tableName))
-    .select("*", { count: "exact" })
+    .select(readableSelect(tableName), { count: "exact" })
     .limit(options.limit ?? 200);
 
   validFilters.forEach((filter) => {
@@ -211,7 +219,7 @@ export async function deleteTableRow(
     .from(getBaseTableName(tableName))
     .delete()
     .eq(primaryKey, recordId)
-    .select("*")
+    .select(readableSelect(tableName))
     .maybeSingle();
 
   if (error) {
@@ -241,7 +249,7 @@ export async function deleteTableRowByFilters(
     query = query.eq(filter.column, filter.value);
   });
 
-  const { data, error } = await query.select("*");
+  const { data, error } = await query.select(readableSelect(tableName));
   if (error) {
     throw fromSupabaseError(error, `Failed to delete rows from ${tableName}`);
   }
@@ -270,7 +278,7 @@ export async function updateTableRowByFilters(
     query = query.eq(filter.column, filter.value);
   });
 
-  const { data, error } = await query.select("*").maybeSingle();
+  const { data, error } = await query.select(readableSelect(tableName)).maybeSingle();
   if (error) {
     throw fromSupabaseError(error, `Failed to update row in ${tableName}`);
   }
