@@ -76,10 +76,10 @@ const FLAG_DEFAULTS = Object.freeze({
   /**
    * How far past 00:00 the primary clock may run.
    * `maxSeconds` caps the negative count; the clock stops there rather than
-   * running away unattended. `stopOnCapWinner` halts overtime once a team has
-   * reached the target, so a decided match stops ticking.
+   * running away unattended. Below that it runs until `match_end`, even once a
+   * team has reached the target.
    */
-  overtime: Object.freeze({ maxSeconds: OVERTIME_CAP_SECONDS, stopOnCapWinner: true }),
+  overtime: Object.freeze({ maxSeconds: OVERTIME_CAP_SECONDS }),
   /**
    * Cap target modes the setup modal offers. Every mode listed here must be
    * implemented by the cap paths in the data hook — see assertFormatShape.
@@ -88,8 +88,6 @@ const FLAG_DEFAULTS = Object.freeze({
    * still holding it read as "addOneToHighest" (normalizeSoftCapMode).
    */
   capTargetModes: Object.freeze(["none", "addOneToHighest"]),
-  /** Setting match duration also sets the hard cap minute. */
-  coupleMatchDurationToHardCap: false,
   /** Setting the pull deadline also sets the inter-point window. */
   coupleInterPointPullDeadline: false,
   /**
@@ -147,9 +145,8 @@ export const SCOREKEEPER_FORMATS = Object.freeze({
       spiritScores: true,
     }),
     flags: Object.freeze({
-      overtime: Object.freeze({ maxSeconds: OVERTIME_CAP_SECONDS, stopOnCapWinner: true }),
+      overtime: Object.freeze({ maxSeconds: OVERTIME_CAP_SECONDS }),
       capTargetModes: Object.freeze(["none", "addOneToHighest"]),
-      coupleMatchDurationToHardCap: false,
       coupleInterPointPullDeadline: false,
       advancedRuleFieldsEditable: true,
       allowEditSimpleEvents: true,
@@ -188,9 +185,8 @@ export const SCOREKEEPER_FORMATS = Object.freeze({
     // `advancedRuleFieldsEditable: false` keeps the form short. The hidden fields
     // still apply — they just take whatever the event supplied.
     flags: Object.freeze({
-      overtime: Object.freeze({ maxSeconds: OVERTIME_CAP_SECONDS, stopOnCapWinner: true }),
+      overtime: Object.freeze({ maxSeconds: OVERTIME_CAP_SECONDS }),
       capTargetModes: Object.freeze(["none", "addOneToHighest"]),
-      coupleMatchDurationToHardCap: false,
       coupleInterPointPullDeadline: false,
       advancedRuleFieldsEditable: false,
       allowEditSimpleEvents: true,

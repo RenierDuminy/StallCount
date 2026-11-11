@@ -20,9 +20,14 @@ import {
 } from "../../services/matchLogService";
 import { SECONDARY_TIMER_KINDS } from "./secondaryTimerPhases";
 import {
+  findHalftimeSetOffByScore,
+  isLatestEntry,
+  isScoringCode,
+  ruleBLineOfEntry,
+} from "./matchLogReplay";
+import {
   DEFAULT_DURATION,
   DEFAULT_SECONDARY_LABEL,
-  DEFAULT_TIMER_LABEL,
   DEFAULT_TIMEOUT_SECONDS,
   DEFAULT_INTERPOINT_SECONDS,
   HALFTIME_SCORE_THRESHOLD,
@@ -62,21 +67,6 @@ export function useScoreKeeperActions(controller) {
       (entry) => entry && (entry.id === key || (entry.optimisticId && entry.optimisticId === key))
     );
     return { log: index >= 0 ? logs[index] : null, index };
-  }
-
-  function cancelPrimaryHoldReset() {
-    if (controller.primaryResetRef.current) {
-      clearTimeout(controller.primaryResetRef.current);
-      controller.primaryResetRef.current = null;
-    }
-  }
-
-  function startPrimaryHoldReset() {
-    cancelPrimaryHoldReset();
-    controller.primaryResetRef.current = setTimeout(() => {
-      controller.commitPrimaryTimerState(controller.matchDuration * 60, false);
-      controller.setTimerLabel(DEFAULT_TIMER_LABEL);
-    }, 800);
   }
 
   function cancelSecondaryHoldReset() {
@@ -182,16 +172,18 @@ export function useScoreKeeperActions(controller) {
     }
   }
 
+  // Starts the game clock: at kick-off, and when a stoppage ends. There is no
+  // pause; the clock only stops for a logged stoppage (handleGameStoppage).
   function handleToggleTimer() {
-    cancelPrimaryHoldReset();
-    if (!controller.consoleReady) return;
-    if (!controller.timerRunning) {
-      const base = controller.timerSeconds > 0 ? controller.timerSeconds : controller.matchDuration * 60;
-      controller.commitPrimaryTimerState(base, true);
-      return;
-    }
-    const remaining = controller.getPrimaryRemainingSeconds();
-    controller.commitPrimaryTimerState(remaining, false);
+    if (!controller.consoleReady || controller.timerRunning) return;
+    // Once the match is under way, resume from where the clock stopped, even at
+    // or below 00:00: a stoppage in overtime must not reload the full time cap.
+    const base = controller.matchStarted
+      ? controller.getPrimaryRemainingSeconds()
+      : controller.timerSeconds > 0
+        ? controller.timerSeconds
+        : controller.matchDuration * 60;
+    controller.commitPrimaryTimerState(base, true);
   }
 
   function normalizeSecondaryLabel(input) {
@@ -376,10 +368,10 @@ export function useScoreKeeperActions(controller) {
     if (receivingTeam) {
       void controller.updatePossession(receivingTeam, { logTurnover: false });
     }
+    // The halftime time cap has no target of its own: once armed it fires on
+    // this score whatever the score is.
     const halftimeTarget =
-      controller.halftimeCapTargetScore ??
-      controller.rules.halftimeScoreThreshold ??
-      HALFTIME_SCORE_THRESHOLD;
+      controller.rules.halftimeScoreThreshold ?? HALFTIME_SCORE_THRESHOLD;
     const reachedHalftimeScore =
       Math.max(nextTotals.a, nextTotals.b) >= halftimeTarget;
     let halftimeStarted = false;
@@ -452,18 +444,15 @@ export function useScoreKeeperActions(controller) {
    * Apply the format's rule couplings to a pending rules change.
    *
    * A coupling keeps a value the operator cannot see in step with one they can,
-   * so a hidden field does not silently hold a stale default. Both couplings are
+   * so a hidden field does not silently hold a stale default. The coupling is
    * currently off in every format; the machinery stays because a format that
-   * hides a cap field will need it. Written as a pure function of
+   * hides a field will need it. Written as a pure function of
    * (previous, next) so both entry points share it: `handleRuleChange` and the
    * setup modal, which calls `setRules` directly.
    */
   function applyRuleCouplings(nextRules, changedFields) {
     const flags = controller.format?.flags || {};
     const coupled = { ...nextRules };
-    if (flags.coupleMatchDurationToHardCap && changedFields.has("matchDuration")) {
-      coupled.gameHardCapMinutes = coupled.matchDuration;
-    }
     if (
       flags.coupleInterPointPullDeadline &&
       changedFields.has("interPointPullDeadlineSeconds")
@@ -707,13 +696,6 @@ export function useScoreKeeperActions(controller) {
         MATCH_LOG_EVENT_CODES.HALFTIME_START,
         MATCH_LOG_EVENT_CODES.HALFTIME_END,
       ]);
-      // Events whose removal changes who holds the disc.
-      const possessionCodes = new Set([
-        MATCH_LOG_EVENT_CODES.TURNOVER,
-        MATCH_LOG_EVENT_CODES.BLOCK,
-        MATCH_LOG_EVENT_CODES.SCORE,
-        MATCH_LOG_EVENT_CODES.CALAHAN,
-      ]);
       const isTimeoutLog = timeoutCodes.has(targetLog.eventCode);
       const isHalftimeLog = halftimeCodes.has(targetLog.eventCode);
       const logs = controller.logs;
@@ -758,6 +740,28 @@ export function useScoreKeeperActions(controller) {
       if (pairedLog && pairedLog !== targetLog) {
         logsToDelete.push(pairedLog);
       }
+
+      // A score that set off halftime takes the halftime with it, so the console
+      // is back where it was before the wrong point: no break, and the automatic
+      // triggers re-armed for the correct point. Only for a break still running
+      // that was started automatically (see `findHalftimeSetOffByScore`).
+      const halftimeSetOff = findHalftimeSetOffByScore(logs, targetLog, {
+        triggerType: controller.halftimeTriggerType,
+      });
+      if (halftimeSetOff) {
+        logsToDelete.push(halftimeSetOff);
+      }
+
+      // Deleting the latest entry when it is a score (typically a point that
+      // was disputed and does not count) means the point is still being played,
+      // so the inter-point countdown that score started must go. Otherwise it
+      // keeps running, and the next score starts another one on top of it.
+      // Read before the delete, while the score is still in the log.
+      const clearsInterPointTimer =
+        !halftimeSetOff &&
+        isScoringCode(targetLog.eventCode) &&
+        isLatestEntry(logs, targetLog) &&
+        controller.secondaryKind === SECONDARY_TIMER_KINDS.INTER_POINT;
 
       const serverIds = new Set();
       const localIds = new Set();
@@ -844,23 +848,25 @@ export function useScoreKeeperActions(controller) {
       if (totals) {
         await syncActiveMatchScore(totals);
       }
-      if (isTimeoutLog) {
-        // A timeout is always linked to a team, so the refund goes to the team on
-        // the deleted entry. Falling back to the paired entry's team could refund
-        // a team that never called the timeout.
-        const teamKey = targetLog.team;
-        if (teamKey) {
-          controller.setTimeoutUsage((prev) => ({
-            ...prev,
-            [teamKey]: Math.max((prev[teamKey] || 0) - 1, 0),
-          }));
-        }
+      // Possession, timeouts used and the per-half timeout allowance are replayed
+      // from the log whenever it changes (modularScoreKeeperData.js), so the
+      // refresh above has already put them back; nothing to patch here.
+      if (halftimeSetOff) {
+        controller.rearmAutomaticHalftime?.();
       }
-      // Possession is a function of the log, so deleting one of its events leaves
-      // the pad showing a possession nothing supports any more. Re-derive it and
-      // let the operator log the correct change.
-      if (possessionCodes.has(targetLog.eventCode)) {
-        controller.recomputePossessionFromLogs?.();
+      if (clearsInterPointTimer) {
+        controller.commitSecondaryTimerState(0, false);
+        controller.setSecondaryTotalSeconds(0);
+        controller.setSecondaryLabel(DEFAULT_SECONDARY_LABEL);
+        controller.setSecondaryKind(null);
+        controller.setSecondaryFlashActive(false);
+        controller.setSecondaryFlashPulse(false);
+      }
+      // Rule B: the point was played on a line the operator chose. Give that
+      // choice back, so the corrected point goes in on the same line.
+      const ruleBLine = controller.isRuleB ? ruleBLineOfEntry(targetLog) : null;
+      if (ruleBLine && !controller.pendingGenderLine) {
+        controller.setPendingGenderLine?.(ruleBLine);
       }
       if (isHalftimeLog) {
         // Suppress before clearing the flags: the time-cap effect would otherwise see
@@ -872,7 +878,6 @@ export function useScoreKeeperActions(controller) {
         controller.setHalftimeTriggered(false);
         controller.setHalftimeTriggerType("unknown");
         controller.setHalftimeTimeCapArmed(false);
-        controller.setHalftimeCapTargetScore(null);
         // A deleted halftime_end puts the match back *inside* the break, so the
         // operator can close it by hand again.
         const deletedEnd = logsToDelete.some(
@@ -1044,8 +1049,6 @@ export function useScoreKeeperActions(controller) {
   }
 
   return {
-    cancelPrimaryHoldReset,
-    startPrimaryHoldReset,
     cancelSecondaryHoldReset,
     startSecondaryHoldReset,
     handleInitialiseMatch,

@@ -6,6 +6,7 @@ import { setLiveActivity } from "../../services/liveActivity";
 import { formatClock } from "./scorekeeperUtils";
 import { useScoreKeeperData } from "./modularScoreKeeperData";
 import { useScoreKeeperActions } from "./modularScoreKeeperActions";
+import { CAP_PHASES } from "./matchCaps";
 import { ScorekeeperPopups } from "./ModularScorekeeperPopup";
 import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
 import { MatchLogEventCard } from "./eventCards";
@@ -126,8 +127,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
     possessionLeader,
     halfRemainingLabel,
     scoreTarget,
-    softCapApplied,
-    hardCapReached,
+    matchCaps,
     sortedRosters,
     rosterOptionsForModal,
     formattedPrimaryClock,
@@ -194,23 +194,34 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
     }
     return null;
   })();
+  // Caps act at the next score (a point runs from one score to the next), so
+  // a pending cap tells the operator to finish the point; phases come from
+  // matchCaps.js.
   const attentionBannerMessage = (() => {
     if (!matchStarted) return null;
-    const softCapMode = rules.gameSoftCapMode || "none";
     if (halftimeTimeCapArmed && !halftimeStartLogged && !halftimeEndLogged) {
       return "Halftime time cap has been reached and will start HT after the point.";
     }
-    if (hardCapReached) {
-      return "Hard cap reached!";
+    const caps = matchCaps || {};
+    const hardCapNote = Number.isFinite(caps.hardCapAtSeconds)
+      ? ` Hard cap at ${Math.round(caps.hardCapAtSeconds / 60)} min.`
+      : "";
+    switch (caps.phase) {
+      case CAP_PHASES.TIME_CAP_PENDING:
+        return `Time cap reached. Finish this point; the new match target is set when it is scored.${hardCapNote}`;
+      case CAP_PHASES.OVERTIME:
+        return `Time cap: match target ${caps.target}.${hardCapNote}`;
+      case CAP_PHASES.HARD_CAP_PENDING:
+        return "Hard cap reached. Finish this point: if the scores are unequal the match is over, if tied play a universe point.";
+      case CAP_PHASES.UNIVERSE_POINT:
+        return `Hard cap: tied, universe point. First to ${caps.target} wins.`;
+      case CAP_PHASES.DECIDED:
+        return caps.decidedBy === "hardCap"
+          ? `Hard cap: ${caps.winner === "A" ? safeTeamAName : safeTeamBName} win. End the match.`
+          : null;
+      default:
+        return null;
     }
-    if (
-      softCapApplied &&
-      softCapMode !== "none" &&
-      Number.isFinite(scoreTarget)
-    ) {
-      return `Soft cap reached, new match target of ${scoreTarget}.`;
-    }
-    return null;
   })();
 
   const formatPlayerSelectLabel = (player) => {

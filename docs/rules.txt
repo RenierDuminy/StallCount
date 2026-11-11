@@ -14,13 +14,13 @@ The `format` field is a string describing the ruleset profile. Typical options a
 
 The `game.pointTarget` field is an integer, typically values like 15, 13, or 11. It represents the score a team must reach to win under normal conditions if caps do not interfere. For example, in a standard WFDF game you would set this to 15.
 
-The `game.softCapMinutes` field is an integer in minutes or `null`. If it is a number (for example 90), that minute of game time is when the soft cap is applied. If it is `null`, there is no soft cap in this game. The soft cap only defines a moment to change the target; it does not end the game by itself.
+The `game.timeCapMinutes` field is an integer in minutes: the length of standard match play, measured in game time (logged stoppages pause it). When the time cap sounds, the point in progress is finished first; a point runs from one score to the next, so the cap always acts at the next score. (Older events stored this value as `game.hardCapMinutes`; the console still reads that key as the time cap.)
 
-The `game.softCapMode` field is a string and typically one of `"addOneToHighest"`, `"addTwoToHighest"`, or `"none"`. If it is `"addOneToHighest"`, when the soft cap time is reached and the current point is completed, the new game target becomes the highest current score plus one. If it is `"addTwoToHighest"`, the new target becomes the highest score plus two. If it is `"none"`, the soft cap horn is informational only and the point target does not change, even though the time has been reached.
+The `game.timeCapTargetMode` field is `"addOneToHighest"` or `"none"`. With `"addOneToHighest"`, if no team has reached `game.pointTarget` when the time cap point is scored, the new target becomes the highest score after that point plus one, and the match is in overtime: the first team to reach the new target wins. With `"none"` the target is unchanged.
 
-The `game.hardCapMinutes` field is an integer in minutes or `null`. If it is a number (for example 100), that minute of game time is when the hard cap is enforced. If it is `null`, there is no hard time cap and the game only ends when a team reaches the point target or some other condition. The hard cap generally defines a real end-of-game limit.
+The `game.hardCap.minutesAfterTimeCap` field is an integer in minutes or `null`: an overtime allowance in game time after the time cap (`null` = no hard cap; overtime runs until the new target is reached, as in WFDF). When the hard cap sounds, the point in progress is finished. Then, if the scores are unequal, the match is over; if they are equal, one universe point decides it. Example: time cap 90 and a hard cap of 10 means a forced end at 100 minutes of game time.
 
-The `game.hardCapEndMode` field is a string, usually `"afterPoint"` or `"immediate"`. When set to `"afterPoint"`, once the hard cap time is reached, you finish the current point and then the game ends, regardless of the score. When set to `"immediate"`, the game ends immediately when the horn goes at the hard cap, and whatever the score is at that moment is final.
+There are no end modes: every cap acts at the end of a point. The retired keys `game.softCapMinutes`, `game.softCapMode`, `game.softCapEndMode`, `game.timeCapEndMode` and `half.halftimeCapEndMode` may still appear on older events and are ignored. `game.softCapMinutes` once meant a soft cap minute, and briefly (October–November 2026) the wizard's hard cap measured from kick-off.
 
 ---
 

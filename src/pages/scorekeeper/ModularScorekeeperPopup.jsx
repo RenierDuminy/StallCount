@@ -350,25 +350,6 @@ export function ScorekeeperPopups({
               </label>
               {!hideAdvancedRuleFields && (
                 <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                  <span className="shrink-0">Time cap end mode</span>
-                  <select
-                    value={rules.gameHardCapEndMode || "afterPoint"}
-                    onChange={(event) => {
-                      if (!setRules) return;
-                      setRules((prev) => ({
-                        ...prev,
-                        gameHardCapEndMode: event.target.value,
-                      }));
-                    }}
-                    className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <option value="afterPoint">After point</option>
-                    <option value="immediate">Immediate</option>
-                  </select>
-                </label>
-              )}
-              {!hideAdvancedRuleFields && (
-                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                   <span className="shrink-0">Time cap target</span>
                   <select
                     value={rules.gameTimeCapTargetMode || "none"}
@@ -383,6 +364,27 @@ export function ScorekeeperPopups({
                   >
                     {renderCapTargetOptions()}
                   </select>
+                </label>
+              )}
+              {!hideAdvancedRuleFields && (
+                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                  <span className="shrink-0">Hard cap (min after time cap)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="None"
+                    value={rules.gameHardCapAfterMinutes ?? ""}
+                    onChange={(event) => {
+                      if (!setRules) return;
+                      const minutes = Number(event.target.value);
+                      setRules((prev) => ({
+                        ...prev,
+                        gameHardCapAfterMinutes:
+                          Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : null,
+                      }));
+                    }}
+                    className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
                 </label>
               )}
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
@@ -401,25 +403,6 @@ export function ScorekeeperPopups({
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
-              {!hideAdvancedRuleFields && (
-                <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
-                  <span className="shrink-0">Halftime cap end mode</span>
-                  <select
-                    value={rules.halftimeCapEndMode || "afterPoint"}
-                    onChange={(event) => {
-                      if (!setRules) return;
-                      setRules((prev) => ({
-                        ...prev,
-                        halftimeCapEndMode: event.target.value,
-                      }));
-                    }}
-                    className="flex-1 min-w-[150px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <option value="afterPoint">After point</option>
-                    <option value="immediate">Immediate</option>
-                  </select>
-                </label>
-              )}
               {!hideAdvancedRuleFields && (
                 <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
                   <span className="shrink-0">Halftime cap target</span>

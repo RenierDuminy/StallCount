@@ -67,6 +67,13 @@ import {
   getSecondaryTimerTone,
 } from "./secondaryTimerPhases";
 import { getAccessibleScorekeeperEventIds } from "../../utils/accessControl";
+import { deriveGameClockFromLogs } from "./gameClock";
+import { CAP_PHASES, deriveMatchCaps } from "./matchCaps";
+import {
+  countTimeouts,
+  derivePossession,
+  findRedundantLocalHalftimeEnds,
+} from "./matchLogReplay";
 
 // End codes that may occur more than once per match, mapped to the start they close.
 // Anything not listed here keeps the strict once-per-match guard in
@@ -79,11 +86,15 @@ const REPEATABLE_SECONDARY_EVENT_STARTS = {
 const DEFAULT_ABBA_LINES = ["none", "M1", "M2", "F1", "F2"];
 const DB_WRITES_DISABLED = false;
 const DEFAULT_ABBA_PATTERN_WHEN_ENABLED = "male";
-const SOFT_CAP_TIMER_LABEL = "Soft Cap";
-const TIME_CAP_TARGET_LABEL = "Time cap reached, new match target set.";
-// The only cap target the rules implement is "highest + 1", so the label can
-// state it outright.
-const OVERTIME_TIMER_LABEL = "Over time (highest + 1)";
+// Timer label per cap phase (matchCaps.js). A cap always acts at the next
+// score, so while one is pending the label says to finish the point.
+const CAP_TIMER_LABELS = {
+  [CAP_PHASES.TIME_CAP_PENDING]: "Time cap: finish this point",
+  [CAP_PHASES.OVERTIME]: "Overtime",
+  [CAP_PHASES.HARD_CAP_PENDING]: "Hard cap: finish this point",
+  [CAP_PHASES.UNIVERSE_POINT]: "Universe point",
+  [CAP_PHASES.DECIDED]: "Match decided",
+};
 // Statuses a match can be in and still be opened in the console. Lowercased
 // because callers compare a lowercased value — note the DB stores the
 // capitalised "Initialized", so the raw code would not have matched here.
@@ -107,16 +118,14 @@ const DEFAULT_EVENT_RULES = {
   game: {
     pointTarget: 15,
     timeCapMinutes: 100,
-    timeCapEndMode: "afterPoint",
     timeCapTargetMode: "addOneToHighest",
-    softCapMinutes: null,
-    softCapMode: null,
+    // Minutes of game time after the time cap; null = no hard cap.
+    hardCap: { minutesAfterTimeCap: null },
   },
   half: {
     halftimePointTarget: 8,
     halftimeBreakMinutes: 7,
     halftimeCapMinutes: 55,
-    halftimeCapEndMode: "afterPoint",
     halftimeCapTargetMode: "addOneToHighest",
   },
   timeouts: {
@@ -204,7 +213,7 @@ function normalizeDivision(input) {
 // "addTwoToHighest" is not a WFDF rule. Events saved with it are read as the
 // official +1 cap so they still cap correctly, rather than silently losing the
 // cap and becoming unendable.
-function normalizeSoftCapMode(input) {
+function normalizeCapTargetMode(input) {
   if (typeof input !== "string") return "none";
   const candidate = input.trim().toLowerCase();
   if (
@@ -218,13 +227,6 @@ function normalizeSoftCapMode(input) {
   return "none";
 }
 
-function normalizeHardCapEndMode(input) {
-  if (typeof input !== "string") return "afterPoint";
-  const candidate = input.trim().toLowerCase();
-  if (candidate === "immediate") return "immediate";
-  return "afterPoint";
-}
-
 function normalizeHalftimeTriggerType(input) {
   if (input === "manual" || input === "pointCap" || input === "timeCap") {
     return input;
@@ -234,8 +236,6 @@ function normalizeHalftimeTriggerType(input) {
 
 const getGameTimeCapMinutes = (rules) =>
   rules?.game?.timeCapMinutes ?? rules?.game?.hardCapMinutes;
-const getGameTimeCapEndMode = (rules) =>
-  rules?.game?.timeCapEndMode ?? rules?.game?.hardCapEndMode;
 const getGameTimeCapTargetMode = (rules) =>
   rules?.game?.timeCapTargetMode ?? rules?.game?.hardCapTargetMode;
 const getHalfPointTarget = (rules) =>
@@ -244,10 +244,19 @@ const getHalfBreakMinutes = (rules) =>
   rules?.half?.halftimeBreakMinutes ?? rules?.half?.breakMinutes;
 const getHalfCapMinutes = (rules) =>
   rules?.half?.halftimeCapMinutes ?? rules?.half?.timeCapMinutes;
-const getHalfCapEndMode = (rules) =>
-  rules?.half?.halftimeCapEndMode ?? rules?.half?.timeCapEndMode;
 const getHalfCapTargetMode = (rules) =>
   rules?.half?.halftimeCapTargetMode ?? rules?.half?.timeCapTargetMode;
+// The hard cap is an overtime allowance after the time cap (2026-11-11). It has
+// its own key: the legacy `game.hardCapMinutes` meant the time cap, and the
+// wizard's interim `game.softCapMinutes` (minutes from kick-off) is ignored.
+const getHardCapAfterMinutes = (rules) => {
+  // Also accept a bare number, which a hand edit in the TD data table may write.
+  const raw = rules?.game?.hardCap;
+  const minutes = coerceOptionalNumber(
+    typeof raw === "object" && raw !== null ? raw.minutesAfterTimeCap : raw
+  );
+  return minutes && minutes > 0 ? minutes : null;
+};
 const getClockRunningEnabled = (rules) =>
   rules?.clock?.isRunningGameClockEnabled ?? rules?.clock?.isRunningClockEnabled;
 const getInterPointPullDeadlineSeconds = (rules) =>
@@ -297,13 +306,9 @@ function normalizeEventRules(rawRules) {
           : "none",
       runningClockEnabled: Boolean(getClockRunningEnabled(baseRaw)),
       gamePointTarget: coerceOptionalNumber(baseRaw.game.pointTarget),
-      gameSoftCapMinutes: coerceOptionalNumber(baseRaw.game.softCapMinutes),
-      gameSoftCapMode: normalizeSoftCapMode(baseRaw.game.softCapMode),
-      gameHardCapMinutes: coerceOptionalNumber(getGameTimeCapMinutes(baseRaw)),
-      gameHardCapEndMode: normalizeHardCapEndMode(getGameTimeCapEndMode(baseRaw)),
-      gameTimeCapTargetMode: normalizeSoftCapMode(getGameTimeCapTargetMode(baseRaw)),
-      halftimeCapEndMode: normalizeHardCapEndMode(getHalfCapEndMode(baseRaw)),
-      halftimeCapTargetMode: normalizeSoftCapMode(getHalfCapTargetMode(baseRaw)),
+      gameTimeCapTargetMode: normalizeCapTargetMode(getGameTimeCapTargetMode(baseRaw)),
+      gameHardCapAfterMinutes: getHardCapAfterMinutes(baseRaw),
+      halftimeCapTargetMode: normalizeCapTargetMode(getHalfCapTargetMode(baseRaw)),
       interPointPullDeadlineSeconds: coerceRuleNumber(
         getInterPointPullDeadlineSeconds(baseRaw),
         DEFAULT_INTERPOINT_SECONDS
@@ -405,10 +410,6 @@ function normalizeEventRules(rawRules) {
   }
 
   const gamePointTarget = coerceOptionalNumber(mergedRaw.game?.pointTarget);
-  const gameSoftCapMinutes = coerceOptionalNumber(mergedRaw.game?.softCapMinutes);
-  const gameHardCapMinutes =
-    coerceOptionalNumber(getGameTimeCapMinutes(mergedRaw)) ??
-    coerceRuleNumber(getGameTimeCapMinutes(baseRaw), DEFAULT_DURATION);
 
   return {
     division,
@@ -452,13 +453,9 @@ function normalizeEventRules(rawRules) {
     abbaPattern: derivedAbbaPattern,
     runningClockEnabled: Boolean(getClockRunningEnabled(mergedRaw)),
     gamePointTarget,
-    gameSoftCapMinutes,
-    gameSoftCapMode: normalizeSoftCapMode(mergedRaw.game?.softCapMode),
-    gameHardCapMinutes: gameHardCapMinutes ?? DEFAULT_DURATION,
-    gameHardCapEndMode: normalizeHardCapEndMode(getGameTimeCapEndMode(mergedRaw)),
-    gameTimeCapTargetMode: normalizeSoftCapMode(getGameTimeCapTargetMode(mergedRaw)),
-    halftimeCapEndMode: normalizeHardCapEndMode(getHalfCapEndMode(mergedRaw)),
-    halftimeCapTargetMode: normalizeSoftCapMode(getHalfCapTargetMode(mergedRaw)),
+    gameTimeCapTargetMode: normalizeCapTargetMode(getGameTimeCapTargetMode(mergedRaw)),
+    gameHardCapAfterMinutes: getHardCapAfterMinutes(mergedRaw),
+    halftimeCapTargetMode: normalizeCapTargetMode(getHalfCapTargetMode(mergedRaw)),
     interPointPullDeadlineSeconds: coerceRuleNumber(
       getInterPointPullDeadlineSeconds(mergedRaw),
       coerceRuleNumber(getInterPointPullDeadlineSeconds(baseRaw), DEFAULT_INTERPOINT_SECONDS)
@@ -703,10 +700,6 @@ export function useScoreKeeperData(formatKey = DEFAULT_SCOREKEEPER_FORMAT) {
 const [secondaryTotalSeconds, setSecondaryTotalSeconds] = useState(
   DEFAULT_RULES.timeoutSeconds
 );
-  const [scoreTarget, setScoreTarget] = useState(DEFAULT_RULES.gamePointTarget || null);
-  const [softCapApplied, setSoftCapApplied] = useState(false);
-  const [hardCapReached, setHardCapReached] = useState(false);
-  const [timeCapTargetApplied, setTimeCapTargetApplied] = useState(false);
 const [secondaryFlashActive, setSecondaryFlashActive] = useState(false);
 const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
 const [secondaryFlashRateMs, setSecondaryFlashRateMs] = useState(400);
@@ -726,7 +719,6 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
   // State mirror of halftimeTriggeredThisMatchRef — see `automaticHalftimeSpent`.
   const [halftimeTriggerSpent, setHalftimeTriggerSpent] = useState(false);
   const [halftimeTimeCapArmed, setHalftimeTimeCapArmed] = useState(false);
-  const [halftimeCapTargetScore, setHalftimeCapTargetScore] = useState(null);
   const [resumeCandidate, setResumeCandidate] = useState(null);
   const [resumeHandled, setResumeHandled] = useState(false);
   const [resumeBusy, setResumeBusy] = useState(false);
@@ -871,7 +863,6 @@ const currentMatchScoreRef = useRef({ a: 0, b: 0 });
 const pendingEntriesRef = useRef([]);
 const matchIdRef = useRef(null);
 const refreshMatchLogsRef = useRef(null);
-const primaryResetRef = useRef(null);
 const secondaryResetRef = useRef(null);
 const secondaryResetTriggeredRef = useRef(false);
 const resumeHydrationRef = useRef(false);
@@ -886,9 +877,6 @@ const secondaryTimerAnchorRef = useRef({
 const activeSecondaryEventRef = useRef(null);
 const secondaryTimerCompletedRef = useRef(false);
 const restoreTrackedSecondaryCompletionRef = useRef(false);
-// Rows from the most recent refresh, for callers that mutate the log and must
-// re-derive from the result before React has re-rendered with the new `logs`.
-const latestDerivedLogsRef = useRef([]);
 // Always-current mirror of `logs`, updated inside the same setLogs that changes
 // it. Guards that must not act on a stale read — "is this break already closed?"
 // asked immediately after a write — read this instead of the state.
@@ -906,6 +894,9 @@ const halftimeTriggeredThisMatchRef = useRef(false);
 const previousSecondaryRunningRef = useRef(false);
 const previousPrimaryRunningRef = useRef(false);
 const stoppageActiveRef = useRef(false);
+// Stoppage writes still on their way into `logsRef`. While one is in flight the
+// local clock is ahead of the log, so a log refresh must not re-derive the clock.
+const stoppageLogInFlightRef = useRef(0);
 const appliedEventRulesRef = useRef(null);
 const [trackedSecondaryEventVersion, setTrackedSecondaryEventVersion] = useState(0);
   const [matchStarted, setMatchStarted] = useState(false);
@@ -1068,23 +1059,17 @@ const clearLocalMatchState = useCallback(() => {
     setHalftimeBreakActive(false);
     setHalftimeTriggerType("unknown");
     setHalftimeTimeCapArmed(false);
-    setHalftimeCapTargetScore(null);
     halftimeTimeCapSuppressedRef.current = false;
     halftimeTriggeredThisMatchRef.current = false;
     setHalftimeTriggerSpent(false);
     setStoppageActive(false);
     setMatchStarted(false);
-    setScoreTarget(DEFAULT_RULES.gamePointTarget || null);
-    setSoftCapApplied(false);
-    setHardCapReached(false);
-    setTimeCapTargetApplied(false);
     commitPrimaryTimerState((DEFAULT_RULES.matchDuration || DEFAULT_DURATION) * 60, false);
     commitSecondaryTimerState(DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS, false);
     setTimerLabel(DEFAULT_TIMER_LABEL);
     setSecondaryLabel(DEFAULT_SECONDARY_LABEL);
     setSecondaryKind(null);
     setSecondaryTotalSeconds(DEFAULT_RULES.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS);
-    primaryResetRef.current = null;
     secondaryResetRef.current = null;
     secondaryResetTriggeredRef.current = false;
     setTrackedSecondaryEvent(null);
@@ -1113,11 +1098,6 @@ const clearLocalMatchState = useCallback(() => {
       const timeoutSeconds = nextRules.timeoutSeconds || DEFAULT_TIMEOUT_SECONDS;
       commitSecondaryTimerState(timeoutSeconds, false);
       setSecondaryTotalSeconds(timeoutSeconds);
-      setScoreTarget(nextRules.gamePointTarget || null);
-      setSoftCapApplied(false);
-      setHardCapReached(false);
-      setTimeCapTargetApplied(false);
-      setHalftimeCapTargetScore(null);
     },
     [commitPrimaryTimerState, commitSecondaryTimerState, rulesManuallyEdited]
   );
@@ -1332,25 +1312,19 @@ useEffect(() => {
 
 useEffect(() => {
   return () => {
-    if (primaryResetRef.current) {
-      clearTimeout(primaryResetRef.current);
-    }
     if (secondaryResetRef.current) {
       clearTimeout(secondaryResetRef.current);
     }
   };
 }, []);
 
-  // Overtime bounds, from the format. The clock counts negative past 00:00 so
-  // overtime is visible, but it must not run away: `stopOnCapWinner` freezes it
-  // at 00:00 once a team has reached the target (the match is decided), and
-  // `maxSeconds` is the hard ceiling for everything else.
+  // Overtime bounds, from the format. The clock counts negative past 00:00 (shown
+  // as a red count-up) and keeps running until `match_end` is logged, even once a
+  // team has reached the target: a score for the wrong team is deleted and
+  // re-added, and the clock must not have stopped in between. `maxSeconds` is the
+  // only ceiling, so a forgotten console does not run away.
   const overtimeFlags = format.flags.overtime;
-  const hasScoreCapWinner = Boolean(
-    scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget)
-  );
-  const allowOvertime =
-    matchStarted && !(overtimeFlags.stopOnCapWinner && hasScoreCapWinner);
+  const allowOvertime = matchStarted;
   const overtimeFloorSeconds = Number.isFinite(overtimeFlags.maxSeconds)
     ? -Math.abs(overtimeFlags.maxSeconds)
     : null;
@@ -1395,117 +1369,41 @@ useEffect(() => {
     overtimeFloorSeconds,
   ]);
 
-useEffect(() => {
-  if (!matchStarted) {
-    setSoftCapApplied(false);
-    setHardCapReached(false);
-    setTimeCapTargetApplied(false);
-    setScoreTarget(rules.gamePointTarget || null);
-      return;
-    }
-  }, [matchStarted, rules.gamePointTarget]);
+  // The target and both caps are derived from the log (matchCaps.js), never
+  // stored: a cap acts at the next score, a deleted wrong-team point corrects
+  // the target, and a reload on any device lands on the same state.
+  // `timerSeconds` re-runs it each tick so the phase moves on as the clock
+  // passes a cap; the helper reads the time itself.
+  const matchCaps = useMemo(
+    () =>
+      deriveMatchCaps(logs, {
+        pointTarget: rules.gamePointTarget,
+        timeCapSeconds: (rules.matchDuration || DEFAULT_DURATION) * 60,
+        timeCapTargetMode: rules.gameTimeCapTargetMode,
+        hardCapAfterSeconds: rules.gameHardCapAfterMinutes
+          ? rules.gameHardCapAfterMinutes * 60
+          : null,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      logs,
+      rules.gamePointTarget,
+      rules.matchDuration,
+      rules.gameTimeCapTargetMode,
+      rules.gameHardCapAfterMinutes,
+      timerSeconds,
+    ]
+  );
+  const scoreTarget = matchCaps.target;
 
   useEffect(() => {
-    if (!matchStarted || softCapApplied) return;
-    const softCapMinutes = Number.isFinite(rules.gameSoftCapMinutes)
-      ? rules.gameSoftCapMinutes
-      : null;
-    const hardCapMinutes = rules.matchDuration || DEFAULT_DURATION;
-    if (!softCapMinutes || softCapMinutes <= 0) return;
-    const totalSeconds = hardCapMinutes * 60;
-    const thresholdSeconds = Math.max(0, totalSeconds - softCapMinutes * 60);
-    if (timerSeconds > thresholdSeconds) return;
-
-    const mode = rules.gameSoftCapMode || "none";
-    if (mode === "none") {
-      setSoftCapApplied(true);
-      return;
+    const nextLabel = matchStarted
+      ? CAP_TIMER_LABELS[matchCaps.phase] || DEFAULT_TIMER_LABEL
+      : DEFAULT_TIMER_LABEL;
+    if (timerLabel !== nextLabel) {
+      setTimerLabel(nextLabel);
     }
-
-    const highest = Math.max(score.a, score.b);
-    const nextTarget = Math.max(highest + 1, rules.gamePointTarget || highest + 1);
-    setScoreTarget(nextTarget);
-    setTimerLabel(SOFT_CAP_TIMER_LABEL);
-    setSoftCapApplied(true);
-  }, [
-    matchStarted,
-    softCapApplied,
-    rules.gameSoftCapMinutes,
-    rules.matchDuration,
-    rules.gameSoftCapMode,
-  rules.gamePointTarget,
-  timerSeconds,
-  score.a,
-  score.b,
-  ]);
-
-useEffect(() => {
-  if (!matchStarted || hardCapReached) return;
-  if (timerSeconds > 0) return;
-  setHardCapReached(true);
-  const timeCapTargetMode = rules.gameTimeCapTargetMode;
-  if (timeCapTargetMode === "addOneToHighest" && !timeCapTargetApplied) {
-    const nextTarget = Math.max(score.a, score.b) + 1;
-    setScoreTarget(nextTarget);
-    setTimeCapTargetApplied(true);
-    setTimerLabel(TIME_CAP_TARGET_LABEL);
-  }
-  if (rules.gameHardCapEndMode === "immediate") {
-    if (timeCapTargetMode !== "addOneToHighest") {
-      setTimerLabel(TIME_CAP_TARGET_LABEL);
-    }
-    setTimerRunning(false);
-  }
-}, [
-  matchStarted,
-  hardCapReached,
-  timerSeconds,
-  rules.gameHardCapEndMode,
-  rules.gameTimeCapTargetMode,
-  score.a,
-  score.b,
-  timeCapTargetApplied,
-]);
-
-useEffect(() => {
-  if (!matchStarted) {
-    if (timerLabel !== DEFAULT_TIMER_LABEL) {
-      setTimerLabel(DEFAULT_TIMER_LABEL);
-    }
-    return;
-  }
-  const hasScoreCapWinner = Boolean(
-    scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget)
-  );
-  const softCapMode = rules.gameSoftCapMode || "none";
-  if (softCapApplied && softCapMode !== "none" && !hasScoreCapWinner) {
-    if (timerLabel !== SOFT_CAP_TIMER_LABEL) {
-      setTimerLabel(SOFT_CAP_TIMER_LABEL);
-    }
-    return;
-  }
-  if (hardCapReached) return;
-  const overtimeActive = timerSeconds < 0 && !hasScoreCapWinner;
-  if (overtimeActive) {
-    if (timerLabel !== OVERTIME_TIMER_LABEL) {
-      setTimerLabel(OVERTIME_TIMER_LABEL);
-    }
-    return;
-  }
-  if (timerLabel !== DEFAULT_TIMER_LABEL) {
-    setTimerLabel(DEFAULT_TIMER_LABEL);
-  }
-}, [
-  matchStarted,
-  hardCapReached,
-  timerSeconds,
-  softCapApplied,
-  scoreTarget,
-  score.a,
-  score.b,
-  timerLabel,
-  rules.gameSoftCapMode,
-]);
+  }, [matchStarted, matchCaps.phase, timerLabel]);
 
 useEffect(() => {
   const matchSource = activeMatch || selectedMatch || null;
@@ -1723,7 +1621,7 @@ useEffect(() => {
         A: Math.max(rules.timeoutsTotal - timeoutUsage.A, 0),
         B: Math.max(rules.timeoutsTotal - timeoutUsage.B, 0),
       };
-  const reachedPointTarget = scoreTarget && (score.a >= scoreTarget || score.b >= scoreTarget);
+  const reachedPointTarget = matchCaps.phase === CAP_PHASES.DECIDED;
   const canEndMatch = matchStarted;
   const possessionValue = possessionTeam === "A" ? 0 : possessionTeam === "B" ? 100 : 50;
   const possessionLeader =
@@ -1829,11 +1727,6 @@ useEffect(() => {
       halftimeTriggeredThisMatch: halftimeTriggeredThisMatchRef.current,
       halftimeTimeCapArmed,
       stoppageActive,
-      scoreTarget,
-      softCapApplied,
-      hardCapReached,
-      timeCapTargetApplied,
-      halftimeCapTargetScore,
     };
 
     return snapshot;
@@ -1860,11 +1753,6 @@ useEffect(() => {
     halftimeTimeCapArmed,
     stoppageActive,
     secondaryTotalSeconds,
-    scoreTarget,
-    softCapApplied,
-    hardCapReached,
-    timeCapTargetApplied,
-    halftimeCapTargetScore,
     userId,
     logs,
     pendingEntries,
@@ -2004,6 +1892,13 @@ const recordPendingEntry = useCallback(
     if (normalizedEntry.eventCode) {
       dbPayload.eventTypeCode = normalizedEntry.eventCode;
     }
+    // A break has one end. The local guards in `logSimpleEvent` only see this
+    // device's log; this makes the write itself re-check the database, so a
+    // reload, a second device or a replayed queue cannot add a second one.
+    // Stored with the payload, so a queued write checks again when it flushes.
+    if (normalizedEntry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
+      dbPayload.onlyIfHalftimeOpen = true;
+    }
 
     const queueId = optimisticId || createQueueId("match-log");
     // Name the specific event in any error, so "score" vs "timeout_start" is obvious.
@@ -2036,8 +1931,16 @@ const recordPendingEntry = useCallback(
 
       try {
         const created = await createMatchLogEntry(dbPayload);
-        // Replace any optimistic placeholder with the confirmed DB row once the server echoes the optimistic_id.
-        cleanupOptimisticLog(created?.optimistic_id || optimisticId);
+        // Keep the optimistic entry until a refresh brings the server row in:
+        // `refreshMatchLogs` drops it then, matched on optimistic_id. Removing it
+        // here left the log without the entry until that refresh landed, and for
+        // a halftime_end that gap re-opened the break: the reconciliation effect
+        // saw an open halftime_start past its end time and logged a second
+        // halftime_end. Only a database without the optimistic_id column (which
+        // cannot match the rows up) still swaps the entry out here.
+        if (!created?.optimistic_id) {
+          cleanupOptimisticLog(optimisticId);
+        }
         await removeOfflineQueueItem(queueId);
         await refreshPendingEntries();
         const refresh = refreshMatchLogsRef.current;
@@ -2237,6 +2140,12 @@ const replaceSecondaryTimer = useCallback(
         }
         halftimeEndInFlightRef.current.add(activeMatch.id);
       }
+      const isStoppageCode =
+        eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START ||
+        eventCode === MATCH_LOG_EVENT_CODES.STOPPAGE_END;
+      if (isStoppageCode) {
+        stoppageLogInFlightRef.current += 1;
+      }
       try {
         const eventTypeId = await resolveEventTypeIdLocal(eventCode);
         if (!eventTypeId) {
@@ -2279,6 +2188,10 @@ const replaceSecondaryTimer = useCallback(
         setConsoleError(
           describeError(err, { action: `Record ${String(eventCode).replace(/_/g, " ")}` })
         );
+      } finally {
+        if (isStoppageCode) {
+          stoppageLogInFlightRef.current -= 1;
+        }
       }
     },
     [
@@ -2630,7 +2543,6 @@ const replaceSecondaryTimer = useCallback(
     }
     setHalftimeBreakActive(false);
     setHalftimeTimeCapArmed(false);
-    setHalftimeCapTargetScore(null);
     commitSecondaryTimerState(0, false);
     setSecondaryTotalSeconds(0);
     setSecondaryLabel(DEFAULT_SECONDARY_LABEL);
@@ -2649,68 +2561,57 @@ const replaceSecondaryTimer = useCallback(
     updatePossession,
   ]);
 
-  // Replay the log to work out who holds the disc now. Used after a possession
-  // event is deleted: the pad would otherwise keep showing the possession that
-  // the deleted event produced, and the operator has no way to correct it.
-  // Possession is a pure function of the log, so it is re-derived rather than
-  // patched — a score hands the disc to the conceding team, and a turnover/block
-  // hands it to the other side.
-  //
-  // Halftime is the exception: it is a **reset**, not a continuation. Whoever
-  // held the disc when the first half ended does not carry over — the pull flips,
-  // so the team that pulled to open the match receives to open the second. The
-  // reset lands on `halftime_start`, because that is the moment the first half's
-  // possession stops mattering; the break itself has no possession to show.
-  const recomputePossessionFromLogs = useCallback((sourceLogs = null) => {
-    // Prefer the rows from the last refresh: a caller that has just deleted an
-    // entry runs before React re-renders, so `logs` in this closure is still the
-    // pre-delete state.
-    const basis = Array.isArray(sourceLogs)
-      ? sourceLogs
-      : latestDerivedLogsRef.current.length
-        ? latestDerivedLogsRef.current
-        : logs;
-    const ordered = [...basis].sort((a, b) => {
-      const toEpoch = (entry) => {
-        const parsed = new Date(entry?.timestamp || entry?.createdAt || 0).getTime();
-        return Number.isFinite(parsed) ? parsed : 0;
-      };
-      return toEpoch(a) - toEpoch(b);
-    });
+  // Possession is a pure function of the log (`derivePossession`), so it is
+  // replayed on every log change rather than patched when something is added.
+  // That is what makes a delete or an edit put the pad back where it was before
+  // the mistake, and what keeps it right after a refresh from another device, a
+  // TD correction or the offline queue flushing. `logs` is the merged log
+  // (server rows plus entries still queued), so an offline delete replays the
+  // queued turnovers and scores too. Every possession change the console makes
+  // is logged (a score, turnover, block, match start or halftime), so the
+  // replay always agrees with what the operator just did.
+  useEffect(() => {
+    const holder = matchStarted
+      ? derivePossession(logs, { pullingTeamKey: matchStartingTeamKey })
+      : null;
+    setPossessionTeam((prev) => (prev === holder ? prev : holder));
+  }, [logs, matchStarted, matchStartingTeamKey]);
 
-    const opposite = (teamKey) => (teamKey === "A" ? "B" : teamKey === "B" ? "A" : null);
-    let holder = firstHalfReceivingTeamKey;
+  // Same for timeouts: the count is the log's `timeout_start` rows, so deleting
+  // a timeout refunds it and a timeout logged on another device is counted. The
+  // trigger still bumps the count straight away, so a double tap cannot slip a
+  // second timeout in before the first row lands; the next log change confirms it.
+  useEffect(() => {
+    const { used } = countTimeouts(logs);
+    setTimeoutUsage((prev) => (prev.A === used.A && prev.B === used.B ? prev : used));
+  }, [logs]);
 
-    ordered.forEach((entry) => {
-      switch (entry?.eventCode) {
-        case MATCH_LOG_EVENT_CODES.SCORE:
-        case MATCH_LOG_EVENT_CODES.CALAHAN:
-          // The team that conceded receives the next pull.
-          if (entry.team) holder = opposite(entry.team);
-          break;
-        case MATCH_LOG_EVENT_CODES.TURNOVER:
-        case MATCH_LOG_EVENT_CODES.BLOCK:
-          // Both are stamped with the acting player's own team: the defender who
-          // got the block, or the thrower who turfed it.
-          if (entry.team) {
-            holder =
-              entry.eventCode === MATCH_LOG_EVENT_CODES.BLOCK
-                ? entry.team
-                : opposite(entry.team);
-          }
-          break;
-        case MATCH_LOG_EVENT_CODES.HALFTIME_START:
-          // Hard reset — see the note above. Anything the first half left on the
-          // pad is discarded here rather than replayed through the break.
-          holder = secondHalfReceivingTeamKey;
-          break;
-        default:
-          break;
-      }
-    });
-
-    setPossessionTeam(holder);
-  }, [logs, firstHalfReceivingTeamKey, secondHalfReceivingTeamKey]);
+  // Undo halftime as if it had never fired, for when the score that set it off
+  // is deleted while the break is still running. Unlike deleting a halftime
+  // directly (which revives the manual trigger only), this re-arms the
+  // automatic triggers: the halftime was a consequence of the wrong point, so
+  // the correct point must be able to set it off again normally.
+  // Call after the halftime row is out of the log.
+  const rearmAutomaticHalftime = useCallback(() => {
+    halftimeTriggeredThisMatchRef.current = false;
+    setHalftimeTriggerSpent(false);
+    halftimeTimeCapSuppressedRef.current = false;
+    halftimeTriggerLockRef.current = false;
+    halftimeReconciliationKeyRef.current = null;
+    setHalftimeTriggered(false);
+    setHalftimeTriggerType("unknown");
+    // End the break countdown without logging a halftime_end: there is no break.
+    if (activeSecondaryEventRef.current?.endCode === MATCH_LOG_EVENT_CODES.HALFTIME_END) {
+      clearSecondaryTimerEvent();
+    }
+    setHalftimeBreakActive(false);
+    if (secondaryKind === SECONDARY_TIMER_KINDS.HALFTIME) {
+      commitSecondaryTimerState(0, false);
+      setSecondaryTotalSeconds(0);
+      setSecondaryLabel(DEFAULT_SECONDARY_LABEL);
+      setSecondaryKind(null);
+    }
+  }, [clearSecondaryTimerEvent, commitSecondaryTimerState, secondaryKind]);
 
   const hasPendingMatchLogEventCode = useCallback(
     (targetMatchId, eventCode) => {
@@ -2751,7 +2652,12 @@ const replaceSecondaryTimer = useCallback(
     );
 
     if (!openHalftimeStart) {
-      halftimeReconciliationKeyRef.current = null;
+      // The key is deliberately kept: it names one halftime (match + start
+      // time), and once that break has been closed this session it must never
+      // be closed again here. Clearing it let any moment where the
+      // halftime_end was briefly missing from the log (an optimistic entry
+      // swapped out before its server row arrived) write a second one. A new
+      // halftime has a new start time, so a new key.
       if (matchLogMatchId) {
         halftimeEndInFlightRef.current.delete(matchLogMatchId);
       }
@@ -2777,7 +2683,13 @@ const replaceSecondaryTimer = useCallback(
       : Number.NaN;
     if (!Number.isFinite(halftimeStartMs)) return;
 
-    const reconciliationKey = `${matchLogMatchId}:${halftimeStartTimestamp}`;
+    // Keyed on the instant, not the timestamp text: the local entry reads
+    // `…T19:32:19.457Z` and the server row for the same start reads
+    // `…T19:32:19.457+00:00`, so a text key changed when the server row
+    // replaced the local one, and this effect forgot it had already handled
+    // the break. That is how every double halftime_end in the live data was
+    // written (a reconcile row stamped at the scheduled end, beside the real one).
+    const reconciliationKey = `${matchLogMatchId}:${halftimeStartMs}`;
     const pendingHalftimeEnd = hasPendingMatchLogEventCode(
       matchLogMatchId,
       MATCH_LOG_EVENT_CODES.HALFTIME_END
@@ -2867,29 +2779,20 @@ const replaceSecondaryTimer = useCallback(
       entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_START ||
       entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
   );
-  const halftimeEndLogged = logs.some(
-    (entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.HALFTIME_END
-  );
 
   // A per-half timeout allowance replenishes once the break is over. Keyed off the
   // logged halftime_end rather than any one of the three end paths, so every route
   // into the second half (timer expiry, force-end, reconciliation on reload) lands
-  // on the same baseline — and deleting the halftime_end puts it back.
+  // on the same baseline — and deleting the halftime_end puts it back. The
+  // baseline is the number of timeouts logged before the halftime_end
+  // (`countTimeouts`), so deleting a first-half timeout moves it too.
   useEffect(() => {
     if (!usesPerHalfTimeouts || resumeHydrationRef.current) return;
-    if (halftimeEndLogged) {
-      setHalftimeTimeoutBaseline((prev) =>
-        prev.A === timeoutUsage.A && prev.B === timeoutUsage.B
-          ? prev
-          : { A: timeoutUsage.A, B: timeoutUsage.B },
-      );
-      return;
-    }
-    setHalftimeTimeoutBaseline((prev) => (prev.A === 0 && prev.B === 0 ? prev : { A: 0, B: 0 }));
-    // `timeoutUsage` is deliberately not a dependency: the baseline is captured at
-    // the transition into the second half, not re-captured on every later timeout.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [halftimeEndLogged, usesPerHalfTimeouts]);
+    const { beforeSecondHalf } = countTimeouts(logs);
+    setHalftimeTimeoutBaseline((prev) =>
+      prev.A === beforeSecondHalf.A && prev.B === beforeSecondHalf.B ? prev : beforeSecondHalf,
+    );
+  }, [logs, usesPerHalfTimeouts]);
 
   // Halftime happens once. It has three ways in — point cap, time cap, manual —
   // and whichever fires first makes the other two dormant for the rest of the
@@ -2956,52 +2859,23 @@ const replaceSecondaryTimer = useCallback(
   }, []);
 
   useEffect(() => {
-    if (!matchStarted || halftimeTriggered || halftimeLogged || automaticHalftimeSpent) {
-      if (halftimeTimeCapArmed) {
-        setHalftimeTimeCapArmed(false);
+    // Armed is a pure function of game time and whether halftime has happened,
+    // re-worked out on every tick, so a deleted score or a reload cannot leave it
+    // stale. There is no halftime cap *target*: a cap acts at the next score
+    // whatever that score is (a point runs from one score to the next), so the
+    // armed trigger fires on it and no target is needed.
+    const shouldArm = (() => {
+      if (!matchStarted || halftimeTriggered || halftimeLogged || automaticHalftimeSpent) {
+        return false;
       }
-      if (halftimeCapTargetScore !== null) {
-        setHalftimeCapTargetScore(null);
-      }
-      return;
-    }
-    const halftimeMinutes = rules.halftimeMinutes || 0;
-    if (halftimeMinutes <= 0) {
-      if (halftimeTimeCapArmed) {
-        setHalftimeTimeCapArmed(false);
-      }
-      if (halftimeCapTargetScore !== null) {
-        setHalftimeCapTargetScore(null);
-      }
-      return;
-    }
-    if (halftimeTimeCapSuppressedRef.current) {
-      if (halftimeTimeCapArmed) {
-        setHalftimeTimeCapArmed(false);
-      }
-      if (halftimeCapTargetScore !== null) {
-        setHalftimeCapTargetScore(null);
-      }
-      return;
-    }
-    const elapsedSeconds = matchDuration * 60 - timerSeconds;
-    if (elapsedSeconds >= halftimeMinutes * 60) {
-      const halftimeCapEndMode = rules.halftimeCapEndMode || "afterPoint";
-      if (halftimeCapEndMode === "immediate") {
-        if (halftimeTimeCapArmed) {
-          setHalftimeTimeCapArmed(false);
-        }
-        void triggerHalftime("timeCap");
-      } else if (!halftimeTimeCapArmed) {
-        // "afterPoint": arm now, fire when the point in progress is scored.
-        setHalftimeTimeCapArmed(true);
-      }
-      if (
-        rules.halftimeCapTargetMode === "addOneToHighest" &&
-        halftimeCapTargetScore === null
-      ) {
-        setHalftimeCapTargetScore(Math.max(score.a, score.b) + 1);
-      }
+      const halftimeMinutes = rules.halftimeMinutes || 0;
+      if (halftimeMinutes <= 0) return false;
+      if (halftimeTimeCapSuppressedRef.current) return false;
+      const elapsedSeconds = matchDuration * 60 - timerSeconds;
+      return elapsedSeconds >= halftimeMinutes * 60;
+    })();
+    if (shouldArm !== halftimeTimeCapArmed) {
+      setHalftimeTimeCapArmed(shouldArm);
     }
   }, [
     matchStarted,
@@ -3012,12 +2886,6 @@ const replaceSecondaryTimer = useCallback(
     matchDuration,
     timerSeconds,
     halftimeTimeCapArmed,
-    rules.halftimeCapEndMode,
-    rules.halftimeCapTargetMode,
-    halftimeCapTargetScore,
-    score.a,
-    score.b,
-    triggerHalftime,
   ]);
 
   const currentMatchScore = useMemo(
@@ -3178,7 +3046,14 @@ const replaceSecondaryTimer = useCallback(
             merged.push(entry);
           }
         });
-        setLogsAndRef(merged);
+        // A halftime_end this device logged that the database turned down (the
+        // break was already closed there) is never echoed back, so it would sit
+        // in the log as a second end forever. Drop any local end that closes no
+        // open halftime. Server rows are never dropped.
+        const redundantEnds = findRedundantLocalHalftimeEnds(merged);
+        setLogsAndRef(
+          redundantEnds.size ? merged.filter((entry) => !redundantEnds.has(entry)) : merged,
+        );
 
         const queuedScores = countQueuedScores(targetMatchId, serverOptimisticIds);
         // An empty log means 0-0, including after the last point is deleted. Untracked
@@ -3191,27 +3066,35 @@ const replaceSecondaryTimer = useCallback(
           b: derived.totals.b + queuedScores.b,
         };
         setScore(totals);
-        // Exposed for callers that have just mutated the log and need to re-derive
-        // from the new rows without waiting for a re-render.
-        latestDerivedLogsRef.current = derived.logs;
 
-        if (!resumeHydrationRef.current) {
-          const matchStartLog = derived.logs.find(
-            (entry) => entry.eventCode === MATCH_LOG_EVENT_CODES.MATCH_START && entry.timestamp
+        // The log is the whole record of the game clock (there is no pause button:
+        // it only stops for logged stoppages), so re-derive it on every refresh.
+        // `merged` rather than `derived.logs`, so a stoppage still in the offline
+        // queue counts. Skipped while a stoppage write has not reached the log yet,
+        // when the local clock is the more recent truth.
+        if (!resumeHydrationRef.current && stoppageLogInFlightRef.current === 0) {
+          const clock = deriveGameClockFromLogs(
+            merged,
+            (rules.matchDuration || DEFAULT_DURATION) * 60
           );
-          if (matchStartLog) {
+          if (clock.started) {
             const matchStatus = String(
               (activeMatch?.status || selectedMatch?.status || "").toLowerCase()
             );
             const isFinished = matchStatus === "finished" || matchStatus === "completed";
-            const durationSeconds = (rules.matchDuration || DEFAULT_DURATION) * 60;
-            const elapsedSeconds = Math.floor(
-              (Date.now() - new Date(matchStartLog.timestamp).getTime()) / 1000
+            // Respect the overtime ceiling the tick enforces, or every refresh
+            // would restart a clock the tick has just stopped there.
+            const overtimeMax = format.flags.overtime?.maxSeconds;
+            const floorSeconds = Number.isFinite(overtimeMax) ? -Math.abs(overtimeMax) : null;
+            const atFloor = floorSeconds !== null && clock.remainingSeconds <= floorSeconds;
+            commitPrimaryTimerState(
+              atFloor ? floorSeconds : clock.remainingSeconds,
+              clock.running && !isFinished && !atFloor
             );
-            const remainingSeconds = durationSeconds - elapsedSeconds;
-            const shouldRunPrimary = !isFinished && !stoppageActiveRef.current;
-            commitPrimaryTimerState(remainingSeconds, shouldRunPrimary);
-            setTimerLabel("Game time");
+            stoppageActiveRef.current = clock.stoppageOpen;
+            setStoppageActive(clock.stoppageOpen);
+            // The timer label follows the cap phase (label effect); setting it
+            // here made it flash "Game time" on every refresh during overtime.
             setMatchStarted(true);
           }
         }
@@ -3235,6 +3118,7 @@ const replaceSecondaryTimer = useCallback(
       setLogsAndRef,
       teamAId,
       teamBId,
+      format.flags.overtime,
     ]
   );
 
@@ -3293,20 +3177,6 @@ const replaceSecondaryTimer = useCallback(
     setHalftimeTimeCapArmed(Boolean(snapshot.halftimeTimeCapArmed));
     setStoppageActive(Boolean(snapshot.stoppageActive));
     setMatchStarted(resumeWasStarted);
-    setScoreTarget(
-      snapshot.scoreTarget ??
-        snapshot.rules?.gamePointTarget ??
-        rules.gamePointTarget ??
-        null
-    );
-    setSoftCapApplied(Boolean(snapshot.softCapApplied));
-    setHardCapReached(Boolean(snapshot.hardCapReached));
-    setTimeCapTargetApplied(Boolean(snapshot.timeCapTargetApplied));
-    setHalftimeCapTargetScore(
-      Number.isFinite(snapshot.halftimeCapTargetScore)
-        ? snapshot.halftimeCapTargetScore
-        : null
-    );
 
     const restoredPrimary = deriveTimerStateFromSnapshot(
       snapshot.timer,
@@ -3535,8 +3405,6 @@ const replaceSecondaryTimer = useCallback(
     setHalftimeTriggerType,
     halftimeTimeCapArmed,
     setHalftimeTimeCapArmed,
-    halftimeCapTargetScore,
-    setHalftimeCapTargetScore,
     suppressHalftimeTimeCap,
     resumeCandidate,
     setResumeCandidate,
@@ -3600,7 +3468,7 @@ const replaceSecondaryTimer = useCallback(
     triggerHalftime,
     forceEndHalftime,
     updatePossession,
-    recomputePossessionFromLogs,
+    rearmAutomaticHalftime,
     matchLogMatchId,
     currentMatchScore,
     deriveLogsFromRows,
@@ -3612,7 +3480,6 @@ const replaceSecondaryTimer = useCallback(
     currentMatchScoreRef,
     matchIdRef,
     refreshMatchLogsRef,
-    primaryResetRef,
     secondaryResetRef,
     secondaryResetTriggeredRef,
     resumeHydrationRef,
@@ -3620,9 +3487,7 @@ const replaceSecondaryTimer = useCallback(
     secondaryTimerAnchorRef,
     toDateTimeLocal,
     scoreTarget,
-    softCapApplied,
-    hardCapReached,
-    timeCapTargetApplied,
+    matchCaps,
     reachedPointTarget,
     clearLocalMatchState,
   };

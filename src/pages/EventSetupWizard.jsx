@@ -69,18 +69,14 @@ const DEFAULT_RULES = {
   game: {
     pointTarget: 15,
     timeCapMinutes: 100,
-    timeCapEndMode: "afterPoint",
     timeCapTargetMode: "addOneToHighest",
-    softCapMinutes: null,
-    softCapMode: "addOneToHighest",
-    // Shown as "Hard cap end mode"; softCapMinutes is the "Hard cap" field.
-    softCapEndMode: "afterPoint",
+    // Overtime allowance: minutes of game time after the time cap; null = none.
+    hardCap: { minutesAfterTimeCap: null },
   },
   half: {
     halftimePointTarget: 8,
     halftimeBreakMinutes: 7,
     halftimeCapMinutes: 55,
-    halftimeCapEndMode: "afterPoint",
     halftimeCapTargetMode: "addOneToHighest",
   },
   timeouts: {
@@ -174,11 +170,41 @@ const parseRulesConfig = (value) => {
   return null;
 };
 
+// Cap keys retired on 2026-11-11 (docs/TODO.md §6): end modes ("immediate" does
+// not fit the sport; every cap acts at the next score) and the interim hard cap
+// stored as minutes from kick-off in the soft cap keys. `game.hardCapMinutes`
+// is deliberately kept: on old events it holds the time cap.
+const RETIRED_CAP_KEYS = {
+  game: ["timeCapEndMode", "softCapMinutes", "softCapMode", "softCapEndMode"],
+  half: ["halftimeCapEndMode", "timeCapEndMode"],
+};
+// "addTwoToHighest" is not a WFDF rule and is no longer offered; events that
+// stored it are shown (and saved) as +1, which is how the console reads them.
+const CAP_TARGET_KEYS = [
+  ["game", "timeCapTargetMode"],
+  ["half", "halftimeCapTargetMode"],
+];
+const dropRetiredCapKeys = (rules) => {
+  Object.entries(RETIRED_CAP_KEYS).forEach(([section, keys]) => {
+    if (rules?.[section] && typeof rules[section] === "object") {
+      keys.forEach((key) => {
+        delete rules[section][key];
+      });
+    }
+  });
+  CAP_TARGET_KEYS.forEach(([section, key]) => {
+    if (rules?.[section]?.[key] === "addTwoToHighest") {
+      rules[section][key] = "addOneToHighest";
+    }
+  });
+  return rules;
+};
+
 const buildRulesFromConfig = (value) => {
   const parsed = parseRulesConfig(value);
-  return parsed
-    ? mergeRuleDefaults(cloneDefaultRules(), parsed)
-    : cloneDefaultRules();
+  return dropRetiredCapKeys(
+    parsed ? mergeRuleDefaults(cloneDefaultRules(), parsed) : cloneDefaultRules()
+  );
 };
 const INITIAL_VENUE_FORM = {
   id: null,
@@ -3420,7 +3446,8 @@ export default function EventSetupWizardPage() {
                     {'Time cap "Soft cap" (min)'}
                   </span>
                   <span className="sc-field-hint">
-                    The length of standard match play.
+                    The length of standard match play. When it sounds, the
+                    point in progress is finished first.
                   </span>
                   <input
                     type="number"
@@ -3432,29 +3459,10 @@ export default function EventSetupWizardPage() {
                 </label>
                 <label className="sc-fieldset">
                   <span className="sc-field-label">
-                    Time cap end mode
-                  </span>
-                  <span className="sc-field-hint">
-                    Defines how play stops when the time cap arrives.
-                  </span>
-                  <select
-                    className="sc-input"
-                    value={rules.game.timeCapEndMode}
-                    onChange={(event) =>
-                      setRuleValue(["game", "timeCapEndMode"], event.target.value)
-                    }
-                    disabled={isRulesLocked}
-                  >
-                    <option value="afterPoint">After point</option>
-                    <option value="immediate">Immediate</option>
-                  </select>
-                </label>
-                <label className="sc-fieldset">
-                  <span className="sc-field-label">
                     Time cap target mode
                   </span>
                   <span className="sc-field-hint">
-                    Adjusts the target score when the time cap hits.
+                    Set from the score after the point in progress.
                   </span>
                   <select
                     className="sc-input"
@@ -3481,80 +3489,48 @@ export default function EventSetupWizardPage() {
               <div className="wizard-grid wizard-gap-md wizard-grid-cols-123">
                 <label className="sc-fieldset">
                   <span className="sc-field-label">
-                    Hard cap (min)
+                    Hard cap (min after time cap)
                   </span>
                   <span className="sc-field-hint">
-                    The limit where a match is forcibly ended. Empty =
-                    disabled. Measured from match start (value must be
-                    greater than Time cap).
+                    Overtime allowance after the time cap. Empty = no hard
+                    cap. When it sounds the point in progress is finished;
+                    unequal scores end the match, a tie goes to a universe
+                    point.
                   </span>
                   <input
                     type="number"
+                    min="0"
                     className="sc-input"
-                    value={rules.game.softCapMinutes ?? ""}
-                    onChange={handleRuleNumberInput(["game", "softCapMinutes"])}
+                    value={rules.game.hardCap?.minutesAfterTimeCap ?? ""}
+                    onChange={handleRuleNumberInput([
+                      "game",
+                      "hardCap",
+                      "minutesAfterTimeCap",
+                    ])}
                     disabled={isRulesLocked}
                   />
                   {(() => {
                     const timeCap = Number(rules.game.timeCapMinutes);
-                    const hardCap = Number(rules.game.softCapMinutes);
-                    if (!rules.game.softCapMinutes || !Number.isFinite(hardCap)) {
+                    const allowance = Number(rules.game.hardCap?.minutesAfterTimeCap);
+                    if (!rules.game.hardCap?.minutesAfterTimeCap) {
                       return null;
                     }
-                    if (!timeCap || hardCap <= timeCap) {
+                    if (!Number.isFinite(allowance) || allowance <= 0) {
                       return (
                         <span className="wizard-cap-note wizard-cap-note--warning">
-                          Hard cap must be later than the time cap.
+                          The hard cap must be more than 0 minutes.
                         </span>
                       );
                     }
+                    if (!timeCap) {
+                      return null;
+                    }
                     return (
                       <span className="wizard-cap-note">
-                        Overtime window: {hardCap - timeCap} min
+                        Hard cap at {timeCap + allowance} min of game time.
                       </span>
                     );
                   })()}
-                </label>
-                <label className="sc-fieldset">
-                  <span className="sc-field-label">
-                    Hard cap end mode
-                  </span>
-                  <span className="sc-field-hint">
-                    Defines how play stops when the hard cap arrives.
-                  </span>
-                  <select
-                    className="sc-input"
-                    value={rules.game.softCapEndMode || "afterPoint"}
-                    onChange={(event) =>
-                      setRuleValue(["game", "softCapEndMode"], event.target.value)
-                    }
-                    disabled={isRulesLocked}
-                  >
-                    <option value="afterPoint">After point</option>
-                    <option value="immediate">Immediate</option>
-                  </select>
-                </label>
-                <label className="sc-fieldset">
-                  <span className="sc-field-label">
-                    Hard cap target mode
-                  </span>
-                  <span className="sc-field-hint">
-                    Adjusts the target score when the hard cap hits.
-                  </span>
-                  <select
-                    className="sc-input"
-                    value={rules.game.softCapMode || ""}
-                    onChange={(event) =>
-                      setRuleValue(
-                        ["game", "softCapMode"],
-                        event.target.value || null,
-                      )
-                    }
-                    disabled={isRulesLocked}
-                  >
-                    <option value="">Not set</option>
-                    <option value="addOneToHighest">Add one to highest</option>
-                  </select>
                 </label>
               </div>
             </div>
@@ -3571,8 +3547,9 @@ export default function EventSetupWizardPage() {
               <div>
                 <dt>Short tournament</dt>
                 <dd>
-                  Game to 15. Time cap 90 min (highest + 1). Hard cap 100 min:
-                  finish the point, and if tied, play a universe point.
+                  Game to 15. Time cap 90 min (highest + 1). Hard cap 10 min
+                  after it (100 min): finish the point; if tied, play a
+                  universe point.
                 </dd>
               </div>
             </dl>
@@ -3616,28 +3593,6 @@ export default function EventSetupWizardPage() {
             </label>
             <label className="sc-fieldset">
               <span className="sc-field-label">
-                Halftime cap end mode
-              </span>
-              <span className="sc-field-hint">
-                Defines how play stops when the halftime cap arrives.
-              </span>
-              <select
-                className="sc-input"
-                value={rules.half.halftimeCapEndMode}
-                onChange={(event) =>
-                  setRuleValue(
-                    ["half", "halftimeCapEndMode"],
-                    event.target.value,
-                  )
-                }
-                disabled={isRulesLocked}
-              >
-                <option value="afterPoint">After point</option>
-                <option value="immediate">Immediate</option>
-              </select>
-            </label>
-            <label className="sc-fieldset">
-              <span className="sc-field-label">
                 Halftime cap target mode
               </span>
               <span className="sc-field-hint">
@@ -3656,7 +3611,6 @@ export default function EventSetupWizardPage() {
               >
                 <option value="">Not set</option>
                 <option value="addOneToHighest">Add one to highest</option>
-                <option value="addTwoToHighest">Add two to highest</option>
                 <option value="none">None</option>
               </select>
             </label>

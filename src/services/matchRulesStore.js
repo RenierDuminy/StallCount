@@ -9,7 +9,9 @@
 // survive reloads, navigation and the scorekeeper session TTL, but they do not
 // follow the user to another device and are lost if site data is cleared.
 
-const STORE_VERSION = 1;
+// 2 (2026-11-11): cap fields renamed (hard cap is now `gameHardCapAfterMinutes`,
+// the soft cap and end-mode fields are gone), so version-1 overrides are dropped.
+const STORE_VERSION = 2;
 const KEY_PREFIX = "scorekeeper:matchRules:";
 // Overrides outlive a session deliberately; prune only so storage cannot grow forever.
 const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90; // 90 days

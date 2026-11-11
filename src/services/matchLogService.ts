@@ -128,6 +128,16 @@ export type MatchLogInput = {
   abbaLine?: string | null;
   createdAt?: string | null;
   optimisticId?: string | null;
+  /**
+   * Console writes of `halftime_end` set this. The row is written only if the
+   * database still shows the latest halftime as open; otherwise the existing
+   * `halftime_end` that closed it is returned instead (`skipped_duplicate`).
+   * A break has exactly one end, and this check reads the database itself, so
+   * it holds across a reload, a second device and a replayed offline queue,
+   * which the console's in-memory guards cannot see. Match corrections leaves it
+   * unset, so a TD can still add any row.
+   */
+  onlyIfHalftimeOpen?: boolean;
 };
 
 export type MatchLogRow = {
@@ -269,11 +279,41 @@ export async function getMatchLogs(matchId: string) {
   return (data ?? []) as MatchLogRow[];
 }
 
+/**
+ * The `halftime_end` that closed the latest halftime of a match, or null when
+ * the latest halftime is still open (or there has been none). Starts and ends
+ * pair in time order, like the console's `getLastUnmatchedEventStart`.
+ */
+async function findHalftimeEndClosingLatestBreak(matchId: string) {
+  const rows = await getMatchLogs(matchId);
+  let open = 0;
+  let starts = 0;
+  let closingEnd: MatchLogRow | null = null;
+  for (const row of rows) {
+    const code = (row as MatchLogRow & { event?: { code?: string } | null }).event?.code;
+    if (code === MATCH_LOG_EVENT_CODES.HALFTIME_START) {
+      starts += 1;
+      open += 1;
+    } else if (code === MATCH_LOG_EVENT_CODES.HALFTIME_END && open > 0) {
+      open -= 1;
+      closingEnd = row;
+    }
+  }
+  return starts > 0 && open === 0 ? closingEnd : null;
+}
+
 export async function createMatchLogEntry(input: MatchLogInput) {
   if (matchLogsSupportsOptimisticId && input.matchId && input.optimisticId) {
     const existing = await findMatchLogByOptimisticId(input.matchId, input.optimisticId);
     if (existing) {
       return existing;
+    }
+  }
+
+  if (input.onlyIfHalftimeOpen && input.matchId) {
+    const closingEnd = await findHalftimeEndClosingLatestBreak(input.matchId);
+    if (closingEnd) {
+      return { ...(closingEnd as MatchLogRow), skipped_duplicate: true };
     }
   }
 

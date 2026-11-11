@@ -26,8 +26,33 @@ const formatDate = (value) => {
 const isPlainObject = (value) =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
+// Cap keys, whose raw names read wrongly: the hard cap was briefly stored in
+// `softCapMinutes`, and old events stored the *time cap* as `hardCapMinutes`.
+const RULE_KEY_LABELS = {
+  timeCapMinutes: "Time cap (min)",
+  timeCapTargetMode: "Time cap target",
+  hardCap: "Hard cap",
+  minutesAfterTimeCap: "Minutes after the time cap",
+  hardCapMinutes: "Time cap (min, older key)",
+  softCapMinutes: "Cap (min from kick-off, retired key)",
+  softCapMode: "Cap target (retired key)",
+  softCapEndMode: "Cap end mode (retired key)",
+  timeCapEndMode: "Time cap end mode (retired key)",
+  halftimeCapMinutes: "Halftime cap (min)",
+  halftimeCapTargetMode: "Halftime cap target",
+  halftimeCapEndMode: "Halftime cap end mode (retired key)",
+};
+
+const RULE_VALUE_LABELS = {
+  addOneToHighest: "Highest score + 1",
+  addTwoToHighest: "Highest score + 2",
+  afterPoint: "After the point",
+  immediate: "Immediate",
+};
+
 const formatRuleKey = (key) => {
   if (!key) return "";
+  if (RULE_KEY_LABELS[key]) return RULE_KEY_LABELS[key];
   const normalized = `${key}`
     .replace(/[_-]+/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -40,7 +65,7 @@ const formatRuleValue = (value) => {
   if (value === null || value === undefined || value === "") return "Not set";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "Not set";
-  return String(value);
+  return RULE_VALUE_LABELS[value] || String(value);
 };
 
 const TOP_LEVEL_RULE_ORDER = ["format", "division", "game", "half"];

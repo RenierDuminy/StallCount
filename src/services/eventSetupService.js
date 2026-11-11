@@ -1342,7 +1342,15 @@ export async function replaceEventHierarchy(payload) {
         (isUuid(poolKey) ? poolKey : null);
       if (!poolId) return;
       (pool.matches || []).forEach((match) => {
-        if (!match?.teamAId || !match?.teamBId) return;
+        if (!match?.teamAId || !match?.teamBId) {
+          // A saved match with no teams yet (e.g. a playoff or Swiss game the
+          // resolver fills later) is kept untouched, never deleted: dropping it
+          // here put it on the delete list, and ON DELETE SET NULL silently
+          // unlinked its bracket node (Mixed Nationals 2026, 2026-11-10).
+          const keptId = normalizeText(match?.id);
+          if (isUuid(keptId)) desiredMatchIds.add(keptId);
+          return;
+        }
         if (match.teamAId === match.teamBId) return;
         const startTime = normalizeTimestamp(match.start);
         const clientVenueRef = match.venueRefId || match.venueId || null;
@@ -1422,9 +1430,22 @@ export async function replaceEventHierarchy(payload) {
     }
   }
 
-  const matchesToDelete = Array.from(originalIndex.matchIds).filter(
+  let matchesToDelete = Array.from(originalIndex.matchIds).filter(
     (id) => !desiredMatchIds.has(id),
   );
+  if (matchesToDelete.length) {
+    // Never delete a match a bracket node links to: the wizard does not show
+    // brackets, and the FK would unlink the node without any warning.
+    const { data: linkedNodes, error: linkedError } = await supabase
+      .from("bracket_nodes")
+      .select("match_id")
+      .in("match_id", matchesToDelete);
+    if (linkedError) {
+      throw new Error(linkedError.message || "Failed to check bracket links.");
+    }
+    const linkedIds = new Set((linkedNodes ?? []).map((row) => row.match_id));
+    matchesToDelete = matchesToDelete.filter((id) => !linkedIds.has(id));
+  }
   if (matchesToDelete.length) {
     const { error: matchDeleteError } = await supabase
       .from("matches")

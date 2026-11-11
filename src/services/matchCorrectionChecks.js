@@ -477,14 +477,18 @@ export function analyseMatchLogs(input) {
     );
   } else if (isFinished) {
     const pointTarget = toNumber(eventRules?.game?.pointTarget);
-    const softCapMinutes = toNumber(eventRules?.game?.softCapMinutes);
+    // `game.hardCap.minutesAfterTimeCap` since 2026-11-11; `softCapMinutes` is
+    // read only so past events that stored a cap there still count as capped.
+    const hardCapAfterMinutes = toNumber(eventRules?.game?.hardCap?.minutesAfterTimeCap);
+    const legacySoftCapMinutes = toNumber(eventRules?.game?.softCapMinutes);
     const timeCapMinutes = toNumber(getGameTimeCapMinutes(eventRules));
     const halfTarget = toNumber(getHalfPointTarget(eventRules));
     const timeoutsPerTeam = toNumber(eventRules?.timeouts?.perTeamPerGame);
 
     const winning = Math.max(totals.a, totals.b);
     const losing = Math.min(totals.a, totals.b);
-    const hasCapEvidence = softCapMinutes != null || timeCapMinutes != null;
+    const hasCapEvidence =
+      timeCapMinutes != null || hardCapAfterMinutes != null || legacySoftCapMinutes != null;
 
     if (pointTarget != null && winning < pointTarget && !hasCapEvidence) {
       findings.push(
