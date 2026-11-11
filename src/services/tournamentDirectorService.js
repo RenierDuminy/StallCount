@@ -134,7 +134,10 @@ export async function getTournamentOverview(eventId, options = {}) {
           .select(
             "match_id, rated_team_id, rules_knowledge, fouls_contact, positive_attitude, communication, self_control, submitted_at",
           )
-          .in("match_id", matchIds);
+          .in("match_id", matchIds)
+          // Final rows only, matching every public page; a later draft must
+          // not replace the published score here.
+          .eq("is_final", true);
 
         if (error) {
           throw new Error(error.message || "Failed to load spirit score data.");

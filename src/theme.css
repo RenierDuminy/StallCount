@@ -1464,6 +1464,33 @@ a:focus-visible {
   border-color: var(--sc-button-ghost-border-hover);
 }
 
+/* Destructive actions (remove, delete, reset): ALWAYS red with white text and
+   a thin (1px) white border. This is the one danger style; use `sc-button is-danger` for
+   every remove/delete button. `sc-button-danger` is a legacy alias of it.
+   The `.td-page` selectors keep the white border on Tournament Director pages,
+   whose `.td-page .sc-button` rule would otherwise recolour it. */
+.sc-button.is-danger,
+.sc-button.sc-button-danger,
+.td-page .sc-button.is-danger,
+.td-page .sc-button.sc-button-danger {
+  background: var(--sc-button-danger-bg);
+  color: #fff;
+  border: 1px solid #fff;
+}
+
+.sc-button.is-danger:hover,
+.sc-button.sc-button-danger:hover {
+  background: var(--sc-button-danger-bg-hover);
+  color: #fff;
+}
+
+.sc-button.is-danger:disabled,
+.sc-button.sc-button-danger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
 .sc-button.is-square {
   border-radius: var(--sc-radius-md);
   padding-top: 0.7rem;
@@ -1693,6 +1720,12 @@ a:focus-visible {
 
 .sc-match-card-canceled {
   border-color: rgba(239, 68, 68, 0.8);
+}
+
+/* Forfeit: canceled's red border, and the standard card background nudged
+   toward grey. Two classes so it outranks the panel variant's background. */
+.sc-match-card-canceled.sc-match-card-forfeit {
+  background: color-mix(in srgb, var(--sc-panel-bg) 85%, #94a3b8);
 }
 
 .sc-match-card-grid {

@@ -34,7 +34,10 @@ const TEAM_A = { id: "scrimmage-light", name: "Light" };
 const TEAM_B = { id: "scrimmage-dark", name: "Dark" };
 const DEFAULT_RULES = cloneScrimmageRules();
 
-const DEFAULT_SETUP_FORM = { startTime: "", startingTeamId: "" };
+// teamAName / teamBName: optional real team names. A scrimmage is also the
+// backup when a fixture cannot be scored through the normal console, and its
+// export and report then need the real names; blank falls back to Light / Dark.
+const DEFAULT_SETUP_FORM = { startTime: "", startingTeamId: "", teamAName: "", teamBName: "" };
 const DEFAULT_TIMEOUT_USAGE = { A: 0, B: 0 };
 
 function buildDefaultRosters() {
@@ -428,10 +431,14 @@ export function useScrimmageData() {
       if (options.logTurnover === false) return;
 
       const actorName = resolveRosterName(options.actorId);
+      // A block is its own event code, as in the live console. (This used to
+      // read a hard-coded event type id that was never applied, so every
+      // block was saved as a turnover.)
+      const isBlock = options.eventCodeOverride === MATCH_LOG_EVENT_CODES.BLOCK;
       const logEntry = {
-        id: createLocalId("turnover"),
-        eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
-        eventDescription: "Turnover",
+        id: createLocalId(isBlock ? "block" : "turnover"),
+        eventCode: isBlock ? MATCH_LOG_EVENT_CODES.BLOCK : MATCH_LOG_EVENT_CODES.TURNOVER,
+        eventDescription: isBlock ? "Block" : "Turnover",
         team: options.eventTeamKey || teamKey,
         timestamp: new Date().toISOString(),
         totalA: score.a,
@@ -938,8 +945,8 @@ export function useScrimmageData() {
     };
   }, [sessionKey, resumeHandled, buildSessionSnapshot]);
 
-  const displayTeamA = TEAM_A.name;
-  const displayTeamB = TEAM_B.name;
+  const displayTeamA = setupForm.teamAName?.trim() || TEAM_A.name;
+  const displayTeamB = setupForm.teamBName?.trim() || TEAM_B.name;
   const displayTeamAShort = deriveShortName(displayTeamA);
   const displayTeamBShort = deriveShortName(displayTeamB);
   const kickoffLabel = "Scrimmage session";

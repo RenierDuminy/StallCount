@@ -154,6 +154,141 @@ export async function applyLogInsert(context, input, { reason } = {}) {
   return { ...result, row, auditError };
 }
 
+// Inserted in batches so one request never carries a whole tournament day.
+const IMPORT_BATCH_SIZE = 100;
+
+/**
+ * Write an imported match log (from a scrimmage-console export) in one go.
+ *
+ * `mode` is "replace" (delete the match's existing log first) or "append"
+ * (add the given rows beside it; the caller has already dropped duplicates).
+ * Rows are plain match_logs insert objects from buildImportRows. Unlike
+ * applyLogInsert, the score is republished and caches cleared once at the end,
+ * not per row.
+ *
+ * RLS refuses writes silently (success, zero rows), so both the delete and the
+ * inserts are counted back, and a shortfall throws with what did land.
+ */
+export async function importMatchLogs(context, { rows = [], mode = "append", matchUpdates = null, reason = "", summary = null } = {}) {
+  const { matchId } = context;
+  if (!matchId) throw new Error("Match ID is required to import a match log.");
+  if (!rows.length) throw new Error("There are no entries to import.");
+
+  let deletedCount = 0;
+  if (mode === "replace") {
+    const existing = await getMatchLogs(matchId);
+    const expected = Array.isArray(existing) ? existing.length : 0;
+    if (expected > 0) {
+      const { data, error } = await supabase
+        .from("match_logs")
+        .delete()
+        .eq("match_id", matchId)
+        .select("id");
+      if (error) throw new Error(error.message || "Failed to remove the existing match log.");
+      deletedCount = Array.isArray(data) ? data.length : 0;
+      if (deletedCount < expected) {
+        throw new Error(
+          `Only ${deletedCount} of ${expected} existing entries could be removed, so nothing was imported. You may not have permission to delete match log entries.`,
+        );
+      }
+    }
+  }
+
+  let inserted = 0;
+  for (let start = 0; start < rows.length; start += IMPORT_BATCH_SIZE) {
+    const batch = rows.slice(start, start + IMPORT_BATCH_SIZE).map((row) => ({ ...row, match_id: matchId }));
+    const { data, error } = await supabase.from("match_logs").insert(batch).select("id");
+    const landed = Array.isArray(data) ? data.length : 0;
+    inserted += landed;
+    if (error || landed < batch.length) {
+      const why = error?.message || "You may not have permission to add match log entries.";
+      throw new Error(
+        `${inserted} of ${rows.length} entries were imported before the import stopped: ${why} ` +
+          "Reload the log to see what landed; the corrections tools can finish or undo it.",
+      );
+    }
+  }
+
+  if (matchUpdates && Object.keys(matchUpdates).length) {
+    await updateMatch(matchId, matchUpdates);
+  }
+
+  const auditError = await logMatchCorrection({
+    action: "INSERT",
+    recordId: null,
+    matchId,
+    before: mode === "replace" ? { deletedLogCount: deletedCount } : null,
+    after: { imported: inserted, mode, matchUpdates, ...(summary || {}) },
+    reason: reason ? `Scrimmage import: ${reason}` : "Scrimmage import",
+  });
+
+  const result = await finaliseCorrection(context);
+  return { ...result, inserted, deletedCount, auditError };
+}
+
+/**
+ * Put a match back to "still to be played": every match_logs row deleted, score
+ * 0–0, status scheduled, and the setup fields the console fills in (scorekeeper,
+ * pulling team, gender line rule) plus captain confirmations cleared. Teams,
+ * venue, pool and start time are kept. Spirit scores are not touched.
+ *
+ * Used for test matches and matches started by mistake. The deleted rows are
+ * counted back, because an RLS-refused DELETE succeeds with zero rows.
+ */
+export async function resetMatchToScheduled(context, { before, reason } = {}) {
+  const { matchId } = context;
+  if (!matchId) {
+    throw new Error("Match ID is required to reset a match.");
+  }
+
+  const existing = await getMatchLogs(matchId);
+  const expected = Array.isArray(existing) ? existing.length : 0;
+
+  if (expected > 0) {
+    const { data, error } = await supabase
+      .from("match_logs")
+      .delete()
+      .eq("match_id", matchId)
+      .select("id");
+    if (error) {
+      throw new Error(error.message || "Failed to delete the match log.");
+    }
+    const deleted = Array.isArray(data) ? data.length : 0;
+    if (deleted < expected) {
+      throw new Error(
+        `Only ${deleted} of ${expected} log entries could be deleted. You may not have permission to delete match log entries.`
+      );
+    }
+  }
+
+  const row = await updateMatch(matchId, {
+    status: "scheduled",
+    scoreA: 0,
+    scoreB: 0,
+    scorekeeperId: null,
+    startingTeamId: null,
+    abbaPattern: null,
+    captainsConfirmed: false,
+    confirmedAt: null,
+    teamAConfirmedAt: null,
+    teamAConfirmedBy: null,
+    teamBConfirmedAt: null,
+    teamBConfirmedBy: null,
+  });
+
+  const auditError = await logMatchCorrection({
+    action: "DELETE",
+    recordId: null,
+    matchId,
+    before: { match: before ?? null, deletedLogCount: expected },
+    after: { reset: "scheduled" },
+    reason: reason ? `Full match reset: ${reason}` : "Full match reset",
+  });
+
+  invalidateAfterCorrection(context);
+  return { row, deletedLogCount: expected, auditError };
+}
+
 // Timestamps are millisecond resolution, so a midpoint needs at least 2ms of gap
 // to land strictly between its neighbours.
 const MIN_GAP_MS = 2;

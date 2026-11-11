@@ -244,7 +244,9 @@ function normalizeAbbaPattern(value) {
   const candidate = `${value ?? ""}`.trim().toLowerCase();
   if (candidate === "male" || candidate === "m") return "M";
   if (candidate === "female" || candidate === "f") return "F";
-  if (candidate === "none") return "none";
+  // Rule B (end zone decision) picks each line during the point, so there is
+  // no sequence to predict the next one from.
+  if (candidate === "none" || candidate === "rule_b") return "none";
   return null;
 }
 

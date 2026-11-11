@@ -32,11 +32,10 @@
       ]
     }
   ],
-  "crons": [
+  "rewrites": [
     {
-      "path": "/api/stb-rl-26-roster-sync",
-      "schedule": "0 15 * * *"
+      "source": "/((?!.*\\.).*)",
+      "destination": "/index.html"
     }
-  ],
-  "rewrites": [{ "source": "/((?!.*\\.).*)", "destination": "/index.html" }]
+  ]
 }

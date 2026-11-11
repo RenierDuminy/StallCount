@@ -1055,6 +1055,7 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
             <div className="mb-4 flex items-start justify-between gap-3 border-b border-border-strong pb-3">
               <SectionHeader
                 title="Create/Update players"
+                description="You can edit players on your team's roster and new players who are not on any team yet. To edit a player who played for another team or in an earlier event, add them to your roster first."
               />
               <button
                 type="button"

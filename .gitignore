@@ -28,6 +28,9 @@ dev-server.log
 dev-server.err.log
 migrations/*.sql
 
+# SQL (migrations, diagnostics, one-off fixes) is applied by hand and kept local
+*.sql
+
 # Supabase schema dumps (not needed at build time)
 docs/Triggers.txt
 docs/functions.txt
@@ -52,7 +55,7 @@ CLAUDE.md
 
 # Generated season reports
 reports/
-docs/TODO-db-housekeeping-and-playoffs.md
+docs/TODO.md
 
 # App manual (LaTeX source, images, built PDF) - not published with the app
 docs/manual/

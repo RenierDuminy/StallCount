@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../services/supabaseClient";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { Card, SectionShell } from "../components/ui/primitives";
 import EventWorkspaceTemplate from "../components/EventWorkspaceTemplate";
@@ -7,6 +8,7 @@ import { useCachedQuery } from "../hooks/useCachedQuery";
 import { EVENT_LIST_LIMIT } from "../services/eventPageService";
 import {
   STANDARD_EVENT_BASE_PATH,
+  findEventBySlug,
   getEventWorkspacePath,
   getStandardEventPath,
   slugify,
@@ -27,22 +29,31 @@ function useEventsList() {
   return { events, error };
 }
 
-// Slug with every separator removed, so "sa-mx-nationals2026" and
-// "sa-mx-nationals-2026" name the same event.
-const compactSlug = (value) => (slugify(value) || "").replace(/-/g, "");
-
 /**
- * The event a URL slug names: an exact match on the slugified name first, then
- * a match ignoring hyphens. The list is newest first, so a shared name resolves
- * to the newest event.
+ * Fallback when the cached list has no match: a fresh lookup over every event
+ * (ids and names only). The cached list can be up to a day old (a link to a
+ * newly created event) and holds only the newest EVENT_LIST_LIMIT events (a
+ * link to an old one), so "not in the list" is not proof the event is gone.
+ * Returns undefined while looking, then the event or null.
  */
-function findEventBySlug(events, slug) {
-  if (!events?.length || !slug) return null;
-  const exact = events.find((row) => slugify(row.name) === slug);
-  if (exact) return exact;
-  const loose = compactSlug(slug);
-  if (!loose) return null;
-  return events.find((row) => compactSlug(row.name) === loose) || null;
+function useFreshEventLookup(slug, needed) {
+  const [result, setResult] = useState({ slug: null, event: undefined });
+  useEffect(() => {
+    if (!needed || !slug) return undefined;
+    let cancelled = false;
+    supabase
+      .from("events")
+      .select("id, name")
+      .order("start_date", { ascending: false })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        setResult({ slug, event: error ? null : findEventBySlug(data ?? [], slug) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, needed]);
+  return result.slug === slug ? result.event : undefined;
 }
 
 function EventNotFound({ message }) {
@@ -72,12 +83,14 @@ export default function StandardEventPage() {
   const { slug } = useParams();
   const { events, error } = useEventsList();
 
-  const event = useMemo(() => findEventBySlug(events, slug), [events, slug]);
+  const listed = useMemo(() => findEventBySlug(events, slug), [events, slug]);
+  const fresh = useFreshEventLookup(slug, Boolean(events) && !listed);
+  const event = listed || fresh || null;
 
   if (error) return <EventNotFound message={error} />;
-  // No event by that name: a shared link that went stale (renamed or removed
-  // event) lands on the events list rather than a dead end.
-  if (events && !event) return <Navigate to="/events" replace />;
+  // No event by that name even after a fresh lookup: a shared link that went
+  // stale (renamed or removed event) lands on the events list, not a dead end.
+  if (events && !listed && fresh === null) return <Navigate to="/events" replace />;
   if (!event) return <EventLoading />;
 
   // Matched loosely (e.g. a hyphen missing from a typed or printed link):

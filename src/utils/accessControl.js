@@ -170,13 +170,13 @@ const SYS_ADMIN_ACCESS_ROLES = ["admin"];
 const ADMIN_ACCESS_ACCESS_ROLES = ["admin"];
 const EVENT_SETUP_ACCESS_ROLES = ["tournament_director"];
 // Load-bearing: `/spirit-scores` gates on this list, not on
-// SPIRIT_SCORES_ACCESS_PERMISSIONS. Spirit scoring is a captain's duty and
-// captains hold no match permissions, so the old permission gate excluded
-// exactly the intended audience while admitting any match-writing role. The
-// page scopes its event dropdown by the same list.
+// SPIRIT_SCORES_ACCESS_PERMISSIONS, and the page scopes its event dropdown by
+// it. It is the match officials' page, opened by the scorekeeper at the end of
+// a match. Captains and team managers are deliberately absent (2026-11-11):
+// they give and edit spirit in the captain portal, whose RPC checks their team
+// and locks the score once they confirm. This page writes spirit_scores
+// directly, which RLS refuses for team-only grants anyway.
 const SPIRIT_SCORES_ACCESS_ROLES = [
-  "captain",
-  "team_manager",
   "scorekeeper",
   "field_assistant",
   "tournament_director",

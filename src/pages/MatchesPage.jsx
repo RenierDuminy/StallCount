@@ -1514,7 +1514,9 @@ function buildSpiritReport(scores, match) {
       let sum = 0;
       let count = 0;
       rows.forEach((row) => {
-        const value = Number(row?.[dim.key]);
+        // Number(null) is 0, which counted a missing category as a zero score.
+        const raw = row?.[dim.key];
+        const value = raw === null || raw === undefined || raw === "" ? NaN : Number(raw);
         if (Number.isFinite(value)) {
           sum += value;
           count += 1;
@@ -1556,7 +1558,7 @@ function buildSpiritReport(scores, match) {
 
   return {
     entries,
-    totalLabel: `Spirit scores recieved`,
+    totalLabel: "Spirit scores received",
   };
 }
 

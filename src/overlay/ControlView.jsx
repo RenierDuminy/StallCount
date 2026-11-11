@@ -596,7 +596,7 @@ export function ControlView({
 
                   <dl className="overlay-matchstatus-meta">
                     <div>
-                      <dt>Kickoff</dt>
+                      <dt>Match start</dt>
                       <dd>{formatKickoffCat(matchDetails?.start_time)}</dd>
                     </div>
                     <div>

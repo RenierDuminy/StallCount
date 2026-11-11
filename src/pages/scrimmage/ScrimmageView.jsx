@@ -5,7 +5,7 @@ import { useScrimmageData } from "./useScrimmageData";
 import { useScrimmageActions } from "./useScrimmageActions";
 import { deriveScrimmageReport } from "./scrimmageReport";
 import { downloadScrimmageReportPdf } from "./scrimmagePdfReport";
-import { downloadScrimmageReportCsv } from "./scrimmageCsvReport";
+import { downloadScrimmageMatchExport } from "./scrimmageMatchExport";
 import { ScorekeeperShell } from "../../components/ui/scorekeeperPrimitives";
 import { setLiveActivity } from "../../services/liveActivity";
 import {
@@ -647,14 +647,13 @@ export default function ScrimmageView() {
         void handleUpdateLog(editingIndex, {
           teamKey: eventTeamKey,
           scorerId: actorId || null,
-          eventTypeId: BLOCK_EVENT_TYPE_ID,
+          eventCode: MATCH_LOG_EVENT_CODES.BLOCK,
         });
       } else {
         void handleUpdateLog(editingIndex, {
           teamKey: eventTeamKey,
           scorerId: actorId || null,
           eventCode: MATCH_LOG_EVENT_CODES.TURNOVER,
-          eventTypeId: null,
         });
       }
       return;
@@ -662,7 +661,7 @@ export default function ScrimmageView() {
 
     void updatePossession(nextTeam, {
       actorId: actorId || null,
-      eventTypeIdOverride: isBlock ? BLOCK_EVENT_TYPE_ID : null,
+      eventCodeOverride: isBlock ? MATCH_LOG_EVENT_CODES.BLOCK : null,
       eventTeamKey,
     });
   };
@@ -812,11 +811,18 @@ const handleStartDiscussionTimer = () => {
     });
   };
 
-  const handleDownloadCsv = () => {
-    downloadScrimmageReportCsv({
+  // Database-shaped export for a tournament director to import on Match
+  // corrections, when this console stood in for the normal scorekeeper.
+  const handleDownloadData = () => {
+    downloadScrimmageMatchExport({
       logs,
+      rosters: sortedRosters,
       teamAName: safeTeamAName,
       teamBName: safeTeamBName,
+      startingTeamKey: matchStartingTeamKey,
+      abbaPattern,
+      startTime: setupForm.startTime,
+      score,
     });
   };
 
@@ -1291,6 +1297,32 @@ const handleStartDiscussionTimer = () => {
                     )
                   }
                   className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-right text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                <span className="shrink-0">Team A name</span>
+                <input
+                  type="text"
+                  value={setupForm.teamAName || ""}
+                  placeholder="Light"
+                  maxLength={60}
+                  onChange={(event) =>
+                    setSetupForm((prev) => ({ ...prev, teamAName: event.target.value }))
+                  }
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </label>
+              <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
+                <span className="shrink-0">Team B name</span>
+                <input
+                  type="text"
+                  value={setupForm.teamBName || ""}
+                  placeholder="Dark"
+                  maxLength={60}
+                  onChange={(event) =>
+                    setSetupForm((prev) => ({ ...prev, teamBName: event.target.value }))
+                  }
+                  className="flex-1 min-w-[110px] rounded-2xl border border-[#0f5132]/30 bg-[#ecfdf3] px-3 py-1.5 text-sm text-[#0f5132] focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#1c8f5a]/30 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </label>
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
@@ -2018,10 +2050,10 @@ const handleStartDiscussionTimer = () => {
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={handleDownloadCsv}
+                onClick={handleDownloadData}
                 className="rounded-full border border-[#0f5132] bg-white px-4 py-2 text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
               >
-                Download data (CSV)
+                Download match data (JSON)
               </button>
               <button
                 type="button"

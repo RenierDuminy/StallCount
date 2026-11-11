@@ -186,6 +186,7 @@ function normalizeAbbaPattern(input) {
   const candidate = input.trim().toLowerCase();
   if (candidate === "male" || candidate === "m") return "male";
   if (candidate === "female" || candidate === "f") return "female";
+  if (candidate === "rule_b" || candidate === "b") return "rule_b";
   if (candidate === "none") return "none";
   return null;
 }
@@ -289,8 +290,10 @@ function normalizeEventRules(rawRules) {
         DEFAULT_DISCUSSION_SECONDS
       ),
       abbaPattern:
-        baseRaw.mixedRatio?.isEnabled && mixedRatioRule !== "B"
-          ? DEFAULT_ABBA_PATTERN_WHEN_ENABLED
+        baseRaw.mixedRatio?.isEnabled
+          ? mixedRatioRule === "B"
+            ? "rule_b"
+            : DEFAULT_ABBA_PATTERN_WHEN_ENABLED
           : "none",
       runningClockEnabled: Boolean(getClockRunningEnabled(baseRaw)),
       gamePointTarget: coerceOptionalNumber(baseRaw.game.pointTarget),
@@ -394,8 +397,11 @@ function normalizeEventRules(rawRules) {
       : mixedRatioEnabled
         ? DEFAULT_ABBA_PATTERN_WHEN_ENABLED
         : "none");
-  if (!mixedRatioEnabled || mixedRatioRule === "B") {
+  if (!mixedRatioEnabled) {
     derivedAbbaPattern = "none";
+  } else if (mixedRatioRule === "B" && !abbaPattern) {
+    // Event plays Rule B (end zone decision): lines are chosen point by point.
+    derivedAbbaPattern = "rule_b";
   }
 
   const gamePointTarget = coerceOptionalNumber(mergedRaw.game?.pointTarget);
@@ -705,6 +711,15 @@ const [secondaryFlashActive, setSecondaryFlashActive] = useState(false);
 const [secondaryFlashPulse, setSecondaryFlashPulse] = useState(false);
 const [secondaryFlashRateMs, setSecondaryFlashRateMs] = useState(400);
 const [possessionTeam, setPossessionTeam] = useState(null);
+// Rule B (end zone decision): the gender line ("M" | "F") chosen for the point
+// in play. It is consumed by the next score and then cleared.
+const [pendingGenderLine, setPendingGenderLineState] = useState(null);
+const pendingGenderLineRef = useRef(null);
+const setPendingGenderLine = useCallback((value) => {
+  const next = value === "M" || value === "F" ? value : null;
+  pendingGenderLineRef.current = next;
+  setPendingGenderLineState(next);
+}, []);
 const [halftimeTriggered, setHalftimeTriggered] = useState(false);
 const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
   const [halftimeTriggerType, setHalftimeTriggerType] = useState("unknown");
@@ -1502,7 +1517,13 @@ useEffect(() => {
     setSetupForm({
       startTime: toDateTimeLocal(matchSource.start_time),
       startingTeamId: matchSource.starting_team_id || "",
-      abbaPattern: isMixedDivision ? normalizedMatchAbba ?? "" : "",
+      abbaPattern: isMixedDivision
+        ? normalizedMatchAbba && normalizedMatchAbba !== "none"
+          ? normalizedMatchAbba
+          : normalizedRules.mixedRatioRule === "B"
+            ? "rule_b"
+            : normalizedMatchAbba ?? ""
+        : "",
     });
     const allowAbba = isMixedDivision;
     setRules((prev) => {
@@ -1645,6 +1666,7 @@ useEffect(() => {
     [abbaLines]
   );
 
+  const isRuleB = rules.abbaPattern === "rule_b";
   const getAbbaLineCode = useCallback(
     (orderIndex) => {
       if (!["male", "female"].includes(rules.abbaPattern)) {
@@ -1798,6 +1820,7 @@ useEffect(() => {
       timeoutUsage: { ...timeoutUsage },
       halftimeTimeoutBaseline: { ...halftimeTimeoutBaseline },
       possessionTeam,
+      pendingGenderLine,
       halftimeTriggered,
       halftimeBreakActive,
       halftimeTriggerType,
@@ -1830,6 +1853,7 @@ useEffect(() => {
     timeoutUsage,
     halftimeTimeoutBaseline,
     possessionTeam,
+    pendingGenderLine,
     halftimeTriggered,
     halftimeBreakActive,
     halftimeTriggerType,
@@ -2150,7 +2174,14 @@ const replaceSecondaryTimer = useCallback(
             0,
           )
         : null;
-      const abbaLine = normalizeAbbaLine(getAbbaLineCode(nextScoreOrder));
+      let abbaLine = normalizeAbbaLine(getAbbaLineCode(nextScoreOrder));
+      if (isScoringEvent && isRuleB) {
+        // Rule B lines are never derived: take the operator's choice for this
+        // point, then clear it so the next point must be chosen afresh.
+        const chosen = pendingGenderLineRef.current;
+        abbaLine = chosen ? normalizeAbbaLine(`${chosen}1`) : "none";
+        setPendingGenderLine(null);
+      }
 
       const appendedEntry = {
         id: optimisticId || `${OPTIMISTIC_PREFIX}${baseLogs.length + 1}`,
@@ -2177,7 +2208,7 @@ const replaceSecondaryTimer = useCallback(
       setLogsAndRef([...baseLogs, appendedEntry]);
       return { scoreOrderIndex: nextScoreOrder, abbaLine, optimisticId: optimisticId || null };
     },
-    [rosterNameLookup, getAbbaLineCode, normalizeAbbaLine, setLogsAndRef]
+    [rosterNameLookup, getAbbaLineCode, normalizeAbbaLine, setLogsAndRef, isRuleB, setPendingGenderLine]
   );
 
   const logSimpleEvent = useCallback(
@@ -3246,6 +3277,7 @@ const replaceSecondaryTimer = useCallback(
     setPendingEntries(Array.isArray(snapshot.pendingEntries) ? snapshot.pendingEntries : []);
     setTimeoutUsage(snapshot.timeoutUsage ?? { ...DEFAULT_TIMEOUT_USAGE });
     setPossessionTeam(snapshot.possessionTeam ?? null);
+    setPendingGenderLine(snapshot.pendingGenderLine ?? null);
     setHalftimeTriggered(Boolean(snapshot.halftimeTriggered));
     setHalftimeBreakActive(Boolean(snapshot.halftimeBreakActive));
     setHalftimeTriggerType(normalizeHalftimeTriggerType(snapshot.halftimeTriggerType));
@@ -3386,6 +3418,7 @@ const replaceSecondaryTimer = useCallback(
     }
   }, [
     resumeCandidate,
+    setPendingGenderLine,
     rules.matchDuration,
     rules.timeoutSeconds,
     secondaryTotalSeconds,
@@ -3528,6 +3561,9 @@ const replaceSecondaryTimer = useCallback(
     venueName,
     statusLabel,
     getAbbaDescriptor,
+    isRuleB,
+    pendingGenderLine,
+    setPendingGenderLine,
     startingTeamId,
     matchStartingTeamKey,
     firstHalfReceivingTeamKey,

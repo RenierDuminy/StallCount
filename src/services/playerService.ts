@@ -252,9 +252,20 @@ export async function upsertPlayer(payload: UpsertPlayerPayload) {
   }
 
   if (payload.id) {
-    const { error } = await supabase.from("player").update(base).eq("id", payload.id);
+    // RLS refuses an UPDATE by matching zero rows, not with an error, so read
+    // the row back: without this a refused edit reported "updated".
+    const { data, error } = await supabase
+      .from("player")
+      .update(base)
+      .eq("id", payload.id)
+      .select("id");
     if (error) {
       throw new Error(normalizePlayerWriteError(error, "Unable to update player"));
+    }
+    if (!data || data.length === 0) {
+      throw new Error(
+        "This player was not updated: you can only edit players on your team's roster or players not on any team yet. Add the player to your roster first, then edit them."
+      );
     }
     invalidateCachedQuery("players:directory");
     invalidateCachedQueries("players:ids");
@@ -395,10 +406,20 @@ export async function addPlayerToRoster(options: {
 }
 
 export async function removePlayerFromRoster(rosterId: string) {
-  const { error } = await supabase.from("team_roster").delete().eq("id", rosterId);
+  // A refused DELETE matches zero rows without an error; read it back.
+  const { data, error } = await supabase
+    .from("team_roster")
+    .delete()
+    .eq("id", rosterId)
+    .select("id");
 
   if (error) {
     throw new Error(normalizeRosterWriteError(error, "Unable to remove roster entry"));
+  }
+  if (!data || data.length === 0) {
+    throw new Error(
+      "The player was not removed: you do not have access to change this team's roster."
+    );
   }
 }
 
@@ -406,15 +427,22 @@ export async function updateRosterCaptainRole(
   rosterId: string,
   role: "captain" | "spirit" | null
 ) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("team_roster")
     .update({
       is_captain: role === "captain",
       is_spirit_captain: role === "spirit",
     })
-    .eq("id", rosterId);
+    .eq("id", rosterId)
+    .select("id");
 
   if (error) {
     throw new Error(normalizeRosterWriteError(error, "Unable to update captain assignment"));
+  }
+  // A refused UPDATE matches zero rows without an error.
+  if (!data || data.length === 0) {
+    throw new Error(
+      "The captain assignment was not saved: you do not have access to change this team's roster."
+    );
   }
 }

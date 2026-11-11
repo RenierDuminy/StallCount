@@ -37,6 +37,7 @@ export default function MediaAdminPage() {
   const [eventTeamsLoading, setEventTeamsLoading] = useState(false);
   const [eventTeamsError, setEventTeamsError] = useState("");
   const [editingTeamId, setEditingTeamId] = usePersistentState(MEDIA_EDITING_TEAM_KEY, "");
+  const [selectedTeamId, setSelectedTeamId] = useState(editingTeamId || "");
   const [teamColorForm, setTeamColorForm] = usePersistentState(
     MEDIA_TEAM_COLOR_FORM_KEY,
     createEmptyTeamColorForm,
@@ -373,6 +374,21 @@ export default function MediaAdminPage() {
     }
   };
 
+  const selectedTeam = eventTeams.find((team) => team.id === selectedTeamId) || null;
+  const selectedTeamColors = normalizeStreamingColorAttributes(selectedTeam?.attributes);
+  const isEditingSelectedTeam = Boolean(selectedTeam) && editingTeamId === selectedTeam.id;
+
+  const handleSelectTeam = (team) => {
+    if (team.id === selectedTeamId) return;
+    setSelectedTeamId(team.id);
+    // Moving to another team drops any edit in progress.
+    if (editingTeamId) {
+      setEditingTeamId("");
+      setTeamColorForm(createEmptyTeamColorForm());
+      setTeamColorError("");
+    }
+  };
+
   const handleOpenTeamEditor = (team) => {
     setEditingTeamId(team.id);
     setTeamColorForm(createTeamColorForm(team.attributes));
@@ -403,11 +419,15 @@ export default function MediaAdminPage() {
     setTeamColorSaving(true);
     setTeamColorError("");
     try {
-      const nextAttributes = mergeTeamColorAttributes(team.attributes, teamColorForm);
+      // Whatever format was typed, the overlays always get a plain #rrggbb.
+      const nextAttributes = mergeTeamColorAttributes(
+        team.attributes,
+        normalizeTeamColorForm(teamColorForm),
+      );
       const updatedTeam = await updateTeamAttributes(team.id, nextAttributes);
       setEventTeams((prev) => prev.map((entry) => (entry.id === updatedTeam.id ? updatedTeam : entry)));
-      setEditingTeamId("");
-      setTeamColorForm(createEmptyTeamColorForm());
+      // Stay on the team, showing what was saved (always HEX).
+      setTeamColorForm(createTeamColorForm(updatedTeam.attributes));
     } catch (err) {
       setTeamColorError(err instanceof Error ? err.message : "Unable to save team colors.");
     } finally {
@@ -611,7 +631,7 @@ export default function MediaAdminPage() {
         <Card as="section" className="space-y-3 p-5">
           <SectionHeader
             title="Team color reference"
-            description="Primary is the dark variant: usually light text on a dark background. Secondary is the light variant: dark text on a light background."
+            description="Primary is the dark variant: usually light text on a dark background. Secondary is the light variant: dark text on a light background. Select a team to see its colours and edit them."
           />
           {eventTeamsError ? <div className="sc-alert is-error">{eventTeamsError}</div> : null}
           {!selectedEventId ? (
@@ -621,136 +641,145 @@ export default function MediaAdminPage() {
           ) : eventTeams.length === 0 ? (
             <p className="text-sm text-ink-muted">No teams are linked to this event yet.</p>
           ) : (
-            <div className="grid gap-3 2xl:grid-cols-2">
-              {eventTeams.map((team) => {
-                const colorAttributes = normalizeStreamingColorAttributes(team.attributes);
-                const hasColorValues = STREAMING_COLOR_FIELDS.some((field) => Boolean(colorAttributes[field]));
-                const isEditingTeam = editingTeamId === team.id;
+            <>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
+                {eventTeams.map((team) => {
+                  const colorAttributes = normalizeStreamingColorAttributes(team.attributes);
+                  const isSelectedTeam = selectedTeamId === team.id;
+                  const inMatch = isTeamInSelectedMatch(team.id, selectedMatch);
 
-                return (
-                  <div
-                    key={team.id}
-                    className={`grid gap-3 border-[2px] p-3 transition-all lg:grid-cols-[minmax(12rem,0.85fr)_minmax(0,1.15fr)] lg:items-center ${
-                      isTeamInSelectedMatch(team.id, selectedMatch)
-                        ? "rounded-3xl border-[rgba(255,231,168,0.45)] bg-[linear-gradient(180deg,rgba(255,231,168,0.1),transparent_50%)] shadow-[0_0_0_1px_rgba(255,231,168,0.08)]"
-                        : "rounded-3xl bg-surface-muted/20"
-                    }`}
-                    style={
-                      isHexColor(colorAttributes.accentColor)
-                        ? { borderColor: colorAttributes.accentColor }
-                        : undefined
-                    }
-                  >
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-ink">{team.name}</p>
-                        {isTeamInSelectedMatch(team.id, selectedMatch) ? (
-                          <span className="rounded-full border border-[rgba(255,231,168,0.4)] bg-[rgba(255,231,168,0.12)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#fff1ba]">
-                            Active match
-                          </span>
-                        ) : null}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenTeamEditor(team)}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-surface/70 text-ink-muted transition hover:border-border hover:text-ink"
-                          aria-label={`Edit ${team.name} colors`}
-                          title={`Edit ${team.name} colors`}
-                          disabled={teamColorSaving && isEditingTeam}
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4" aria-hidden="true">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 20h4l10-10a2.12 2.12 0 0 0-3-3L5 17v3z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6.5l4 4" />
-                          </svg>
-                        </button>
-                      </div>
+                  return (
+                    <button
+                      key={team.id}
+                      type="button"
+                      onClick={() => handleSelectTeam(team)}
+                      aria-pressed={isSelectedTeam}
+                      className={`grid grid-cols-2 gap-1.5 rounded-2xl border-2 p-1.5 text-left transition ${
+                        isSelectedTeam
+                          ? "border-[var(--sc-accent)]"
+                          : inMatch
+                            ? "border-[rgba(255,231,168,0.45)]"
+                            : "border-transparent hover:border-border"
+                      }`}
+                      title={inMatch ? `${team.name} (active match)` : team.name}
+                    >
+                      <span
+                        className="flex min-h-15 items-center justify-center rounded-xl border px-2 py-2 text-center text-sm font-semibold"
+                        style={{
+                          backgroundColor: isHexColor(colorAttributes.primaryColor)
+                            ? colorAttributes.primaryColor
+                            : "transparent",
+                          color: isHexColor(colorAttributes.textOnPrimary)
+                            ? colorAttributes.textOnPrimary
+                            : "var(--sc-ink)",
+                          borderColor: "color-mix(in srgb, var(--sc-border) 70%, transparent)",
+                        }}
+                      >
+                        {team.name}
+                      </span>
+                      <span
+                        className="flex min-h-15 items-center justify-center rounded-xl border px-2 py-2 text-center text-sm font-semibold"
+                        style={{
+                          backgroundColor: isHexColor(colorAttributes.secondaryColor)
+                            ? colorAttributes.secondaryColor
+                            : "transparent",
+                          color: isHexColor(colorAttributes.textOnSecondary)
+                            ? colorAttributes.textOnSecondary
+                            : "var(--sc-ink)",
+                          borderColor: "color-mix(in srgb, var(--sc-border) 70%, transparent)",
+                        }}
+                      >
+                        {team.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedTeam ? (
+                <div className="space-y-3 rounded-2xl border border-border/70 bg-surface/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-base font-semibold text-ink">{selectedTeam.name}</p>
+                      {isTeamInSelectedMatch(selectedTeam.id, selectedMatch) ? (
+                        <span className="rounded-full border border-[rgba(255,231,168,0.4)] bg-[rgba(255,231,168,0.12)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#fff1ba]">
+                          Active match
+                        </span>
+                      ) : null}
                     </div>
-                    {hasColorValues ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div
-                          className="flex min-h-[3.75rem] items-center rounded-xl border px-3 py-2"
-                          style={{
-                            backgroundColor: isHexColor(colorAttributes.primaryColor)
-                              ? colorAttributes.primaryColor
-                              : "transparent",
-                            color: isHexColor(colorAttributes.textOnPrimary)
-                              ? colorAttributes.textOnPrimary
-                              : "var(--sc-ink)",
-                            borderColor: "color-mix(in srgb, var(--sc-border) 70%, transparent)",
-                          }}
-                        >
-                          <div className="w-full">
-                            <p className="text-center text-sm font-semibold">
-                              {team.name} (dark)
-                            </p>
-                          </div>
-                        </div>
-                        <div
-                          className="flex min-h-[3.75rem] items-center rounded-xl border px-3 py-2"
-                          style={{
-                            backgroundColor: isHexColor(colorAttributes.secondaryColor)
-                              ? colorAttributes.secondaryColor
-                              : "transparent",
-                            color: isHexColor(colorAttributes.textOnSecondary)
-                              ? colorAttributes.textOnSecondary
-                              : "var(--sc-ink)",
-                            borderColor: "color-mix(in srgb, var(--sc-border) 70%, transparent)",
-                          }}
-                        >
-                          <div className="w-full">
-                            <p className="text-center text-sm font-semibold">
-                              {team.name} (light)
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-ink-muted">No streaming color attributes found for this team.</p>
-                    )}
-                    {isEditingTeam ? (
-                      <div className="lg:col-span-2 rounded-2xl border border-border/70 bg-surface/60 p-3">
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                          {STREAMING_COLOR_FIELDS.map((field) => (
-                            <Field key={`${team.id}-${field}`} label={field} htmlFor={`${team.id}-${field}`}>
-                              <Input
-                                id={`${team.id}-${field}`}
-                                type="text"
-                                value={teamColorForm[field]}
-                                onChange={handleTeamColorInput(field)}
-                                placeholder="#000000"
-                                maxLength={7}
-                              />
-                            </Field>
-                          ))}
-                        </div>
-                        {teamColorError ? (
-                          <div className="mt-3 sc-alert is-error">{teamColorError}</div>
-                        ) : null}
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleSaveTeamColors(team)}
-                            className="sc-button"
-                            disabled={teamColorSaving}
-                          >
-                            {teamColorSaving ? "Saving..." : "Save colors"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleCancelTeamEditor}
-                            className="sc-button is-ghost"
-                            disabled={teamColorSaving}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
+                    {!isEditingSelectedTeam ? (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenTeamEditor(selectedTeam)}
+                        className="sc-button"
+                      >
+                        Edit
+                      </button>
                     ) : null}
                   </div>
-                );
-              })}
-            </div>
+
+                  {isEditingSelectedTeam ? (
+                    <>
+                      <p className="text-sm text-ink-muted">
+                        Enter colours as HEX (preferred, the most exact: #1D4ED8), rgb(29, 78, 216),
+                        hsl(224, 76%, 48%) or a colour name. Every colour is saved as HEX.
+                      </p>
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {STREAMING_COLOR_FIELDS.map((field) => (
+                          <Field key={`${selectedTeam.id}-${field}`} label={field} htmlFor={`${selectedTeam.id}-${field}`}>
+                            <Input
+                              id={`${selectedTeam.id}-${field}`}
+                              type="text"
+                              value={teamColorForm[field]}
+                              onChange={handleTeamColorInput(field)}
+                              placeholder="#000000"
+                            />
+                          </Field>
+                        ))}
+                      </div>
+                      {teamColorError ? <div className="sc-alert is-error">{teamColorError}</div> : null}
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSaveTeamColors(selectedTeam)}
+                          className="sc-button"
+                          disabled={teamColorSaving}
+                        >
+                          {teamColorSaving ? "Saving..." : "Save colors"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelTeamEditor}
+                          className="sc-button is-ghost"
+                          disabled={teamColorSaving}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <dl className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {STREAMING_COLOR_FIELDS.map((field) => {
+                        const value = selectedTeamColors[field];
+                        return (
+                          <div key={field} className="flex items-center gap-2 text-sm">
+                            <span
+                              className="h-5 w-5 shrink-0 rounded border border-border"
+                              style={{ backgroundColor: isHexColor(value) ? value : "transparent" }}
+                              aria-hidden="true"
+                            />
+                            <dt className="text-ink-muted">{field}</dt>
+                            <dd className="font-mono text-ink">{value || "not set"}</dd>
+                          </div>
+                        );
+                      })}
+                    </dl>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-ink-muted">Select a team to see its colours.</p>
+              )}
+            </>
           )}
         </Card>
       </SectionShell>
@@ -848,12 +877,53 @@ function isHexColor(value) {
   return /^#(?:[0-9a-fA-F]{3}){1,2}$/.test(String(value || "").trim());
 }
 
+/**
+ * Turns any CSS colour the browser understands (HEX with or without "#", rgb(),
+ * hsl(), a colour name) into "#rrggbb". Returns "" when it is not a colour.
+ * Transparency is ignored: the overlays only take opaque colours.
+ */
+function toHexColor(value) {
+  let text = String(value || "").trim();
+  if (!text) return "";
+  if (/^(?:[0-9a-fA-F]{3}){1,2}$/.test(text)) text = `#${text}`;
+  if (isHexColor(text)) {
+    const digits = text.slice(1);
+    const full = digits.length === 3 ? [...digits].map((c) => c + c).join("") : digits;
+    return `#${full.toUpperCase()}`;
+  }
+  if (typeof document === "undefined") return "";
+  const context = document.createElement("canvas").getContext("2d");
+  if (!context) return "";
+  // An unknown colour leaves fillStyle unchanged, so try it against two backgrounds.
+  context.fillStyle = "#000000";
+  context.fillStyle = text;
+  const first = context.fillStyle;
+  context.fillStyle = "#ffffff";
+  context.fillStyle = text;
+  if (first !== context.fillStyle) return "";
+  if (first.startsWith("#")) return first.toUpperCase();
+  const channels = first.match(/[0-9.]+/g);
+  if (!channels || channels.length < 3) return "";
+  return `#${channels
+    .slice(0, 3)
+    .map((n) => Math.round(Number(n)).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase()}`;
+}
+
+function normalizeTeamColorForm(form) {
+  return STREAMING_COLOR_FIELDS.reduce((accumulator, field) => {
+    accumulator[field] = toHexColor(form?.[field]);
+    return accumulator;
+  }, {});
+}
+
 function validateTeamColorForm(form) {
   for (const field of STREAMING_COLOR_FIELDS) {
     const value = String(form?.[field] || "").trim();
     if (!value) continue;
-    if (!isHexColor(value)) {
-      return `${field} must be a valid HEX color.`;
+    if (!toHexColor(value)) {
+      return `${field} is not a valid colour. Use HEX (#1D4ED8), rgb(29, 78, 216), hsl(224, 76%, 48%) or a colour name.`;
     }
   }
   return "";
@@ -895,5 +965,28 @@ function isTeamInSelectedMatch(teamId, selectedMatch) {
   return (
     String(selectedMatch.team_a?.id || "") === String(teamId) ||
     String(selectedMatch.team_b?.id || "") === String(teamId)
+  );
+}
+
+const TEAM_COLOR_LABELS = {
+  accentColor: "Accent (border)",
+  primaryColor: "Primary (dark background)",
+  textOnPrimary: "Text on primary",
+  secondaryColor: "Secondary (light background)",
+  textOnSecondary: "Text on secondary",
+};
+
+function TeamColorSwatch({ background, text, label }) {
+  const hasBackground = isHexColor(background);
+  return (
+    <span
+      className="flex min-h-[3.25rem] items-center justify-center px-2 py-2 text-center text-sm font-semibold"
+      style={{
+        backgroundColor: hasBackground ? background : "var(--sc-surface)",
+        color: isHexColor(text) ? text : "var(--sc-ink)",
+      }}
+    >
+      <span className="line-clamp-2">{hasBackground ? label : `${label} (not assigned)`}</span>
+    </span>
   );
 }

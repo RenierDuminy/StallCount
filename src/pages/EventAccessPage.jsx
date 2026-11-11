@@ -28,20 +28,32 @@ import {
   normalizePermissionKey,
 } from "../utils/roleScope";
 import usePersistentState from "../hooks/usePersistentState";
+import { displayProfileName } from "../utils/profilePrivacy";
+import BulkRosterImportPanel from "./eventAccess/BulkRosterImportPanel";
 
 const PAGE_SIZE = 20;
 
+// Matches a role held anywhere the row shows one: a global access level, or an
+// event/team role (already trimmed to the selected event by the caller). The
+// table lists people by their roles for the event, so checking global roles
+// alone filtered out nearly everyone. "none" means no global access level.
 function userMatchesRoleFilter(user, roleFilter) {
   if (roleFilter === "all") return true;
   const assignments = Array.isArray(user.roles) ? user.roles : [];
   if (roleFilter === "none") return assignments.length === 0;
-  return assignments.some(
-    (assignment) =>
-      assignment.roleId !== null && String(assignment.roleId) === roleFilter,
-  );
+  const held = [
+    ...assignments,
+    ...(Array.isArray(user.eventRoles) ? user.eventRoles : []),
+    ...(Array.isArray(user.teamRoles) ? user.teamRoles : []),
+  ];
+  return held.some((entry) => entry.roleId !== null && String(entry.roleId) === roleFilter);
 }
 
+
 const EVENT_ACCESS_SEARCH_KEY = "stallcount:event-access:search:v1";
+// Characters a user search needs before any profile is fetched or shown.
+const MIN_USER_SEARCH_LENGTH = 3;
+const ROLE_MANAGER_ANCHOR_ID = "event-access-role-manager";
 const EVENT_ACCESS_ROLE_FILTER_KEY = "stallcount:event-access:role-filter:v1";
 const EVENT_ACCESS_PAGE_KEY = "stallcount:event-access:page:v1";
 const EVENT_ACCESS_MANAGER_QUERY_KEY = "stallcount:event-access:manager-query:v1";
@@ -89,6 +101,7 @@ export default function EventAccessPage() {
   const [selectedUserId, setSelectedUserId] = usePersistentState(EVENT_ACCESS_SELECTED_USER_KEY, "");
   const [selectedEventId, setSelectedEventId] = usePersistentState(EVENT_ACCESS_SELECTED_EVENT_KEY, "");
   const [roleManagerBusy, setRoleManagerBusy] = useState(false);
+  const [removingUserId, setRemovingUserId] = useState("");
   const [roleManagerError, setRoleManagerError] = useState("");
   const [pendingRoleId, setPendingRoleId] = usePersistentState(EVENT_ACCESS_PENDING_ROLE_KEY, "");
   const [selectedTeamId, setSelectedTeamId] = usePersistentState(EVENT_ACCESS_SELECTED_TEAM_KEY, "");
@@ -166,8 +179,13 @@ export default function EventAccessPage() {
   }, [search, page, selectedEventId]);
 
   // Debounced server-side fetch for the role-manager user dropdown.
+  //
+  // POPIA: nothing is fetched until the operator has typed at least
+  // MIN_USER_SEARCH_LENGTH characters, so the dropdown never lists the user
+  // directory (names and email addresses) to someone just browsing.
+  const managerQueryReady = roleManagerQuery.trim().length >= MIN_USER_SEARCH_LENGTH;
   useEffect(() => {
-    if (!selectedEventId) {
+    if (!selectedEventId || !managerQueryReady) {
       setManagerMatches([]);
       return undefined;
     }
@@ -188,7 +206,7 @@ export default function EventAccessPage() {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [roleManagerQuery, selectedEventId]);
+  }, [roleManagerQuery, selectedEventId, managerQueryReady]);
 
   // Load full detail for the selected user (roles update after add/remove).
   useEffect(() => {
@@ -448,6 +466,75 @@ export default function EventAccessPage() {
     }
   }
 
+  // Table "Select": load the person into the role manager above and bring it
+  // into view, so their roles can be changed there.
+  function handleSelectFromTable(user) {
+    if (!user?.id) return;
+    setSelectedUserId(user.id);
+    setRoleManagerError("");
+    setPendingRoleId("");
+    if (typeof document !== "undefined") {
+      document
+        .getElementById(ROLE_MANAGER_ANCHOR_ID)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  // Table "Remove": take away every role this person holds for the selected
+  // event (event-wide and team roles). Global access levels and the account
+  // itself are untouched. RLS refuses a delete silently (success, zero rows),
+  // so the person is re-read afterwards to report anything that stayed.
+  async function handleRemoveFromEvent(user) {
+    if (!user?.id || !selectedEventId) return;
+    const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
+    const teamRoles = Array.isArray(user.teamRoles) ? user.teamRoles : [];
+    const total = eventRoles.length + teamRoles.length;
+    if (!total) return;
+    const confirmed = window.confirm(
+      `Remove ${displayProfileName(user)} from ${selectedEventName || "this event"}?
+
+` +
+        `This removes their ${total} role${total === 1 ? "" : "s"} for this event. ` +
+        "Their account and roles at other events are kept.",
+    );
+    if (!confirmed) return;
+
+    setRemovingUserId(user.id);
+    setError("");
+    try {
+      for (const entry of eventRoles) {
+        await removeEventUserRoleAssignment(entry.assignmentId, user.id, entry.roleId, selectedEventId);
+      }
+      for (const entry of teamRoles) {
+        await removeTeamUserRoleAssignment(
+          entry.assignmentId,
+          user.id,
+          entry.roleId,
+          entry.teamId,
+          entry.eventId,
+        );
+      }
+      const after = await getAccessControlUserById(user.id);
+      const remaining = after
+        ? [...(after.eventRoles || []), ...(after.teamRoles || [])].filter(
+            (entry) => entry.eventId === selectedEventId,
+          ).length
+        : 0;
+      if (remaining > 0) {
+        setError(
+          `${remaining} role${remaining === 1 ? "" : "s"} could not be removed. ` +
+            "You may not have permission to remove them.",
+        );
+      }
+      if (selectedUserId === user.id) setSelectedUser(after);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to remove this person from the event.");
+    } finally {
+      setRemovingUserId("");
+      refreshDirectory();
+    }
+  }
+
   const rolesWithPermissions = useMemo(
     () =>
       roles
@@ -497,13 +584,13 @@ export default function EventAccessPage() {
   // table answers "who has access to THIS event" rather than listing every
   // profile in the directory.
   const pagedUsers = useMemo(() => {
-    const matchingRoleFilter = directoryUsers.filter((user) =>
-      userMatchesRoleFilter(user, roleFilter),
-    );
+    if (!selectedEventId) {
+      return directoryUsers.filter((user) => userMatchesRoleFilter(user, roleFilter));
+    }
 
-    if (!selectedEventId) return matchingRoleFilter;
-
-    return matchingRoleFilter
+    // Trim to the event first, then filter, so the role filter sees the same
+    // event roles the table shows.
+    return directoryUsers
       .map((user) => {
         const eventRoles = (Array.isArray(user.eventRoles) ? user.eventRoles : []).filter(
           (entry) => entry.eventId === selectedEventId,
@@ -513,7 +600,8 @@ export default function EventAccessPage() {
         );
         return { ...user, eventRoles, teamRoles };
       })
-      .filter((user) => user.eventRoles.length > 0 || user.teamRoles.length > 0);
+      .filter((user) => user.eventRoles.length > 0 || user.teamRoles.length > 0)
+      .filter((user) => userMatchesRoleFilter(user, roleFilter));
   }, [directoryUsers, roleFilter, selectedEventId]);
 
   // Ensure the selected user always appears as an option in the dropdown.
@@ -658,7 +746,7 @@ export default function EventAccessPage() {
       </SectionShell>
 
       <SectionShell as="main" className="space-y-5 pb-16">
-          <Panel className="space-y-4 p-5">
+          <Panel id={ROLE_MANAGER_ANCHOR_ID} className="scroll-mt-24 space-y-4 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm font-semibold text-ink">Role manager</p>
               {selectedUser ? (
@@ -701,7 +789,7 @@ export default function EventAccessPage() {
                 <Input
                   type="search"
                   value={roleManagerQuery}
-                  placeholder="Search users"
+                  placeholder="Type at least 3 characters"
                   onChange={(event) => setRoleManagerQuery(event.target.value)}
                   disabled={!selectedEventId}
                 />
@@ -720,7 +808,9 @@ export default function EventAccessPage() {
                     {!selectedEventId
                       ? "Select an event first"
                       : matchingUsers.length === 0
-                        ? "No matches yet"
+                        ? managerQueryReady
+                          ? "No matches"
+                          : "Type 3+ characters to search"
                         : "Choose a user"}
                   </option>
                   {matchingUsers.map((user) => (
@@ -1019,17 +1109,17 @@ export default function EventAccessPage() {
                 <table className="w-full table-fixed divide-y divide-border text-[11px] sm:text-xs">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
-                      <th className="w-[22%] px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-ink-muted sm:px-3 sm:py-2">
+                      <th className="w-[28%] px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-ink-muted sm:px-3 sm:py-2">
                         Name
-                      </th>
-                      <th className="w-[24%] px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-ink-muted sm:px-3 sm:py-2">
-                        Email
                       </th>
                       <th className="w-[18%] px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-ink-muted sm:px-3 sm:py-2">
                         Access levels
                       </th>
                       <th className="w-[36%] px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-ink-muted sm:px-3 sm:py-2">
                         Event roles
+                      </th>
+                      <th className="w-[18%] px-2 py-1.5 text-right font-semibold uppercase tracking-wide text-ink-muted sm:px-3 sm:py-2">
+                        <span className="sr-only">Actions</span>
                       </th>
                     </tr>
                   </thead>
@@ -1041,10 +1131,7 @@ export default function EventAccessPage() {
                       return (
                         <tr key={user.id} className="hover:bg-surface-muted">
                           <td className="break-words px-2 py-1.5 align-top text-[13px] font-semibold text-ink sm:px-3 sm:py-2 sm:text-sm">
-                            {user.fullName || "Unnamed profile"}
-                          </td>
-                          <td className="break-all px-2 py-1.5 align-top text-[11px] text-ink-muted sm:px-3 sm:py-2 sm:text-[13px]">
-                            {user.email || "-"}
+                            {displayProfileName(user)}
                           </td>
                           <td className="px-2 py-1.5 align-top sm:px-3 sm:py-2">
                             {assignments.length === 0 ? (
@@ -1092,6 +1179,28 @@ export default function EventAccessPage() {
                               </div>
                             )}
                           </td>
+                          <td className="px-2 py-1.5 align-top sm:px-3 sm:py-2">
+                            <div className="flex flex-col items-end gap-1 sm:flex-row sm:justify-end">
+                              <button
+                                type="button"
+                                className="sc-button is-ghost px-2 py-1 text-[11px]"
+                                onClick={() => handleSelectFromTable(user)}
+                                disabled={selectedUserId === user.id}
+                              >
+                                {selectedUserId === user.id ? "Selected" : "Select"}
+                              </button>
+                              {selectedEventId ? (
+                                <button
+                                  type="button"
+                                  className="sc-button is-danger px-2 py-1 text-[11px]"
+                                  onClick={() => handleRemoveFromEvent(user)}
+                                  disabled={Boolean(removingUserId)}
+                                >
+                                  {removingUserId === user.id ? "Removing..." : "Remove"}
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1124,6 +1233,7 @@ export default function EventAccessPage() {
             </div>
           ) : null}
           </Panel>
+          <BulkRosterImportPanel eventId={selectedEventId} teams={eventTeams} teamsLoading={eventTeamsLoading} />
       </SectionShell>
     </div>
   );

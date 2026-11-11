@@ -26,6 +26,7 @@ import {
   applyLogInsert,
   applyLogUpdate,
   applyLogDelete,
+  resetMatchToScheduled,
   recomputeAndPublishScore,
   invalidateAfterCorrection,
   computeInsertTimestamp,
@@ -35,6 +36,7 @@ import {
   TOURNAMENT_DIRECTOR_CORRECTIONS_MATCH_KEY,
 } from "./persistenceKeys";
 import MatchCorrectionEditor from "./MatchCorrectionEditor";
+import MatchImportPanel from "./MatchImportPanel";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
@@ -469,6 +471,23 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
       return result;
     }, "Published score reconciled to the log.");
 
+  const handleFullReset = () => {
+    const confirmed = window.confirm(
+      `Fully reset this match?\n\n${describeMatch(selectedMatch)}\n\n` +
+        "The match will go back to a scheduled state: all match log entries are deleted, " +
+        "the score returns to 0–0, and the assigned scorekeeper, pulling team, gender line rule " +
+        "and captain confirmations are cleared. It will be as if the match is still to be played.\n\n" +
+        "This cannot be undone."
+    );
+    if (!confirmed) return;
+    const reason = window.prompt("Reason for the reset (recorded in the audit log):", "");
+    if (reason === null) return;
+    runCorrection(
+      () => resetMatchToScheduled(correctionContext, { before: selectedMatch, reason }),
+      "Match fully reset to scheduled.",
+    );
+  };
+
   const handleDelete = (log) => {
     const label = `${log.eventDescription}${log.scorerName ? ` by ${log.scorerName}` : ""}`;
     if (!window.confirm(`Delete this entry?\n\n${label} at ${formatClock(log.timestamp)}`)) {
@@ -538,6 +557,28 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
     });
   };
 
+  // After an import: refetch the fixture list (a new match may exist now), show
+  // the imported match, and reload its log so the director can revise it here.
+  const handleImported = useCallback(
+    async (matchId) => {
+      try {
+        const rows = await getMatchesByEvent(selectedEventId, MATCH_FETCH_LIMIT, {
+          includeFinished: true,
+          forceRefresh: true,
+        });
+        setMatches(Array.isArray(rows) ? rows : []);
+      } catch {
+        // The import itself succeeded; the list refreshes on the next load.
+      }
+      if (matchId && matchId !== selectedMatchId) {
+        setSelectedMatchId(matchId);
+      } else {
+        await loadLogs();
+      }
+    },
+    [loadLogs, selectedEventId, selectedMatchId, setSelectedMatchId],
+  );
+
   const rosterOptions = useMemo(
     () => ({
       teamA: rosters.teamA ?? [],
@@ -554,14 +595,26 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
           title="Match corrections"
           description="Repair the point-by-point record. The log is the source of truth for player statistics, so the published score is republished from it after every change."
           action={
-            <button
-              type="button"
-              onClick={() => loadLogs()}
-              className="sc-button"
-              disabled={loading || saving}
-            >
-              Reload log
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => loadLogs()}
+                className="sc-button"
+                disabled={loading || saving}
+              >
+                Reload log
+              </button>
+              {selectedMatch ? (
+                <button
+                  type="button"
+                  onClick={handleFullReset}
+                  className="sc-button is-danger"
+                  disabled={loading || saving || editingLocked}
+                >
+                  Full match reset
+                </button>
+              ) : null}
+            </div>
           }
         />
 
@@ -625,6 +678,18 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
         ) : null}
       </Card>
 
+      {selectedEventId ? (
+        <MatchImportPanel
+          eventId={selectedEventId}
+          selectedMatch={selectedMatch}
+          existingLogs={logRows}
+          eventDefinitions={eventDefinitions}
+          eventCodeById={eventCodeById}
+          locked={editingLocked}
+          onImported={handleImported}
+        />
+      ) : null}
+
       {selectedMatch ? (
         <>
           <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
@@ -654,6 +719,7 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                     Apply log-derived score
                   </button>
                 ) : null}
+
               </div>
             </div>
 

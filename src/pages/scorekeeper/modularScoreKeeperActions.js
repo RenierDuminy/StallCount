@@ -102,13 +102,13 @@ export function useScoreKeeperActions(controller) {
       return;
     }
     const isMixedDivision = (controller.rules.division || "").toLowerCase() === "mixed";
-    const isAbbaEnabled = isMixedDivision && controller.rules.mixedRatioRule !== "B";
+    const isAbbaEnabled = isMixedDivision;
     if (!controller.setupForm.startingTeamId) {
       controller.setConsoleError("Select a pulling team before initialising the match.");
       return;
     }
-    if (isAbbaEnabled && !["male", "female"].includes(controller.setupForm.abbaPattern)) {
-      controller.setConsoleError("Select an ABBA line before initialising the match.");
+    if (isAbbaEnabled && !["male", "female", "rule_b"].includes(controller.setupForm.abbaPattern)) {
+      controller.setConsoleError("Select a gender line rule before initialising the match.");
       return;
     }
     const normalizedStatus = (controller.selectedMatch.status || "").toLowerCase();
@@ -557,6 +557,14 @@ export function useScoreKeeperActions(controller) {
     if (scoreSubmitInFlightRef.current) return;
     if (!controller.scoreModalState.team) return;
     if (!controller.scoreForm.scorerId || !controller.scoreForm.assistId) {
+      return;
+    }
+    if (
+      controller.isRuleB &&
+      controller.scoreModalState.mode !== "edit" &&
+      !controller.pendingGenderLine
+    ) {
+      controller.setConsoleError("Choose the gender line (M or F) for this point.");
       return;
     }
     if (

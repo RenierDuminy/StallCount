@@ -24,14 +24,6 @@ function normalizePlayerId(value) {
   return value;
 }
 
-function formatCsvValue(value) {
-  const text = value === null || value === undefined ? "" : String(value);
-  if (/[",\n]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-  return text;
-}
-
 export function useScrimmageActions(controller) {
   function cancelPrimaryHoldReset() {
     if (controller.primaryResetRef.current) {
@@ -309,10 +301,7 @@ export function useScrimmageActions(controller) {
       : existing.scorerId ?? null;
     const normalizedEventCode =
       payload?.eventCode ?? existing.eventCode ?? MATCH_LOG_EVENT_CODES.TURNOVER;
-    const isBlockLog =
-      (Number.isFinite(payload?.eventTypeId) && payload.eventTypeId === 19) ||
-      (Number.isFinite(existing.eventTypeId) && existing.eventTypeId === 19 && !Object.prototype.hasOwnProperty.call(payload || {}, "eventTypeId")) ||
-      `${normalizedEventCode || ""}`.toLowerCase().includes("block");
+    const isBlockLog = normalizedEventCode === MATCH_LOG_EVENT_CODES.BLOCK;
     nextLogs[logIndex] = {
       ...existing,
       team: payload?.teamKey ?? existing.team,
@@ -321,9 +310,6 @@ export function useScrimmageActions(controller) {
       actorId: nextScorerId,
       actorName: findPlayerName(nextScorerId),
       eventCode: normalizedEventCode,
-      eventTypeId: Object.prototype.hasOwnProperty.call(payload || {}, "eventTypeId")
-        ? payload?.eventTypeId ?? null
-        : existing.eventTypeId ?? null,
       eventDescription: isBlockLog ? "Block" : normalizedEventCode === MATCH_LOG_EVENT_CODES.TURNOVER ? "Turnover" : (existing.eventDescription || "Match event"),
     };
     const { logs: updatedLogs, score: nextScore } = rebuildLogsWithTotals(nextLogs);
@@ -458,51 +444,6 @@ export function useScrimmageActions(controller) {
     controller.appendLocalLog(logEntry);
   }
 
-  function handleExportCsv() {
-    const headers = [
-      "timestamp",
-      "event",
-      "team",
-      "scorer",
-      "assist",
-      "total_a",
-      "total_b",
-      "abba_line",
-    ];
-    const rows = (controller.logs || []).map((log) => {
-      const teamLabel =
-        log.team === "A"
-          ? controller.displayTeamA
-          : log.team === "B"
-            ? controller.displayTeamB
-            : "";
-      return [
-        formatCsvValue(log.timestamp || ""),
-        formatCsvValue(log.eventDescription || log.eventCode || ""),
-        formatCsvValue(teamLabel),
-        formatCsvValue(log.scorerName || ""),
-        formatCsvValue(log.assistName || ""),
-        formatCsvValue(log.totalA ?? ""),
-        formatCsvValue(log.totalB ?? ""),
-        formatCsvValue(log.abbaLine || ""),
-      ].join(",");
-    });
-
-    const csv = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    link.href = url;
-    link.download = `scrimmage-${stamp}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-
-    controller.clearLocalMatchState();
-  }
-
   return {
     cancelPrimaryHoldReset,
     startPrimaryHoldReset,
@@ -526,6 +467,5 @@ export function useScrimmageActions(controller) {
     handleGameStoppage,
     handleEndMatchNavigation,
     logMatchStartEvent,
-    handleExportCsv,
   };
 }

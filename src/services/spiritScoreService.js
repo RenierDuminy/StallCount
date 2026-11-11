@@ -1,4 +1,25 @@
 import { supabase } from "./supabaseClient";
+import { latestFinalSpiritRows } from "../utils/spirit";
+
+/**
+ * The spirit scores already submitted for a match: the latest final row per
+ * rated team (the same rows the public pages show), as a Map keyed by
+ * rated_team_id. Empty when nothing has been submitted.
+ */
+export async function getSubmittedSpiritScores(matchId) {
+  if (!matchId) return new Map();
+  const { data, error } = await supabase
+    .from("spirit_scores")
+    .select(
+      "id, match_id, rated_team_id, rules_knowledge, fouls_contact, self_control, positive_attitude, communication, comments, submitted_at, is_final",
+    )
+    .eq("match_id", matchId)
+    .eq("is_final", true);
+  if (error) {
+    throw new Error(error.message || "Failed to load submitted spirit scores.");
+  }
+  return new Map(latestFinalSpiritRows(data ?? []).map((row) => [row.rated_team_id, row]));
+}
 
 export async function submitSpiritScores(matchId, entries, options = {}) {
   if (!matchId) {
@@ -23,13 +44,52 @@ export async function submitSpiritScores(matchId, entries, options = {}) {
     is_final: isFinal,
   }));
 
-  const { data, error } = await supabase.from("spirit_scores").insert(rows).select("id");
+  // Replace, never add: a (match, rated team) pair that already has a score
+  // (from a captain, an earlier submission or a tournament director) has its
+  // latest row updated. Inserting each time left several rows per pair, which
+  // pages then averaged together.
+  const { data: existingRows, error: loadError } = await supabase
+    .from("spirit_scores")
+    .select("id, rated_team_id, submitted_at")
+    .eq("match_id", matchId)
+    .in(
+      "rated_team_id",
+      rows.map((row) => row.rated_team_id),
+    )
+    .order("submitted_at", { ascending: false });
 
-  if (error) {
-    throw new Error(error.message || "Failed to submit spirit scores.");
+  if (loadError) {
+    throw new Error(loadError.message || "Failed to load existing spirit scores.");
   }
 
-  return data ?? [];
+  const latestIdByTeam = new Map();
+  (existingRows || []).forEach((row) => {
+    if (!latestIdByTeam.has(row.rated_team_id)) latestIdByTeam.set(row.rated_team_id, row.id);
+  });
+
+  const saved = [];
+  for (const row of rows) {
+    const existingId = latestIdByTeam.get(row.rated_team_id);
+    const { data, error } = existingId
+      ? await supabase
+          .from("spirit_scores")
+          .update({ ...row, submitted_at: new Date().toISOString() })
+          .eq("id", existingId)
+          .select("id")
+      : await supabase.from("spirit_scores").insert(row).select("id");
+
+    if (error) {
+      throw new Error(error.message || "Failed to submit spirit scores.");
+    }
+    // An update refused by RLS succeeds with no rows; say so rather than
+    // reporting a save that did not happen.
+    if (!data?.length) {
+      throw new Error("Spirit score was not saved: you may not have permission to change it.");
+    }
+    saved.push(...data);
+  }
+
+  return saved;
 }
 
 function normalizeSpiritCategoryScore(value) {

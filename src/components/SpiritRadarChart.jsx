@@ -31,7 +31,9 @@ export default function SpiritRadarChart({
   const { stroke: toneColor, fill: fillColor } = TONE_STYLES[tone] || TONE_STYLES.teamA;
   const formatValue = (raw) => (Number.isFinite(raw) ? raw.toFixed(valueDigits) : "--");
   const gridColor = "#e2e8f0";
-  const emphasisColor = "#00a30e";
+  // The 2-per-category baseline (WFDF neutral): dashed grey, a touch heavier
+  // than the 1px grid frame so it reads as a reference line, not a ring.
+  const emphasisColor = "#94a3b8";
   const axisColor = "#cbd5f5";
   const labelColor = "#475569";
   const labelMaxChars = 14;
@@ -137,7 +139,8 @@ export default function SpiritRadarChart({
             points={buildPolygon(ratio)}
             fill="none"
             stroke={isEmphasis ? emphasisColor : gridColor}
-            strokeWidth={isEmphasis ? 1 : 1}
+            strokeWidth={isEmphasis ? 1.5 : 1}
+            strokeDasharray={isEmphasis ? "4 3" : undefined}
           />
         );
       })}

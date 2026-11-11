@@ -42,7 +42,10 @@ Authentication workflow
    the redirect URL (env override or current location) and whitelists Google
    as the provider. After Sign In, Supabase redirects back to `/login`, the
    Auth context receives the new session, and `<Navigate replace>` sends the
-   user to `/admin`.
+   user to `/`.
+4. Signed-out requests carry the header `x-access-level: user` (added by the
+   fetch wrapper in `supabaseClient.ts`). No RLS policy reads it; access is
+   decided by the policies on each table, keyed on `auth.uid()`.
 
 Data layer
 ----------
@@ -57,14 +60,28 @@ Supabase REST API:
   in-progress scorekeeper/scrimmage state locally between page reloads.
 - `offlineQueue.ts` queues writes when the device is offline and replays
   them when connectivity is restored.
-- `schemaService.ts` introspects the Supabase schema at runtime.
+- `schemaService.ts` parses `docs/SQL_structure.txt` at build time (via
+  `?raw`) to give the tournament director's table browser its column lists.
+  Columns the API roles may not read (currently `player.birthday`) are
+  hidden there.
 - `homeSummaryService.js` batches the multiple parallel queries for the
   public landing page.
+- `eventPageService.js` loads the standard event page in one cached read.
+- `matchLogDerivation.js` replays match_logs into point numbers and running
+  scores; `matchCorrectionsService.js` and `matchCorrectionChecks.js` drive
+  the match corrections tool.
+- `captainService.js` calls the captain RPCs (spirit score, result
+  confirmation); `playerMergeService.js` de-duplicates player records;
+  `seasonReportService.js` builds season reports; `bracketTemplateService.js`
+  instantiates bracket templates; `customScriptService.js` runs the bundled
+  admin scripts in `src/customScripts/`.
 - `adminService.ts`, `userService.js`, `subscriptionService.ts`,
   `pushSubscriptionService.ts`, `spiritScoreService.js`,
-  `tournamentDirectorService.js`, `playoffStructureService.js`,
-  `eventSetupService.js`, `scoreboardAdminService.ts` cover their
-  respective admin and operator workflows.
+  `tournamentDirectorService.js`, `playoffStructureService.js` and
+  `eventSetupService.js` cover their respective admin and operator workflows.
+- Player dates of birth are never read by the app. `playerService.ts` selects
+  `has_birthday` instead and checks a typed date with the
+  `players_with_birthday` RPC (see CLAUDE.md, Player birthdays).
 
 Pages and routes
 ----------------
@@ -77,14 +94,21 @@ Public (no auth required):
 - `/players/:playerId`   → `PlayerProfilePage.jsx` — individual player stats.
 - `/teams`               → `Teams.jsx` — read-only team table.
 - `/teams/:teamId`       → `TeamProfile.jsx` — team profile and roster.
-- `/matches`             → `MatchesPage.jsx` — match listing.
+- `/matches`, `/matches/:matchId` → `MatchesPage.jsx` — match listing and
+                           match detail.
 - `/events`              → `EventsPage.jsx` — event listing.
+- `/event/:slug`         → `StandardEventPage.jsx` — the standard page every
+                           event gets automatically.
+- `/event-spirit`        → `EventSpiritPage.jsx` — public spirit ranking.
 - `/community`           → `CommunityPage.jsx`
 - `/event-rosters`       → `EventRostersPage.jsx`
 - `/event-rules`         → `EventRulesPage.jsx`
-- `/events/*`            → dynamic event workspace routes loaded from
-                           `src/pages/eventWorkspaces.js` (e.g. CPT MX League,
-                           STB 5v5, Internal Draft League, etc.)
+- `/events/:slug`        → custom event workspaces discovered by
+                           `src/pages/eventWorkspaces.js`. Only events in
+                           `CUSTOM_WORKSPACE_EVENTS`
+                           (`src/pages/standardEventTemplates.js`) keep theirs;
+                           every other workspace URL redirects to the standard
+                           page.
 
 Auth-required:
 - `/user`                → `UserPage.jsx` — user profile (session only)
@@ -96,11 +120,19 @@ Auth-required:
 - `/admin/event-setup`   → `EventSetupWizard.jsx`
 - `/admin/playoff-structure` → `PlayoffStructurePage.jsx`
 - `/admin/media`         → `MediaAdminPage.jsx`
+- `/admin/overlays`      → `OverlayControlPage.jsx` — broadcast overlay
+                           control room (the OBS pages themselves are
+                           standalone `overlays/*.html` entries).
 - `/admin/custom-scripts` → `CustomScriptsPage.jsx`
 - `/spirit-scores`       → `SpiritScoresPage.jsx`
 - `/tournament-director` → `TournamentDirectorPage.jsx`
+- `/match-corrections`   → `MatchCorrectionsPage.jsx`
 - `/captain`             → `CaptainPage.jsx`
 - `/sys-admin`           → `SysAdminPage.jsx`
+- `/sys-admin/player-merge` → `PlayerMergePage.jsx`
+
+Event creation (including duplicating an event) is admin-only, in the
+wizard and in RLS; tournament directors edit the events they are linked to.
 
 Full-screen (outside AppLayout, no SiteHeader):
 - `/score-keeper`        → `ModularScoreKeeperPage.jsx` — the ultimate
@@ -151,8 +183,9 @@ UI primitives
 
 Offline + PWA details
 ---------------------
-- `vite.config.js` registers the PWA plugin with `registerType: autoUpdate`
-  so Workbox precaches the build output and refreshes automatically.
+- `vite.config.js` registers the PWA plugin with `registerType: prompt`
+  (injectManifest strategy): Workbox precaches the build output, and a new
+  version is offered to the user rather than swapped in silently.
 - `src/sw.js` is the custom service worker entry point.
 - `src/pwa/pushClient.js` handles Web Push subscription registration.
 - `public/assets/` stores the SVG + PNG logo variants; `favicon.svg` mirrors
@@ -174,6 +207,11 @@ Build and deployment
   OAuth client (if used) must list the same origins/redirect URIs.
 - Supabase Edge Functions live in `supabase/functions/` (e.g.
   `notification-dispatcher`) and are deployed separately via the Supabase CLI.
+- `api/playoff-resolve.js` is the one Vercel API route. Supabase calls it
+  (pg_net, bearer `CRON_SECRET`) a couple of minutes after results come in and
+  every 6 hours as a backup; `vercel.json` defines no crons.
+- Database changes are applied by hand in the Supabase SQL editor and kept
+  outside the repo.
 
 High-level request lifecycle
 ----------------------------

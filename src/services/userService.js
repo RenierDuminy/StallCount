@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { getCachedQuery } from "../utils/queryCache";
+import { isTeamScopedRole } from "../utils/roleScope";
 
 // The role catalog is identical for every user and changes very rarely, so it
 // is cached rather than refetched by each page that needs it.
@@ -744,6 +745,21 @@ export async function addEventUserRoleAssignment(userId, roleId, eventId) {
 
   if (normalizedRoleId === null) {
     throw new Error("Role ID is required to add an event role.");
+  }
+
+  // Captains and team managers belong to a team within the event, never to the
+  // whole event: an event link lets them edit every team's roster. The role
+  // pickers already route these roles to addTeamUserRoleAssignment; this stops
+  // any other caller, and the event_user_roles trigger refuses it as well.
+  const { data: roleRow } = await supabase
+    .from("roles")
+    .select("id, name, scope")
+    .eq("id", normalizedRoleId)
+    .maybeSingle();
+  if (roleRow && isTeamScopedRole(roleRow)) {
+    throw new Error(
+      `${roleRow.name} is a team role: assign it to a team within the event, not to the whole event.`
+    );
   }
 
   const {

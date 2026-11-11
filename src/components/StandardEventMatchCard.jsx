@@ -15,6 +15,7 @@ export function StandardEventMatchCard({
   actions,
   score = null,
   status = "Scheduled",
+  phase,
   scoreAlign,
   variant = "tinted",
   className = "",
@@ -42,11 +43,14 @@ export function StandardEventMatchCard({
   const resolvedTrailing = trailing === undefined ? null : trailing;
 
   return (
-    <div className="relative">
+    // Flex column + grow: when a grid row is taller than this card (a sibling
+    // has more content), the card fills the cell instead of stopping short.
+    <div className="relative flex flex-col">
       <MatchCard
         as={component}
         variant={variant}
         className={cx(
+          "grow",
           shouldLinkCard ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--sc-accent)]/50" : "",
           className,
         )}
@@ -57,6 +61,7 @@ export function StandardEventMatchCard({
         actions={actions}
         score={score}
         status={status}
+        phase={phase}
         scoreAlign={scoreAlign || (score ? "right" : "left")}
         trailing={resolvedTrailing}
         trailingPosition="header"

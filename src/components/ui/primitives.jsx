@@ -36,6 +36,7 @@ const MATCH_CARD_PHASES = {
   live: "live",
   finished: "finished",
   canceled: "canceled",
+  forfeit: "forfeit",
 };
 
 const MATCH_CARD_PHASE_DEFAULT_LABELS = {
@@ -43,21 +44,15 @@ const MATCH_CARD_PHASE_DEFAULT_LABELS = {
   [MATCH_CARD_PHASES.live]: "Live",
   [MATCH_CARD_PHASES.finished]: "Finished",
   [MATCH_CARD_PHASES.canceled]: "Canceled",
+  [MATCH_CARD_PHASES.forfeit]: "Forfeit",
 };
 
 const MATCH_CARD_LIVE_STATUSES = new Set(["live", "halftime", "in_progress", "in progress"]);
 const MATCH_CARD_FINISHED_STATUSES = new Set(["finished", "completed", "final"]);
-// Forfeits (forfeit / forfeit_teamA / forfeit_teamB) render as a canceled
-// match card for now — team-level forfeit statistics are future work. Compared
-// lowercase, same as every other status here, so "forfeit_teamA" still matches
-// via its lowercased form "forfeit_teama".
-const MATCH_CARD_CANCELED_STATUSES = new Set([
-  "canceled",
-  "cancelled",
-  "forfeit",
-  "forfeit_teama",
-  "forfeit_teamb",
-]);
+const MATCH_CARD_CANCELED_STATUSES = new Set(["canceled", "cancelled"]);
+// Forfeits lay out like a canceled card (same red border) but with a greyed
+// fill. Compared lowercase, so "forfeit_teamA" matches as "forfeit_teama".
+const MATCH_CARD_FORFEIT_STATUSES = new Set(["forfeit", "forfeit_teama", "forfeit_teamb"]);
 
 const MATCH_CARD_PHASE_STYLES = {
   [MATCH_CARD_PHASES.scheduled]: {
@@ -74,6 +69,10 @@ const MATCH_CARD_PHASE_STYLES = {
   },
   [MATCH_CARD_PHASES.canceled]: {
     panelClass: "sc-match-card-canceled bg-red-500/5",
+    statusClass: "text-red-300",
+  },
+  [MATCH_CARD_PHASES.forfeit]: {
+    panelClass: "sc-match-card-canceled sc-match-card-forfeit",
     statusClass: "text-red-300",
   },
 };
@@ -108,11 +107,13 @@ function resolveMatchCardPhase(phase, status) {
   if (normalizedPhase === MATCH_CARD_PHASES.canceled || normalizedPhase === "cancelled") {
     return MATCH_CARD_PHASES.canceled;
   }
+  if (normalizedPhase === MATCH_CARD_PHASES.forfeit) return MATCH_CARD_PHASES.forfeit;
 
   const normalizedStatus = toSafeLabel(status).toLowerCase();
   if (MATCH_CARD_LIVE_STATUSES.has(normalizedStatus)) return MATCH_CARD_PHASES.live;
   if (MATCH_CARD_FINISHED_STATUSES.has(normalizedStatus)) return MATCH_CARD_PHASES.finished;
   if (MATCH_CARD_CANCELED_STATUSES.has(normalizedStatus)) return MATCH_CARD_PHASES.canceled;
+  if (MATCH_CARD_FORFEIT_STATUSES.has(normalizedStatus)) return MATCH_CARD_PHASES.forfeit;
   return MATCH_CARD_PHASES.scheduled;
 }
 
@@ -160,11 +161,10 @@ function getFinishedTeamNameSizeClass(name) {
   const totalLength = label.length;
   const longestToken = getLongestTokenLength(label);
 
-  if (totalLength <= 18 && longestToken <= 12) return "text-2xl";
-  if (totalLength <= 26 && longestToken <= 14) return "text-xl";
-  if (totalLength <= 34 && longestToken <= 18) return "text-lg";
-  if (totalLength <= 46 && longestToken <= 24) return "text-base";
-  return "text-sm";
+  if (totalLength <= 18 && longestToken <= 12) return "text-lg";
+  if (totalLength <= 26 && longestToken <= 14) return "text-base";
+  if (totalLength <= 34 && longestToken <= 18) return "text-sm";
+  return "text-xs";
 }
 
 export function SectionShell({ as: Component = "section", className = "", children, ...props }) {
@@ -225,7 +225,9 @@ export function MatchCard({
     matchPhase === MATCH_CARD_PHASES.scheduled &&
     (!statusLabel || normalizedStatusLabel === MATCH_CARD_PHASES.scheduled);
   const usesResolvedLayout =
-    matchPhase === MATCH_CARD_PHASES.finished || matchPhase === MATCH_CARD_PHASES.canceled;
+    matchPhase === MATCH_CARD_PHASES.finished ||
+    matchPhase === MATCH_CARD_PHASES.canceled ||
+    matchPhase === MATCH_CARD_PHASES.forfeit;
   const venueLabel = hideVenue
     ? ""
     : hideFinishedVenue && usesResolvedLayout
@@ -299,7 +301,10 @@ export function MatchCard({
         ) : null}
       </div>
       {displayScore || displayStatus || trailingInFooter ? (
-        <div className={cx("flex min-w-0 items-center", compact ? "gap-2" : "gap-3", footerJustify)}>
+        // When a card is stretched to its row's height, a finished/forfeit
+        // result (teams + score) sits in the middle of the spare space; other
+        // footers (status line) stay pinned to the bottom.
+        <div className={cx(usesResolvedLayout ? "my-auto" : "mt-auto", "flex min-w-0 items-center", compact ? "gap-2" : "gap-3", footerJustify)}>
           {displayScore || displayStatus ? (
             <div className={cx("min-w-0", centerScoreSection && !trailingInFooter ? "w-full" : "", scoreAlignClass)}>
               {finishedScoreParts ? (

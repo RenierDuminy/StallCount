@@ -193,6 +193,12 @@ function formatDateParts(timestamp) {
   };
 }
 
+// events.Status code ("scheduled", "live", "completed", ...) as a label.
+function formatEventStatus(status) {
+  const value = typeof status === "string" ? status.trim().replace(/_/g, " ") : "";
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : "Not set";
+}
+
 function formatDateRange(startDate, endDate) {
   if (!startDate && !endDate) return "Dates not set";
   const formatter = new Intl.DateTimeFormat(undefined, {
@@ -1447,6 +1453,12 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Tournament</p>
               <p className="mt-1 text-lg font-semibold text-[var(--sc-surface-light-ink)]">{selectedEvent.name}</p>
               <p className="mt-1 text-sm text-[var(--sc-surface-light-ink)]/70">{selectedEvent.location || "Location not set"}</p>
+              <p className="mt-1 text-sm text-[var(--sc-surface-light-ink)]/70">
+                Current status:{" "}
+                <span className="font-semibold text-[var(--sc-surface-light-ink)]">
+                  {formatEventStatus(selectedEvent.status)}
+                </span>
+              </p>
             </Panel>
             <Panel variant="light" className="p-3 shadow-sm shadow-[rgba(8,25,21,0.04)]">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Dates</p>

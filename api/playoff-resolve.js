@@ -13,9 +13,9 @@ import {
   summarizeSwissDraws,
 } from "./_lib/playoffResolve.js";
 
-// Mirrors api/stb-rl-26-roster-sync.js. That route is the working precedent for
-// a cron-driven automation here: same client construction, same bearer-secret
-// cron path, same role gate for operator-triggered runs.
+// Scheduled calls come from pg_cron (public.invoke_playoff_resolver) with
+// `Authorization: Bearer <CRON_SECRET>`; operator calls carry a user session
+// and are gated to admins and tournament directors.
 const supabaseUrl =
   globalThis.process?.env?.SUPABASE_URL || globalThis.process?.env?.VITE_SUPABASE_URL;
 const serviceRoleKey = globalThis.process?.env?.SUPABASE_SERVICE_ROLE_KEY;

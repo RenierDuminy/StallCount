@@ -134,6 +134,9 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
     formattedSecondaryClock,
     orderedLogs,
     nextAbbaDescriptor,
+    isRuleB,
+    pendingGenderLine,
+    setPendingGenderLine,
     secondaryResetTriggeredRef,
     commitSecondaryTimerState,
     setSecondaryTotalSeconds,
@@ -222,7 +225,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
     );
   };
   const isMixedDivision = (rules.division || "").toLowerCase() === "mixed";
-  const isAbbaEnabled = isMixedDivision && rules.mixedRatioRule !== "B";
+  const isAbbaEnabled = isMixedDivision;
   // Readiness is a property of the *match*, not of the setup form. The form is
   // rebuilt from the saved row whenever the active match changes, and that
   // round-trip is lossy — `abba_pattern` is stored as "none" whenever ABBA is
@@ -233,7 +236,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
   // fields being filled in is exactly the right question to ask.
   const isSetupFormComplete =
     Boolean(setupForm.startingTeamId) &&
-    (!isAbbaEnabled || ["male", "female"].includes(setupForm.abbaPattern));
+    (!isAbbaEnabled || ["male", "female", "rule_b"].includes(setupForm.abbaPattern));
   const isStartMatchReady = isMatchInitialised;
   const resumeCandidateCount = resumeCandidate ? 1 : 0;
 
@@ -1012,7 +1015,33 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
                         Add score - {displayTeamAShort}
                       </button>
                       <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
-                        {nextAbbaDescriptor ? (
+                        {isRuleB ? (
+                          <div
+                            role="group"
+                            aria-label="Gender line for this point"
+                            className="mx-auto flex w-fit justify-center gap-1 rounded-full border-2 border-[#0f5132] p-0.5"
+                          >
+                            {["M", "F"].map((line) => {
+                              const selected = pendingGenderLine === line;
+                              return (
+                                <button
+                                  key={line}
+                                  type="button"
+                                  aria-pressed={selected}
+                                  onClick={() => setPendingGenderLine(selected ? null : line)}
+                                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full text-lg font-extrabold transition ${
+                                    selected
+                                      ? "bg-[#0f5132] text-white"
+                                      : "bg-transparent text-[#0f5132] hover:bg-[#0f5132]/10"
+                                  }`}
+                                >
+                                  {line}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                        {isRuleB ? null : nextAbbaDescriptor ? (
                           <div className="flex justify-center">
                             <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#0f5132] text-base font-extrabold text-white">
                               {nextAbbaDescriptor}
@@ -1299,6 +1328,9 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
           renderPlayerGridLabel,
           displayTeamA,
           displayTeamB,
+          isRuleB,
+          genderLine: pendingGenderLine,
+          setGenderLine: setPendingGenderLine,
         }}
         simpleEvent={{
           state: simpleEventEditState,

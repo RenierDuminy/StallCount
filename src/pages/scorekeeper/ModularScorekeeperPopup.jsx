@@ -207,7 +207,13 @@ export function ScorekeeperPopups({
     renderPlayerGridLabel: renderScorePlayerLabel,
     displayTeamA: scoreDisplayTeamA,
     displayTeamB: scoreDisplayTeamB,
+    isRuleB: scoreIsRuleB = false,
+    genderLine: scoreGenderLine = null,
+    setGenderLine: setScoreGenderLine,
   } = score;
+  // Rule B: a new score cannot be logged until the point's gender line is set.
+  const needsGenderLine =
+    scoreIsRuleB && scoreModalState?.mode !== "edit" && !scoreGenderLine;
   const {
     state: simpleEventState,
     setState: setSimpleEventState,
@@ -553,6 +559,7 @@ export function ScorekeeperPopups({
                     <option value="">Select gender line...</option>
                     <option value="male">Male matching</option>
                     <option value="female">Female matching</option>
+                    <option value="rule_b">Rule B (end zone decision)</option>
                   </select>
                 </label>
               )}
@@ -954,6 +961,34 @@ export function ScorekeeperPopups({
             <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
               Team: {scoreModalState.team === "B" ? scoreDisplayTeamB : scoreDisplayTeamA}
             </p>
+            {scoreIsRuleB && scoreModalState.mode !== "edit" && (
+              <div className="flex items-center gap-2 text-base font-semibold text-[#0f5132]">
+                <span>Gender line:</span>
+                <div className="flex gap-1 rounded-full border-2 border-[#0f5132] p-0.5">
+                {["M", "F"].map((line) => {
+                  const selected = scoreGenderLine === line;
+                  return (
+                    <button
+                      key={line}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setScoreGenderLine?.(line)}
+                      className={`inline-flex h-10 w-10 items-center justify-center rounded-full text-lg font-extrabold transition ${
+                        selected
+                          ? "bg-[#0f5132] text-white"
+                          : "bg-transparent text-[#0f5132] hover:bg-[#0f5132]/10"
+                      }`}
+                    >
+                      {line}
+                    </button>
+                  );
+                })}
+                </div>
+                {needsGenderLine && (
+                  <span className="text-xs font-semibold text-rose-600">Required</span>
+                )}
+              </div>
+            )}
             <label className="block text-base font-semibold text-[#0f5132]">
               Scorer:
               <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-[#0f5132]/30 bg-white/70 p-2">
@@ -1083,12 +1118,14 @@ export function ScorekeeperPopups({
               ) : (
                 <button
                   type="submit"
-                  disabled={!isScoreFormValid}
+                  disabled={!isScoreFormValid || needsGenderLine}
                   className={`w-full rounded-full px-3 py-1.5 text-sm font-semibold text-white transition ${
-                    isScoreFormValid ? "bg-[#0f5132] hover:bg-[#0a3b24]" : "bg-slate-400 opacity-70"
+                    isScoreFormValid && !needsGenderLine
+                      ? "bg-[#0f5132] hover:bg-[#0a3b24]"
+                      : "bg-slate-400 opacity-70"
                   }`}
                 >
-                  Add score
+                  {needsGenderLine ? "Select the gender line (M or F) to add score" : "Add score"}
                 </button>
               )}
             </div>

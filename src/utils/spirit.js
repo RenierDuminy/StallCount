@@ -46,6 +46,42 @@ export function dedupeSpiritRows(rows) {
   return [...latest.values()];
 }
 
+/**
+ * One spirit row made safe to display: every category clamped to 0-SPIRIT_MAX_SCORE
+ * (null stays null, never 0), and `total` recomputed from those categories, or
+ * null when none is set. The stored `total` adds the unclamped values and reads
+ * a missing category as 0, so it is never shown directly.
+ */
+export function normaliseSpiritRow(row) {
+  if (!row) return row;
+  const next = { ...row };
+  let total = 0;
+  let scored = 0;
+  SPIRIT_DIMENSIONS.forEach(({ key }) => {
+    const raw = row[key];
+    const score = raw === null || raw === undefined || raw === "" ? null : clampScore(raw);
+    next[key] = score;
+    if (score !== null) {
+      total += score;
+      scored += 1;
+    }
+  });
+  next.total = scored ? total : null;
+  return next;
+}
+
+/**
+ * The spirit rows every page should count: final rows only (a row without an
+ * `is_final` field is taken as final), one per (match, rated team), the latest
+ * submission winning, normalised. Captains, scorekeepers and tournament
+ * directors can each submit for the same match, so a pair often has several
+ * rows; averaging them blended old and new scores on the match and team pages.
+ */
+export function latestFinalSpiritRows(rows) {
+  const finals = (rows || []).filter((row) => row && row.is_final !== false);
+  return dedupeSpiritRows(finals).map(normaliseSpiritRow);
+}
+
 export function buildSpiritRanking(rows) {
   const latest = dedupeSpiritRows(rows);
 

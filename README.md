@@ -4,42 +4,42 @@ StallCount is a web application for managing league and tournament operations. I
 
 ## Technical Summary
 
-The frontend is built as a single-page application using React 18, Vite, and React Router. Data access, authentication, and core operational workflows are backed by Supabase, with shared client and domain logic organised through the service layer in `src/services/`. The application is also configured as a progressive web app using `vite-plugin-pwa`, enabling installation on supported devices, asset caching, and improved resilience for live scoring workflows.
+The frontend is built as a single-page application using React 19, Vite 8, React Router 7 and Tailwind CSS 4. Data access, authentication, and core operational workflows are backed by Supabase, with shared client and domain logic organised through the service layer in `src/services/`. The application is also configured as a progressive web app using `vite-plugin-pwa`, enabling installation on supported devices, asset caching, and improved resilience for live scoring workflows.
 
-Production builds are generated with `npm run build` and deployed on Vercel, with single-page application rewrites configured in `vercel.json`. The repository also includes a Vercel API route at `api/stb-rl-26-roster-sync.js` that runs the Stellenbosch RL 2026 roster import automatically once per day at 17:00 SAST (15:00 UTC) on a Vercel cron schedule, while push notification delivery is handled separately by the Supabase Edge Function located in `supabase/functions/notification-dispatcher/`.
+Production builds are generated with `npm run build` and deployed on Vercel, with single-page application rewrites configured in `vercel.json`. The repository also includes a Vercel API route at `api/playoff-resolve.js` that fills playoff brackets; Supabase calls it a couple of minutes after a result comes in, and every 6 hours as a backup. Push notification delivery is handled separately by the Supabase Edge Function located in `supabase/functions/notification-dispatcher/`.
+
+Database changes (tables, functions, triggers, policies, cron jobs) are applied by hand in the Supabase SQL editor; the SQL is kept outside this repository. `docs/SQL_structure.txt` is a snapshot of the table structure, which the tournament director's table browser also reads at build time.
 
 ### Push notification delivery
 
 1. A `match_logs` insert fires the `enqueue_live_event_from_log` trigger, which queues a `live_events` row with `sent = false`.
-2. The database invokes the `notification-dispatcher` Edge Function straight away (pg_net trigger on `live_events`) and again every minute (pg_cron sweeper), both via `public.invoke_notification_dispatcher()`.
+2. The database invokes the `notification-dispatcher` Edge Function straight away (pg_net trigger on `live_events`) and again every minute (pg_cron job `notification-dispatcher`), both via `public.invoke_notification_dispatcher()`.
 3. The function resolves subscribers, sends Web Push to each `push_subscriptions` endpoint, and only marks the event `sent` after a successful delivery (or when there are no recipients). Failures are recorded in `live_events.attempts` / `last_error` and retried with backoff; dead endpoints (404/410) are pruned; VAPID rejections (401/403) are logged as configuration errors.
 
-Setup: apply `supabase/migrations/20260912120000_notification_dispatch.sql`, store `stallcount_functions_url`, `stallcount_anon_key`, and `notification_dispatch_secret` in Vault, and set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `NOTIFICATION_DISPATCH_SECRET` as secrets on the Edge Function. `VAPID_PUBLIC_KEY` must equal the `VITE_VAPID_PUBLIC_KEY` baked into the Vercel build; the browser client re-subscribes automatically if it detects a key change.
+Setup: store `stallcount_functions_url`, `stallcount_anon_key`, and `notification_dispatch_secret` in Vault, and set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `NOTIFICATION_DISPATCH_SECRET` as secrets on the Edge Function. `VAPID_PUBLIC_KEY` must equal the `VITE_VAPID_PUBLIC_KEY` baked into the Vercel build; the browser client re-subscribes automatically if it detects a key change.
 
-### Scheduled playoff resolution
+### Automatic playoff resolution
 
-Playoff brackets can fill in their own team slots at times set by the tournament director, instead of waiting for someone to open the Playoff Structure page and press a button.
+Playoff brackets fill in their own team slots as results come in, instead of waiting for someone to open the Playoff Structure page and press a button.
 
-1. On `/admin/playoff-structure`, the TD adds release dates and ticks which games each one covers, then turns on **Scheduled resolution** for the event. A date covers an arbitrary group of games — it does not have to be a whole round — and an event has as many dates as it needs (2–5 is typical; nothing assumes a count). Rows live in `playoff_resolve_schedules`.
-2. A `pg_cron` job runs `public.invoke_playoff_resolver()` every 6 hours, which `net.http_post`s to the `api/playoff-resolve` route with the shared secret.
-3. The route resolves every opted-in, open event: it seeds from pool standings using the WFDF tie-break ladder, advances winners and losers between nodes, and writes `matches.team_a` / `team_b`. It repeats until nothing more changes, so a quarterfinal → semifinal → final chain fills in one run.
-4. Games covered by a date that has not yet passed are held back. Games no date mentions resolve as soon as their sources allow, so adding schedules only ever delays things — it never gates something nobody scheduled. A game listed by two dates takes the earlier one.
-5. Nodes it cannot fill record why on `bracket_nodes.last_resolve_error` (an unfinished pool, a tie, no linked match), which the admin page shows as a chip. Later sweeps retry automatically.
+1. On `/admin/playoff-structure` the TD turns on **Scheduled resolution** for the event (`events.auto_resolve_playoffs`). Optionally, release dates hold chosen games back until a date and time: a date covers any group of games (not necessarily a whole round), and an event has as many as it needs. Rows live in `playoff_resolve_schedules`.
+2. When a match finishes, or a finished match's score is corrected, a trigger on `matches` stamps the event in `playoff_resolve_requests`. It is a plain table write, so it can never make End match fail.
+3. Every minute, the existing `notification-dispatcher` cron job also runs `public.check_pending_playoffs()`. It calls `api/playoff-resolve` (mode `pending`) only when a note has settled for 2 minutes (time for an offline score to arrive), a note has waited 10 minutes, or a release time has passed. Otherwise it does nothing, so a quiet week costs nothing.
+4. The route resolves those events: it seeds from pool standings using the WFDF tie-break ladder, advances winners and losers between nodes, and writes `matches.team_a` / `team_b`, repeating until nothing more changes, so a quarterfinal → semifinal → final chain fills in one run. Notes are cleared only after a successful run.
+5. A game that has started or been played keeps its teams. If a later correction means the results now point at different teams, the node shows a blocker naming them rather than changing a live game.
+6. Games held by a release date wait until it passes; games no date mentions resolve as soon as their sources allow. Nodes that cannot fill record why on `bracket_nodes.last_resolve_error`, shown as a chip on the admin page.
+7. A full sweep of every opted-in event (`pg_cron` job `playoff_resolve_sweeper`, every 6 hours) runs as a backup.
 
-The run is guarded by `acquire_automation_job_lock` against the `playoff_resolve_sweeper` row in `automation_job_state`, so overlapping sweeps are safe; that row is also where each run's outcome is recorded, since `net.http_post` is fire-and-forget and cannot observe the response. `brackets.is_locked` is honoured as a hard stop, and the manual **Resolve playoffs** button posts to the same route so both paths share one implementation.
+Each run takes a lock with `acquire_automation_job_lock` (`playoff_resolve_pending` for the minute-by-minute path, `playoff_resolve_sweeper` for the sweep) and records its outcome in `automation_job_state`, because `net.http_post` cannot see the response. `brackets.is_locked` is honoured as a hard stop, and the manual **Resolve playoffs** button posts to the same route, so every path shares one implementation.
 
-Setup: apply `supabase/migrations/20260915000000_playoff_auto_resolve.sql`, then store `playoff_resolver_url` (`https://<domain>/api/playoff-resolve`) and `playoff_cron_secret` in Vault. `playoff_cron_secret` must equal the `CRON_SECRET` environment variable on the Vercel deployment. The timer lives in `pg_cron` rather than `vercel.json` because the Vercel Hobby plan only permits daily cron schedules.
-
-Because the sweep runs on a 6-hour cadence (00:00, 06:00, 12:00, 18:00 UTC), a release date takes effect at the first sweep at or after it — set dates with that in mind, or press **Resolve playoffs** to release everything immediately.
+Setup: store `playoff_resolver_url` (`https://<domain>/api/playoff-resolve`) and `playoff_cron_secret` in Vault. `playoff_cron_secret` must equal the `CRON_SECRET` environment variable on the Vercel deployment. The timer lives in `pg_cron` rather than `vercel.json` because the Vercel Hobby plan only permits daily cron schedules.
 
 ## Local Run
 
-Install dependencies with `npm install`, configure the required Supabase environment variables in `.env`, and start the development server with `npm run dev`.
+Install dependencies with `npm install`, configure the required Supabase environment variables in `.env.local` (see `.env.example`), and start the development server with `npm run dev`.
 
-For the automated Stellenbosch RL 2026 roster sync in production, also configure:
+For automatic playoff resolution in production, also configure on Vercel:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `CRON_SECRET`
-- Optional: `STB_RL_26_SIGNUP_CSV_URL`
-- Optional: `STB_RL_26_SIGNUP_DOB_MODE`
+- `CRON_SECRET` (equal to the Supabase Vault secret `playoff_cron_secret`)

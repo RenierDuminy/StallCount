@@ -8,6 +8,7 @@ import {
   SectionShell,
 } from "./ui/primitives";
 import { StandardEventMatchCard } from "./StandardEventMatchCard";
+import { isForfeitStatus } from "../constants/statusCodes";
 import {
   StandardStandingsLegend,
   StandardStandingsTable,
@@ -112,19 +113,28 @@ const formatScoreLine = (match) => {
   return `${scoreA} - ${scoreB}`;
 };
 
-const formatMatchStatus = (status, fallback = "Scheduled") => {
+// `forfeit_teamA` / `forfeit_teamB` name the team that forfeited; show it by
+// name instead of the raw status code ("Forfeit_teama").
+const formatMatchStatus = (status, fallback = "Scheduled", match = null) => {
   const normalized = (status || "").toString().trim().toLowerCase();
   if (!normalized) return fallback;
+  if (normalized === "forfeit_teama") {
+    return `${match?.team_a?.name || "Team A"} forfeited`;
+  }
+  if (normalized === "forfeit_teamb") {
+    return `${match?.team_b?.name || "Team B"} forfeited`;
+  }
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
-// Desktop: size the match-card grid to how many matches that day has so the
-// cards expand to fill the row instead of leaving a fixed 3-column gap.
-const getScheduleGridClass = (matchCount) => {
-  if (matchCount <= 1) return "grid gap-2";
-  if (matchCount === 2) return "grid gap-2 md:grid-cols-2";
-  return "grid gap-2 md:grid-cols-2 2xl:grid-cols-3";
-};
+// Size the match-card grid by available width, not by how many matches the day
+// has. Each column is at least ~22rem; `auto-fill` (not `auto-fit`) keeps empty
+// tracks, so a lone card stays one track wide instead of stretching across a
+// maximised window. `min(100%, 22rem)` lets it collapse to a single full-width
+// column on phones and split-screen. It follows the grid's own width, so it
+// needs no viewport breakpoints.
+const SCHEDULE_GRID_CLASS =
+  "grid gap-2 grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))]";
 
 const buildScheduleDays = (matches = []) => {
   const buckets = new Map();
@@ -427,7 +437,8 @@ export default function EventWorkspaceTemplate({
         eyebrow={match.start_time ? formatMatchTime(match.start_time) : "Time TBC"}
         title={formatMatchup(match)}
         score={showScore ? formatScoreLine(match) : null}
-        status={formatMatchStatus(match.status, showScore ? "Final" : "Scheduled")}
+        status={formatMatchStatus(match.status, showScore ? "Final" : "Scheduled", match)}
+        phase={isForfeitStatus(match.status) ? "forfeit" : undefined}
       />
     );
   };
@@ -771,7 +782,7 @@ export default function EventWorkspaceTemplate({
                         </button>
                       </h4>
                       {dayOpen ? (
-                      <div className={getScheduleGridClass(day.matches.length)}>
+                      <div className={SCHEDULE_GRID_CLASS}>
                         {day.matches.map((match) => {
                           const showScore = isFinishedMatch(match.status);
                           return (
@@ -789,7 +800,13 @@ export default function EventWorkspaceTemplate({
                               status={formatMatchStatus(
                                 match.status,
                                 showScore ? "Final" : "Scheduled",
+                                match,
                               )}
+                              phase={
+                                isForfeitStatus(match.status)
+                                  ? "forfeit"
+                                  : undefined
+                              }
                             />
                           );
                         })}

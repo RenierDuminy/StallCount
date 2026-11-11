@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { latestFinalSpiritRows } from "../utils/spirit";
 import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
 
 const TEAMS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -743,6 +744,8 @@ export type SpiritScoreRow = {
   positive_attitude: number | null;
   communication: number | null;
   self_control: number | null;
+  submitted_at?: string | null;
+  is_final?: boolean;
   match: {
     id: string;
     start_time: string | null;
@@ -772,6 +775,8 @@ export async function getSpiritScoresForMatches(matchIds: string[]): Promise<Spi
         positive_attitude,
         communication,
         self_control,
+        submitted_at,
+        is_final,
         match:matches(
           id,
           start_time,
@@ -782,13 +787,16 @@ export async function getSpiritScoresForMatches(matchIds: string[]): Promise<Spi
         )
       `
     )
-    .in("match_id", matchIds);
+    .in("match_id", matchIds)
+    .eq("is_final", true);
 
   if (error) {
     throw new Error(error.message || "Failed to load spirit scores");
   }
 
-  return (data ?? []) as SpiritScoreRow[];
+  // One row per (match, rated team), latest wins, values clamped and the total
+  // recomputed: the same rows the event spirit ranking counts.
+  return latestFinalSpiritRows(data ?? []) as SpiritScoreRow[];
 }
 
 export type EventSpiritScoreRow = {

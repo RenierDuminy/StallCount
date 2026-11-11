@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import usePersistentState from "../../hooks/usePersistentState";
 import useAccessScope from "../../hooks/useAccessScope";
@@ -9,12 +9,15 @@ import {
   TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS,
 } from "../../utils/accessControl";
 import { TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY } from "./persistenceKeys";
+import { displayProfileName } from "../../utils/profilePrivacy";
 import BulkRoleAssignmentPanel from "./BulkRoleAssignmentPanel";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
 // Display order: cards render in this sequence, so the roles a TD needs most
 // sit first and lower-priority roles fill in around them.
+// Small groups stacked in one cell of the crew grid (see groupCells).
+const STACKED_GROUP_KEYS = ["tournament_director", "field_assistant", "team_manager", "media"];
 const LINKED_ROLE_GROUPS = [
   {
     key: "tournament_director",
@@ -160,7 +163,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
 
   function refreshUsers() {
     if (!selectedEventId) return;
-    setLoading(true);
+    setLoading(users.length === 0);
     setError("");
     loadLinkedCrew(selectedEventId)
       .then((crew) => {
@@ -174,6 +177,25 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
         setLoading(false);
       });
   }
+
+  // No refresh button: the crew is re-read whenever the operator comes back to
+  // this tab or window (e.g. after changing access on the Event access page
+  // or in another tab), so it never sits stale for long.
+  const refreshUsersRef = useRef(refreshUsers);
+  useEffect(() => {
+    refreshUsersRef.current = refreshUsers;
+  });
+  useEffect(() => {
+    const handleVisible = () => {
+      if (document.visibilityState === "visible") refreshUsersRef.current();
+    };
+    document.addEventListener("visibilitychange", handleVisible);
+    window.addEventListener("focus", handleVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisible);
+      window.removeEventListener("focus", handleVisible);
+    };
+  }, []);
 
   const groupedUsers = useMemo(
     () =>
@@ -242,6 +264,16 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
     [users],
   );
 
+  // The small groups (tournament directors, field assistants, team managers,
+  // media) share the first grid cell, stacked, instead of each taking a column
+  // beside the long captains list. Every other group gets its own cell.
+  const groupCells = useMemo(() => {
+    const stacked = new Set(STACKED_GROUP_KEYS);
+    const stack = groupedUsers.filter((group) => stacked.has(group.key));
+    const rest = groupedUsers.filter((group) => !stacked.has(group.key));
+    return [...(stack.length ? [stack] : []), ...rest.map((group) => [group])];
+  }, [groupedUsers]);
+
   const totalLinkedUsers = users.length;
 
   return (
@@ -259,10 +291,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
               >
                 {bulkAddOpen ? "Hide add users" : "+ Add users"}
               </button>
-              <button type="button" onClick={refreshUsers} className="sc-button">
-                Refresh users
-              </button>
-              <Link to="/admin/event-access" className="sc-button is-ghost text-xs">
+              <Link to="/admin/event-access" className="sc-button">
                 Manage individual access
               </Link>
             </>
@@ -329,55 +358,56 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
         ))}
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(22rem,1fr))] gap-4">
-        {groupedUsers.map((group) => (
-          <Card key={group.key} variant="light" className="space-y-2.5 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--sc-surface-light-border)] pb-2">
-              <div className="min-w-0">
-                <p className="truncate text-lg font-semibold text-[var(--sc-surface-light-ink)]">{group.title}</p>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(22rem,1fr))] items-start gap-4">
+        {groupCells.map((cell) => (
+          <div key={cell.map((group) => group.key).join("+")} className="space-y-4">
+            {cell.map((group) => (
+            <Card key={group.key} variant="light" className="space-y-2.5 p-4 shadow-md shadow-[rgba(8,25,21,0.06)]">
+              <div className="flex items-center justify-between gap-3 border-b border-[var(--sc-surface-light-border)] pb-2">
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-semibold text-[var(--sc-surface-light-ink)]">{group.title}</p>
+                </div>
+                <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/55">
+                  {group.personCount} linked
+                </p>
               </div>
-              <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/55">
-                {group.personCount} linked
-              </p>
-            </div>
 
-            {loading && totalLinkedUsers === 0 ? (
-              <p className="text-sm text-[var(--sc-surface-light-ink)]/70">Loading users...</p>
-            ) : group.users.length === 0 ? (
-              <Panel variant="light" className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/80 p-2.5 text-sm text-[var(--sc-surface-light-ink)]/70">
-                No linked users in this role for the selected event.
-              </Panel>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-[var(--sc-surface-light-border)] bg-white">
-                {group.users.map((entry, index) => {
-                  // Rows are pre-sorted by team; print a heading whenever the
-                  // team changes so each team's crew reads as one block.
-                  const previous = index > 0 ? group.users[index - 1] : null;
-                  const showTeamHeading = !previous || previous.teamName !== entry.teamName;
+              {loading && totalLinkedUsers === 0 ? (
+                <p className="text-sm text-[var(--sc-surface-light-ink)]/70">Loading users...</p>
+              ) : group.users.length === 0 ? (
+                <Panel variant="light" className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/80 p-2.5 text-sm text-[var(--sc-surface-light-ink)]/70">
+                  No linked users in this role for the selected event.
+                </Panel>
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-[var(--sc-surface-light-border)] bg-white">
+                  {group.users.map((entry, index) => {
+                    // Rows are pre-sorted by team; print a heading whenever the
+                    // team changes so each team's crew reads as one block.
+                    const previous = index > 0 ? group.users[index - 1] : null;
+                    const showTeamHeading = !previous || previous.teamName !== entry.teamName;
 
-                  return (
-                    <div key={`${group.key}-${entry.rowKey}`}>
-                      {showTeamHeading ? (
-                        <p className="border-b border-[var(--sc-surface-light-border)]/30 bg-[var(--sc-surface-light-tint)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/80">
-                          {entry.teamName || "Event-wide"}
-                        </p>
-                      ) : null}
-                      <div className="border-b border-[var(--sc-surface-light-border)] px-3 py-2 last:border-b-0">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-[var(--sc-surface-light-ink)]">
-                            {entry.fullName || "Unnamed user"}
+                    return (
+                      <div key={`${group.key}-${entry.rowKey}`}>
+                        {showTeamHeading ? (
+                          <p className="border-b border-[var(--sc-surface-light-border)]/30 bg-[var(--sc-surface-light-tint)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/80">
+                            {entry.teamName || "Event-wide"}
                           </p>
-                          <p className="truncate text-xs text-[var(--sc-surface-light-ink)]/65">
-                            {entry.email || "No email recorded"}
-                          </p>
+                        ) : null}
+                        <div className="border-b border-[var(--sc-surface-light-border)] px-3 py-2 last:border-b-0">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-[var(--sc-surface-light-ink)]">
+                              {displayProfileName(entry, "Unnamed user")}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+            ))}
+          </div>
         ))}
       </div>
     </div>

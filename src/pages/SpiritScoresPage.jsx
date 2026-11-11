@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getEventsList } from "../services/leagueService";
 import { getMatchById, getMatchesByEvent, updateMatchStatus } from "../services/matchService";
-import { submitSpiritScores } from "../services/spiritScoreService";
+import { getSubmittedSpiritScores, submitSpiritScores } from "../services/spiritScoreService";
 import { getRoleCatalog } from "../services/userService";
 import {
   loadSpiritScoresSession,
@@ -41,6 +41,31 @@ const createDefaultTeamScores = () => ({
   teamB: createDefaultScores(),
 });
 
+// A submitted spirit_scores row as form values. A missing category falls back
+// to the neutral 2, like a fresh form.
+const scoresFromRow = (row) => {
+  if (!row) return createDefaultScores();
+  const pick = (value) => (Number.isFinite(value) ? value : 2);
+  return {
+    rulesKnowledge: pick(row.rules_knowledge),
+    fouls: pick(row.fouls_contact),
+    fairness: pick(row.self_control),
+    positiveAttitude: pick(row.positive_attitude),
+    communication: pick(row.communication),
+    notes: typeof row.comments === "string" ? row.comments : "",
+  };
+};
+
+const formatSubmittedAt = (value) => {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 export default function SpiritScoresPage() {
   const { session, roles, rolesLoading } = useAuth();
   const userId = session?.user?.id ?? null;
@@ -66,6 +91,10 @@ export default function SpiritScoresPage() {
   const [matchDetailLoading, setMatchDetailLoading] = useState(false);
   const [matchError, setMatchError] = useState(null);
   const [selectedMatch, setSelectedMatch] = useState(null);
+  // Scores already submitted for the selected match (by anyone), so a second
+  // person sees and edits them instead of a blank form that would overwrite
+  // them. `matchId` says which match this answer belongs to.
+  const [submitted, setSubmitted] = useState({ matchId: "", byTeam: null, error: "" });
   const [submitState, setSubmitState] = useState({ message: null, variant: null });
   const [submitting, setSubmitting] = useState(false);
 
@@ -280,6 +309,49 @@ export default function SpiritScoresPage() {
 
     setTeamScores(createDefaultTeamScores());
   }, [draftReady, selectedMatchId, setTeamScores]);
+
+  // Load what has already been submitted for this match. When there is
+  // something, it replaces the defaults or this device's draft: the real,
+  // published scores win over anything only this device has seen.
+  const teamAId = selectedMatch?.id === selectedMatchId ? selectedMatch?.team_a?.id || "" : "";
+  const teamBId = selectedMatch?.id === selectedMatchId ? selectedMatch?.team_b?.id || "" : "";
+  useEffect(() => {
+    if (!draftReady || !selectedMatchId || !teamAId || !teamBId) return undefined;
+    let cancelled = false;
+    getSubmittedSpiritScores(selectedMatchId)
+      .then((byTeam) => {
+        if (cancelled) return;
+        setSubmitted({ matchId: selectedMatchId, byTeam, error: "" });
+        if (byTeam.has(teamAId) || byTeam.has(teamBId)) {
+          setTeamScores({
+            teamA: byTeam.has(teamAId) ? scoresFromRow(byTeam.get(teamAId)) : createDefaultScores(),
+            teamB: byTeam.has(teamBId) ? scoresFromRow(byTeam.get(teamBId)) : createDefaultScores(),
+          });
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setSubmitted({
+          matchId: selectedMatchId,
+          byTeam: null,
+          error: err instanceof Error ? err.message : "Could not check for submitted scores.",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draftReady, selectedMatchId, teamAId, teamBId]);
+
+  const submittedForMatch =
+    submitted.matchId === selectedMatchId && submitted.byTeam ? submitted.byTeam : null;
+  const submittedRows = submittedForMatch
+    ? [teamAId, teamBId].map((id) => submittedForMatch.get(id)).filter(Boolean)
+    : [];
+  const latestSubmittedAt = submittedRows
+    .map((row) => row.submitted_at)
+    .filter(Boolean)
+    .sort()
+    .pop();
 
   useEffect(() => {
     if (!draftReady || !selectedMatchId) {
@@ -515,6 +587,23 @@ export default function SpiritScoresPage() {
               return;
             }
 
+            if (submitted.matchId === selectedMatchId && submitted.error) {
+              setSubmitState({
+                message: "Could not check whether scores were already submitted. Reload and try again.",
+                variant: "error",
+              });
+              return;
+            }
+            if (
+              submittedRows.length > 0 &&
+              !window.confirm(
+                "Spirit scores have already been submitted for this match.\n\n" +
+                  "Replace them with the scores on this form?",
+              )
+            ) {
+              return;
+            }
+
             setSubmitting(true);
             setSubmitState({ message: null, variant: null });
 
@@ -671,7 +760,7 @@ export default function SpiritScoresPage() {
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <MatchDetail label="Match ID" value={selectedMatch.id} mono />
-                  <MatchDetail label="Kickoff" value={formatKickoff(selectedMatch.start_time)} />
+                  <MatchDetail label="Match start"value={formatKickoff(selectedMatch.start_time)} />
                   <MatchDetail label="Venue" value={formatVenueLabel(selectedMatch)} />
                   <MatchDetail label="Score" value={formatScoreLabel(selectedMatch)} />
                 </div>
@@ -693,6 +782,20 @@ export default function SpiritScoresPage() {
               </div>
             ) : null}
           </section>
+
+          {submittedRows.length > 0 ? (
+            <div className="rounded-2xl border border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <p className="font-semibold">
+                Already submitted{latestSubmittedAt ? ` (${formatSubmittedAt(latestSubmittedAt)})` : ""}
+              </p>
+              <p className="mt-0.5">
+                The form shows the submitted scores. Submitting again replaces them.
+                {submittedRows.length < 2 ? " Only one team has been scored so far." : ""}
+              </p>
+            </div>
+          ) : submitted.matchId === selectedMatchId && submitted.error ? (
+            <div className="sc-alert is-error">{submitted.error}</div>
+          ) : null}
 
           <div className="grid gap-2 md:grid-cols-2">
             {["teamA", "teamB"].map((teamKey) => (

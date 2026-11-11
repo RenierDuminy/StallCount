@@ -7,8 +7,7 @@
  * POSTs to /api/playoff-resolve rather than resolving in the browser).
  *
  * It lives in api/_lib rather than src/services because Vercel serverless
- * functions must not import from the Vite client bundle — the same constraint
- * documented in stbRl26RosterSync.js. `standings.js` beside it is a verbatim
+ * functions must not import from the Vite client bundle. `standings.js` beside it is a verbatim
  * copy of src/utils/standings.js for the same reason.
  *
  * Differences from the original client-side resolver in
@@ -49,8 +48,8 @@ export const FINISHED_MATCH_STATUSES = new Set([
   "forfeit_teamb",
 ]);
 
-// Mirrors CLOSED_STATUSES in src/constants/statusCodes.js and the copy in
-// stbRl26RosterSync.js. Events in these states are never swept.
+// Mirrors CLOSED_STATUSES in src/constants/statusCodes.js. Events in these
+// states are never swept.
 export const CLOSED_EVENT_STATUSES = new Set([
   "completed",
   "finished",

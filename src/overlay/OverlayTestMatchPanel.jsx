@@ -119,7 +119,7 @@ export function TestMatchEditor({ testMatch, setTestMatch }) {
           <Field label="Venue">
             <Input value={testMatch.venueName} onChange={set("venueName")} placeholder="Leave empty for no venue" />
           </Field>
-          <Field label="Kickoff">
+          <Field label="Match start">
             <Input
               type="datetime-local"
               value={toLocalInputValue(testMatch.startTime)}

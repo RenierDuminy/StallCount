@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Card, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
-import { normaliseRoleList } from "../utils/accessControl";
+import { normaliseRoleList, SPIRIT_SCORES_ACCESS_ROLES } from "../utils/accessControl";
 
 const ADMIN_MODULE_PRIORITY = [
   "Score keeper",
@@ -158,6 +158,8 @@ const ADMIN_MODULES = [
     to: "/spirit-scores",
     accent: "border border-border bg-surface-muted text-ink",
     colorVar: "--sc-accent",
+    // Match officials only; captains give spirit in the captain portal.
+    allowedRoles: [...SPIRIT_SCORES_ACCESS_ROLES, "admin"],
   },
 ];
 

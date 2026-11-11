@@ -1,42 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { getEventsList } from "../services/leagueService";
-import { getMatchesByEvent } from "../services/matchService";
-import { hydrateVenueLookup } from "../services/venueService";
-import { Card, Panel, SectionHeader, SectionShell, Chip } from "../components/ui/primitives";
-import { StandardEventMatchCard } from "../components/StandardEventMatchCard";
+import { Card, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
+import EventSummaryPanel from "./events/EventSummaryPanel";
 import { getEventPagePath } from "./eventWorkspaces";
-import { CLOSED_STATUSES, IN_PROGRESS_STATUSES, PENDING_STATUSES, isForfeitStatus } from "../constants/statusCodes";
+import { CLOSED_STATUSES, IN_PROGRESS_STATUSES, PENDING_STATUSES } from "../constants/statusCodes";
 
-const isMatchLive = (status) => {
-  const normalized = (status || "").toString().trim().toLowerCase();
-  return normalized === "live" || normalized === "halftime";
-};
-
-const isMatchFinal = (status) => {
-  const normalized = (status || "").toString().trim().toLowerCase();
-  return normalized === "finished" || normalized === "completed";
-};
-
-const formatMatchup = (match) => {
-  const teamA = match.team_a?.name || "Team A";
-  const teamB = match.team_b?.name || "Team B";
-  return `${teamA} vs ${teamB}`;
-};
-
-const formatLiveScore = (match) => {
-  const left = typeof match.score_a === "number" ? match.score_a : "-";
-  const right = typeof match.score_b === "number" ? match.score_b : "-";
-  return `${left} - ${right}`;
-};
-
-const formatMatchStatus = (status) => {
-  const normalized = (status || "").toString().trim().toLowerCase();
-  if (!normalized) return "";
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-};
-
-const MATCHES_REFRESH_INTERVAL_MS = 30 * 1000;
 const DIVISION_LABELS = {
   mixed: "Mixed",
   open: "Open",
@@ -93,11 +62,6 @@ export default function EventsPage() {
   const [eventStatusTab, setEventStatusTab] = useState(initialStatusTab);
   const [selectedEventId, setSelectedEventId] = useState(initialEventId);
   const [error, setError] = useState(null);
-  const [matches, setMatches] = useState([]);
-  const [matchesLoading, setMatchesLoading] = useState(false);
-  const [matchesError, setMatchesError] = useState(null);
-  const [matchTab, setMatchTab] = useState("current");
-  const [venueLookup, setVenueLookup] = useState({});
 
   const loading = eventsLoadingTab === eventStatusTab && eventsByTab[eventStatusTab] === null;
   const events = useMemo(
@@ -161,66 +125,6 @@ export default function EventsPage() {
     [events, selectedEventId],
   );
 
-  useEffect(() => {
-    if (!selectedEventId) {
-      setMatches([]);
-      return;
-    }
-    let ignore = false;
-    async function loadMatches({ background = false, forceRefresh = false } = {}) {
-      if (!background) {
-        setMatchesLoading(true);
-      }
-      setMatchesError(null);
-      try {
-        const list = await getMatchesByEvent(selectedEventId, 200, {
-          includeFinished: true,
-          forceRefresh,
-        });
-        if (!ignore) {
-          setMatches(list || []);
-        }
-      } catch (err) {
-        if (!ignore) {
-          setMatchesError(err.message || "Unable to load matches for this event.");
-          if (!background) {
-            setMatches([]);
-          }
-        }
-      } finally {
-        if (!ignore && !background) {
-          setMatchesLoading(false);
-        }
-      }
-    }
-    void loadMatches();
-
-    const hasLiveMatches = () =>
-      matches.some((m) => {
-        const s = (m.status || "").toLowerCase();
-        return s === "live" || s === "halftime" || s === "in_progress";
-      });
-
-    const refreshMatches = () => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-        return;
-      }
-      if (!hasLiveMatches()) return;
-      void loadMatches({ background: true, forceRefresh: true });
-    };
-
-    const intervalId = window.setInterval(refreshMatches, MATCHES_REFRESH_INTERVAL_MS);
-    window.addEventListener("focus", refreshMatches);
-    document.addEventListener("visibilitychange", refreshMatches);
-
-    return () => {
-      ignore = true;
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", refreshMatches);
-      document.removeEventListener("visibilitychange", refreshMatches);
-    };
-  }, [selectedEventId]);
-
   const handleSelectEvent = (eventId) => {
     setSelectedEventId(eventId);
     if (eventId) {
@@ -247,80 +151,12 @@ export default function EventsPage() {
     );
   };
 
-  useEffect(() => {
-    const venueIds = matches
-      .map((match) => match.venue_id)
-      .filter((id) => id && venueLookup[id] === undefined);
-
-    if (venueIds.length === 0) return;
-
-    let ignore = false;
-    hydrateVenueLookup(venueIds)
-      .then((lookup) => {
-        if (!ignore) {
-          setVenueLookup((prev) => ({ ...prev, ...lookup }));
-        }
-      })
-      .catch((err) => {
-        console.error("Unable to load venues", err);
-      });
-
-    return () => {
-      ignore = true;
-    };
-  }, [matches, venueLookup]);
-
   const formatDate = (value) => {
     if (!value) return "TBD";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "TBD";
     return date.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
   };
-
-  const formatTime = (value) => {
-    if (!value) return "--:--";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "--:--";
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  };
-
-  const matchBuckets = useMemo(() => {
-    const buckets = { current: [], upcoming: [], past: [] };
-    const now = Date.now();
-    matches.forEach((match) => {
-      const status = (match.status || "").toLowerCase();
-      const startMs = match.start_time ? new Date(match.start_time).getTime() : null;
-      if (status === "live" || status === "halftime") {
-        buckets.current.push(match);
-        return;
-      }
-      // Forfeits (forfeit / forfeit_teamA / forfeit_teamB) are treated as
-      // canceled matches for display — see getDisplayStatus.
-      if (status === "finished" || status === "completed" || status === "canceled" || isForfeitStatus(status)) {
-        buckets.past.push(match);
-        return;
-      }
-      if (startMs && startMs < now - 60 * 60 * 1000) {
-        return;
-      }
-      if (status === "scheduled") {
-        buckets.upcoming.push(match);
-        return;
-      }
-    });
-    return buckets;
-  }, [matches]);
-
-  const activeMatches = useMemo(() => {
-    const bucket = matchBuckets[matchTab] || [];
-    if (matchTab === "current") {
-      return bucket.filter((match) => (match.status || "").toLowerCase() === "live");
-    }
-    return bucket;
-  }, [matchBuckets, matchTab]);
-
-  const resolveVenueName = (match) =>
-    match.venue?.name || (match.venue_id && venueLookup[match.venue_id]) || "Venue TBD";
 
   const selectedEventRules = useMemo(
     () => parseEventRules(selectedEvent?.rules),
@@ -381,7 +217,7 @@ export default function EventsPage() {
                   const eventWorkspacePath = getEventPagePath(event);
                   const wrapClass = `${
                     isActive ? "sc-button is-square" : "sc-button is-ghost is-square"
-                  } flex min-h-[88px] w-full overflow-hidden rounded-[var(--sc-radius-md)] p-0`;
+                  } flex min-h-[88px] lg:min-h-[58px] w-full overflow-hidden rounded-[var(--sc-radius-md)] p-0`;
 
                   return (
                     <div
@@ -392,7 +228,7 @@ export default function EventsPage() {
                       <button
                         type="button"
                         onClick={() => handleSelectEvent(event.id)}
-                        className={`flex min-h-[88px] flex-1 items-center justify-start bg-transparent px-4 text-left text-inherit transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${
+                        className={`flex min-h-[88px] lg:min-h-[58px] flex-1 items-center justify-start bg-transparent px-4 text-left text-inherit transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${
                           isActive
                             ? "hover:bg-black/[0.06] focus-visible:ring-black/40"
                             : "hover:bg-white/[0.06] focus-visible:ring-white/50"
@@ -415,7 +251,7 @@ export default function EventsPage() {
                           // flips that precedence and covers a:hover too; without
                           // it the link renders bright green and vanishes against
                           // a selected card.
-                          className={`flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-inherit! transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${
+                          className={`flex min-h-[88px] lg:min-h-[58px] w-16 shrink-0 items-center justify-center border-l bg-transparent px-3 text-sm font-semibold uppercase tracking-[0.18em] text-inherit! transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${
                             isActive
                               ? "border-black/25 hover:bg-black/[0.10] focus-visible:ring-black/40"
                               : "border-white/30 hover:bg-white/[0.10] focus-visible:ring-white/50"
@@ -427,7 +263,7 @@ export default function EventsPage() {
                         </Link>
                       ) : (
                         <span
-                          className={`flex min-h-[88px] w-16 shrink-0 items-center justify-center border-l px-3 text-sm font-semibold uppercase tracking-[0.18em] select-none ${
+                          className={`flex min-h-[88px] lg:min-h-[58px] w-16 shrink-0 items-center justify-center border-l px-3 text-sm font-semibold uppercase tracking-[0.18em] select-none ${
                             isActive
                               ? "border-black/15 text-black/30"
                               : "border-white/10 text-ink-muted/40"
@@ -443,15 +279,15 @@ export default function EventsPage() {
             )}
           </Card>
 
-          <Card className="space-y-3 p-6">
-            <Chip>Event details</Chip>
+          <Card className="space-y-4 p-6">
+            <h2 className="text-xl font-semibold leading-tight text-ink">Event summary</h2>
             {!selectedEvent ? (
               <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-                Select an event to view its details.
+                Select an event to see its summary.
               </Card>
             ) : (
-              <div className="space-y-2">
-                <h2 className="text-lg font-semibold leading-tight text-ink">{selectedEvent.name}</h2>
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold leading-tight text-ink">{selectedEvent.name}</h3>
                 <Panel variant="muted" className="grid grid-cols-2 gap-x-4 gap-y-2 p-3 lg:grid-cols-3">
                   <div>
                     <p className="text-[11px] uppercase tracking-wide text-ink-muted">Dates</p>
@@ -468,73 +304,11 @@ export default function EventsPage() {
                     <p className="text-sm font-semibold text-ink">{divisionLabel || "Not specified"}</p>
                   </div>
                 </Panel>
+                <EventSummaryPanel eventId={selectedEvent.id} />
               </div>
             )}
           </Card>
         </div>
-
-        <Card className="space-y-4 p-6">
-          <SectionHeader
-            action={
-              <div className="inline-flex flex-wrap items-center gap-2">
-                {[
-                  { key: "current", label: "Current" },
-                  { key: "upcoming", label: "Upcoming" },
-                  { key: "past", label: "Recent" },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setMatchTab(tab.key)}
-                    className={matchTab === tab.key ? "sc-button" : "sc-button is-ghost"}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            }
-          />
-
-          {matchesError && <div className="sc-alert is-error text-sm">{matchesError}</div>}
-
-          {matchesLoading && activeMatches.length === 0 ? (
-            <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-              Loading matches...
-            </Card>
-          ) : activeMatches.length === 0 ? (
-            <Card variant="muted" className="p-5 text-center text-sm text-ink-muted">
-              No matches currently fall in this category.
-            </Card>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {activeMatches.map((match) => {
-                const live = isMatchLive(match.status);
-                const final = isMatchFinal(match.status);
-                const showScore = live || final;
-                const statusLabel = formatMatchStatus(match.status) || (live ? "Live" : "Scheduled");
-                const metaParts = [
-                  `${formatDate(match.start_time)} at ${formatTime(match.start_time)}`,
-                  resolveVenueName(match),
-                ].filter(Boolean);
-
-                return (
-                  <StandardEventMatchCard
-                    key={match.id}
-                    match={match}
-                    variant="tinted"
-                    className="h-full"
-                    title={formatMatchup(match)}
-                    meta={metaParts.join(" · ")}
-                    score={showScore ? formatLiveScore(match) : null}
-                    status={statusLabel}
-                    compact={false}
-                    hideVenue
-                  />
-                );
-              })}
-            </div>
-          )}
-        </Card>
       </SectionShell>
     </div>
   );

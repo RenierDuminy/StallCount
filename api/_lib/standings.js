@@ -2,8 +2,7 @@
  * VERBATIM COPY of src/utils/standings.js.
  *
  * Duplicated rather than imported because api/_lib runs as a Vercel serverless
- * function and must not pull from the Vite client bundle — the same constraint
- * documented at the top of stbRl26RosterSync.js. Keep the two in step: if you
+ * function and must not pull from the Vite client bundle. Keep the two in step: if you
  * change the WFDF criteria or the tally in one, change it in the other, or the
  * bracket seeding the sweeper computes will drift from the standings tables the
  * app shows.

@@ -79,4 +79,28 @@ export const getEventPagePath = (event) => {
   return getEventWorkspacePath(event.id) || getStandardEventPath(event.name);
 };
 
+// Slug with every separator removed, so "sa-mx-nationals2026" and
+// "sa-mx-nationals-2026" name the same event.
+const compactSlug = (value) => (slugify(value) || "").replace(/-/g, "");
+
+/**
+ * The event a URL slug names: an exact match on the slugified name first, then
+ * a match ignoring hyphens. The list is newest first, so a shared name resolves
+ * to the newest event.
+ */
+export function findEventBySlug(events, slug) {
+  if (!events?.length || !slug) return null;
+  const exact = events.find((row) => slugify(row.name) === slug);
+  if (exact) return exact;
+  const loose = compactSlug(slug);
+  if (!loose) return null;
+  const byName = events.find((row) => compactSlug(row.name) === loose);
+  if (byName) return byName;
+  // A workspace file's own slug is an alias for its event. Shared links use
+  // it ("/events/sa-mx-nationals2026" for "Mixed Nationals 2026"), and the
+  // event's name need not resemble it.
+  const workspace = eventWorkspaces.find((row) => compactSlug(row.slug) === loose);
+  return workspace ? events.find((row) => row.id === workspace.eventId) || null : null;
+}
+
 export { eventWorkspaces, eventWorkspacePathByEventId };

@@ -17,11 +17,8 @@ import {
   resetCustomScriptOverride,
   saveCustomScriptOverride,
 } from "../services/customScriptService";
-import { invokeStbRl26RosterSync } from "../services/stbRl26RosterSyncService";
 import { getEventLifecycle } from "../services/leagueService";
 import { isClosedStatus } from "../constants/statusCodes";
-
-const SERVER_RUN_ONLY_SCRIPT_SLUGS = new Set(["STB_RL_26_update_rosters"]);
 
 const formatTimestamp = (value) => {
   if (!value) return "Never";
@@ -114,7 +111,6 @@ export default function CustomScriptsPage() {
     () => scripts.find((script) => script.slug === selectedSlug) || null,
     [scripts, selectedSlug],
   );
-  const isServerRunOnlyScript = SERVER_RUN_ONLY_SCRIPT_SLUGS.has(selectedSlug);
   // Only a known-closed event blocks. An unknown status never does.
   const isTargetEventClosed = isClosedStatus(targetEvent?.status);
 
@@ -168,41 +164,14 @@ export default function CustomScriptsPage() {
     }
 
     setRunState({ running: true, output: null, error: "" });
-    let output;
-
-    if (isServerRunOnlyScript) {
-      // `force` must reach the backend too: it runs the same closed-event
-      // guard, and would otherwise skip the run the operator just confirmed.
-      output = await invokeStbRl26RosterSync({ force });
-
-      const shouldFallbackToBrowserRun =
-        import.meta.env.DEV &&
-        !output.ok &&
-        String(output.error?.message || "").includes("(404 Not Found)");
-
-      if (shouldFallbackToBrowserRun) {
-        output = await executeCustomScript({
-          slug: selectedScript.slug,
-          source: draftSource,
-          context: {
-            eventId: eventId || null,
-            trigger: "manual-dev-fallback",
-            forceFullSync: true,
-            useBundledSource: true,
-            allowBrowserExecution: true,
-          },
-        });
-      }
-    } else {
-      output = await executeCustomScript({
-        slug: selectedScript.slug,
-        source: draftSource,
-        context: {
-          eventId: eventId || null,
-          force,
-        },
-      });
-    }
+    const output = await executeCustomScript({
+      slug: selectedScript.slug,
+      source: draftSource,
+      context: {
+        eventId: eventId || null,
+        force,
+      },
+    });
 
     setRunState({
       running: false,
@@ -309,11 +278,6 @@ export default function CustomScriptsPage() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                       Actions
                     </p>
-                    {isServerRunOnlyScript ? (
-                      <p className="text-xs text-ink-muted">
-                        This script runs through the backend runner. Local browser overrides are not used when you run it here.
-                      </p>
-                    ) : null}
                     {isTargetEventClosed ? (
                       <p className="rounded-xl border border-warning-border bg-warning-bg p-3 text-xs text-warning-ink">
                         <span className="font-semibold">

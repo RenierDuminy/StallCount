@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Card,
@@ -8,18 +8,10 @@ import {
   SectionShell,
 } from "../../components/ui/primitives";
 import { StandardEventMatchCard } from "../../components/StandardEventMatchCard";
-import { useAuth } from "../../context/AuthContext";
 import { getEventHierarchy } from "../../services/leagueService";
 import { getMatchesByEvent } from "../../services/matchService";
 import { getBracketsByEvent } from "../../services/playoffStructureService";
 import BracketStructureView from "../playoff/BracketStructureView";
-import { executeCustomScript } from "../../services/customScriptService";
-import { invokeStbRl26RosterSync } from "../../services/stbRl26RosterSyncService";
-import {
-  userHasAnyRole,
-  SYS_ADMIN_ACCESS_ROLES,
-  TOURNAMENT_DIRECTOR_ACCESS_ROLES,
-} from "../../utils/accessControl";
 import {
   StandardStandingsLegend,
   StandardStandingsTable,
@@ -37,9 +29,6 @@ export const EVENT_SLUG = "stellenbosch-rl-2026";
 export const EVENT_NAME = "Stellenbosch RL 2026";
 const MATCH_LIMIT = 200;
 const SAST_TIMEZONE = "Africa/Johannesburg";
-const SAST_UTC_OFFSET_HOURS = 2;
-const AUTO_ROSTER_SYNC_HOUR_SAST = 17;
-const ROSTER_SCRIPT_SLUG = "STB_RL_26_update_rosters";
 // This event awards league points; the shared standings module owns the model
 // (3 / 2 / 1 and the forfeit split). Aliased here because the rules blurb below
 // quotes the numbers back to the reader.
@@ -403,77 +392,6 @@ const buildStandingsPoolGroups = (eventData) => {
   ];
 };
 
-const padNumber = (value) => String(value).padStart(2, "0");
-
-const getSastDateParts = (value = new Date()) => {
-  const shifted = new Date(value.getTime() + SAST_UTC_OFFSET_HOURS * 60 * 60 * 1000);
-  return {
-    year: shifted.getUTCFullYear(),
-    monthIndex: shifted.getUTCMonth(),
-    day: shifted.getUTCDate(),
-    hour: shifted.getUTCHours(),
-    minute: shifted.getUTCMinutes(),
-  };
-};
-
-const createDateForSastTime = ({ year, monthIndex, day, hour, minute = 0 }) =>
-  new Date(Date.UTC(year, monthIndex, day, hour - SAST_UTC_OFFSET_HOURS, minute, 0, 0));
-
-const formatSastScheduleTime = (value) => {
-  if (!value) return "Not scheduled";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not scheduled";
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: SAST_TIMEZONE,
-  });
-};
-
-const buildRosterSyncErrorDetails = (output) => {
-  const sections = [];
-
-  if (Array.isArray(output?.logs) && output.logs.length > 0) {
-    sections.push(`Recent logs:\n${output.logs.slice(-12).join("\n")}`);
-  }
-
-  const stack = String(output?.error?.stack || "").trim();
-  if (stack) {
-    sections.push(`Stack trace:\n${stack}`);
-  }
-
-  return sections.join("\n\n").trim();
-};
-
-const getRosterScriptScheduleSnapshot = (value = new Date()) => {
-  const parts = getSastDateParts(value);
-  const isTodaysSlotActive = parts.hour >= AUTO_ROSTER_SYNC_HOUR_SAST;
-  const currentSlotAt = createDateForSastTime({
-    year: parts.year,
-    monthIndex: parts.monthIndex,
-    day: isTodaysSlotActive ? parts.day : parts.day - 1,
-    hour: AUTO_ROSTER_SYNC_HOUR_SAST,
-  });
-  const nextSlotAt = createDateForSastTime({
-    year: parts.year,
-    monthIndex: parts.monthIndex,
-    day: isTodaysSlotActive ? parts.day + 1 : parts.day,
-    hour: AUTO_ROSTER_SYNC_HOUR_SAST,
-  });
-  const currentSlotParts = getSastDateParts(currentSlotAt);
-
-  return {
-    currentSlotKey: `${currentSlotParts.year}-${padNumber(currentSlotParts.monthIndex + 1)}-${padNumber(currentSlotParts.day)}T${padNumber(AUTO_ROSTER_SYNC_HOUR_SAST)}:00`,
-    currentSlotLabel: formatSastScheduleTime(currentSlotAt),
-    currentSlotAt,
-    nextSlotAt,
-    nextSlotLabel: formatSastScheduleTime(nextSlotAt),
-    millisUntilNextSlot: Math.max(0, nextSlotAt.getTime() - value.getTime()),
-  };
-};
-
 const DAY_MATCH_GRID_CLASS = "flex flex-wrap gap-2";
 const DAY_MATCH_CARD_WIDTH_CLASS = "w-full sm:w-[17rem] xl:w-[18rem]";
 const DAY_FINISHED_MATCH_CARD_WIDTH_CLASS =
@@ -544,19 +462,11 @@ function WeekScheduleCard({ week, renderMatchCard, loading }) {
 }
 
 export default function StellenboschRl2026WorkspacePage() {
-  const { session, roles } = useAuth();
-  const scriptRunLockRef = useRef(false);
   const [eventData, setEventData] = useState(null);
   const [matches, setMatches] = useState([]);
   const [brackets, setBrackets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [scriptRunState, setScriptRunState] = useState({
-    running: false,
-    message: "",
-    tone: "success",
-    details: "",
-  });
 
   const loadWorkspace = useCallback(async (ignoreRef) => {
     setLoading(true);
@@ -594,15 +504,6 @@ export default function StellenboschRl2026WorkspacePage() {
       ignoreRef.current = true;
     };
   }, [loadWorkspace]);
-
-  const rosterUpdateAccessRoles = useMemo(
-    () => [...SYS_ADMIN_ACCESS_ROLES, ...TOURNAMENT_DIRECTOR_ACCESS_ROLES],
-    [],
-  );
-  const canRunAdminScripts = useMemo(
-    () => userHasAnyRole(session?.user, rosterUpdateAccessRoles, roles),
-    [roles, rosterUpdateAccessRoles, session?.user],
-  );
 
   const workspaceTitle = eventData?.name || EVENT_NAME;
   const standingsGroups = useMemo(
@@ -662,109 +563,6 @@ export default function StellenboschRl2026WorkspacePage() {
       playoffSchedule.weeks.reduce((total, week) => total + week.matchCount, 0),
     [playoffSchedule],
   );
-
-  const runRosterUpdate = useCallback(async ({
-    trigger = "manual",
-    scheduleSlot,
-    forceFullSync = false,
-  } = {}) => {
-    if (scriptRunLockRef.current) {
-      return null;
-    }
-
-    const activeScheduleSlot = scheduleSlot || getRosterScriptScheduleSnapshot();
-    scriptRunLockRef.current = true;
-    setScriptRunState({
-      running: true,
-      message: "",
-      tone: "success",
-      details: "",
-    });
-
-    try {
-      let output;
-      try {
-        output = await invokeStbRl26RosterSync({ forceFullSync });
-      } catch (backendError) {
-        if (!import.meta.env.DEV) {
-          throw backendError;
-        }
-
-        output = await executeCustomScript({
-          slug: ROSTER_SCRIPT_SLUG,
-          context: {
-            eventId: EVENT_ID,
-            trigger,
-            forceFullSync,
-            slotKey: activeScheduleSlot.currentSlotKey,
-            slotLabel: activeScheduleSlot.currentSlotLabel,
-            useBundledSource: true,
-            allowBrowserExecution: true,
-          },
-        });
-      }
-
-      if (output.ok) {
-        await loadWorkspace();
-        setScriptRunState({
-          running: false,
-          message:
-            forceFullSync
-              ? output.result?.message ||
-                "Full roster sync completed. Event data has been refreshed."
-              : output.result?.message ||
-                "Roster update script completed. Event data has been refreshed.",
-          tone: "success",
-          details: "",
-        });
-        return output;
-      }
-
-      const failureMessage =
-        output.error?.message ||
-        output.result?.message ||
-        (forceFullSync ? "Full roster sync failed." : "Roster update script failed.");
-      setScriptRunState({
-        running: false,
-        message: failureMessage,
-        tone: "error",
-        details: buildRosterSyncErrorDetails(output),
-      });
-      return output;
-    } catch (runError) {
-      setScriptRunState({
-        running: false,
-        message:
-          runError instanceof Error
-            ? runError.message || "Roster update script failed."
-            : String(runError || "Roster update script failed."),
-        tone: "error",
-        details: buildRosterSyncErrorDetails({
-          error: {
-            stack: runError instanceof Error ? runError.stack || "" : "",
-          },
-        }),
-      });
-      return null;
-    } finally {
-      scriptRunLockRef.current = false;
-    }
-  }, [loadWorkspace]);
-
-  const handleRunRosterUpdate = useCallback(async () => {
-    await runRosterUpdate({
-      trigger: "manual",
-      scheduleSlot: getRosterScriptScheduleSnapshot(),
-    });
-  }, [runRosterUpdate]);
-
-  const handleRunFullRosterUpdate = useCallback(async () => {
-    await runRosterUpdate({
-      trigger: "manual-full-sync",
-      scheduleSlot: getRosterScriptScheduleSnapshot(),
-      forceFullSync: true,
-    });
-  }, [runRosterUpdate]);
 
   // An event can carry several brackets (championship plus placement, or one
   // per division). Show them all, skipping any that have no games yet so an
@@ -844,32 +642,6 @@ export default function StellenboschRl2026WorkspacePage() {
                     Player standings
                   </Link>
                 </div>
-                {canRunAdminScripts ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className="sc-button is-ghost"
-                      onClick={handleRunRosterUpdate}
-                      disabled={scriptRunState.running}
-                    >
-                      {scriptRunState.running ? "Running roster update..." : "Run roster update"}
-                    </button>
-                    <button
-                      type="button"
-                      className="sc-button is-ghost"
-                      onClick={handleRunFullRosterUpdate}
-                      disabled={scriptRunState.running}
-                    >
-                      {scriptRunState.running ? "Running full sync..." : "Run full roster sync"}
-                    </button>
-                    <Link
-                      to={`/admin/custom-scripts?script=${encodeURIComponent(ROSTER_SCRIPT_SLUG)}&eventId=${encodeURIComponent(EVENT_ID)}`}
-                      className="sc-button is-ghost"
-                    >
-                      Edit custom script
-                    </Link>
-                  </div>
-                ) : null}
               </div>
             }
           />
@@ -894,23 +666,6 @@ export default function StellenboschRl2026WorkspacePage() {
             ))}
           </div>
           {error && <div className="sc-alert is-error">{error}</div>}
-          {canRunAdminScripts && scriptRunState.message ? (
-            <div
-              className={`sc-alert ${scriptRunState.tone === "error" ? "is-error" : "is-success"}`}
-            >
-              {scriptRunState.message}
-            </div>
-          ) : null}
-          {canRunAdminScripts && scriptRunState.tone === "error" && scriptRunState.details ? (
-            <Panel variant="muted" className="space-y-2 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                Error details
-              </p>
-              <pre className="max-h-72 overflow-auto rounded-2xl border border-border bg-surface p-3 text-xs text-ink-muted whitespace-pre-wrap break-words">
-                {scriptRunState.details}
-              </pre>
-            </Panel>
-          ) : null}
         </Card>
 
         <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
