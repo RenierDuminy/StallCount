@@ -10,6 +10,7 @@ function cx(...classes) {
 export function StandardEventMatchCard({
   match,
   eyebrow,
+  cornerLabel = "",
   title,
   meta,
   actions,
@@ -72,13 +73,22 @@ export function StandardEventMatchCard({
         compact={compact}
         {...linkProps}
       />
-      {overlayMediaButton ? (
+      {overlayMediaButton || cornerLabel ? (
+        // Top-right corner: an optional label (e.g. the pool) sits to the
+        // inside of the stream link, level with the time line at top left.
         <div
           className={cx(
-            "pointer-events-none absolute z-10",
+            "pointer-events-none absolute z-10 flex items-start gap-1.5",
             compact ? "right-2.5 top-2.5" : "right-4 top-4",
+            // Leave room for the live dot that sits in this corner.
+            !overlayMediaButton && /live/i.test(`${status || ""}`) ? "pr-4" : "",
           )}
         >
+          {cornerLabel ? (
+            <span className="max-w-[9rem] truncate text-xs font-semibold uppercase leading-4 tracking-wide text-ink-muted">
+              {cornerLabel}
+            </span>
+          ) : null}
           {overlayMediaButton}
         </div>
       ) : null}

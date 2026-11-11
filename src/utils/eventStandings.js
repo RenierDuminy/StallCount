@@ -326,11 +326,42 @@ export const buildFinalStandings = ({ eventData, matches, brackets, modeByDivisi
         (row, index) => ({ ...row, rank: Math.max(lastPlace, placed.length) + index + 1 }),
       );
 
+      // A division whose bracket covers only some teams (e.g. a round robin
+      // with just a final) still lists everyone: teams that played no playoff
+      // game follow the placed ones, ranked by their whole record in the
+      // division (WFDF order), with every game on their form line.
+      let rest = [];
+      if (playoffsOnly) {
+        const shownIds = new Set(rows.map((row) => row.id));
+        const everyGame = allMatches.filter((match) => match.division_id === division.id);
+        const fullPool = { teams: [] };
+        const fullIds = new Set(buildPoolGroupTeams(division.pools || []).map((team) => team.id));
+        everyGame.forEach((match) => {
+          [match.team_a, match.team_b].forEach((team) => {
+            if (team?.id && !fullIds.has(team.id)) {
+              fullIds.add(team.id);
+              fullPool.teams.push({ team, seed: null });
+            }
+          });
+        });
+        const firstRank = Math.max(lastPlace, placed.length) + unplaced.length;
+        rest = buildPoolGroupStandings([...(division.pools || []), fullPool], everyGame, {
+          matchMode: "team_date_range",
+          getMatchDateKey: () => "all",
+        })
+          .filter((row) => !shownIds.has(row.id))
+          .map((row, index) => ({
+            ...row,
+            rank: firstRank + index + 1,
+            form: buildStagedForm(row.id, everyGame, stageByMatch),
+          }));
+      }
+
       return {
         id: division.id || `division-${divisionIndex}`,
         name: division.name || "Division",
         mode,
-        rows: [...placed, ...unplaced],
+        rows: [...placed, ...unplaced, ...rest],
       };
     })
     .filter(Boolean);

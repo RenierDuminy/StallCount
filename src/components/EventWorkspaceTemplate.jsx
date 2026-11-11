@@ -64,6 +64,43 @@ const sortVenuesByCityLocationName = (venues = []) =>
     return leftName.localeCompare(rightName);
   });
 
+// Pool names are sometimes stored with the division in them ("Open - Pool A",
+// "Pool A (Open)"); the schedule already sits under the division heading, so the
+// card shows only the pool part. A name that is nothing but the division is kept.
+const stripDivisionFromPoolName = (poolName, divisionName) => {
+  let pool = String(poolName || "").trim();
+  // "<division> - <pool>": keep the part after the last spaced dash, even when
+  // the prefix is not spelled exactly like the division ("Open Div - Pool A").
+  const dashParts = pool.split(/\s+[-–—]\s+/);
+  if (dashParts.length > 1 && dashParts[dashParts.length - 1].trim()) {
+    pool = dashParts[dashParts.length - 1].trim();
+  }
+  const division = String(divisionName || "").trim();
+  if (!pool || !division) return pool;
+  const SEPARATORS = " -–—:|/()";
+  const trimSeparators = (text) => {
+    let start = 0;
+    let end = text.length;
+    while (start < end && SEPARATORS.includes(text[start])) start += 1;
+    while (end > start && SEPARATORS.includes(text[end - 1])) end -= 1;
+    return text.slice(start, end);
+  };
+  const lowerPool = pool.toLowerCase();
+  const lowerDivision = division.toLowerCase();
+  let stripped = pool;
+  const core = trimSeparators(pool);
+  const lowerCore = core.toLowerCase();
+  // Only a whole word: "Opener" in the Open division stays "Opener".
+  const nextChar = lowerPool[division.length];
+  const prevChar = lowerCore[lowerCore.length - division.length - 1];
+  if (lowerPool.startsWith(lowerDivision) && (nextChar === undefined || SEPARATORS.includes(nextChar))) {
+    stripped = trimSeparators(pool.slice(division.length));
+  } else if (lowerCore.endsWith(lowerDivision) && (prevChar === undefined || SEPARATORS.includes(prevChar))) {
+    stripped = trimSeparators(core.slice(0, core.length - division.length));
+  }
+  return stripped || pool;
+};
+
 const formatMatchTime = (value) => {
   if (!value) return "--";
   const date = new Date(value);
@@ -226,9 +263,8 @@ export default function EventWorkspaceTemplate({
     pageQuery.error && !pageQuery.data
       ? pageQuery.error.message || "Unable to load matches for this event."
       : null;
-  // null until the viewer toggles it: open by default while the event is live,
-  // when people are looking for their field.
-  const [venueFieldsOpen, setVenueFieldsOpen] = useState(null);
+  // Always starts closed: a league with many fields makes it very long.
+  const [venueFieldsOpen, setVenueFieldsOpen] = useState(false);
   // Schedule day sections the viewer has collapsed, keyed "divisionId:dayKey".
   // Everything starts expanded.
   const [collapsedScheduleDays, setCollapsedScheduleDays] = useState(() => new Set());
@@ -248,6 +284,19 @@ export default function EventWorkspaceTemplate({
   }, []);
 
   const playoffMatchIds = useMemo(() => getPlayoffMatchIds(brackets), [brackets]);
+
+  // Playoff game name ("Semifinal 1") by match id, for the schedule cards'
+  // corner label: the playoff counterpart of the pool name.
+  const playoffNodeNameByMatchId = useMemo(() => {
+    const names = new Map();
+    (brackets || []).forEach((bracket) => {
+      (bracket?.nodes || []).forEach((node) => {
+        const name = typeof node?.name === "string" ? node.name.trim() : "";
+        if (node?.match_id && name) names.set(node.match_id, name);
+      });
+    });
+    return names;
+  }, [brackets]);
 
   const isEventCompleted = isCompletedEventStatus(eventStatus);
 
@@ -295,6 +344,20 @@ export default function EventWorkspaceTemplate({
     );
     return buildScheduleDivisions(matches, divisionNames);
   }, [matches, eventData]);
+
+  // Pool names by pool id, only for divisions with more than one pool: with a
+  // single pool the label would say nothing.
+  const poolLabelById = useMemo(() => {
+    const labels = new Map();
+    (eventData?.divisions || []).forEach((division) => {
+      const pools = division?.pools || [];
+      if (pools.length < 2) return;
+      pools.forEach((pool) => {
+        if (pool?.id && pool.name) labels.set(pool.id, stripDivisionFromPoolName(pool.name, division.name));
+      });
+    });
+    return labels;
+  }, [eventData]);
 
   const scheduleDayKeys = useMemo(
     () =>
@@ -359,7 +422,7 @@ export default function EventWorkspaceTemplate({
     }));
   }, [sortedVenues]);
 
-  const fieldsOpen = venueFieldsOpen ?? (eventStatus || "").toString().toLowerCase() === "live";
+  const fieldsOpen = venueFieldsOpen;
   // Location headings only help when there is more than one location to tell
   // apart, or the single one has a real name.
   const showLocationHeadings =
@@ -755,6 +818,11 @@ export default function EventWorkspaceTemplate({
                                 match.start_time
                                   ? formatMatchTime(match.start_time)
                                   : "Time TBC"
+                              }
+                              cornerLabel={
+                                playoffNodeNameByMatchId.get(match.id) ||
+                                poolLabelById.get(match.pool_id) ||
+                                ""
                               }
                               hideEyebrow={false}
                               title={formatMatchup(match)}
