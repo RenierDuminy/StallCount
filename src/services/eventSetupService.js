@@ -7,6 +7,7 @@ import {
 } from "./playoffStructureService";
 import { instantiateTemplate } from "./bracketTemplateService";
 import { getTemplateById } from "../data/bracketTemplates";
+import { invalidateCachedQueries } from "../utils/queryCache";
 
 const normalizeText = (value) => {
   if (typeof value !== "string") {
@@ -700,102 +701,6 @@ const buildHierarchyIndex = (hierarchy) => {
   return index;
 };
 
-// eslint-disable-next-line no-unused-vars -- retained for reference; replace path uses signature diffing
-const deleteExistingHierarchy = async (eventId) => {
-  const { error: eventVenueDeleteError } = await supabase
-    .from("event_venues")
-    .delete()
-    .eq("event_id", eventId);
-
-  if (eventVenueDeleteError) {
-    throw new Error(
-      eventVenueDeleteError.message || "Failed to remove event venues.",
-    );
-  }
-
-  const { data: existingDivisions, error: divisionQueryError } = await supabase
-    .from("divisions")
-    .select("id")
-    .eq("event_id", eventId);
-
-  if (divisionQueryError) {
-    throw new Error(divisionQueryError.message || "Failed to load divisions.");
-  }
-
-  const divisionIds = (existingDivisions ?? []).map((entry) => entry.id);
-
-  if (divisionIds.length) {
-    const { error: divisionTeamsDeleteError } = await supabase
-      .from("division_teams")
-      .delete()
-      .in("division_id", divisionIds);
-
-    if (divisionTeamsDeleteError) {
-      throw new Error(
-        divisionTeamsDeleteError.message ||
-          "Failed to remove division teams.",
-      );
-    }
-  }
-
-  const { data: existingPools, error: poolsQueryError } = divisionIds.length
-    ? await supabase
-        .from("pools")
-        .select("id")
-        .in("division_id", divisionIds)
-    : { data: [], error: null };
-
-  if (poolsQueryError) {
-    throw new Error(poolsQueryError.message || "Failed to load pools.");
-  }
-
-  const poolIds = (existingPools ?? []).map((entry) => entry.id);
-
-  const { error: matchDeleteError } = await supabase
-    .from("matches")
-    .delete()
-    .eq("event_id", eventId);
-
-  if (matchDeleteError) {
-    throw new Error(matchDeleteError.message || "Failed to remove matches.");
-  }
-
-  if (poolIds.length) {
-    const { error: poolTeamDeleteError } = await supabase
-      .from("pool_teams")
-      .delete()
-      .in("pool_id", poolIds);
-
-    if (poolTeamDeleteError) {
-      throw new Error(
-        poolTeamDeleteError.message || "Failed to remove pool teams.",
-      );
-    }
-
-    const { error: poolsDeleteError } = await supabase
-      .from("pools")
-      .delete()
-      .in("id", poolIds);
-
-    if (poolsDeleteError) {
-      throw new Error(poolsDeleteError.message || "Failed to remove pools.");
-    }
-  }
-
-  if (divisionIds.length) {
-    const { error: divisionsDeleteError } = await supabase
-      .from("divisions")
-      .delete()
-      .in("id", divisionIds);
-
-    if (divisionsDeleteError) {
-      throw new Error(
-        divisionsDeleteError.message || "Failed to remove divisions.",
-      );
-    }
-  }
-};
-
 export async function createEventHierarchy(payload) {
   const { event, divisions, eventVenues } = payload || {};
   const name = normalizeText(event?.name);
@@ -875,25 +780,124 @@ export async function createEventHierarchy(payload) {
   };
 }
 
-export async function replaceEventHierarchy(payload) {
+// ---------------------------------------------------------------------------
+// Saving an edited event (replaceEventHierarchy)
+//
+// The save runs in two stages so a mistake cannot leave an event half-written:
+//
+// 1. Plan (no network). Compare the wizard's state with the snapshot it was
+//    loaded from and list every change: what is added, updated and removed.
+//    `previewEventHierarchyUpdate` returns the same plan as plain sentences
+//    for the confirmation dialog.
+// 2. Check, then write. Before the first write:
+//    - removals the user cannot make are refused up front, by name. Removing
+//      anything inside an event (field links, teams from divisions/pools,
+//      pools, divisions) needs `event_delete`, which no role holds, so for a
+//      tournament director the database used to refuse them *silently* and
+//      the save reported success (and a refused unlink + re-insert crashed on
+//      event_venues_pkey);
+//    - the database is re-read, and the save stops if anything it is about to
+//      change or remove was changed by someone else since the wizard loaded;
+//    - matches a bracket node links to are never deleted.
+//    Every update and delete is then read back and must touch exactly the
+//    rows it targeted, so a refusal can never pass as success. If a write
+//    still fails (e.g. the network drops), the error says what was already
+//    saved.
+//
+// New rows are referred to by placeholder refs until they exist, so the plan
+// can be built before anything is inserted.
+// ---------------------------------------------------------------------------
+
+const MATCH_COMPARE_KEYS = [
+  "event_id",
+  "division_id",
+  "pool_id",
+  "team_a",
+  "team_b",
+  "status",
+  "start_time",
+  "venue_id",
+  "score_a",
+  "score_b",
+  "captains_confirmed",
+  "scorekeeper",
+  "starting_team_id",
+  "abba_pattern",
+];
+const VENUE_COMPARE_KEYS = ["name", "city", "location", "notes", "latitude", "longitude"];
+
+const newRef = (kind, index) => ({ newRef: kind, index });
+const isNewRef = (value) => Boolean(value && typeof value === "object" && value.newRef);
+const refKey = (value) => (isNewRef(value) ? `new:${value.newRef}:${value.index}` : value ?? "");
+
+const plural = (count, word, pluralWord = `${word}s`) => `${count} ${count === 1 ? word : pluralWord}`;
+
+const collectTeamNames = (hierarchy) => {
+  const names = new Map();
+  (hierarchy?.divisions ?? []).forEach((division) => {
+    (division?.divisionTeams ?? []).forEach((team) => {
+      if (team?.teamId && team.name) names.set(team.teamId, team.name);
+    });
+    (division?.pools ?? []).forEach((pool) => {
+      (pool?.teams ?? []).forEach((team) => {
+        if (team?.teamId && team.name) names.set(team.teamId, team.name);
+      });
+      (pool?.matches ?? []).forEach((match) => {
+        if (match?.teamAId && match.teamA) names.set(match.teamAId, match.teamA);
+        if (match?.teamBId && match.teamB) names.set(match.teamBId, match.teamB);
+      });
+    });
+  });
+  return names;
+};
+
+function buildEventHierarchyPlan(payload) {
   const { eventId, event, divisions, eventVenues, originalHierarchy } = payload || {};
   const normalizedEventId = normalizeText(eventId);
   if (!normalizedEventId) {
     throw new Error("Event identifier is required.");
   }
-
   const name = normalizeText(event?.name);
   if (!name) {
     throw new Error("Event name is required.");
   }
-
   const parsedRules = parseRulesJson(event?.rules);
   if (!parsedRules) {
-    throw new Error(
-      "Invalid rules JSON. Please provide a valid rules configuration.",
-    );
+    throw new Error("Invalid rules JSON. Please provide a valid rules configuration.");
   }
 
+  const originalIndex = buildHierarchyIndex(originalHierarchy);
+  const teamNames = new Map([
+    ...collectTeamNames(originalHierarchy),
+    ...collectTeamNames({ divisions }),
+  ]);
+  const teamName = (teamId) => teamNames.get(teamId) || "a team";
+
+  const plan = {
+    eventId: normalizedEventId,
+    originalIndex,
+    eventUpdate: null,
+    venueUpdates: [],
+    venueInserts: [],
+    venueLinkAdds: [],
+    venueLinkRemoves: [],
+    divisionUpdates: [],
+    divisionInserts: [],
+    poolUpdates: [],
+    poolInserts: [],
+    divisionTeamAdds: [],
+    divisionTeamRemoves: [],
+    poolTeamUpserts: [],
+    poolTeamRemoves: [],
+    matchUpdates: [],
+    matchInserts: [],
+    matchDeletes: [],
+    poolDeletes: [],
+    divisionDeletes: [],
+    counts: {},
+  };
+
+  // --- Event -------------------------------------------------------------
   const nextEventRecord = {
     name,
     type: normalizeEventType(event?.type),
@@ -902,39 +906,24 @@ export async function replaceEventHierarchy(payload) {
     location: normalizeText(event?.location) || null,
     rules: parsedRules,
   };
-  const originalIndex = buildHierarchyIndex(originalHierarchy);
-  const originalEvent = originalIndex.event;
-  const updatePayload = buildFlatRecordChanges(
-    nextEventRecord,
-    originalEvent,
-    ["name", "type", "start_date", "end_date", "location"],
-  );
-  if (!originalEvent || !areJsonValuesEqual(nextEventRecord.rules, originalEvent.rules)) {
-    updatePayload.rules = nextEventRecord.rules;
+  const eventChanges = buildFlatRecordChanges(nextEventRecord, originalIndex.event, [
+    "name",
+    "type",
+    "start_date",
+    "end_date",
+    "location",
+  ]);
+  if (!originalIndex.event || !areJsonValuesEqual(nextEventRecord.rules, originalIndex.event.rules)) {
+    eventChanges.rules = nextEventRecord.rules;
   }
+  if (hasOwnKeys(eventChanges)) plan.eventUpdate = eventChanges;
 
-  if (hasOwnKeys(updatePayload)) {
-    const { error: updateError } = await supabase
-      .from("events")
-      .update(updatePayload)
-      .eq("id", normalizedEventId);
-
-    if (updateError) {
-      throw new Error(updateError.message || "Failed to update event.");
-    }
-  }
-
-  const cleanedDivisions = cleanDivisionsInput(divisions);
-  const cleanedEventVenues = cleanEventVenuesInput(eventVenues);
-
-  const venueIdLookup = new Map();
-  const venueInsertPayload = [];
-  const venueInsertClientRefs = [];
-  const venueInsertSignatures = new Set();
-  const venueUpdateOperations = [];
-
-  cleanedEventVenues.forEach((venue) => {
-    const baseRecord = {
+  // --- Fields (venues) ---------------------------------------------------
+  const venueRefByClientId = new Map();
+  const desiredVenueKeys = new Set();
+  const insertedVenueBySignature = new Map();
+  cleanEventVenuesInput(eventVenues).forEach((venue) => {
+    const record = {
       name: venue.name,
       city: venue.city,
       location: venue.location,
@@ -942,565 +931,683 @@ export async function replaceEventHierarchy(payload) {
       latitude: venue.latitude,
       longitude: venue.longitude,
     };
+    const signature = buildVenueSignature(record);
     const clientId = venue.id || venue.venueId || null;
-    const explicitVenueId = normalizeText(venue.venueId || venue.id);
-    const existingVenueId = isUuid(explicitVenueId)
-      ? explicitVenueId
-      : originalIndex.venueIdBySignature.get(buildVenueSignature(baseRecord));
-    if (isUuid(existingVenueId)) {
-      venueIdLookup.set(existingVenueId, existingVenueId);
-      if (clientId) {
-        venueIdLookup.set(clientId, existingVenueId);
+    const explicitId = normalizeText(venue.venueId || venue.id);
+    const existingId = isUuid(explicitId) ? explicitId : originalIndex.venueIdBySignature.get(signature);
+
+    let ref;
+    if (isUuid(existingId)) {
+      ref = existingId;
+      const original = originalIndex.venueById.get(existingId);
+      if (original) {
+        const changes = buildFlatRecordChanges(record, original, VENUE_COMPARE_KEYS);
+        if (hasOwnKeys(changes)) {
+          plan.venueUpdates.push({ id: existingId, changes, label: record.name });
+        }
       }
-      const originalVenue = originalIndex.venueById.get(existingVenueId);
-      const changes = buildFlatRecordChanges(
-        baseRecord,
-        originalVenue,
-        ["name", "city", "location", "notes", "latitude", "longitude"],
-      );
-      if (!originalVenue || hasOwnKeys(changes)) {
-        venueUpdateOperations.push({ id: existingVenueId, changes });
-      }
+      // A venue picked from the shared list (not linked to this event yet) is
+      // linked as it is; its details belong to every event that uses it.
+    } else if (insertedVenueBySignature.has(signature)) {
+      ref = insertedVenueBySignature.get(signature);
     } else {
-      const insertSignature = buildVenueSignature(baseRecord);
-      if (venueInsertSignatures.has(insertSignature)) {
-        return;
-      }
-      venueInsertSignatures.add(insertSignature);
-      venueInsertPayload.push(baseRecord);
-      venueInsertClientRefs.push(clientId || `client_${Math.random()}`);
+      ref = newRef("venue", plan.venueInserts.length);
+      plan.venueInserts.push({ record, label: record.name });
+      insertedVenueBySignature.set(signature, ref);
+    }
+    if (clientId) venueRefByClientId.set(clientId, ref);
+    if (isUuid(ref)) venueRefByClientId.set(ref, ref);
+
+    const key = refKey(ref);
+    if (desiredVenueKeys.has(key)) return;
+    desiredVenueKeys.add(key);
+    if (isNewRef(ref) || !originalIndex.venueIds.has(ref)) {
+      plan.venueLinkAdds.push({ venueRef: ref, label: record.name });
+    }
+  });
+  originalIndex.venueIds.forEach((venueId) => {
+    if (!desiredVenueKeys.has(venueId)) {
+      plan.venueLinkRemoves.push({
+        venueId,
+        label: originalIndex.venueById.get(venueId)?.name || "a field",
+      });
     }
   });
 
-  for (const operation of venueUpdateOperations) {
-    const { error: venueUpdateError } = await supabase
-      .from("venues")
-      .update(operation.changes)
-      .eq("id", operation.id);
-
-    if (venueUpdateError) {
-      if (isRlsViolation(venueUpdateError)) {
-        throw new Error(
-          "Your Supabase policies currently block inserting venues. Assign an existing venue or update the RLS policy to allow inserts for admin accounts.",
-        );
-      }
-      throw new Error(venueUpdateError.message || "Failed to save venues.");
-    }
-  }
-
-  const insertedVenueLookup = new Map();
-  if (venueInsertPayload.length) {
-    const { data: insertedVenues, error: venueInsertError } = await supabase
-      .from("venues")
-      .insert(venueInsertPayload)
-      .select("id");
-
-    if (venueInsertError) {
-      if (isRlsViolation(venueInsertError)) {
-        throw new Error(
-          "Your Supabase policies currently block inserting venues. Assign an existing venue or update the RLS policy to allow inserts for admin accounts.",
-        );
-      }
-      throw new Error(venueInsertError.message || "Failed to create venues.");
-    }
-
-    (insertedVenues ?? []).forEach((row, index) => {
-      const clientId = venueInsertClientRefs[index];
-      if (row?.id && clientId) {
-        insertedVenueLookup.set(clientId, row.id);
-        venueIdLookup.set(clientId, row.id);
-        venueIdLookup.set(row.id, row.id);
-      }
-    });
-  }
-
-  const desiredVenueIds = new Set();
-  const desiredVenueSignatures = new Set();
-  const linkPayload = [];
-  const linkKeys = new Set();
-  cleanedEventVenues.forEach((venue) => {
-    const clientId = venue.id || venue.venueId || null;
-    const venueSignature = buildVenueSignature({
-      name: venue.name,
-      city: venue.city,
-      location: venue.location,
-      notes: venue.notes,
-      latitude: venue.latitude,
-      longitude: venue.longitude,
-    });
-    if (desiredVenueSignatures.has(venueSignature)) {
-      return;
-    }
-    desiredVenueSignatures.add(venueSignature);
-    const resolvedId =
-      normalizeText(venue.venueId) ||
-      venueIdLookup.get(clientId) ||
-      originalIndex.venueIdBySignature.get(venueSignature) ||
-      insertedVenueLookup.get(clientId) ||
-      null;
-    if (resolvedId) {
-      desiredVenueIds.add(resolvedId);
-      const dedupeKey = `${normalizedEventId}:${resolvedId}`;
-      if (!linkKeys.has(dedupeKey)) {
-        linkKeys.add(dedupeKey);
-        linkPayload.push({
-          event_id: normalizedEventId,
-          venue_id: resolvedId,
-        });
-      }
-    }
-  });
-
-  const { error: eventVenueDeleteError } = await supabase
-    .from("event_venues")
-    .delete()
-    .eq("event_id", normalizedEventId);
-  if (eventVenueDeleteError) {
-    throw new Error(
-      eventVenueDeleteError.message || "Failed to refresh event venues.",
-    );
-  }
-
-  if (linkPayload.length) {
-    const { error: eventVenueInsertError } = await supabase
-      .from("event_venues")
-      .insert(linkPayload);
-    if (eventVenueInsertError) {
-      throw new Error(
-        eventVenueInsertError.message || "Failed to link venues to event.",
-      );
-    }
-  }
-  const eventVenueCount = desiredVenueIds.size;
-
-  const divisionIdLookup = new Map();
-  const divisionUpdateOperations = [];
-  const divisionInsertPayload = [];
-  const divisionInsertClientIds = [];
-
+  // --- Divisions ---------------------------------------------------------
+  const cleanedDivisions = cleanDivisionsInput(divisions);
+  // Refs are kept beside the wizard's objects, never written onto them.
+  const divisionRefs = new Map();
+  const poolRefs = new Map();
+  const desiredDivisionIds = new Set();
   cleanedDivisions.forEach((division) => {
-    const name = normalizeText(division.name);
-    if (!name) {
-      return;
-    }
+    const divisionName = normalizeText(division.name);
     const level = normalizeText(division.level) || null;
     const rawId = normalizeText(division.id);
-    const existingDivisionId = isUuid(rawId)
+    const existingId = isUuid(rawId)
       ? rawId
-      : originalIndex.divisionIdBySignature.get(
-          buildDivisionSignature({ name, level }),
-        );
-    if (isUuid(existingDivisionId)) {
-      divisionIdLookup.set(rawId || existingDivisionId, existingDivisionId);
-      divisionIdLookup.set(existingDivisionId, existingDivisionId);
-      const originalDivision = originalIndex.divisionById.get(existingDivisionId);
-      const changes = buildFlatRecordChanges(
-        { name, level },
-        originalDivision,
-        ["name", "level"],
-      );
-      if (!originalDivision || hasOwnKeys(changes)) {
-        divisionUpdateOperations.push({ id: existingDivisionId, changes });
+      : originalIndex.divisionIdBySignature.get(buildDivisionSignature({ name: divisionName, level }));
+    let ref;
+    if (isUuid(existingId)) {
+      ref = existingId;
+      desiredDivisionIds.add(existingId);
+      const original = originalIndex.divisionById.get(existingId);
+      if (original) {
+        const changes = buildFlatRecordChanges({ name: divisionName, level }, original, ["name", "level"]);
+        if (hasOwnKeys(changes)) plan.divisionUpdates.push({ id: existingId, changes, label: divisionName });
       }
     } else {
-      divisionInsertPayload.push({
-        event_id: normalizedEventId,
-        name,
-        level,
+      ref = newRef("division", plan.divisionInserts.length);
+      plan.divisionInserts.push({
+        record: { event_id: normalizedEventId, name: divisionName, level },
+        label: divisionName,
       });
-      divisionInsertClientIds.push(rawId || `client_${Math.random()}`);
     }
+    divisionRefs.set(division, ref);
   });
 
-  for (const operation of divisionUpdateOperations) {
-    const { error: divisionUpdateError } = await supabase
-      .from("divisions")
-      .update(operation.changes)
-      .eq("id", operation.id);
-    if (divisionUpdateError) {
-      throw new Error(
-        divisionUpdateError.message || "Failed to update divisions.",
-      );
-    }
-  }
-
-  if (divisionInsertPayload.length) {
-    const { data: insertedDivisions, error: divisionInsertError } =
-      await supabase
-        .from("divisions")
-        .insert(divisionInsertPayload)
-        .select("id");
-    if (divisionInsertError) {
-      throw new Error(
-        divisionInsertError.message || "Failed to create divisions.",
-      );
-    }
-    (insertedDivisions ?? []).forEach((row, index) => {
-      const clientId = divisionInsertClientIds[index];
-      if (row?.id && clientId) {
-        divisionIdLookup.set(clientId, row.id);
-      }
-    });
-  }
-
-  const desiredDivisionIds = new Set(
-    Array.from(divisionIdLookup.values()).filter(isUuid),
-  );
-
-  const poolIdLookup = new Map();
-  const poolUpdateOperations = [];
-  const poolInsertPayload = [];
-  const poolInsertClientIds = [];
-
+  // --- Pools -------------------------------------------------------------
+  const desiredPoolIds = new Set();
   cleanedDivisions.forEach((division) => {
-    const divisionKey = normalizeText(division.id);
-    const divisionId =
-      (divisionKey && divisionIdLookup.get(divisionKey)) ||
-      (isUuid(divisionKey) ? divisionKey : null);
-    if (!divisionId) {
-      return;
-    }
+    const divisionRef = divisionRefs.get(division);
     (division.pools || [])
       .filter((pool) => normalizeText(pool?.name))
       .forEach((pool) => {
         const poolName = normalizeText(pool.name);
-        const poolId = normalizeText(pool.id);
-        const existingPoolId = isUuid(poolId)
-          ? poolId
-          : originalIndex.poolIdBySignature.get(
-              buildPoolSignature({ division_id: divisionId, name: poolName }),
-            );
-        if (isUuid(existingPoolId)) {
-          poolIdLookup.set(poolId || existingPoolId, existingPoolId);
-          poolIdLookup.set(existingPoolId, existingPoolId);
-          const originalPool = originalIndex.poolById.get(existingPoolId);
-          const changes = buildFlatRecordChanges(
-            { division_id: divisionId, name: poolName },
-            originalPool,
-            ["division_id", "name"],
-          );
-          if (!originalPool || hasOwnKeys(changes)) {
-            poolUpdateOperations.push({ id: existingPoolId, changes });
+        const rawId = normalizeText(pool.id);
+        const existingId = isUuid(rawId)
+          ? rawId
+          : isUuid(divisionRef)
+            ? originalIndex.poolIdBySignature.get(buildPoolSignature({ division_id: divisionRef, name: poolName }))
+            : null;
+        let ref;
+        if (isUuid(existingId)) {
+          ref = existingId;
+          desiredPoolIds.add(existingId);
+          const original = originalIndex.poolById.get(existingId);
+          if (original) {
+            const changes = {};
+            if (original.name !== poolName) changes.name = poolName;
+            if (refKey(divisionRef) !== (original.division_id ?? "")) changes.division_id = divisionRef;
+            if (hasOwnKeys(changes)) plan.poolUpdates.push({ id: existingId, changes, label: poolName });
           }
         } else {
-          poolInsertPayload.push({
-            division_id: divisionId,
-            name: poolName,
-          });
-          poolInsertClientIds.push(poolId || `client_${Math.random()}`);
+          ref = newRef("pool", plan.poolInserts.length);
+          plan.poolInserts.push({ divisionRef, name: poolName, label: `${poolName} (${normalizeText(division.name)})` });
         }
+        poolRefs.set(pool, ref);
       });
   });
 
-  for (const operation of poolUpdateOperations) {
-    const { error: poolUpdateError } = await supabase
-      .from("pools")
-      .update(operation.changes)
-      .eq("id", operation.id);
-    if (poolUpdateError) {
-      throw new Error(poolUpdateError.message || "Failed to update pools.");
-    }
-  }
-
-  if (poolInsertPayload.length) {
-    const { data: insertedPools, error: poolInsertError } = await supabase
-      .from("pools")
-      .insert(poolInsertPayload)
-      .select("id");
-    if (poolInsertError) {
-      throw new Error(poolInsertError.message || "Failed to create pools.");
-    }
-    (insertedPools ?? []).forEach((row, index) => {
-      const clientId = poolInsertClientIds[index];
-      if (row?.id && clientId) {
-        poolIdLookup.set(clientId, row.id);
-      }
-    });
-  }
-
-  const desiredPoolIds = new Set(
-    Array.from(poolIdLookup.values()).filter(isUuid),
-  );
-
+  // --- Teams in divisions and pools --------------------------------------
   const desiredDivisionTeamKeys = new Set();
-  const desiredDivisionTeamRows = [];
   cleanedDivisions.forEach((division) => {
-    const divisionKey = normalizeText(division.id);
-    const divisionId =
-      (divisionKey && divisionIdLookup.get(divisionKey)) ||
-      (isUuid(divisionKey) ? divisionKey : null);
-    if (!divisionId) {
-      return;
-    }
     (division.divisionTeams || []).forEach((team) => {
       if (!team?.teamId) return;
-      const key = `${divisionId}:${team.teamId}`;
+      const key = `${refKey(divisionRefs.get(division))}:${team.teamId}`;
       if (desiredDivisionTeamKeys.has(key)) return;
       desiredDivisionTeamKeys.add(key);
-      desiredDivisionTeamRows.push({ division_id: divisionId, team_id: team.teamId });
+      if (!originalIndex.divisionTeamKeys.has(key)) {
+        plan.divisionTeamAdds.push({
+          divisionRef: divisionRefs.get(division),
+          teamId: team.teamId,
+          label: `${teamName(team.teamId)} to ${normalizeText(division.name)}`,
+        });
+      }
+    });
+  });
+  originalIndex.divisionTeamKeys.forEach((key) => {
+    if (desiredDivisionTeamKeys.has(key)) return;
+    const [divisionId, teamId] = key.split(":");
+    plan.divisionTeamRemoves.push({
+      divisionId,
+      teamId,
+      label: `${teamName(teamId)} from ${originalIndex.divisionById.get(divisionId)?.name || "a division"}`,
     });
   });
 
-  const divisionTeamsToInsert = desiredDivisionTeamRows.filter(
-    (row) => !originalIndex.divisionTeamKeys.has(`${row.division_id}:${row.team_id}`),
-  );
-  if (divisionTeamsToInsert.length) {
-    const { error: divisionTeamsInsertError } = await supabase
-      .from("division_teams")
-      .insert(divisionTeamsToInsert);
-    if (divisionTeamsInsertError) {
-      throw new Error(
-        divisionTeamsInsertError.message ||
-          "Failed to assign teams to divisions.",
-      );
-    }
-  }
-
-  const divisionTeamsToDelete = Array.from(originalIndex.divisionTeamKeys).filter(
-    (key) => !desiredDivisionTeamKeys.has(key),
-  );
-  for (const key of divisionTeamsToDelete) {
-    const [divisionId, teamId] = key.split(":");
-    const { error } = await supabase
-      .from("division_teams")
-      .delete()
-      .eq("division_id", divisionId)
-      .eq("team_id", teamId);
-    if (error) {
-      throw new Error(error.message || "Failed to remove division teams.");
-    }
-  }
-
   const desiredPoolTeamKeys = new Set();
-  const poolTeamsToUpsert = [];
+  const usedSeeds = new Set();
   cleanedDivisions.forEach((division) => {
     (division.pools || []).forEach((pool) => {
-      const poolKey = normalizeText(pool.id);
-      const poolId =
-        (poolKey && poolIdLookup.get(poolKey)) ||
-        (isUuid(poolKey) ? poolKey : null);
-      if (!poolId) return;
+      if (!poolRefs.has(pool)) return;
       (pool.teams || []).forEach((team) => {
         if (!team?.teamId) return;
-        const key = `${poolId}:${team.teamId}`;
+        const key = `${refKey(poolRefs.get(pool))}:${team.teamId}`;
         if (desiredPoolTeamKeys.has(key)) return;
         desiredPoolTeamKeys.add(key);
-        const row = {
-          pool_id: poolId,
-          team_id: team.teamId,
-          seed: toNullableNumber(team.seed),
-        };
-        const originalPoolTeam = originalIndex.poolTeamByKey.get(key);
-        if (!originalPoolTeam || originalPoolTeam.seed !== row.seed) {
-          poolTeamsToUpsert.push(row);
+        const seed = toNullableNumber(team.seed);
+        if (seed !== null && (!Number.isInteger(seed) || seed < 1)) {
+          throw new Error(`${teamName(team.teamId)} in ${normalizeText(pool.name)} has seed ${team.seed}; seeds are whole numbers from 1.`);
+        }
+        const seedKey = `${refKey(poolRefs.get(pool))}:${seed}`;
+        if (seed !== null && usedSeeds.has(seedKey)) {
+          throw new Error(`Two teams in ${normalizeText(pool.name)} have seed ${seed}.`);
+        }
+        if (seed !== null) usedSeeds.add(seedKey);
+        const original = originalIndex.poolTeamByKey.get(key);
+        if (!original || original.seed !== seed) {
+          plan.poolTeamUpserts.push({
+            poolRef: poolRefs.get(pool),
+            teamId: team.teamId,
+            seed,
+            isNew: !original,
+            label: `${teamName(team.teamId)} in ${normalizeText(pool.name)}`,
+          });
         }
       });
     });
   });
-
-  if (poolTeamsToUpsert.length) {
-    const { error: poolTeamsUpsertError } = await supabase
-      .from("pool_teams")
-      .upsert(poolTeamsToUpsert, { onConflict: "pool_id,team_id" });
-    if (poolTeamsUpsertError) {
-      throw new Error(
-        poolTeamsUpsertError.message || "Failed to update pool teams.",
-      );
-    }
-  }
-
-  const poolTeamsToDelete = Array.from(originalIndex.poolTeamKeys).filter(
-    (key) => !desiredPoolTeamKeys.has(key),
-  );
-  for (const key of poolTeamsToDelete) {
+  originalIndex.poolTeamKeys.forEach((key) => {
+    if (desiredPoolTeamKeys.has(key)) return;
     const [poolId, teamId] = key.split(":");
-    const { error } = await supabase
-      .from("pool_teams")
-      .delete()
-      .eq("pool_id", poolId)
-      .eq("team_id", teamId);
-    if (error) {
-      throw new Error(error.message || "Failed to remove pool teams.");
-    }
-  }
+    plan.poolTeamRemoves.push({
+      poolId,
+      teamId,
+      label: `${teamName(teamId)} from ${originalIndex.poolById.get(poolId)?.name || "a pool"}`,
+    });
+  });
 
+  // --- Matches -----------------------------------------------------------
   const desiredMatchIds = new Set();
   const desiredMatchSignatures = new Set();
-  const matchUpdateOperations = [];
-  const matchInsertPayload = [];
-
   cleanedDivisions.forEach((division) => {
-    const divisionKey = normalizeText(division.id);
-    const divisionId =
-      (divisionKey && divisionIdLookup.get(divisionKey)) ||
-      (isUuid(divisionKey) ? divisionKey : null);
-    if (!divisionId) return;
     (division.pools || []).forEach((pool) => {
-      const poolKey = normalizeText(pool.id);
-      const poolId =
-        (poolKey && poolIdLookup.get(poolKey)) ||
-        (isUuid(poolKey) ? poolKey : null);
-      if (!poolId) return;
+      if (!poolRefs.has(pool)) return;
       (pool.matches || []).forEach((match) => {
+        const matchLabel = `${teamName(match?.teamAId)} vs ${teamName(match?.teamBId)}`;
         if (!match?.teamAId || !match?.teamBId) {
-          // A saved match with no teams yet (e.g. a playoff or Swiss game the
-          // resolver fills later) is kept untouched, never deleted: dropping it
-          // here put it on the delete list, and ON DELETE SET NULL silently
-          // unlinked its bracket node (Mixed Nationals 2026, 2026-11-10).
+          // A saved match with no teams yet (a playoff or Swiss game the
+          // resolver fills later) is kept untouched, never deleted: ON DELETE
+          // SET NULL would silently unlink its bracket node (Mixed Nationals
+          // 2026, 2026-11-10).
           const keptId = normalizeText(match?.id);
           if (isUuid(keptId)) desiredMatchIds.add(keptId);
           return;
         }
-        if (match.teamAId === match.teamBId) return;
-        const startTime = normalizeTimestamp(match.start);
+        if (match.teamAId === match.teamBId) {
+          throw new Error(`A match in ${normalizeText(pool.name)} has ${teamName(match.teamAId)} playing itself.`);
+        }
         const clientVenueRef = match.venueRefId || match.venueId || null;
-        const mappedVenueId =
-          (clientVenueRef &&
-            (venueIdLookup.get(clientVenueRef) || clientVenueRef)) ||
-          null;
-        const payload = {
+        let venueRef = null;
+        if (clientVenueRef) {
+          venueRef = venueRefByClientId.get(clientVenueRef) ?? (isUuid(clientVenueRef) ? clientVenueRef : undefined);
+          if (venueRef === undefined) {
+            throw new Error(`${matchLabel} is on a field that is not in this event's field list.`);
+          }
+        }
+        const record = {
           event_id: normalizedEventId,
-          division_id: divisionId,
-          pool_id: poolId,
+          division_id: divisionRefs.get(division),
+          pool_id: poolRefs.get(pool),
           team_a: match.teamAId,
           team_b: match.teamBId,
           status: normalizeMatchStatus(match.status),
-          start_time: startTime,
-          venue_id: mappedVenueId,
+          start_time: normalizeTimestamp(match.start),
+          venue_id: venueRef,
           ...buildMatchExtras(match),
         };
-        const matchSignature = buildMatchSignature(payload);
-        if (desiredMatchSignatures.has(matchSignature)) {
-          return;
-        }
-        desiredMatchSignatures.add(matchSignature);
-        const matchId = normalizeText(match.id);
-        const existingMatchId = isUuid(matchId)
-          ? matchId
-          : originalIndex.matchIdBySignature.get(matchSignature);
-        if (isUuid(existingMatchId)) {
-          desiredMatchIds.add(existingMatchId);
-          const originalMatch = originalIndex.matchById.get(existingMatchId);
-          const changes = buildFlatRecordChanges(
-            payload,
-            originalMatch,
-            [
-              "event_id",
-              "division_id",
-              "pool_id",
-              "team_a",
-              "team_b",
-              "status",
-              "start_time",
-              "venue_id",
-              "score_a",
-              "score_b",
-              "captains_confirmed",
-              "scorekeeper",
-              "starting_team_id",
-              "abba_pattern",
-            ],
-          );
-          if (!originalMatch || hasOwnKeys(changes)) {
-            matchUpdateOperations.push({ id: existingMatchId, changes });
+        const signature = buildMatchSignature({ ...record, pool_id: refKey(record.pool_id) });
+        if (desiredMatchSignatures.has(signature)) return;
+        desiredMatchSignatures.add(signature);
+
+        const rawId = normalizeText(match.id);
+        const existingId = isUuid(rawId) ? rawId : originalIndex.matchIdBySignature.get(signature);
+        if (isUuid(existingId)) {
+          desiredMatchIds.add(existingId);
+          const original = originalIndex.matchById.get(existingId);
+          if (original) {
+            const changes = {};
+            MATCH_COMPARE_KEYS.forEach((key) => {
+              if (refKey(record[key]) !== refKey(original[key])) changes[key] = record[key];
+            });
+            if (hasOwnKeys(changes)) plan.matchUpdates.push({ id: existingId, changes, label: matchLabel });
+          } else {
+            // Known to the wizard but not to the snapshot it loaded: write it
+            // whole, as before. There is nothing to compare it against.
+            plan.matchUpdates.push({ id: existingId, changes: record, label: matchLabel, unknownOriginal: true });
           }
         } else {
-          matchInsertPayload.push(payload);
+          plan.matchInserts.push({ record, label: matchLabel });
         }
       });
     });
   });
+  originalIndex.matchIds.forEach((matchId) => {
+    if (desiredMatchIds.has(matchId)) return;
+    const original = originalIndex.matchById.get(matchId);
+    plan.matchDeletes.push({
+      id: matchId,
+      label: `${teamName(original?.team_a)} vs ${teamName(original?.team_b)}`,
+    });
+  });
 
-  for (const operation of matchUpdateOperations) {
-    const { error: matchUpdateError } = await supabase
-      .from("matches")
-      .update(operation.changes)
-      .eq("id", operation.id);
-    if (matchUpdateError) {
-      throw new Error(matchUpdateError.message || "Failed to update matches.");
+  originalIndex.poolIds.forEach((poolId) => {
+    if (!desiredPoolIds.has(poolId)) {
+      plan.poolDeletes.push({ id: poolId, label: originalIndex.poolById.get(poolId)?.name || "a pool" });
+    }
+  });
+  originalIndex.divisionIds.forEach((divisionId) => {
+    if (!desiredDivisionIds.has(divisionId)) {
+      plan.divisionDeletes.push({ id: divisionId, label: originalIndex.divisionById.get(divisionId)?.name || "a division" });
+    }
+  });
+
+  plan.counts = {
+    divisionCount: cleanedDivisions.length,
+    poolCount: cleanedDivisions.reduce((total, division) => total + (division.pools?.length || 0), 0),
+    divisionTeamCount: desiredDivisionTeamKeys.size,
+    poolTeamCount: desiredPoolTeamKeys.size,
+    matchCount: desiredMatchIds.size + plan.matchInserts.length,
+    eventVenueCount: desiredVenueKeys.size,
+  };
+  return plan;
+}
+
+// Removals that need `event_delete` (no role holds it; admins pass through
+// admin_override). Match deletion is separate (`match_delete`, held by TDs).
+const structureRemovalsOf = (plan) => [
+  ...plan.venueLinkRemoves.map((entry) => `Field ${entry.label} from the event`),
+  ...plan.divisionTeamRemoves.map((entry) => `${entry.label}`),
+  ...plan.poolTeamRemoves.map((entry) => `${entry.label}`),
+  ...plan.poolDeletes.map((entry) => `Pool ${entry.label}`),
+  ...plan.divisionDeletes.map((entry) => `Division ${entry.label}`),
+];
+
+const summarisePlan = (plan) => {
+  const lines = [];
+  const add = (items, verb, word, pluralWord) => {
+    if (items.length) lines.push(`${verb} ${plural(items.length, word, pluralWord)}: ${items.map((item) => item.label).join(", ")}`);
+  };
+  if (plan.eventUpdate) lines.push(`Update event details: ${Object.keys(plan.eventUpdate).join(", ")}`);
+  add(plan.venueInserts, "Create", "new field");
+  add(plan.venueUpdates, "Edit", "field");
+  add(plan.venueLinkAdds.filter((entry) => !isNewRef(entry.venueRef)), "Add", "existing field");
+  add(plan.venueLinkRemoves, "Remove", "field");
+  add(plan.divisionInserts, "Create", "division");
+  add(plan.divisionUpdates, "Rename", "division");
+  add(plan.divisionDeletes, "Delete", "division");
+  add(plan.poolInserts, "Create", "pool");
+  add(plan.poolUpdates, "Change", "pool");
+  add(plan.poolDeletes, "Delete", "pool");
+  add(plan.divisionTeamAdds, "Add", "team to a division", "teams to divisions");
+  add(plan.divisionTeamRemoves, "Remove", "team from a division", "teams from divisions");
+  add(plan.poolTeamUpserts.filter((entry) => entry.isNew), "Add", "team to a pool", "teams to pools");
+  add(plan.poolTeamUpserts.filter((entry) => !entry.isNew), "Change seed of", "pool team");
+  add(plan.poolTeamRemoves, "Remove", "team from a pool", "teams from pools");
+  add(plan.matchInserts, "Create", "match", "matches");
+  add(plan.matchUpdates, "Update", "match", "matches");
+  add(plan.matchDeletes, "Delete", "match", "matches");
+  return lines;
+};
+
+/**
+ * What saving the wizard would change, without writing anything.
+ * Returns { lines, blocked }: `lines` describe every change; `blocked` lists
+ * removals the user cannot make (only filled when `canRemoveStructure` is
+ * false). Throws on invalid input, like the save itself.
+ */
+export function previewEventHierarchyUpdate(payload) {
+  const plan = buildEventHierarchyPlan(payload);
+  return {
+    lines: summarisePlan(plan),
+    blocked: payload?.canRemoveStructure ? [] : structureRemovalsOf(plan),
+  };
+}
+
+// Anything the save is about to change or remove that someone else changed
+// since the wizard loaded its snapshot.
+const findStaleRecords = (plan, currentIndex) => {
+  const { originalIndex } = plan;
+  const stale = [];
+  if (plan.eventUpdate) {
+    const before = originalIndex.event;
+    const now = currentIndex.event;
+    const keys = ["name", "type", "start_date", "end_date", "location"];
+    if (!now || keys.some((key) => before?.[key] !== now[key]) || !areJsonValuesEqual(before?.rules, now.rules)) {
+      stale.push("the event details");
     }
   }
-
-  if (matchInsertPayload.length) {
-    const { error: matchInsertError } = await supabase
-      .from("matches")
-      .insert(matchInsertPayload);
-    if (matchInsertError) {
-      throw new Error(matchInsertError.message || "Failed to create matches.");
+  const sameRecord = (before, now, keys) =>
+    Boolean(before && now) && keys.every((key) => refKey(before[key]) === refKey(now[key]));
+  plan.venueUpdates.forEach((entry) => {
+    if (!sameRecord(originalIndex.venueById.get(entry.id), currentIndex.venueById.get(entry.id), VENUE_COMPARE_KEYS)) {
+      stale.push(`field ${entry.label}`);
     }
-  }
-
-  let matchesToDelete = Array.from(originalIndex.matchIds).filter(
-    (id) => !desiredMatchIds.has(id),
-  );
-  if (matchesToDelete.length) {
-    // Never delete a match a bracket node links to: the wizard does not show
-    // brackets, and the FK would unlink the node without any warning.
-    const { data: linkedNodes, error: linkedError } = await supabase
-      .from("bracket_nodes")
-      .select("match_id")
-      .in("match_id", matchesToDelete);
-    if (linkedError) {
-      throw new Error(linkedError.message || "Failed to check bracket links.");
+  });
+  [...plan.divisionUpdates, ...plan.divisionDeletes].forEach((entry) => {
+    if (!sameRecord(originalIndex.divisionById.get(entry.id), currentIndex.divisionById.get(entry.id), ["name", "level"])) {
+      stale.push(`division ${entry.label}`);
     }
-    const linkedIds = new Set((linkedNodes ?? []).map((row) => row.match_id));
-    matchesToDelete = matchesToDelete.filter((id) => !linkedIds.has(id));
-  }
-  if (matchesToDelete.length) {
-    const { error: matchDeleteError } = await supabase
-      .from("matches")
-      .delete()
-      .in("id", matchesToDelete);
-    if (matchDeleteError) {
-      throw new Error(matchDeleteError.message || "Failed to remove matches.");
+  });
+  [...plan.poolUpdates, ...plan.poolDeletes].forEach((entry) => {
+    if (!sameRecord(originalIndex.poolById.get(entry.id), currentIndex.poolById.get(entry.id), ["division_id", "name"])) {
+      stale.push(`pool ${entry.label}`);
     }
-  }
-
-  const poolsToDelete = Array.from(originalIndex.poolIds).filter(
-    (id) => !desiredPoolIds.has(id),
-  );
-  if (poolsToDelete.length) {
-    const { error: poolsDeleteError } = await supabase
-      .from("pools")
-      .delete()
-      .in("id", poolsToDelete);
-    if (poolsDeleteError) {
-      throw new Error(poolsDeleteError.message || "Failed to remove pools.");
+  });
+  [...plan.matchUpdates, ...plan.matchDeletes].forEach((entry) => {
+    if (entry.unknownOriginal) return;
+    if (!sameRecord(originalIndex.matchById.get(entry.id), currentIndex.matchById.get(entry.id), MATCH_COMPARE_KEYS)) {
+      stale.push(`match ${entry.label}`);
     }
-  }
+  });
+  plan.poolTeamUpserts.forEach((entry) => {
+    if (entry.isNew || !isUuid(entry.poolRef)) return;
+    const key = `${entry.poolRef}:${entry.teamId}`;
+    if (originalIndex.poolTeamByKey.get(key)?.seed !== currentIndex.poolTeamByKey.get(key)?.seed) {
+      stale.push(`seed of ${entry.label}`);
+    }
+  });
+  return stale;
+};
 
-  const divisionsToDelete = Array.from(originalIndex.divisionIds).filter(
-    (id) => !desiredDivisionIds.has(id),
-  );
-  if (divisionsToDelete.length) {
-    const { error: divisionsDeleteError } = await supabase
-      .from("divisions")
-      .delete()
-      .in("id", divisionsToDelete);
-    if (divisionsDeleteError) {
+const listForMessage = (items, limit = 6) =>
+  items.length > limit ? `${items.slice(0, limit).join("; ")}; and ${items.length - limit} more` : items.join("; ");
+
+export async function replaceEventHierarchy(payload) {
+  const plan = buildEventHierarchyPlan(payload);
+  const eventId = plan.eventId;
+
+  // --- Checks before the first write ----------------------------------------
+  if (!payload?.canRemoveStructure) {
+    const blocked = structureRemovalsOf(plan);
+    if (blocked.length) {
       throw new Error(
-        divisionsDeleteError.message || "Failed to remove divisions.",
+        `Nothing was saved. Only an admin can remove these from an event: ${listForMessage(blocked)}. ` +
+          "Put them back in the wizard and save, or ask an admin to make the removal.",
       );
     }
   }
 
-  const divisionCount = cleanedDivisions.length;
-  const poolCount = cleanedDivisions.reduce(
-    (total, division) => total + (division.pools?.length || 0),
-    0,
-  );
-  const divisionTeamCount = desiredDivisionTeamKeys.size;
-  const poolTeamCount = desiredPoolTeamKeys.size;
-  const matchCount = desiredMatchIds.size + matchInsertPayload.length;
+  const current = await getEventHierarchy(eventId);
+  const stale = findStaleRecords(plan, buildHierarchyIndex(current));
+  if (stale.length) {
+    throw new Error(
+      `Nothing was saved. Someone else changed this event since you opened it: ${listForMessage(stale)}. ` +
+        "Use \"Refresh data from database\" and make your changes again.",
+    );
+  }
+
+  if (plan.matchDeletes.length) {
+    const { data: linkedNodes, error: linkedError } = await supabase
+      .from("bracket_nodes")
+      .select("match_id")
+      .in("match_id", plan.matchDeletes.map((entry) => entry.id));
+    if (linkedError) {
+      throw new Error(linkedError.message || "Failed to check bracket links.");
+    }
+    // Never delete a match a bracket node links to: the wizard does not show
+    // brackets, and the FK would unlink the node without any warning. It is
+    // removed on the Playoff structure page instead.
+    const linkedIds = new Set((linkedNodes ?? []).map((row) => row.match_id));
+    plan.matchDeletes = plan.matchDeletes.filter((entry) => !linkedIds.has(entry.id));
+  }
+
+  // --- Writes ---------------------------------------------------------------
+  const created = { venue: [], division: [], pool: [] };
+  const resolve = (value) => {
+    if (!isNewRef(value)) return value ?? null;
+    const id = created[value.newRef]?.[value.index];
+    if (!id) throw new Error(`Internal error: new ${value.newRef} was not created.`);
+    return id;
+  };
+  const resolveRecord = (record) =>
+    Object.fromEntries(Object.entries(record).map(([key, value]) => [key, resolve(value)]));
+
+  const done = [];
+  const step = async (label, run) => {
+    try {
+      await run();
+      done.push(label);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        done.length
+          ? `Saving stopped at "${label}": ${message}. Already saved: ${done.join(", ")}. Use "Refresh data from database" before trying again.`
+          : `Nothing was saved. "${label}" failed: ${message}`,
+        { cause: err },
+      );
+    }
+  };
+  // An UPDATE or DELETE refused by RLS returns success with zero rows, so
+  // every one is read back and must touch exactly the rows it targeted.
+  const expectRows = async (query, expected, refusal) => {
+    const { data, error } = await query;
+    if (error) throw new Error(error.message || refusal);
+    if ((data ?? []).length !== expected) throw new Error(`${refusal} (the database refused the change)`);
+  };
+  const insertReturningIds = async (table, rows, refusal) => {
+    const { data, error } = await supabase.from(table).insert(rows).select("id");
+    if (error) {
+      throw new Error(
+        isRlsViolation(error) ? `${refusal}: you do not have permission` : error.message || refusal,
+      );
+    }
+    if ((data ?? []).length !== rows.length) throw new Error(`${refusal} (the database refused the change)`);
+    return data.map((row) => row.id);
+  };
+
+  if (plan.eventUpdate) {
+    await step("event details", () =>
+      expectRows(
+        supabase.from("events").update(plan.eventUpdate).eq("id", eventId).select("id"),
+        1,
+        "Could not update the event details",
+      ),
+    );
+  }
+
+  if (plan.venueUpdates.length) {
+    await step("field details", async () => {
+      for (const entry of plan.venueUpdates) {
+        await expectRows(
+          supabase.from("venues").update(entry.changes).eq("id", entry.id).select("id"),
+          1,
+          `Could not update field ${entry.label}`,
+        );
+      }
+    });
+  }
+  if (plan.venueInserts.length) {
+    await step("new fields", async () => {
+      created.venue = await insertReturningIds(
+        "venues",
+        plan.venueInserts.map((entry) => entry.record),
+        "Could not create the new fields",
+      );
+    });
+  }
+  if (plan.venueLinkAdds.length) {
+    await step("fields added to the event", async () => {
+      const { error } = await supabase.from("event_venues").upsert(
+        plan.venueLinkAdds.map((entry) => ({ event_id: eventId, venue_id: resolve(entry.venueRef) })),
+        { onConflict: "event_id,venue_id", ignoreDuplicates: true },
+      );
+      if (error) throw new Error(error.message || "Could not add the fields to the event");
+    });
+  }
+  if (plan.venueLinkRemoves.length) {
+    await step("fields removed from the event", () =>
+      expectRows(
+        supabase
+          .from("event_venues")
+          .delete()
+          .eq("event_id", eventId)
+          .in("venue_id", plan.venueLinkRemoves.map((entry) => entry.venueId))
+          .select("venue_id"),
+        plan.venueLinkRemoves.length,
+        "Could not remove fields from the event",
+      ),
+    );
+  }
+
+  if (plan.divisionUpdates.length) {
+    await step("division changes", async () => {
+      for (const entry of plan.divisionUpdates) {
+        await expectRows(
+          supabase.from("divisions").update(entry.changes).eq("id", entry.id).select("id"),
+          1,
+          `Could not update division ${entry.label}`,
+        );
+      }
+    });
+  }
+  if (plan.divisionInserts.length) {
+    await step("new divisions", async () => {
+      created.division = await insertReturningIds(
+        "divisions",
+        plan.divisionInserts.map((entry) => entry.record),
+        "Could not create the new divisions",
+      );
+    });
+  }
+  if (plan.poolUpdates.length) {
+    await step("pool changes", async () => {
+      for (const entry of plan.poolUpdates) {
+        await expectRows(
+          supabase.from("pools").update(resolveRecord(entry.changes)).eq("id", entry.id).select("id"),
+          1,
+          `Could not update pool ${entry.label}`,
+        );
+      }
+    });
+  }
+  if (plan.poolInserts.length) {
+    await step("new pools", async () => {
+      created.pool = await insertReturningIds(
+        "pools",
+        plan.poolInserts.map((entry) => ({ division_id: resolve(entry.divisionRef), name: entry.name })),
+        "Could not create the new pools",
+      );
+    });
+  }
+
+  if (plan.divisionTeamAdds.length) {
+    await step("teams added to divisions", async () => {
+      const { error } = await supabase.from("division_teams").upsert(
+        plan.divisionTeamAdds.map((entry) => ({ division_id: resolve(entry.divisionRef), team_id: entry.teamId })),
+        { onConflict: "division_id,team_id", ignoreDuplicates: true },
+      );
+      if (error) throw new Error(error.message || "Could not add teams to divisions");
+    });
+  }
+  if (plan.divisionTeamRemoves.length) {
+    await step("teams removed from divisions", async () => {
+      for (const entry of plan.divisionTeamRemoves) {
+        await expectRows(
+          supabase
+            .from("division_teams")
+            .delete()
+            .eq("division_id", entry.divisionId)
+            .eq("team_id", entry.teamId)
+            .select("team_id"),
+          1,
+          `Could not remove ${entry.label}`,
+        );
+      }
+    });
+  }
+  if (plan.poolTeamRemoves.length) {
+    await step("teams removed from pools", async () => {
+      for (const entry of plan.poolTeamRemoves) {
+        await expectRows(
+          supabase
+            .from("pool_teams")
+            .delete()
+            .eq("pool_id", entry.poolId)
+            .eq("team_id", entry.teamId)
+            .select("team_id"),
+          1,
+          `Could not remove ${entry.label}`,
+        );
+      }
+    });
+  }
+
+  // A pool's seeds must stay unique (pool_teams_pool_id_seed_key), so swapping
+  // two seeds in one write fails. Clear the seeds that change first.
+  const reseeded = plan.poolTeamUpserts.filter((entry) => !entry.isNew);
+  if (reseeded.length) {
+    await step("seeds cleared for reseeding", async () => {
+      for (const entry of reseeded) {
+        await expectRows(
+          supabase
+            .from("pool_teams")
+            .update({ seed: null })
+            .eq("pool_id", entry.poolRef)
+            .eq("team_id", entry.teamId)
+            .select("team_id"),
+          1,
+          `Could not change the seed of ${entry.label}`,
+        );
+      }
+    });
+  }
+  if (plan.poolTeamUpserts.length) {
+    await step("pool teams and seeds", async () => {
+      const { error } = await supabase.from("pool_teams").upsert(
+        plan.poolTeamUpserts.map((entry) => ({ pool_id: resolve(entry.poolRef), team_id: entry.teamId, seed: entry.seed })),
+        { onConflict: "pool_id,team_id" },
+      );
+      if (error) throw new Error(error.message || "Could not update pool teams");
+    });
+  }
+  if (plan.matchUpdates.length) {
+    await step("match changes", async () => {
+      for (const entry of plan.matchUpdates) {
+        await expectRows(
+          supabase.from("matches").update(resolveRecord(entry.changes)).eq("id", entry.id).select("id"),
+          1,
+          `Could not update match ${entry.label}`,
+        );
+      }
+    });
+  }
+  if (plan.matchInserts.length) {
+    await step("new matches", async () => {
+      await insertReturningIds(
+        "matches",
+        plan.matchInserts.map((entry) => resolveRecord(entry.record)),
+        "Could not create the new matches",
+      );
+    });
+  }
+  if (plan.matchDeletes.length) {
+    await step("deleted matches", () =>
+      expectRows(
+        supabase.from("matches").delete().in("id", plan.matchDeletes.map((entry) => entry.id)).select("id"),
+        plan.matchDeletes.length,
+        "Could not delete matches",
+      ),
+    );
+  }
+  if (plan.poolDeletes.length) {
+    await step("deleted pools", () =>
+      expectRows(
+        supabase.from("pools").delete().in("id", plan.poolDeletes.map((entry) => entry.id)).select("id"),
+        plan.poolDeletes.length,
+        "Could not delete pools",
+      ),
+    );
+  }
+  if (plan.divisionDeletes.length) {
+    await step("deleted divisions", () =>
+      expectRows(
+        supabase.from("divisions").delete().in("id", plan.divisionDeletes.map((entry) => entry.id)).select("id"),
+        plan.divisionDeletes.length,
+        "Could not delete divisions",
+      ),
+    );
+  }
+
+  if (done.length) {
+    invalidateCachedQueries(`matches:event:${eventId}`);
+  }
 
   return {
-    eventId: normalizedEventId,
-    divisionCount,
-    poolCount,
-    divisionTeamCount,
-    poolTeamCount,
-    matchCount,
-    eventVenueCount,
+    eventId,
+    ...plan.counts,
+    changes: summarisePlan(plan),
   };
 }
 

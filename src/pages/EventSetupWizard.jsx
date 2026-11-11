@@ -16,6 +16,7 @@ import {
   getEventHierarchy,
   listAvailableVenues,
   listEventsForWizard,
+  previewEventHierarchyUpdate,
   replaceEventHierarchy,
   seedEventBracketsIfEmpty,
 } from "../services/eventSetupService";
@@ -5598,9 +5599,45 @@ export default function EventSetupWizardPage() {
       }
       return;
     }
-    const confirmMessage = isEditingExistingEvent
-      ? "Update this event and replace its existing hierarchy?"
-      : "Submit this event hierarchy to the database?";
+    const payloadBase = {
+      event: { ...event, rules },
+      divisions,
+      eventVenues,
+    };
+    const payload = isEditingExistingEvent
+      ? {
+          ...payloadBase,
+          eventId: selectedEventId,
+          originalHierarchy: originalHierarchyRef.current,
+          // Whoever may edit the event may also remove its divisions, pools,
+          // teams and field links (RLS: event_update, migration
+          // 20261111150000). Only creating/duplicating events is admin-only.
+          canRemoveStructure: true,
+        }
+      : payloadBase;
+
+    let confirmMessage = "Submit this event hierarchy to the database?";
+    if (isEditingExistingEvent) {
+      let preview;
+      try {
+        preview = previewEventHierarchyUpdate(payload);
+      } catch (err) {
+        setFormNotice({ type: "error", message: err?.message || "The event cannot be saved as it is." });
+        return;
+      }
+      if (preview.blocked.length) {
+        setFormNotice({
+          type: "error",
+          message: `Only an admin can remove these from an event: ${preview.blocked.join("; ")}. Put them back, or ask an admin to make the removal.`,
+        });
+        return;
+      }
+      if (!preview.lines.length) {
+        setFormNotice({ type: "success", message: "Nothing has changed, so there is nothing to save." });
+        return;
+      }
+      confirmMessage = `Save these changes?\n\n${preview.lines.map((line) => `- ${line}`).join("\n")}`;
+    }
     if (typeof window !== "undefined" && !window.confirm(confirmMessage)) {
       return;
     }
@@ -5615,18 +5652,6 @@ export default function EventSetupWizardPage() {
       const action = isEditingExistingEvent
         ? replaceEventHierarchy
         : createEventHierarchy;
-      const payloadBase = {
-        event: { ...event, rules },
-        divisions,
-        eventVenues,
-      };
-      const payload = isEditingExistingEvent
-        ? {
-            ...payloadBase,
-            eventId: selectedEventId,
-            originalHierarchy: originalHierarchyRef.current,
-          }
-        : payloadBase;
       const result = await action(payload);
       // Seed the sketched brackets after the hierarchy exists (divisions/pools
       // are needed to resolve node sources by name). Create-only: a no-op once

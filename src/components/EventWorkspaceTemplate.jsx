@@ -32,6 +32,7 @@ import {
 import BracketStructureView from "../pages/playoff/BracketStructureView";
 import StandingsRulesInfo from "./StandingsRulesInfo";
 import GetTheAppCard from "./GetTheAppCard";
+import { buildVenueMapsUrl } from "../utils/mapsLink";
 import EventFollowNotice from "./EventFollowNotice";
 
 // Generic event workspace, modelled on the Stellenbosch Internal Draft League VI
@@ -44,8 +45,6 @@ const EMPTY_LIST = [];
 const TEAM_STANDINGS_GRID_STYLE = {
   gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
 };
-const VENUE_GRID_CLASS =
-  "flex flex-wrap gap-2";
 
 const normalizeSortText = (value) =>
   (typeof value === "string" ? value.trim().toLowerCase() : "");
@@ -64,19 +63,6 @@ const sortVenuesByCityLocationName = (venues = []) =>
     const rightName = normalizeSortText(right?.name);
     return leftName.localeCompare(rightName);
   });
-
-const copyToClipboard = async (text, onSuccess, onError) => {
-  try {
-    await navigator.clipboard.writeText(text);
-    if (onSuccess) {
-      onSuccess();
-    }
-  } catch (err) {
-    if (onError) {
-      onError(err);
-    }
-  }
-};
 
 const formatMatchTime = (value) => {
   if (!value) return "--";
@@ -240,9 +226,9 @@ export default function EventWorkspaceTemplate({
     pageQuery.error && !pageQuery.data
       ? pageQuery.error.message || "Unable to load matches for this event."
       : null;
-  const [copyToast, setCopyToast] = useState(null);
-  const [copyToastVisible, setCopyToastVisible] = useState(false);
-  const [venueFieldsOpen, setVenueFieldsOpen] = useState(false);
+  // null until the viewer toggles it: open by default while the event is live,
+  // when people are looking for their field.
+  const [venueFieldsOpen, setVenueFieldsOpen] = useState(null);
   // Schedule day sections the viewer has collapsed, keyed "divisionId:dayKey".
   // Everything starts expanded.
   const [collapsedScheduleDays, setCollapsedScheduleDays] = useState(() => new Set());
@@ -260,26 +246,6 @@ export default function EventWorkspaceTemplate({
       root.style.scrollSnapType = previous;
     };
   }, []);
-
-  useEffect(() => {
-    if (!copyToast) {
-      setCopyToastVisible(false);
-      return undefined;
-    }
-
-    setCopyToastVisible(true);
-    const fadeTimer = window.setTimeout(() => {
-      setCopyToastVisible(false);
-    }, 1800);
-    const clearTimer = window.setTimeout(() => {
-      setCopyToast(null);
-    }, 2400);
-
-    return () => {
-      window.clearTimeout(fadeTimer);
-      window.clearTimeout(clearTimer);
-    };
-  }, [copyToast]);
 
   const playoffMatchIds = useMemo(() => getPlayoffMatchIds(brackets), [brackets]);
 
@@ -393,6 +359,13 @@ export default function EventWorkspaceTemplate({
     }));
   }, [sortedVenues]);
 
+  const fieldsOpen = venueFieldsOpen ?? (eventStatus || "").toString().toLowerCase() === "live";
+  // Location headings only help when there is more than one location to tell
+  // apart, or the single one has a real name.
+  const showLocationHeadings =
+    venuesByCity.reduce((total, city) => total + city.locations.length, 0) > 1 ||
+    venuesByCity.some((city) => city.locations.some((location) => location.locationLabel !== "Location TBD"));
+
   // Bracket lookups let node source labels resolve to human names ("Pool A
   // #1", "Winner of Quarterfinal 1") instead of raw ids.
   const bracketLookups = useMemo(() => {
@@ -447,17 +420,6 @@ export default function EventWorkspaceTemplate({
 
   return (
     <div className="pb-16 text-ink">
-      {copyToast && (
-        <div className="fixed bottom-4 left-1/2 z-50 w-full max-w-sm -translate-x-1/2 px-4">
-          <div
-            className={`sc-alert is-success text-center text-sm transition-opacity duration-500 ${
-              copyToastVisible ? "opacity-100" : "opacity-0"
-            }`}
-          >
-            {copyToast}
-          </div>
-        </div>
-      )}
       <SectionShell as="main" className="w-full max-w-none space-y-4 py-4 sm:py-5">
         <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
           <SectionHeader
@@ -609,8 +571,8 @@ export default function EventWorkspaceTemplate({
           <button
             type="button"
             className="flex w-full items-center justify-between gap-3 text-left"
-            aria-expanded={venueFieldsOpen}
-            onClick={() => setVenueFieldsOpen((open) => !open)}
+            aria-expanded={fieldsOpen}
+            onClick={() => setVenueFieldsOpen(!fieldsOpen)}
           >
             <span className="text-xl font-semibold text-ink">Fields</span>
             <span className="flex shrink-0 items-center gap-2">
@@ -624,7 +586,7 @@ export default function EventWorkspaceTemplate({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 className={`h-5 w-5 text-ink-muted transition-transform ${
-                  venueFieldsOpen ? "rotate-180" : ""
+                  fieldsOpen ? "rotate-180" : ""
                 }`}
                 aria-hidden="true"
               >
@@ -632,90 +594,90 @@ export default function EventWorkspaceTemplate({
               </svg>
             </span>
           </button>
-          {venueFieldsOpen ? (
-            <Panel variant="muted" className="min-w-0 space-y-2 border border-white/50 p-3">
-              {venuesByCity.length ? (
-                <ul className="space-y-1.5">
-                  {venuesByCity.map((city) => (
-                    <li key={city.cityLabel} className="rounded-lg border border-border bg-surface p-2">
-                      <p className="text-sm font-semibold uppercase tracking-wide text-ink">
-                        {city.cityLabel}
-                      </p>
-                      <ul className="mt-1.5 space-y-1.5 border-l border-border pl-2 sm:ml-1.5">
-                        {city.locations.map((location) => (
-                          <li key={`${city.cityLabel}-${location.locationLabel}`}>
-                            <p className="text-sm font-semibold text-ink-muted">
-                              {location.locationLabel}
-                            </p>
-                            <ul className={`mt-1 border-l border-border pl-2 sm:ml-1.5 ${VENUE_GRID_CLASS}`}>
-                              {location.venues.map((venue) => {
-                                const coordText =
-                                  typeof venue.latitude === "number" &&
-                                  !Number.isNaN(venue.latitude) &&
-                                  typeof venue.longitude === "number" &&
-                                  !Number.isNaN(venue.longitude)
-                                    ? `${venue.latitude.toFixed(4)}, ${venue.longitude.toFixed(4)}`
-                                    : "";
-                                return (
-                                  <li
-                                    key={venue.id}
-                                    className="flex w-fit min-w-[8.5rem] max-w-full items-center justify-between gap-2 rounded-md border border-border bg-surface-muted px-2 py-1.5"
+          {fieldsOpen ? (
+            sortedVenues.length ? (
+              <div className="space-y-4 pt-1">
+                {venuesByCity.map((city) => (
+                  <section key={city.cityLabel} className="space-y-3">
+                    {venuesByCity.length > 1 ? (
+                      <h3 className="text-base font-semibold text-ink">{city.cityLabel}</h3>
+                    ) : null}
+                    {city.locations.map((location) => (
+                      <div key={`${city.cityLabel}-${location.locationLabel}`} className="space-y-1">
+                        {showLocationHeadings ? (
+                          <h4 className="text-sm font-semibold text-ink/85 pb-1">{location.locationLabel}</h4>
+                        ) : null}
+                        <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,11rem),1fr))] gap-2">
+                          {location.venues.map((venue) => {
+                            const mapsUrl = buildVenueMapsUrl(venue);
+                            const tileClass =
+                              "flex min-h-11 items-center gap-1.5 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm font-medium no-underline";
+                            return (
+                              <li key={venue.id}>
+                                {mapsUrl ? (
+                                  // Colour set inline: the global unlayered `a { color }` rule beats Tailwind's text-* classes.
+                                  <a
+                                    href={mapsUrl}
+                                    {...(mapsUrl.startsWith("http")
+                                      ? { target: "_blank", rel: "noopener noreferrer" }
+                                      : {})}
+                                    className={`${tileClass} transition hover:border-[var(--sc-border-strong)] hover:bg-surface`}
+                                    style={{ color: "var(--sc-ink)" }}
+                                    aria-label={`Open ${venue.cityLabel}, ${venue.locationLabel} - ${venue.nameLabel} in maps`}
+                                    title="Open in maps"
                                   >
-                                    <div className="min-w-0 max-w-[12rem]">
-                                      <p className="truncate text-sm font-medium text-ink">
-                                        {venue.nameLabel}
-                                      </p>
-                                    </div>
-                                    {coordText ? (
-                                      <button
-                                        type="button"
-                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-border text-ink-muted transition hover:text-ink"
-                                        aria-label={`Copy ${venue.cityLabel}, ${venue.locationLabel} - ${venue.nameLabel} coordinates`}
-                                        title="Copy coordinates"
-                                        onClick={() =>
-                                          copyToClipboard(coordText, () =>
-                                            setCopyToast(
-                                              `Copied ${venue.cityLabel}, ${venue.locationLabel} - ${venue.nameLabel} coordinates`,
-                                            ),
-                                          )
-                                        }
-                                      >
-                                        <svg
-                                          xmlns="http://www.w3.org/2000/svg"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          className="h-5 w-5"
-                                          aria-hidden="true"
-                                        >
-                                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                                        </svg>
-                                      </button>
-                                    ) : (
-                                      <span className="shrink-0 text-xs text-ink-muted">
-                                        No coords
-                                      </span>
-                                    )}
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </li>
-                        ))}
-                      </ul>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-ink-muted">
-                  No venues linked to this event yet.
-                </p>
-              )}
-            </Panel>
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className="h-5 w-5 shrink-0"
+                                      aria-hidden="true"
+                                    >
+                                      <path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" />
+                                      <circle cx="12" cy="10" r="2.5" />
+                                    </svg>
+                                    <span
+                                      className="truncate underline decoration-2 underline-offset-4"
+                                      style={{ textDecorationColor: "var(--sc-accent)" }}
+                                    >
+                                      {venue.nameLabel}
+                                    </span>
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className="h-3.5 w-3.5 shrink-0 opacity-75"
+                                      aria-hidden="true"
+                                    >
+                                      <path d="M7 17 17 7" />
+                                      <path d="M8 7h9v9" />
+                                    </svg>
+                                  </a>
+                                ) : (
+                                  <span className={tileClass} style={{ color: "var(--sc-ink)" }}>
+                                    <span className="truncate">{venue.nameLabel}</span>
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))}
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-ink/80">No fields linked to this event yet.</p>
+            )
           ) : null}
         </Card>
 
