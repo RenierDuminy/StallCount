@@ -663,7 +663,9 @@ export default function MatchesPage() {
                     </span>
                   )}
                 </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* The radar is square and scales with its card, so each card
+                    is capped at 40rem; side by side when they fit, centred. */}
+                <div className="grid justify-center gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),40rem))]">
                   {spiritReport.entries.map((entry) => (
                     <SpiritRadarCard
                       key={entry.teamId}
@@ -1415,7 +1417,9 @@ function TeamOverviewCard({ stats }) {
   };
 
   return (
-    <div>
+    // overflow-hidden clips the divider of whichever section starts a line
+    // (the row below is widened 1px each side), so lines only show between sections.
+    <div className="overflow-hidden">
       {production && (
         <div className="mb-1.5 grid gap-1.5 text-center sm:mb-3 sm:gap-3 [grid-template-columns:repeat(auto-fit,minmax(5rem,1fr))]">
           {summaryStats.map((item) => (
@@ -1433,13 +1437,22 @@ function TeamOverviewCard({ stats }) {
           ))}
         </div>
       )}
-      <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3 sm:gap-3">
-        {renderList("Goals", goals)}
-        {renderList("Assists", assists)}
-        {renderList("Turnovers", turnovers)}
-        {renderList("Blocks", blocks)}
-      </div>
-      <div className="mt-1 border-t border-border/50 pt-1.5 sm:mt-3 sm:pt-3">
+      {/* One wrapping row. Each item starts at its minimum (lists 11rem,
+          connections 19rem), so as many as possible fit per line; then they
+          grow to fill that line, capped at 8x their minimum (88rem / 152rem)
+          so a lone item on a wide screen does not stretch without limit.
+          Connections grows twice as fast: it holds two names. Sections are
+          separated by a vertical line instead of a gap: each section draws
+          both side borders at its own height and overlaps its neighbour by
+          1px, so a line is as tall as the taller of the two sections it
+          divides. The outer edges are clipped (-mx-px + overflow-hidden). */}
+      <div className="-mx-px flex flex-wrap items-start gap-y-1 sm:gap-y-3">
+        {[["Goals", goals], ["Assists", assists], ["Turnovers", turnovers], ["Blocks", blocks]].map(([label, rows]) => (
+          <div key={label} className="min-w-0 flex-[1_1_11rem] -mr-px border-x border-border px-3 sm:max-w-[88rem]">
+            {renderList(label, rows)}
+          </div>
+        ))}
+        <div className="min-w-0 flex-[2_1_19rem] -mr-px border-x border-border px-3 py-0.5 sm:max-w-[152rem] sm:py-1">
         <p className="bg-accent/15 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-ink">Top connections</p>
         {connections.length ? (
           <table className="mt-0.5 w-full text-left text-sm leading-tight text-ink sm:mt-1.5 sm:leading-normal">
@@ -1478,6 +1491,7 @@ function TeamOverviewCard({ stats }) {
         ) : (
           <p className="mt-1 text-xs text-ink-muted sm:mt-1.5">No assisted goals recorded.</p>
         )}
+        </div>
       </div>
     </div>
   );

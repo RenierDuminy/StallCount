@@ -2,68 +2,8 @@
    but CSS from a lazy chunk stays in the document after navigating away, so
    anything that could match outside the page must be scoped to .overlay-page. */
 
-.overlay-page:not(.overlay-page--control) {
-  background: linear-gradient(180deg, rgba(6, 12, 10, 0.98), rgba(6, 12, 10, 0.92));
-  --sc-card-bg: rgba(12, 22, 18, 0.88);
-  --sc-card-border: rgba(255, 255, 255, 0.06);
-  --sc-card-muted-bg: rgba(10, 18, 14, 0.9);
-  --sc-card-muted-border: rgba(255, 255, 255, 0.08);
-  --sc-card-muted-glow: none;
-  --sc-shadow-card: 0 12px 28px rgba(0, 0, 0, 0.32);
-  --sc-shadow-strong: 0 20px 52px rgba(0, 0, 0, 0.38);
-  --sc-shadow-lift: 0 12px 26px rgba(0, 0, 0, 0.28);
-  --sc-hero-bg: rgba(10, 22, 17, 0.85);
-  --sc-hero-border: rgba(255, 255, 255, 0.05);
-  --sc-hero-overlay: linear-gradient(180deg, rgba(2, 8, 6, 0.45), rgba(2, 8, 6, 0));
-  --sc-pill-border: rgba(255, 255, 255, 0.12);
-  --sc-pill-bg: rgba(8, 20, 16, 0.4);
-  --sc-chip-bg: rgba(8, 20, 16, 0.4);
-  --sc-field-bg: rgba(8, 18, 14, 0.65);
-  --sc-field-border: rgba(255, 255, 255, 0.28);
-  --sc-field-border-strong: rgba(255, 255, 255, 0.45);
-  --sc-button-shadow-hover: 0 12px 26px rgba(0, 0, 0, 0.28);
-  --sc-button-shadow-active: 0 8px 16px rgba(0, 0, 0, 0.24);
-}
-
-.overlay-page:not(.overlay-page--control) .sc-page__glow {
-  opacity: 0.25;
-  background: radial-gradient(circle at top, rgba(198, 255, 98, 0.12), transparent 70%);
-}
-
-.overlay-page:not(.overlay-page--control) .overlay-hero::before {
-  opacity: 0.4;
-}
-
-.overlay-page:not(.overlay-page--control) .overlay-hero::after {
-  width: 180px;
-  height: 180px;
-  opacity: 0.35;
-}
-
-.overlay-page:not(.overlay-page--control) .overlay-nav__item {
-  background: rgba(10, 22, 17, 0.7);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: none;
-}
-
-.overlay-page:not(.overlay-page--control) .overlay-nav__item:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
-  border-color: rgba(198, 255, 98, 0.35);
-}
-
-.overlay-page:not(.overlay-page--control) .overlay-nav__item.is-active {
-  background: rgba(198, 255, 98, 0.12);
-  border-color: rgba(198, 255, 98, 0.55);
-  color: var(--sc-ink-strong);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
-}
-
-.overlay-page:not(.overlay-page--control) .overlay-nav__item.is-active::after {
-  background: rgba(6, 20, 14, 0.45);
-}
-
-.overlay-page--control {
+/* Light theme for both views (Setup and Control): the room is bright. */
+.overlay-page {
   background: #f0f7f3;
   color: #111111;
   --sc-ink: #111111;
@@ -94,7 +34,7 @@
   --sc-shadow-lift: none;
 }
 
-.overlay-page--control .sc-page__glow {
+.overlay-page .sc-page__glow {
   display: none;
 }
 
@@ -112,7 +52,7 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--sc-border-strong);
   border-radius: 18px;
   padding: 1.5rem;
 }
@@ -352,7 +292,7 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--sc-border-strong);
 }
 
 .overlay-form {
@@ -1012,14 +952,14 @@
   gap: 0.45rem;
 }
 
-.overlay-page--control .overlay-banner-event-row,
-.overlay-page--control .overlay-roster-item {
+.overlay-page .overlay-banner-event-row,
+.overlay-page .overlay-roster-item {
   background: #f5f5f5;
   border-color: rgba(0, 0, 0, 0.1);
   justify-content: flex-start;
 }
 
-.overlay-page--control .overlay-manual-toggle {
+.overlay-page .overlay-manual-toggle {
   background: #f5f5f5;
   border-color: rgba(0, 0, 0, 0.12);
 }
@@ -1034,53 +974,53 @@
   border-radius: var(--sc-radius-sm);
 }
 
-.overlay-page--control .overlay-roster-number {
+.overlay-page .overlay-roster-number {
   color: #555555;
 }
 
-.overlay-page--control .overlay-banner-block__title {
+.overlay-page .overlay-banner-block__title {
   color: #111111;
   font-weight: 700;
   font-size: 0.75rem;
   letter-spacing: 0.06em;
 }
 
-.overlay-page--control .overlay-roster-title {
+.overlay-page .overlay-roster-title {
   color: #111111;
   font-weight: 700;
   font-size: 0.75rem;
   letter-spacing: 0.04em;
 }
 
-.overlay-page--control .overlay-switch__label {
+.overlay-page .overlay-switch__label {
   color: #555555;
   font-size: 0.75rem;
   letter-spacing: 0.04em;
 }
 
-.overlay-page--control .overlay-matchstats-table__grid {
+.overlay-page .overlay-matchstats-table__grid {
   font-size: 0.82rem;
 }
 
-.overlay-page--control .overlay-matchstats-table__grid td:nth-child(2) {
+.overlay-page .overlay-matchstats-table__grid td:nth-child(2) {
   color: #555555;
   font-size: 0.75rem;
   letter-spacing: 0.06em;
 }
 
-.overlay-page--control .overlay-matchstats-table__grid th {
+.overlay-page .overlay-matchstats-table__grid th {
   color: #111111;
   font-size: 0.75rem;
   letter-spacing: 0.06em;
 }
 
-.overlay-page--control .overlay-banner-status {
+.overlay-page .overlay-banner-status {
   color: #555555;
   font-size: 0.82rem;
 }
 
-.overlay-page--control .overlay-roster-name,
-.overlay-page--control .overlay-roster-number {
+.overlay-page .overlay-roster-name,
+.overlay-page .overlay-roster-number {
   font-size: 0.82rem;
 }
 
@@ -1340,7 +1280,7 @@
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--sc-border-strong);
   background: #0b1320;
   overflow: hidden;
   box-shadow: 0 30px 80px rgba(5, 8, 20, 0.55);

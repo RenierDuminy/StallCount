@@ -12,7 +12,9 @@ export async function getTableCount(
     async () => {
       const { count, error } = await supabase
         .from(tableName)
-        .select("*", { count: "exact", head: true });
+        // Count on "id", not "*": a "*" select names every column, and
+        // player.birthday is not granted to API roles, so it fails.
+        .select("id", { count: "exact", head: true });
 
       if (error) {
         throw new Error(error.message || `Failed to count ${tableName}`);

@@ -11,6 +11,12 @@ import { ScorekeeperPopups } from "./ModularScorekeeperPopup";
 import { ScorekeeperShell, ScorekeeperCard, ScorekeeperButton } from "../../components/ui/scorekeeperPrimitives";
 import { MatchLogEventCard } from "./eventCards";
 import { findBreakLogIds } from "../../utils/matchBreaks";
+import { DesktopRosterPanel, PointSummaryPanel } from "./ScorekeeperDesktopPanels";
+import {
+  buildPointSummary,
+  computeMatchPlayerStats,
+  useIsDesktopScorekeeper,
+} from "./scorekeeperDesktopStats";
 import {
   PHASE_TONES,
   SECONDARY_TIMER_KINDS,
@@ -350,6 +356,20 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
     });
     return map;
   }, [logs]);
+
+  // PC layout (≥1280px): rosters with live per-player numbers flank the
+  // controls and log, and a point summary sits under the score buttons. Same
+  // state, actions and popups as the phone layout; only placement and the
+  // extra read-only panels differ.
+  const isDesktop = useIsDesktopScorekeeper();
+  const matchPlayerStats = useMemo(
+    () => (isDesktop ? computeMatchPlayerStats(logs) : new Map()),
+    [isDesktop, logs],
+  );
+  const pointSummary = useMemo(
+    () => (isDesktop ? buildPointSummary(logs) : []),
+    [isDesktop, logs],
+  );
 
   const breakLogIds = useMemo(
     () => findBreakLogIds(logs, matchStartingTeamKey),
@@ -783,7 +803,10 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
 
 
   return (
-    <ScorekeeperShell>
+    <ScorekeeperShell
+      // .sc-shell pads 10% on wide screens; the PC layout needs the width.
+      style={isDesktop ? { paddingLeft: "1rem", paddingRight: "1rem" } : undefined}
+    >
       <main className="py-2">
         {consoleReady ? (
           <section className="space-y-2">
@@ -824,7 +847,22 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
               </div>
             </div>
 
-            <div className="grid gap-2 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+            <div
+              className={`grid gap-2 ${
+                isDesktop
+                  ? "grid-cols-[minmax(17rem,21rem)_minmax(0,1fr)_minmax(0,1fr)_minmax(17rem,21rem)] items-start"
+                  : "xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]"
+              }`}
+            >
+              {isDesktop && (
+                <DesktopRosterPanel
+                  teamName={safeTeamAName}
+                  players={sortedRosters.teamA}
+                  stats={matchPlayerStats}
+                  loading={rostersLoading}
+                  error={rostersError}
+                />
+              )}
               <div className="space-y-2">
 
             <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-1.5">
@@ -1075,6 +1113,13 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
                 )}
               </div>
             </div>
+            {isDesktop && (
+              <PointSummaryPanel
+                points={pointSummary}
+                teamAShort={displayTeamAShort}
+                teamBShort={displayTeamBShort}
+              />
+            )}
           </div>
 
           <div className="space-y-2">
@@ -1114,8 +1159,18 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
               </div>
             </div>
           </div>
+          {isDesktop && (
+            <DesktopRosterPanel
+              teamName={safeTeamBName}
+              players={sortedRosters.teamB}
+              stats={matchPlayerStats}
+              loading={rostersLoading}
+              error={rostersError}
+            />
+          )}
         </div>
 
+            {!isDesktop && (
             <details className="group rounded-3xl border border-[#0f5132]/30 bg-white p-2 text-[#0f5132]">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-2 py-1 text-sm font-semibold marker:hidden">
                 <span>Team rosters</span>
@@ -1169,6 +1224,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
                 </div>
               </div>
             </details>
+            )}
 
           </section>
         ) : consoleOpening ? (

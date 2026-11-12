@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Chip,
@@ -53,7 +53,6 @@ import {
 } from "../data/bracketTemplates";
 import BracketCanvas from "./playoff/BracketCanvas";
 import {
-  columnHeading,
   formatAdvancementTarget,
   formatMatchStatus,
   formatMatchup,
@@ -63,7 +62,6 @@ import {
   getNodeDisplayName,
   getNodeNote,
   isByeNode,
-  groupNodesByRound,
   nextSlotForColumn,
 } from "./playoff/bracketFormat";
 
@@ -746,7 +744,7 @@ function SourceEditor({
 
   return (
     <div className="space-y-2 rounded-2xl border border-white/15 bg-surface/60 p-2">
-      <div className="space-y-0.5">
+<div className="space-y-0.5">
         <p className="text-sm font-semibold text-ink">{label}</p>
         <p className="text-xs text-ink-muted">Choose how this slot should resolve.</p>
       </div>
@@ -1008,28 +1006,17 @@ function EditorSection({
   stepClassName = "",
   children,
 }) {
-  const toneClasses = {
-    default: "border border-white/15 bg-surface/40",
-    basics: "border border-white/10 bg-white/[0.03]",
-    linked: "border border-sky-400/25 bg-sky-500/10",
-    participants: "border border-emerald-400/20 bg-emerald-500/8",
-    advancement: "border border-amber-300/25 bg-amber-500/10",
-  };
-
+  // Flat section, not a card: a heading over a rule, as on the event
+  // template, so the editor never nests more than two boxes deep.
+  void tone;
   return (
-    <section className={`space-y-4 rounded-2xl p-4 ${toneClasses[tone] || toneClasses.default} ${className}`.trim()}>
-      <div className="flex flex-wrap items-start gap-1.5">
-        {step ? (
-          <span
-            className={`inline-flex min-w-[2rem] items-center justify-center rounded-full border border-emerald-400/35 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-200 ${stepClassName}`.trim()}
-          >
-            {step}
-          </span>
-        ) : null}
-        <div className="space-y-0.5">
-          <p className={`text-sm font-semibold text-ink ${titleClassName}`.trim()}>{title}</p>
-          {description ? <p className={`text-xs text-ink-muted ${descriptionClassName}`.trim()}>{description}</p> : null}
-        </div>
+    <section className={`space-y-2 pt-1 ${className}`.trim()}>
+      <div className="space-y-0.5 border-b-2 border-[var(--sc-border-strong)] pb-1">
+        <h3 className={`flex items-baseline gap-1.5 text-base font-semibold text-ink ${titleClassName}`.trim()}>
+          {step ? <span className={`text-emerald-200 ${stepClassName}`.trim()}>{step}.</span> : null}
+          {title}
+        </h3>
+        {description ? <p className={`text-xs text-ink-muted ${descriptionClassName}`.trim()}>{description}</p> : null}
       </div>
       {children}
     </section>
@@ -1075,19 +1062,6 @@ function BracketSummaryNodeBody({ node, lookups }) {
       {loserTarget ? (
         <p className="text-xs text-ink-muted">Loser → {loserTarget}</p>
       ) : null}
-    </div>
-  );
-}
-
-// A single node rendered as an always-expanded card for the wide bracket view.
-function BracketSummaryNodeCard({ node, lookups }) {
-  return (
-    <div className="rounded-xl border border-white/15 bg-surface/70 px-1.5 py-1">
-      <div className="mb-0.5 flex items-baseline justify-between gap-1">
-        <span className="text-sm font-medium text-ink">{getNodeDisplayName(node)}</span>
-        <span className="text-[0.65rem] text-ink-muted">Pos {node.position ?? "--"}</span>
-      </div>
-      <BracketSummaryNodeBody node={node} lookups={lookups} />
     </div>
   );
 }
@@ -2454,7 +2428,11 @@ export default function PlayoffStructurePage() {
 
   return (
     <div className="pb-8 text-ink">
-      <SectionShell as="header" className="py-3">
+      <SectionShell
+        as="header"
+        className="py-3"
+        style={{ paddingLeft: "clamp(0.75rem, 1.5vw, 1.5rem)", paddingRight: "clamp(0.75rem, 1.5vw, 1.5rem)" }}
+      >
         <Panel variant="tintedAlt" className="space-y-2 border-white/20 p-2 sm:p-3">
           <SectionHeader
             eyebrow="Admin tool"
@@ -2605,7 +2583,14 @@ export default function PlayoffStructurePage() {
           ) : null}
         </Panel>
       </SectionShell>
-      <SectionShell as="main" className="space-y-3 py-3">
+      {/* Full width: .sc-shell pads 4–10% on wide screens, which this
+          editor needs for the bracket, schedule and node grids. Inline
+          because .sc-shell is unlayered CSS and beats Tailwind utilities. */}
+      <SectionShell
+        as="main"
+        className="space-y-3 py-3"
+        style={{ paddingLeft: "clamp(0.75rem, 1.5vw, 1.5rem)", paddingRight: "clamp(0.75rem, 1.5vw, 1.5rem)" }}
+      >
         {showTemplatePanel ? (
           <Panel variant="default" className="space-y-2 border-white/20 p-2">
             <SectionHeader
@@ -2975,8 +2960,11 @@ export default function PlayoffStructurePage() {
             </div>
           </Panel>
         ) : null}
-        <div className="grid items-start gap-2 xl:grid-cols-[minmax(17rem,19rem)_minmax(0,1fr)]">
-          <Panel variant="default" className="space-y-2 border-white/20 p-2">
+        {/* Brackets list stretches to the height of its neighbour column
+            (Edit bracket + Release schedule); Nodes then run full width
+            underneath both. */}
+        <div className="grid items-stretch gap-2 xl:grid-cols-[minmax(17rem,19rem)_minmax(0,1fr)]">
+          <Panel variant="default" className="h-full space-y-2 border-white/20 p-2">
             <SectionHeader
               title="Brackets"
               description="Pick a bracket to edit its details and nodes."
@@ -3257,8 +3245,10 @@ export default function PlayoffStructurePage() {
                 </div>
               </Panel>
             ) : null}
+          </div>
+        </div>
 
-            <div className="grid items-start gap-2 [grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))] xl:grid-cols-[minmax(17rem,19rem)_minmax(0,1fr)]">
+            <div className="grid items-start gap-2 xl:grid-cols-[minmax(0,1fr)_minmax(28rem,40rem)]">
               <Panel variant="default" className="self-start space-y-2 border-white/20 p-2">
                 <SectionHeader
                   title="Nodes"
@@ -3282,7 +3272,7 @@ export default function PlayoffStructurePage() {
                   </Panel>
                 ) : null}
 
-                <div className="grid gap-1">
+                <div className="grid gap-1 [grid-template-columns:repeat(auto-fill,minmax(16rem,1fr))]">
                   {selectedBracketNodes.map((node) => {
                     const selected = node.id === selectedNodeId;
                     const sourceSummary = `${formatSourceLabel(node.source_a, sourceLookups)} vs ${formatSourceLabel(
@@ -3370,8 +3360,8 @@ export default function PlayoffStructurePage() {
                   <>
                     <EditorSection
                       step="1"
-                      title="Basics"
-                      description="Give this game a name. Its bracket placement is set automatically."
+                      title="Game"
+                      description="Name the game and link the match that holds its score."
                       tone="basics"
                     >
                       <Field label="Game name">
@@ -3381,14 +3371,6 @@ export default function PlayoffStructurePage() {
                           placeholder="Open 1v2"
                         />
                       </Field>
-                    </EditorSection>
-
-                    <EditorSection
-                      step="2"
-                      title="Linked match"
-                      description="Every game needs a match to hold its score. Create one in a click, or pick an existing one."
-                      tone="linked"
-                    >
                       {!nodeForm.matchId ? (
                         <button
                           type="button"
@@ -3448,7 +3430,7 @@ export default function PlayoffStructurePage() {
 
                     {showCreateMatchForm ? (
                       <EditorSection
-                        step="2a"
+                        step="1a"
                         title={linkedMatchFormMode === "edit" ? "Edit linked values" : "Create linked"}
                         description={
                           linkedMatchFormMode === "edit"
@@ -3456,7 +3438,6 @@ export default function PlayoffStructurePage() {
                             : "Create a scheduled shell for this node, then save the node to persist the link."
                         }
                         tone="linked"
-                        className="bg-sky-500/12"
                       >
                         <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(12rem,1fr))]">
                           <Field label="Division">
@@ -3585,7 +3566,7 @@ export default function PlayoffStructurePage() {
                     ) : null}
 
                     <EditorSection
-                      step="3"
+                      step="2"
                       title="Participants"
                       description="Define where each side of the node should resolve from."
                       tone="participants"
@@ -3617,21 +3598,20 @@ export default function PlayoffStructurePage() {
                       </div>
                     </EditorSection>
 
-                    <details className="group rounded-2xl border border-amber-300/25 bg-amber-500/10 p-2">
-                      <summary className="flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-ink">
-                        <span className="inline-flex min-w-[2rem] items-center justify-center rounded-full border border-amber-300/35 bg-amber-500/10 px-1 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-200">
-                          Adv
-                        </span>
-                        Advanced — placement &amp; advancement
-                      </summary>
-                      <p className="mt-1 text-xs text-ink-muted">
-                        Placement is set automatically from where you add the game on the bracket.
-                        Advancement is now wired automatically: when a game's Source A/B is set to
-                        &ldquo;winner/loser of&rdquo; another game, that game&rsquo;s winner/loser pointer is
-                        filled in for you. The fields below are a manual override for unusual structures.
+                    <EditorSection
+                      step="3"
+                      title="Placement"
+                      description="Where this game sits on the bracket. Set automatically from where you add the game."
+                      tone="advancement"
+                    >
+                      <p className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-2 py-1.5 text-sm text-ink">
+                        <span className="font-semibold text-emerald-200">Final round:</span> if this game is in
+                        the last round, its position sets the final standings. Order the last-round games
+                        from the top place down: the game at position 1 decides 1st and 2nd, position 2
+                        decides 3rd and 4th, and so on.
                       </p>
 
-                      <div className="mt-2 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(10rem,1fr))]">
+                      <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(10rem,1fr))]">
                         <Field label="Round" hint="Bracket column (auto-set).">
                           <Input
                             type="number"
@@ -3652,8 +3632,24 @@ export default function PlayoffStructurePage() {
                         </Field>
                       </div>
 
+                      <details className="group rounded-xl border border-amber-300/30 bg-amber-500/10 p-2">
+                        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-ink">
+                          Advancement (optional)
+                          <span
+                            aria-hidden="true"
+                            className="ml-auto text-xs text-amber-200 transition-transform group-open:rotate-180"
+                          >
+                            ▼
+                          </span>
+                        </summary>
+                      <p className="mt-1 text-xs text-ink-muted">
+                        Advancement is wired automatically: when a game&rsquo;s Source A/B is set to
+                        &ldquo;winner/loser of&rdquo; another game, that game&rsquo;s winner/loser pointer is
+                        filled in for you. These fields are a manual override for unusual structures.
+                      </p>
+
                       <div className="mt-2 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(18rem,1fr))]">
-                        <div className="space-y-2 rounded-2xl border border-white/15 bg-surface/60 p-2">
+                        <div className="space-y-2">
                           <div className="space-y-0.5">
                             <p className="text-sm font-semibold text-ink">Winner advancement</p>
                             <p className="text-xs text-ink-muted">Optional target for the winner of this node.</p>
@@ -3697,7 +3693,7 @@ export default function PlayoffStructurePage() {
                           </Field>
                         </div>
 
-                        <div className="space-y-2 rounded-2xl border border-white/15 bg-surface/60 p-2">
+                        <div className="space-y-2">
                           <div className="space-y-0.5">
                             <p className="text-sm font-semibold text-ink">Loser advancement</p>
                             <p className="text-xs text-ink-muted">Optional target for the loser of this node.</p>
@@ -3741,39 +3737,8 @@ export default function PlayoffStructurePage() {
                           </Field>
                         </div>
                       </div>
-                    </details>
-
-                    {selectedNode ? (
-                      <EditorSection
-                        title="Preview"
-                        description="Quick summary of the currently selected node."
-                        className="sc-surface-light border border-[#0b1f19]/20 text-[var(--sc-surface-light-ink)]"
-                        titleClassName="text-[var(--sc-surface-light-ink)]"
-                        descriptionClassName="text-[var(--sc-surface-light-ink)]/70"
-                        stepClassName="border-[var(--sc-surface-light-ink)]/20 bg-white/70 text-[var(--sc-surface-light-ink)]"
-                      >
-                        <div className="flex flex-wrap items-center gap-1">
-                          <Chip className="border-[#0b1f19]/20 bg-white/70 text-[var(--sc-surface-light-ink)]">
-                            {getNodeDisplayName(selectedNode)}
-                          </Chip>
-                          {selectedNode.match ? (
-                            <Chip className="border-[#0b1f19]/20 bg-white/70 text-[var(--sc-surface-light-ink)]">
-                              {formatMatchStatus(selectedNode.match.status)}
-                            </Chip>
-                          ) : null}
-                        </div>
-                        <p className="text-sm text-[var(--sc-surface-light-ink)]">
-                          {formatSourceLabel(selectedNode.source_a, sourceLookups)} vs {formatSourceLabel(selectedNode.source_b, sourceLookups)}
-                        </p>
-                        {selectedNode.match ? (
-                          <p className="text-sm text-[var(--sc-surface-light-ink)]">
-                            Linked match: {formatMatchup(selectedNode.match)} - {formatDateTime(selectedNode.match.start_time)}
-                          </p>
-                        ) : (
-                          <p className="text-sm text-[var(--sc-surface-light-ink)]">No linked match yet.</p>
-                        )}
-                      </EditorSection>
-                    ) : null}
+                      </details>
+                    </EditorSection>
 
                     <section className="flex flex-wrap items-center gap-1 border-t border-border pt-2">
                       <button type="button" onClick={handleSaveNode} className="sc-button" disabled={nodeBusy}>
@@ -3787,8 +3752,6 @@ export default function PlayoffStructurePage() {
                 )}
               </Panel>
             </div>
-          </div>
-        </div>
 
         {selectedBracket?.type === "swiss" ? (
           <SwissStandingsPanel
@@ -3850,109 +3813,6 @@ export default function PlayoffStructurePage() {
             </div>
           </Panel>
         ) : null}
-
-        <Panel variant="default" className="space-y-2 border-white/20 p-2">
-          <SectionHeader
-            title="Bracket summary"
-            description="Every bracket and node for this event at a glance. Expand a node for its sources, linked match, and advancement."
-          />
-          {!brackets.length ? (
-            <Panel variant="muted" className="p-2 text-sm text-ink-muted">
-              No brackets for this event yet.
-            </Panel>
-          ) : (
-            <div className="space-y-2">
-              {brackets.map((bracket) => {
-                const bracketNodes = bracket.nodes || [];
-                const rounds = groupNodesByRound(bracketNodes);
-                const totalRounds = rounds.length;
-                return (
-                  <div
-                    key={bracket.id}
-                    className="space-y-1.5 rounded-2xl border border-white/15 bg-surface/60 p-2"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-1">
-                      <p className="text-sm font-semibold text-ink">
-                        {bracket.name || "Untitled bracket"}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <Chip>{formatBracketType(bracket.type)}</Chip>
-                        {bracket.is_locked ? <Chip>Locked</Chip> : null}
-                        <Chip>
-                          {bracketNodes.length} node{bracketNodes.length === 1 ? "" : "s"}
-                        </Chip>
-                        {totalRounds ? (
-                          <Chip>
-                            {totalRounds} round{totalRounds === 1 ? "" : "s"}
-                          </Chip>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {!bracketNodes.length ? (
-                      <p className="text-xs text-ink-muted">No nodes in this bracket yet.</p>
-                    ) : (
-                      <>
-                        {/* Wide screens: round-by-round columns using the extra width. */}
-                        <div className="hidden overflow-x-auto lg:block">
-                          <div className="flex min-w-full items-stretch gap-2 pb-0.5">
-                            {rounds.map((column, columnIndex) => (
-                              <div
-                                key={column.round}
-                                className="flex min-w-[15rem] flex-1 flex-col gap-1.5"
-                              >
-                                <div className="flex items-baseline justify-between gap-1 border-b border-border pb-0.5">
-                                  <span className="text-xs font-semibold uppercase tracking-wide text-ink">
-                                    {columnHeading(column, totalRounds, columnIndex, bracket.type)}
-                                  </span>
-                                  <span className="text-[0.65rem] text-ink-muted">
-                                    {column.nodes.length} node
-                                    {column.nodes.length === 1 ? "" : "s"}
-                                  </span>
-                                </div>
-                                <div className="flex flex-1 flex-col justify-around gap-1.5">
-                                  {column.nodes.map((node) => (
-                                    <BracketSummaryNodeCard
-                                      key={node.id}
-                                      node={node}
-                                      lookups={summarySourceLookups}
-                                    />
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Narrow screens: collapsible stack (compact). */}
-                        <div className="space-y-1 lg:hidden">
-                          {bracketNodes.map((node) => (
-                            <details
-                              key={node.id}
-                              className="rounded-xl border border-white/15 bg-surface/70 px-1.5 py-1"
-                            >
-                              <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-1">
-                                <span className="text-sm font-medium text-ink">
-                                  {getNodeDisplayName(node)}
-                                </span>
-                                <span className="text-xs text-ink-muted">
-                                  Round {node.round ?? "--"} · Position {node.position ?? "--"}
-                                </span>
-                              </summary>
-                              <div className="mt-1 border-t border-border pt-1">
-                                <BracketSummaryNodeBody node={node} lookups={summarySourceLookups} />
-                              </div>
-                            </details>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Panel>
       </SectionShell>
     </div>
   );
