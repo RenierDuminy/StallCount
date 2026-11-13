@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "generate:sitemap": "node scripts/generate-sitemap.mjs",
-    "build": "npm run generate:sitemap && vite build",
+    "generate:robots": "node scripts/generate-robots.mjs",
+    "build": "npm run generate:robots && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "dispatch:notifications": "node scripts/sendLiveEventNotifications.js",

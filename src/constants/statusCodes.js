@@ -144,6 +144,26 @@ export function isForfeitStatus(status) {
 }
 
 /**
+ * A status code spelled for display. Codes are stored with US spelling
+ * (`canceled`, `initialized`) and must stay that way (they are foreign keys
+ * into `match_status`); the app shows United Kingdom English. Pass the result
+ * to UI only, never write it back.
+ */
+const UK_STATUS_SPELLING = Object.freeze({
+  canceled: "cancelled",
+  initialized: "initialised",
+});
+export function toDisplayStatusWord(status) {
+  const value = `${status ?? ""}`;
+  return value.replace(/canceled|initialized/gi, (word) => {
+    const uk = UK_STATUS_SPELLING[word.toLowerCase()];
+    if (word === word.toUpperCase()) return uk.toUpperCase();
+    if (word[0] === word[0].toUpperCase()) return uk[0].toUpperCase() + uk.slice(1);
+    return uk;
+  });
+}
+
+/**
  * The status to use for display purposes (cards, badges, colour lookups).
  *
  * Forfeits are folded into `canceled` here — a forfeit is shown as a canceled

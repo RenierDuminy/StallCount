@@ -21,7 +21,7 @@ export const TEST_TEAM_IDS = { A: "test-team-a", B: "test-team-b" };
 
 export const TEST_MATCH_STATUS_OPTIONS = [
   { value: "scheduled", label: "Scheduled" },
-  { value: "initialized", label: "Initialized" },
+  { value: "initialized", label: "Initialised" },
   { value: "live", label: "Live" },
   { value: "halftime", label: "Halftime" },
   { value: "finished", label: "Finished" },

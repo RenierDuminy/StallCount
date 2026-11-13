@@ -1007,7 +1007,7 @@ export function ControlView({
         ) : (
           <Card className="overlay-card overlay-control-locked">
             <p className="overlay-data-state">
-              Initialize the configuration to unlock overlay controls, rules, and match logs.
+              Initialise the configuration to unlock overlay controls, rules, and match logs.
             </p>
           </Card>
         )}

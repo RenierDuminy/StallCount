@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { EVENT_SECTIONS, getEventSectionPath } from "./eventWorkspaces";
+import { useEventSectionRoute } from "./eventRouteHooks";
+import { usePageMeta, withSiteName } from "../utils/pageMeta";
 import { Card, Field, Panel, SectionHeader, SectionShell, Select } from "../components/ui/primitives";
 import { getEventsList } from "../services/leagueService";
 
@@ -144,10 +147,17 @@ function RulesIndentedList({ value, eventName }) {
 }
 
 export default function EventRulesPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const requestedEventId = searchParams.get("eventId") || "";
+  // `/events/<slug>/rules`: the event comes from the slug; the picker moves
+  // to another event's rules URL.
+  const navigate = useNavigate();
+  const { event: routeEvent, element: routeElement } = useEventSectionRoute(EVENT_SECTIONS.RULES);
+  const selectedEventId = routeElement ? "" : routeEvent?.id || "";
+  usePageMeta(
+    routeEvent?.name
+      ? { title: withSiteName(`Rules – ${routeEvent.name}`), description: `${routeEvent.name}. Match rules for this event: game length, caps, timeouts, halftime and mixed ratio.` }
+      : null,
+  );
   const [events, setEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState(requestedEventId);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [error, setError] = useState("");
 
@@ -177,36 +187,24 @@ export default function EventRulesPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!events.length) return;
-    let nextId = requestedEventId;
-    if (!nextId || !events.some((event) => event.id === nextId)) {
-      nextId = events[0]?.id || "";
-    }
-    setSelectedEventId(nextId);
-    if (nextId && requestedEventId !== nextId) {
-      setSearchParams({ eventId: nextId }, { replace: true });
-    }
-    if (!nextId && requestedEventId) {
-      setSearchParams({}, { replace: true });
-    }
-  }, [events, requestedEventId, setSearchParams]);
-
   const selectedEvent = useMemo(
-    () => events.find((event) => event.id === selectedEventId) || null,
-    [events, selectedEventId],
+    // The route's own event row stands in when the event is older than the
+    // picker's list (it carries `rules` when it came from the cached list).
+    () =>
+      events.find((event) => event.id === selectedEventId) ||
+      (routeEvent?.id === selectedEventId ? routeEvent : null),
+    [events, selectedEventId, routeEvent],
   );
 
   const rules = useMemo(() => parseEventRules(selectedEvent?.rules), [selectedEvent?.rules]);
 
   const handleSelectEvent = (eventId) => {
-    setSelectedEventId(eventId);
-    if (eventId) {
-      setSearchParams({ eventId }, { replace: true });
-    } else {
-      setSearchParams({}, { replace: true });
-    }
+    const next = events.find((event) => event.id === eventId);
+    const path = next ? getEventSectionPath(next, EVENT_SECTIONS.RULES) : null;
+    if (path) navigate(path, { replace: true });
   };
+
+  if (routeElement) return routeElement;
 
   return (
     <div className="pb-16 text-ink">

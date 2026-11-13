@@ -204,7 +204,7 @@ export default function CustomScriptsPage() {
       <SectionShell as="main" className="space-y-6 py-6">
         <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
           <Card className="space-y-4 p-5 sm:p-6">
-            <SectionHeader eyebrow="Catalog" title="Available scripts" />
+            <SectionHeader eyebrow="Catalogue" title="Available scripts" />
             <div className="space-y-3">
               {scripts.map((script) => {
                 const isSelected = script.slug === selectedSlug;

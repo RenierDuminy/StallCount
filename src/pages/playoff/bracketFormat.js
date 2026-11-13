@@ -1,6 +1,7 @@
 // Shared formatting/layout helpers for the playoff structure page and the
 // visual BracketCanvas. Extracted verbatim from PlayoffStructurePage.jsx so both
 // surfaces share one implementation instead of drifting copies.
+import { toDisplayStatusWord } from "../../constants/statusCodes";
 
 function normalizeText(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -8,10 +9,12 @@ function normalizeText(value) {
 
 export function formatMatchStatus(value) {
   if (!value) return "Unknown";
-  return String(value)
-    .replace(/_/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return toDisplayStatusWord(
+    String(value)
+      .replace(/_/g, " ")
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase()),
+  );
 }
 
 export function formatNodeFallbackLabel(node) {

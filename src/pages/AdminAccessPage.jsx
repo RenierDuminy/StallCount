@@ -720,7 +720,7 @@ export default function AdminAccessPage() {
           </summary>
           <div className="border-t border-border/60 p-4">
             {rolesWithPermissions.length === 0 ? (
-              <p className="text-xs text-ink-muted">No role catalog loaded yet.</p>
+              <p className="text-xs text-ink-muted">No role catalogue loaded yet.</p>
             ) : (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {rolesWithPermissions.map((role) => (

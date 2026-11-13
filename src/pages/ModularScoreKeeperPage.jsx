@@ -9,7 +9,7 @@ import {
 /**
  * The modular scorekeeper console.
  *
- * `/score-keeper` with no valid `?mode=` is the landing page, where the
+ * `/scorekeeper` with no valid `?mode=` is the landing page, where the
  * operator picks a format. With one, the format is resolved here — once — and
  * handed down as a prop. This is the only place the URL is translated into a
  * format, so the console and everything under it read a descriptor rather than

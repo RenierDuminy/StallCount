@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { getPlayerMatchStats } from "../services/teamService";
 import { Card, Panel, SectionHeader, SectionShell, Field, Select } from "../components/ui/primitives";
+import { matchPath } from "../utils/links";
+import { usePageMeta, withSiteName } from "../utils/pageMeta";
 
 export default function PlayerProfilePage() {
   const { playerId } = useParams();
@@ -145,6 +147,16 @@ export default function PlayerProfilePage() {
     (profile?.jersey ?? identity.jersey) != null ? ` (#${profile?.jersey ?? identity.jersey})` : ""
   }`;
 
+  // Search title: the player's name once their stats have loaded.
+  usePageMeta(
+    rows.length && identity.name !== "Player"
+      ? {
+          title: withSiteName(identity.name),
+          description: `${identity.name}: goals, assists, blocks and turnovers by match and event.`,
+        }
+      : null,
+  );
+
   return (
     <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
       <SectionShell className="space-y-3 py-3 sm:space-y-6 sm:py-8">
@@ -236,7 +248,7 @@ export default function PlayerProfilePage() {
                   <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
                     {sortedRows.map((row) => {
                       const matchHref = row.match_id
-                        ? `/matches?matchId=${encodeURIComponent(row.match_id)}`
+                        ? matchPath(row.match_id)
                         : "/matches";
                       return (
                         <tr key={row.match_id} className="hover:bg-white/60">

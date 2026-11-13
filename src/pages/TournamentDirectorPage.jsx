@@ -610,7 +610,7 @@ export default function TournamentDirectorPage() {
                 >
                   {matchSaving ? "Creating..." : "Create match"}
                 </button>
-                <Link to="/score-keeper" className="sc-button">
+                <Link to="/scorekeeper" className="sc-button">
                   Go to score keeper
                 </Link>
               </div>

@@ -13,7 +13,8 @@ import {
   TOURNAMENT_DIRECTOR_SELECTED_EVENT_KEY,
   getScheduleFiltersStorageKey,
 } from "./persistenceKeys";
-import { ALL_STATUS_CODES, isForfeitStatus } from "../../constants/statusCodes";
+import { ALL_STATUS_CODES, isForfeitStatus, toDisplayStatusWord } from "../../constants/statusCodes";
+import { matchPath } from "../../utils/links";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
@@ -196,7 +197,7 @@ function formatDateParts(timestamp) {
 // events.Status code ("scheduled", "live", "completed", ...) as a label.
 function formatEventStatus(status) {
   const value = typeof status === "string" ? status.trim().replace(/_/g, " ") : "";
-  return value ? value.charAt(0).toUpperCase() + value.slice(1) : "Not set";
+  return value ? toDisplayStatusWord(value.charAt(0).toUpperCase() + value.slice(1)) : "Not set";
 }
 
 function formatDateRange(startDate, endDate) {
@@ -1598,7 +1599,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                     <tr
                       key={match.id}
                       className={`cursor-pointer transition hover:bg-[#e8f4ec] ${index % 2 === 0 ? "bg-white" : "bg-[#f4faf6]"}`}
-                      onClick={() => navigate(`/matches?matchId=${encodeURIComponent(match.id)}`)}
+                      onClick={() => navigate(matchPath(match.id))}
                     >
                       <td className="whitespace-nowrap px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
                         <div className="flex flex-col items-start gap-px sm:flex-row sm:items-baseline sm:gap-2">

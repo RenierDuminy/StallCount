@@ -1,16 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Card, Field, Panel, SectionHeader, SectionShell, Select } from "../components/ui/primitives";
 import { getEventRosterDivisions, getEventsList } from "../services/leagueService";
 import { getEventRosters } from "../services/playerService";
-import { getEventPagePath } from "./eventWorkspaces";
+import { EVENTS_BASE_PATH, EVENT_SECTIONS, getEventPagePath, getEventSectionPath } from "./eventWorkspaces";
+import { useEventSectionRoute } from "./eventRouteHooks";
+import { usePageMeta, withSiteName } from "../utils/pageMeta";
+import { playerPath, teamPath } from "../utils/links";
 
 export default function EventRostersPage() {
+  // `/events/<slug>/rosters`: the event comes from the slug (the picker moves
+  // to another event's URL); the division is a filter, so it stays a query
+  // parameter (`?divisionId=`).
+  const navigate = useNavigate();
+  const { event: routeEvent, element: routeElement } = useEventSectionRoute(EVENT_SECTIONS.ROSTERS);
+  const selectedEventId = routeElement ? "" : routeEvent?.id || "";
+  usePageMeta(
+    routeEvent?.name
+      ? { title: withSiteName(`Team rosters – ${routeEvent.name}`), description: `${routeEvent.name}. Team rosters for this event, by division.` }
+      : null,
+  );
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialEventId = searchParams.get("eventId") || "";
   const initialDivisionId = searchParams.get("divisionId") || "";
   const [events, setEvents] = useState([]);
-  const [selectedEventId, setSelectedEventId] = useState(initialEventId);
   const [divisions, setDivisions] = useState([]);
   const [selectedDivisionId, setSelectedDivisionId] = useState(initialDivisionId);
   const [rosters, setRosters] = useState([]);
@@ -45,28 +57,14 @@ export default function EventRostersPage() {
   }, []);
 
   useEffect(() => {
-    if (!events.length) return;
-    if (!selectedEventId || !events.some((evt) => evt.id === selectedEventId)) {
-      setSelectedEventId(events[0]?.id || "");
-      setSelectedDivisionId("");
-    }
-  }, [events, selectedEventId]);
-
-  useEffect(() => {
-    const params = {};
-    if (selectedEventId) {
-      params.eventId = selectedEventId;
-    }
-    if (selectedDivisionId) {
-      params.divisionId = selectedDivisionId;
-    }
-    setSearchParams(params);
+    if (!selectedEventId) return;
+    setSearchParams(selectedDivisionId ? { divisionId: selectedDivisionId } : {}, { replace: true });
   }, [selectedEventId, selectedDivisionId, setSearchParams]);
 
   useEffect(() => {
+    // No event yet (the slug is still resolving): keep `?divisionId=`.
     if (!selectedEventId) {
       setDivisions([]);
-      setSelectedDivisionId("");
       return;
     }
 
@@ -98,7 +96,8 @@ export default function EventRostersPage() {
   }, [selectedEventId]);
 
   useEffect(() => {
-    if (loadingDivisions || !selectedDivisionId) {
+    // Only judge the division once this event's divisions have arrived.
+    if (loadingDivisions || !selectedDivisionId || !divisions.length) {
       return;
     }
     if (!divisions.some((division) => division.id === selectedDivisionId)) {
@@ -195,11 +194,14 @@ export default function EventRostersPage() {
     0,
   );
 
-  const selectedEvent = events.find((evt) => evt.id === selectedEventId) || null;
+  const selectedEvent =
+    events.find((evt) => evt.id === selectedEventId) ||
+    (routeEvent?.id === selectedEventId ? routeEvent : null);
   const selectedEventPath = selectedEventId
-    ? getEventPagePath(selectedEvent) ||
-      `/events?eventId=${encodeURIComponent(selectedEventId)}`
+    ? getEventPagePath(selectedEvent) || EVENTS_BASE_PATH
     : "";
+
+  if (routeElement) return routeElement;
 
   return (
     <div className="pb-16 text-ink">
@@ -221,8 +223,10 @@ export default function EventRostersPage() {
                     id="event-roster-filter"
                     value={selectedEventId}
                     onChange={(event) => {
-                      setSelectedEventId(event.target.value);
+                      const next = events.find((evt) => evt.id === event.target.value);
+                      const path = next ? getEventSectionPath(next, EVENT_SECTIONS.ROSTERS) : null;
                       setSelectedDivisionId("");
+                      if (path) navigate(path, { replace: true });
                     }}
                     disabled={loadingEvents || events.length === 0}
                   >
@@ -311,7 +315,7 @@ export default function EventRostersPage() {
                     {groupedTeams.map((team) => (
                       <th key={team.teamId} className="border-b border-border px-3 py-2 text-center whitespace-nowrap">
                         <div className="text-sm font-semibold text-ink">
-                          <Link to={`/teams/${team.teamId}`} className="text-inherit! hover:text-inherit!">
+                          <Link to={teamPath(team.teamId)} className="text-inherit! hover:text-inherit!">
                             {team.name}
                           </Link>
                         </div>
@@ -361,8 +365,8 @@ function RosterPlayerCard({ player, eventId }) {
   const jerseyLabel = typeof player.jersey === "number" ? `#${player.jersey}` : null;
   const profilePath = player.playerId
     ? eventId
-      ? `/players/${player.playerId}?eventId=${encodeURIComponent(eventId)}`
-      : `/players/${player.playerId}`
+      ? playerPath(player.playerId, { eventId })
+      : playerPath(player.playerId)
     : null;
   const genderLabel = player.gender ? player.gender : "--";
   const tags = [];

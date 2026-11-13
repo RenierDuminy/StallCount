@@ -320,7 +320,7 @@ export default function PlayerMergePage() {
             description="Find the variants of one person, compare them, then fold them into a single player record. Every reference is repointed before the duplicates are removed."
             action={
               <div className="flex flex-wrap gap-2">
-                <Link to="/sys-admin" className="sc-button">
+                <Link to="/admin/system" className="sc-button">
                   Back to sys admin
                 </Link>
               </div>

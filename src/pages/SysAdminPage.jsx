@@ -753,7 +753,7 @@ export default function SysAdminPage() {
                 <Link to="/admin" className="sc-button">
                   Back to admin hub
                 </Link>
-                <Link to="/sys-admin/player-merge" className="sc-button">
+                <Link to="/admin/system/player-merge" className="sc-button">
                   Player de-duplication
                 </Link>
                 <button type="button" onClick={loadRows} className="sc-button">
@@ -948,7 +948,7 @@ export default function SysAdminPage() {
                 >
                   {matchSaving ? "Creating..." : "Create match"}
                 </button>
-                <Link to="/score-keeper" className="sc-button">
+                <Link to="/scorekeeper" className="sc-button">
                   Go to score keeper
                 </Link>
               </div>

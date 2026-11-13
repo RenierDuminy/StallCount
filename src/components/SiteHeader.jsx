@@ -20,7 +20,7 @@ const NAV_LINKS = [
 const ACCOUNT_LINKS = [
   { label: "Profile", to: "/user" },
   { label: "Notifications", to: "/notifications" },
-  { label: "Tournament director", to: "/tournament-director" },
+  { label: "Tournament director", to: "/admin/tournament-director" },
   { label: "Admin tools", to: "/admin" },
 ];
 
@@ -28,6 +28,11 @@ function isLinkActive(linkTo, location) {
   if (!linkTo.startsWith("/#")) {
     if (linkTo === "/") {
       return location.pathname === "/";
+    }
+    // Staff tools sit under /admin, but the Tournament director tool has its
+    // own header link, so "Admin tools" is not lit there as well.
+    if (linkTo === "/admin" && location.pathname.startsWith("/admin/tournament-director")) {
+      return false;
     }
     return location.pathname === linkTo || location.pathname.startsWith(`${linkTo}/`);
   }
@@ -37,7 +42,7 @@ function isLinkActive(linkTo, location) {
 }
 
 function isAdminToneLink(linkTo) {
-  return linkTo === "/admin" || linkTo === "/tournament-director";
+  return linkTo === "/admin" || linkTo === "/admin/tournament-director";
 }
 
 export default function SiteHeader() {
@@ -69,7 +74,7 @@ export default function SiteHeader() {
     : false;
   const accountLinks = user
     ? ACCOUNT_LINKS.filter((link) => {
-        if (link.to === "/tournament-director") {
+        if (link.to === "/admin/tournament-director") {
           return showTournamentDirector;
         }
         if (link.to === "/admin") {

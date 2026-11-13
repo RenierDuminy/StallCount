@@ -29,6 +29,7 @@ import {
   topicMatchesEventCode,
   topicsForTarget,
 } from "../constants/notificationTopics";
+import { matchPath } from "../utils/links";
 
 // Topic vocabulary lives in ../constants/notificationTopics so the UI, the
 // Edge Function and the fallback script agree on what a topic delivers.
@@ -1295,7 +1296,7 @@ export default function NotificationsPage() {
                         </p>
                         {event.match_id && (
                           <Link
-                            to={`/matches?matchId=${encodeURIComponent(event.match_id)}`}
+                            to={matchPath(event.match_id)}
                             className="sc-button is-ghost text-[10px]"
                           >
                             Open

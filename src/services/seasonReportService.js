@@ -174,7 +174,7 @@ export const SEASON_REPORT_FILES = [
     label: "Match event types",
     file: "seasonReport_match_events.csv",
     summary:
-      "The static catalog of event type codes (score, turnover, timeout_start…) that match_logs.event_type_id points into. Not event-scoped.",
+      "The static catalogue of event type codes (score, turnover, timeout_start…) that match_logs.event_type_id points into. Not event-scoped.",
   },
   {
     key: "spirit_scores",

@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { getErrorLog, subscribeToErrorLog } from "./ErrorBoundary";
 import { getUserRoleSlugs } from "../utils/accessControl";
 
-// /sys-admin is gated on the `admin_override` permission, which in this codebase
+// /admin/system is gated on the `admin_override` permission, which in this codebase
 // only the `admin` role carries. We match on the slug rather than the permission
 // because permissions resolve exclusively through the roleCatalog, and that
 // catalog is a network fetch (see ProtectedRoute) — too costly to repeat on every
@@ -55,7 +55,7 @@ export default function AdminErrorBanner() {
   );
 
   const latest = entries[entries.length - 1];
-  const onSysAdmin = String(location?.pathname || "").startsWith("/sys-admin");
+  const onSysAdmin = String(location?.pathname || "").startsWith("/admin/system");
 
   if (!isAdmin) return null;
   if (totalErrors === 0) return null;
@@ -87,7 +87,7 @@ export default function AdminErrorBanner() {
         )}
         <span className="flex shrink-0 items-center gap-3">
           <Link
-            to="/sys-admin"
+            to="/admin/system"
             className="rounded-full border border-rose-400 px-3 py-0.5 text-xs font-semibold text-rose-800 transition hover:bg-rose-200"
           >
             View details

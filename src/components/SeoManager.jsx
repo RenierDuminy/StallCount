@@ -1,7 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { SITE_NAME, getPageMetaOverride, subscribePageMeta } from "../utils/pageMeta";
 
-const SITE_NAME = "StallCount";
+// The one official address. StallCount has no domain of its own; it is served
+// from Vercel's production address. Canonical URLs, og:url and the sitemap
+// always name it, never the address a page happens to be opened on (a
+// preview deployment, localhost), so search engines file one copy.
+const PRODUCTION_ORIGIN = "https://stallcount.vercel.app";
 const DEFAULT_DESCRIPTION =
   "StallCount provides live Ultimate Frisbee scoring, event tracking, and team updates.";
 
@@ -9,14 +14,14 @@ const INDEXABLE_PATH_PATTERNS = [
   /^\/$/,
   /^\/events$/,
   /^\/matches$/,
+  /^\/matches\/[^/]+$/,
   /^\/teams$/,
   /^\/teams\/[^/]+$/,
   /^\/players$/,
   /^\/players\/[^/]+$/,
   /^\/community$/,
-  /^\/event-rules$/,
-  /^\/event-rosters$/,
-  /^\/event-spirit$/,
+  /^\/events\/[^/]+$/,
+  /^\/events\/[^/]+\/(spirit|rules|rosters)$/,
 ];
 
 const ROUTE_META = [
@@ -35,6 +40,11 @@ const ROUTE_META = [
     pattern: /^\/matches$/,
     title: "Matches | StallCount",
     description: "Follow live match progress and results.",
+  },
+  {
+    pattern: /^\/matches\/[^/]+$/,
+    title: "Match | StallCount",
+    description: "Live score, point-by-point log and stats for this match.",
   },
   {
     pattern: /^\/teams$/,
@@ -62,17 +72,22 @@ const ROUTE_META = [
     description: "Community updates and shared media from events and leagues.",
   },
   {
-    pattern: /^\/event-rules$/,
+    pattern: /^\/events\/[^/]+$/,
+    title: "Event | StallCount",
+    description: "Fixtures, live scores, standings and brackets for this event.",
+  },
+  {
+    pattern: /^\/events\/[^/]+\/rules$/,
     title: "Event Rules | StallCount",
     description: "Read event and competition rules used in StallCount.",
   },
   {
-    pattern: /^\/event-rosters$/,
+    pattern: /^\/events\/[^/]+\/rosters$/,
     title: "Event Rosters | StallCount",
     description: "Review event roster information by team and division.",
   },
   {
-    pattern: /^\/event-spirit$/,
+    pattern: /^\/events\/[^/]+\/spirit$/,
     title: "Event Spirit | StallCount",
     description: "Spirit score rankings by team and division for an event.",
   },
@@ -84,16 +99,8 @@ const ROUTE_META = [
 ];
 
 function getSiteOrigin() {
-  if (typeof window !== "undefined" && window.location?.origin) {
-    return window.location.origin;
-  }
-
   const envSiteUrl = import.meta.env.VITE_SITE_URL?.trim();
-  if (envSiteUrl) {
-    return envSiteUrl.replace(/\/$/, "");
-  }
-
-  return "https://stallcount.vercel.app";
+  return envSiteUrl ? envSiteUrl.replace(/\/$/, "") : PRODUCTION_ORIGIN;
 }
 
 function getRouteMeta(pathname) {
@@ -137,8 +144,10 @@ function upsertCanonical(url) {
   canonical.setAttribute("href", url);
 }
 
-function upsertStructuredData(siteOrigin) {
+function upsertStructuredData(siteOrigin, pageData) {
+  const extra = pageData ? (Array.isArray(pageData) ? pageData : [pageData]) : [];
   const payload = [
+    ...extra,
     {
       "@context": "https://schema.org",
       "@type": "Organization",
@@ -167,13 +176,22 @@ function upsertStructuredData(siteOrigin) {
 
 export default function SeoManager() {
   const location = useLocation();
+  // Re-apply whenever a page hands over (or withdraws) its own metadata.
+  const [overrideVersion, setOverrideVersion] = useState(0);
+  useEffect(() => subscribePageMeta(() => setOverrideVersion((value) => value + 1)), []);
 
   useEffect(() => {
     const pathname = location.pathname || "/";
     const siteOrigin = getSiteOrigin();
     const canonicalUrl = `${siteOrigin}${pathname}`;
     const indexable = isIndexablePath(pathname);
-    const routeMeta = getRouteMeta(pathname);
+    // A page's own title ("CTFDA MX League 2026 | StallCount") wins over the
+    // route's generic one ("Event | StallCount") once its data has loaded.
+    const override = getPageMetaOverride(pathname);
+    const baseMeta = getRouteMeta(pathname);
+    const routeMeta = override
+      ? { title: override.title, description: override.description || baseMeta.description }
+      : baseMeta;
 
     document.title = routeMeta.title;
 
@@ -193,8 +211,8 @@ export default function SeoManager() {
     upsertMetaAttribute("name", "twitter:image", `${siteOrigin}/assets/stallcount-logo.png`);
 
     upsertCanonical(canonicalUrl);
-    upsertStructuredData(siteOrigin);
-  }, [location.pathname]);
+    upsertStructuredData(siteOrigin, indexable ? override?.structuredData : null);
+  }, [location.pathname, overrideVersion]);
 
   return null;
 }

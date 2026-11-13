@@ -64,6 +64,7 @@ import {
   isByeNode,
   nextSlotForColumn,
 } from "./playoff/bracketFormat";
+import { matchPath } from "../utils/links";
 
 const PLAYOFF_STRUCTURE_EVENT_KEY = "stallcount.playoffStructure.eventId";
 const MATCH_LIMIT = 400;
@@ -3389,7 +3390,7 @@ export default function PlayoffStructurePage() {
                             {nodeForm.matchId ? (
                               <>
                                 <Link
-                                  to={`/matches?matchId=${nodeForm.matchId}`}
+                                  to={matchPath(nodeForm.matchId)}
                                   className="text-xs text-emerald-200 underline-offset-2 hover:underline"
                                 >
                                   Open

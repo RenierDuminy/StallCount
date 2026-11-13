@@ -43,7 +43,7 @@ const MATCH_CARD_PHASE_DEFAULT_LABELS = {
   [MATCH_CARD_PHASES.scheduled]: "Scheduled",
   [MATCH_CARD_PHASES.live]: "Live",
   [MATCH_CARD_PHASES.finished]: "Finished",
-  [MATCH_CARD_PHASES.canceled]: "Canceled",
+  [MATCH_CARD_PHASES.canceled]: "Cancelled",
   [MATCH_CARD_PHASES.forfeit]: "Forfeit",
 };
 

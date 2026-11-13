@@ -429,7 +429,7 @@ export default function MediaAdminPage() {
       // Stay on the team, showing what was saved (always HEX).
       setTeamColorForm(createTeamColorForm(updatedTeam.attributes));
     } catch (err) {
-      setTeamColorError(err instanceof Error ? err.message : "Unable to save team colors.");
+      setTeamColorError(err instanceof Error ? err.message : "Unable to save team colours.");
     } finally {
       setTeamColorSaving(false);
     }
@@ -451,7 +451,7 @@ export default function MediaAdminPage() {
                 <Link to="/admin" className="sc-button is-ghost">
                   Back to admin hub
                 </Link>
-                <Link to="/tournament-director" className="sc-button is-ghost">
+                <Link to="/admin/tournament-director" className="sc-button is-ghost">
                   Tournament director
                 </Link>
               </div>
@@ -630,7 +630,7 @@ export default function MediaAdminPage() {
 
         <Card as="section" className="space-y-3 p-5">
           <SectionHeader
-            title="Team color reference"
+            title="Team colour reference"
             description="Primary is the dark variant: usually light text on a dark background. Secondary is the light variant: dark text on a light background. Select a team to see its colours and edit them."
           />
           {eventTeamsError ? <div className="sc-alert is-error">{eventTeamsError}</div> : null}
@@ -745,7 +745,7 @@ export default function MediaAdminPage() {
                           className="sc-button"
                           disabled={teamColorSaving}
                         >
-                          {teamColorSaving ? "Saving..." : "Save colors"}
+                          {teamColorSaving ? "Saving..." : "Save colours"}
                         </button>
                         <button
                           type="button"

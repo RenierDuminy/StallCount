@@ -126,7 +126,10 @@ CREATE TABLE public.events (
   rules jsonb,
   "Status" text,
   auto_resolve_playoffs boolean NOT NULL DEFAULT false,
+  slug text NOT NULL,
   CONSTRAINT events_pkey PRIMARY KEY (id),
+  CONSTRAINT events_slug_key UNIQUE (slug),
+  CONSTRAINT events_slug_format CHECK ((slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'::text)),
   CONSTRAINT events_name_start_date_key UNIQUE (name, start_date),
   CONSTRAINT events_type_check CHECK ((type = ANY (ARRAY['league'::text, 'tournament'::text, 'season'::text]))),
   CONSTRAINT "events_Status_fkey" FOREIGN KEY ("Status") REFERENCES match_status(code)

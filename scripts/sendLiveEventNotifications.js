@@ -186,7 +186,7 @@ function buildNotificationPayload(event) {
   const data = event.data || {};
   const title = data.title || `Match update: ${event.event_type || "event"}`;
   const body = data.body || data.description || "Something just happened in StallCount.";
-  const url = data.url || data.link || (event.match_id ? `/matches?matchId=${encodeURIComponent(event.match_id)}` : "/notifications");
+  const url = data.url || data.link || (event.match_id ? `/matches/${encodeURIComponent(event.match_id)}` : "/notifications");
   return JSON.stringify({
     title,
     body,

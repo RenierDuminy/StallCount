@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { SectionHeader, SectionShell } from "../components/ui/primitives";
 import { getEventHierarchy } from "../services/leagueService";
 import { getSpiritScoresByEvent } from "../services/teamService";
@@ -11,7 +11,10 @@ import {
   summariseSpiritRanking,
 } from "../utils/spirit";
 import SpiritRadarChart from "../components/SpiritRadarChart";
-import { getEventPagePath } from "./eventWorkspaces";
+import { EVENT_SECTIONS, getEventPagePath } from "./eventWorkspaces";
+import { useEventSectionRoute } from "./eventRouteHooks";
+import { usePageMeta, withSiteName } from "../utils/pageMeta";
+import { teamPath } from "../utils/links";
 
 const MAX_TOTAL = SPIRIT_MAX_SCORE * SPIRIT_DIMENSIONS.length;
 
@@ -64,7 +67,7 @@ function SpiritRankingTable({ rows }) {
             >
               <td className="px-0.5 py-1 text-center tabular-nums text-ink-muted">{rank ?? "–"}</td>
               <td className="px-1 py-1">
-                <Link to={`/teams/${team.id}`} className="block truncate text-inherit! hover:underline">
+                <Link to={teamPath(team.id)} className="block truncate text-inherit! hover:underline">
                   {team.name}
                 </Link>
               </td>
@@ -86,8 +89,14 @@ function SpiritRankingTable({ rows }) {
 }
 
 export default function EventSpiritPage() {
-  const [searchParams] = useSearchParams();
-  const eventId = searchParams.get("eventId") || "";
+  // `/events/<slug>/spirit`: the event comes from the slug.
+  const { event: routeEvent, element: routeElement } = useEventSectionRoute(EVENT_SECTIONS.SPIRIT);
+  const eventId = routeElement ? "" : routeEvent?.id || "";
+  usePageMeta(
+    routeEvent?.name
+      ? { title: withSiteName(`Spirit scores – ${routeEvent.name}`), description: `${routeEvent.name}. Spirit score rankings by team and division: average WFDF spirit scores each team received.` }
+      : null,
+  );
   const [event, setEvent] = useState(null);
   const [scoreRows, setScoreRows] = useState([]);
   const [loading, setLoading] = useState(Boolean(eventId));
@@ -136,7 +145,11 @@ export default function EventSpiritPage() {
     [event, ranking],
   );
 
-  const backPath = event ? getEventPagePath({ id: eventId, name: event.name }) : null;
+  const backPath = event
+    ? getEventPagePath({ id: eventId, slug: routeEvent?.slug || event.slug, name: event.name })
+    : null;
+
+  if (routeElement) return routeElement;
 
   return (
     <div className="pb-16 text-ink">

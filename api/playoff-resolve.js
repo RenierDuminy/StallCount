@@ -430,11 +430,11 @@ export default async function handler(request, response) {
       // { mode: "pending", eventIds, dueUntil } comes from the every-minute
       // check_pending_playoffs(); anything else is the 6-hourly backup sweep.
       if (body?.mode === "pending") {
-        log("Recognized pending request.");
+        log("Recognised pending request.");
         const output = await runPending(supabase, log, body);
         return sendJson(response, output.ok ? 200 : 500, { ...output, startedAt, logs });
       }
-      log("Recognized scheduled request. Starting playoff sweep.");
+      log("Recognised scheduled request. Starting playoff sweep.");
       const output = await runSweep(supabase, log);
       return sendJson(response, output.ok ? 200 : 500, { ...output, startedAt, logs });
     }

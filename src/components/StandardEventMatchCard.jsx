@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { MatchMediaButton } from "./MatchMediaButton";
 import { MatchCard } from "./ui/primitives";
 import { getMatchMediaDetails } from "../utils/matchMedia";
+import { matchPath } from "../utils/links";
 
 function cx(...classes) {
   return classes.filter(Boolean).join(" ");
@@ -29,7 +30,7 @@ export function StandardEventMatchCard({
   compact = true,
   linkCard = true,
 }) {
-  const matchHref = match?.id ? `/matches?matchId=${match.id}` : null;
+  const matchHref = match?.id ? matchPath(match.id) : null;
   const shouldLinkCard = linkCard && matchHref;
   const component = shouldLinkCard ? Link : "article";
   const linkProps = shouldLinkCard ? { to: matchHref } : {};

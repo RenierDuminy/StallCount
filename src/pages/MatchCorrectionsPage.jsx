@@ -8,7 +8,7 @@ import MatchCorrectionsPanel from "./tournamentDirector/MatchCorrectionsPanel";
  * Standalone route for Match corrections.
  *
  * The same panel is also mounted as a tab inside the Tournament Director page.
- * It exists separately because /tournament-director is role-gated to
+ * It exists separately because /admin/tournament-director is role-gated to
  * `tournament_director` alone, so a field assistant reaching the tab through
  * that page would be refused before the panel ever rendered. This route carries
  * its own gate (MATCH_CORRECTIONS_ACCESS_ROLES) and shares the panel's state via

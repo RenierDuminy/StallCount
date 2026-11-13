@@ -129,7 +129,7 @@ export const FORM_DOT_COLORS = Object.freeze({
 export const FORM_OUTCOME_LABELS = Object.freeze({
   win: "Win",
   loss: "Loss",
-  canceled: "Canceled",
+  canceled: "Cancelled",
   forfeit_guilty: "Forfeited",
   forfeit_innocent: "Opponent forfeited",
   scheduled: "Scheduled",

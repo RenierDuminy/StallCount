@@ -1,13 +1,12 @@
 User-agent: *
 Allow: /
-Disallow: /admin/
-Disallow: /sys-admin/
-Disallow: /captain/
-Disallow: /score-keeper
+Disallow: /admin
+Disallow: /captain
+Disallow: /scorekeeper
+Disallow: /spirit-scores
 Disallow: /notifications
 Disallow: /user
-Disallow: /tournament-director
-Disallow: /spirit-scores
+Disallow: /login
 Disallow: /overlays/
 Disallow: /overlay-debug.html
 

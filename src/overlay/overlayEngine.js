@@ -61,7 +61,7 @@ export const STATUS_LABELS = {
   scheduled: "SCHEDULED",
   ready: "READY",
   pending: "PENDING",
-  canceled: "CANCELED",
+  canceled: "CANCELLED",
 };
 
 export const VALID_OVERLAY_PAYLOAD_TYPES = new Set([

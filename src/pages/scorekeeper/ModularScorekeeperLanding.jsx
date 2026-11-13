@@ -150,7 +150,7 @@ export default function ModularScorekeeperLanding() {
         <section className="space-y-3 rounded-3xl border border-slate-200 bg-white p-3">
           <div className="flex items-start justify-between gap-3 px-1">
             <div>
-              <h1 className="text-lg font-semibold text-slate-900">Score keeper</h1>
+              <h1 className="text-lg font-semibold text-slate-900">Scorekeeper</h1>
               <p className="text-sm text-slate-500">Choose how much you want to track for this match.</p>
             </div>
             {/* The menu is the first screen the operator lands on, so the way out

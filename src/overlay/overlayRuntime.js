@@ -29,6 +29,7 @@ import {
   STATUS_LABELS,
 } from "./overlayEngine";
 import { MATCH_LOG_EVENT_CODES } from "../services/matchLogService";
+import { toDisplayStatusWord } from "../constants/statusCodes";
 import { supabase } from "../services/supabaseClient";
 import { getBreakChanceTeam } from "../utils/matchBreaks";
 import {
@@ -649,7 +650,7 @@ function updateOverlay(payload) {
     formatStatusLabel({ period: scoreboard?.period, half: scoreboard?.half, status }) ||
     (normalizedStatus === "scheduled" ? (getOverlayInitialized() ? "SCHEDULED" : "STARTING SOON") : "") ||
     STATUS_LABELS[normalizedStatus] ||
-    (status ? status.toString().toUpperCase() : "LIVE");
+    (status ? toDisplayStatusWord(status.toString().toUpperCase()) : "LIVE");
 
   const statusLabel = derivedStatusLabel || fallbackStatusLabel;
   const isClockRunning = Boolean(clockText) || (Boolean(clockInfo?.hasStarted) && !clockInfo?.isPaused);
@@ -693,7 +694,7 @@ function updateOverlay(payload) {
       // Initialised wins; otherwise show the match status (scheduled -> SCHEDULED)
       clockDisplay = getOverlayInitialized()
         ? "STARTING SOON"
-        : STATUS_LABELS[normalizedStatus] || (status ? status.toString().toUpperCase() : "SCHEDULED");
+        : STATUS_LABELS[normalizedStatus] || (status ? toDisplayStatusWord(status.toString().toUpperCase()) : "SCHEDULED");
     } else if (overtime > 0) {
       const mins = Math.floor(overtime / 60);
       clockDisplay = `${String(mins).padStart(2, "0")}:${String(overtime % 60).padStart(2, "0")}`;

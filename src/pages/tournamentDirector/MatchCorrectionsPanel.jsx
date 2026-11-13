@@ -186,7 +186,7 @@ const DELETE_ICON_BUTTON_CLASS =
 
 export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = true }) {
   // Match-write permissions, not the broad TD bundle: this panel is reachable by
-  // field assistants through /match-corrections, and scoping them by the TD
+  // field assistants through /admin/match-corrections, and scoping them by the TD
   // permission set would hand them an empty event list.
   const { filterEvents, ready: accessReady } = useAccessScope(
     MATCH_CORRECTIONS_ACCESS_PERMISSIONS,

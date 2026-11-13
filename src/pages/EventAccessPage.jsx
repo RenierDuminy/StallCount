@@ -1014,7 +1014,7 @@ export default function EventAccessPage() {
               </p>
             </div>
             {rolePermissionRows.length === 0 ? (
-              <p className="text-xs text-ink-muted">No role catalog loaded yet.</p>
+              <p className="text-xs text-ink-muted">No role catalogue loaded yet.</p>
             ) : (
               <div className="divide-y divide-border/60">
                 {rolePermissionRows.map(({ role, unique, sharedCount }) => (

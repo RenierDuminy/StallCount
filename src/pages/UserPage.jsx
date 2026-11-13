@@ -110,9 +110,9 @@ function AdminFrill() {
 const QUICK_ACCESS_TOOLS = [
   {
     key: "scorekeeper",
-    label: "Score keeper",
+    label: "Scorekeeper",
     description: "Open live scoring.",
-    to: "/score-keeper",
+    to: "/scorekeeper",
     roles: SCOREKEEPER_ACCESS_ROLES,
     Icon: IconScorekeeper,
     accent:
@@ -132,7 +132,7 @@ const QUICK_ACCESS_TOOLS = [
     key: "tournament-director",
     label: "Tournament director",
     description: "Manage event operations.",
-    to: "/tournament-director",
+    to: "/admin/tournament-director",
     roles: TOURNAMENT_DIRECTOR_ACCESS_ROLES,
     Icon: IconTournamentDirector,
     accent:
@@ -190,7 +190,7 @@ const ROLE_LIBRARY = {
   scorekeeper: {
     label: "Scorekeeper",
     description:
-      "Operate live scoring workflows and keep match state synchronized during games.",
+      "Operate live scoring workflows and keep match state synchronised during games.",
     actions: [
       "Run live scorekeeping during matches.",
       "Capture game events with consistent timelines.",

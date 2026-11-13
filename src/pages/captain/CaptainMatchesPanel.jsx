@@ -60,7 +60,7 @@ const STATUS_LABELS = {
   [MATCH_STATUS.HALFTIME]: "Halftime",
   [MATCH_STATUS.FINISHED]: "Final",
   [MATCH_STATUS.COMPLETED]: "Final",
-  [MATCH_STATUS.CANCELED]: "Canceled",
+  [MATCH_STATUS.CANCELED]: "Cancelled",
 };
 
 function statusLabel(status) {

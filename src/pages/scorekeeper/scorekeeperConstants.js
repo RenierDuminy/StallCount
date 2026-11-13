@@ -20,4 +20,4 @@ export const SCORE_NA_PLAYER_VALUE = "__SCORE_PLAYER_NA__";
 //
 // The name keeps the MODULAR_ prefix because every call site uses it and there is
 // no second console left to distinguish it from.
-export const MODULAR_SCOREKEEPER_MENU_PATH = "/score-keeper";
+export const MODULAR_SCOREKEEPER_MENU_PATH = "/scorekeeper";

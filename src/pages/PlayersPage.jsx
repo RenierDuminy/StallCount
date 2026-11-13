@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { getEventPlayerMatchStats } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
 import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select } from "../components/ui/primitives";
+import { playerPath, teamPath } from "../utils/links";
 
 function getStatRowTeam(row) {
   const statTeam = row.team || null;
@@ -474,8 +475,8 @@ export default function PlayersPage() {
                           <Link
                             to={
                               eventFilter
-                                ? `/players/${row.playerId}?eventId=${encodeURIComponent(eventFilter)}`
-                                : `/players/${row.playerId}`
+                                ? playerPath(row.playerId, { eventId: eventFilter })
+                                : playerPath(row.playerId)
                             }
                             className="font-semibold text-(--sc-surface-light-ink)! underline decoration-dotted decoration-(--sc-surface-light-border) underline-offset-4 transition hover:text-(--sc-surface-light-ink)/70!"
                           >
@@ -492,7 +493,7 @@ export default function PlayersPage() {
                         {row.teamName ? (
                           row.teamId ? (
                             <Link
-                              to={`/teams/${row.teamId}`}
+                              to={teamPath(row.teamId)}
                               className="text-(--sc-surface-light-ink)/70! underline decoration-dotted decoration-(--sc-surface-light-border) underline-offset-4 transition hover:text-(--sc-surface-light-ink)!"
                             >
                               {row.teamName}

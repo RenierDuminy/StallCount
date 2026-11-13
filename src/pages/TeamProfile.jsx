@@ -11,6 +11,8 @@ import {
 } from "../services/teamService";
 import { hydrateVenueLookup } from "../services/venueService";
 import { getMatchMediaDetails } from "../utils/matchMedia";
+import { matchPath, playerPath, teamPath } from "../utils/links";
+import { usePageMeta, withSiteName } from "../utils/pageMeta";
 
 const TABS = [
   { id: "games", label: "Games" },
@@ -310,6 +312,18 @@ export default function TeamProfilePage() {
     ? `${state.team.name}${state.team.short_name ? ` (${state.team.short_name})` : ""}`
     : "Loading team...";
 
+  // Search title: the team's name, with its division and event when known.
+  usePageMeta(
+    state.team?.name
+      ? {
+          title: withSiteName(state.team.name),
+          description: `${state.team.name}${
+            state.team.division ? ` · ${divisionSummary}` : ""
+          }. Roster, results, player stats and spirit scores.`,
+        }
+      : null,
+  );
+
   return (
     <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
       <SectionShell className="space-y-3 py-3 sm:space-y-6 sm:py-8">
@@ -475,7 +489,7 @@ function GamesTable({ matches, teamId, venueLookup }) {
                   <div className="flex items-center gap-2">
                     {match.id ? (
                       <Link
-                        to={`/matches?matchId=${encodeURIComponent(match.id)}`}
+                        to={matchPath(match.id)}
                         className="text-inherit! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]!"
                       >
                         {formatMatchTime(match.start_time)}
@@ -495,7 +509,7 @@ function GamesTable({ matches, teamId, venueLookup }) {
                     <span>{leftTeam.name}</span>
                   ) : (
                     <Link
-                      to={`/teams/${leftTeam.id}`}
+                      to={teamPath(leftTeam.id)}
                       className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                     >
                       {leftTeam.name}
@@ -514,7 +528,7 @@ function GamesTable({ matches, teamId, venueLookup }) {
                     <span>{rightTeam.name}</span>
                   ) : (
                     <Link
-                      to={`/teams/${rightTeam.id}`}
+                      to={teamPath(rightTeam.id)}
                       className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                     >
                       {rightTeam.name}
@@ -632,7 +646,7 @@ function PlayersTable({ stats, rosterCount }) {
                         </span>
                       )}
                       <Link
-                        to={`/players/${stat.playerId}`}
+                        to={playerPath(stat.playerId)}
                         className="font-semibold text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                       >
                         {stat.playerName}
@@ -741,7 +755,7 @@ function SpiritTable({ entries, emptyLabel, teamId, variant = "received" }) {
                       <span>{opponent.name}</span>
                     ) : (
                       <Link
-                        to={`/teams/${opponent.id}`}
+                        to={teamPath(opponent.id)}
                         className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                       >
                         {opponent.name}

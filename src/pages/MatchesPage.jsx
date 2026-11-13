@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { MATCHES_PATH, matchPath } from "../utils/links";
+import { usePageMeta, withSiteName } from "../utils/pageMeta";
 import { MATCH_LOG_EVENT_CODES, getMatchLogs } from "../services/matchLogService";
 import { getMatchById, getMatchesByEvent } from "../services/matchService";
 import { getEventsList } from "../services/leagueService";
@@ -72,16 +74,16 @@ const MATCH_PLACEHOLDER_COPY = {
     body: "This match is still scheduled. Please check back closer to the start time.",
   },
   [MATCH_STATUS.INITIALIZED]: {
-    heading: "Match initialized",
-    body: "This match has been initialized and will begin shortly.",
+    heading: "Match initialised",
+    body: "This match has been initialised and will begin shortly.",
   },
   [MATCH_STATUS.POSTPONED]: {
     heading: "Match postponed",
     body: "This match has been postponed. A new date and time will be announced soon.",
   },
   [MATCH_STATUS.CANCELED]: {
-    heading: "Match canceled",
-    body: "This match was canceled. No match data is available.",
+    heading: "Match cancelled",
+    body: "This match was cancelled. No match data is available.",
   },
 };
 
@@ -95,7 +97,19 @@ const SCOREABLE_MATCH_STATUSES = new Set([MATCH_STATUS.SCHEDULED, MATCH_STATUS.I
 const resolveMatchVenueName = (match) => match?.venue?.name || match?.venue?.city || "Venue TBD";
 
 export default function MatchesPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  // The match comes from the path (`/matches/<id>`). `?matchId=` is the legacy
+  // form: it is still read so the first render already knows the match, and
+  // the effect below swaps the URL to the path form.
+  const { matchId: routeMatchId } = useParams();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const legacyMatchId = searchParams.get("matchId");
+  const urlMatchId = routeMatchId || legacyMatchId || null;
+  useEffect(() => {
+    if (legacyMatchId && !routeMatchId) {
+      navigate(matchPath(legacyMatchId), { replace: true });
+    }
+  }, [legacyMatchId, routeMatchId, navigate]);
   const { session, roles } = useAuth();
   const [roleCatalog, setRoleCatalog] = useState(null);
   const hasRoles = !!session && Array.isArray(roles) && roles.length > 0;
@@ -107,7 +121,7 @@ export default function MatchesPage() {
   );
   // A deep link names a match, not an event; its event is resolved below, so
   // the first-load default must not pre-empt it.
-  const [linkedMatchId] = useState(() => searchParams.get("matchId"));
+  const [linkedMatchId] = useState(() => urlMatchId);
   const [currentEvents, setCurrentEvents] = useState([]);
   const [pastEvents, setPastEvents] = useState([]);
   const [eventView, setEventView] = useState("current");
@@ -219,14 +233,13 @@ export default function MatchesPage() {
   );
 
   useEffect(() => {
-    const fromQuery = searchParams.get("matchId");
-    if (fromQuery && fromQuery !== selectedMatchId) {
-      setSelectedMatchId(fromQuery);
+    if (urlMatchId && urlMatchId !== selectedMatchId) {
+      setSelectedMatchId(urlMatchId);
     }
-  }, [searchParams, selectedMatchId]);
+  }, [urlMatchId, selectedMatchId]);
 
   useEffect(() => {
-    const fromQuery = searchParams.get("matchId");
+    const fromQuery = urlMatchId;
     if (!fromQuery || eventsLoading || selectedEventId) return;
     // Try to resolve event from the match so we can load its matches.
     (async () => {
@@ -241,7 +254,7 @@ export default function MatchesPage() {
         console.error("[MatchesPage] Failed to resolve match from query", err);
       }
     })();
-  }, [eventsLoading, pastEvents, loadMatchesForEvent, searchParams, selectedEventId]);
+  }, [eventsLoading, pastEvents, loadMatchesForEvent, urlMatchId, selectedEventId]);
 
   useEffect(() => {
     if (selectedEventId) {
@@ -401,6 +414,33 @@ export default function MatchesPage() {
     SCOREABLE_MATCH_STATUSES.has((selectedMatch.status || "").toLowerCase()) &&
     (selectedEvent?.status || "").toLowerCase() === MATCH_STATUS.LIVE &&
     (scorekeeperEventIds === null || scorekeeperEventIds.has(selectedEventId));
+  // Search title for a match URL (`/matches/<id>`): both teams and the event,
+  // plus the score and kick-off in the description. Only once the match the
+  // URL names has loaded, so the list page keeps its generic title.
+  const searchMatch = routeMatchId && selectedMatch?.id === routeMatchId ? selectedMatch : null;
+  const searchEventName = searchMatch
+    ? [...currentEvents, ...pastEvents].find((event) => event.id === searchMatch.event_id)?.name || ""
+    : "";
+  usePageMeta(
+    searchMatch
+      ? {
+          title: withSiteName(
+            `${searchMatch.team_a?.name || "Team A"} vs ${searchMatch.team_b?.name || "Team B"}${
+              searchEventName ? ` – ${searchEventName}` : ""
+            }`,
+          ),
+          description: [
+            hasRecordedScore(searchMatch)
+              ? `${searchMatch.team_a?.name || "Team A"} ${searchMatch.score_a ?? 0} – ${searchMatch.score_b ?? 0} ${searchMatch.team_b?.name || "Team B"}.`
+              : `${searchMatch.team_a?.name || "Team A"} vs ${searchMatch.team_b?.name || "Team B"}.`,
+            searchMatch.start_time ? `Kick-off ${formatKickoff(searchMatch.start_time)}.` : "",
+            "Live score, point-by-point log, stats and spirit scores.",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        }
+      : null,
+  );
   const isUnloggedFinishedMatch =
     !matchPlaceholder &&
     !!selectedMatch &&
@@ -464,7 +504,7 @@ export default function MatchesPage() {
                       setSelectedEventId(value);
                       setSelectedMatchId("");
                       if (value) {
-                        setSearchParams({}, { replace: true });
+                        navigate(MATCHES_PATH, { replace: true });
                       }
                     }}
                     className="w-full appearance-none rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink shadow-inner outline-none focus:border-accent focus:ring-2 focus:ring-[var(--sc-accent)]/50"
@@ -521,9 +561,9 @@ export default function MatchesPage() {
                     const value = event.target.value;
                     setSelectedMatchId(value);
                     if (value) {
-                      setSearchParams({ matchId: value }, { replace: true });
+                      navigate(matchPath(value), { replace: true });
                     } else {
-                      setSearchParams({}, { replace: true });
+                      navigate(MATCHES_PATH, { replace: true });
                     }
                   }}
                   className="w-full appearance-none rounded-xl border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink shadow-inner outline-none focus:border-accent focus:ring-2 focus:ring-[var(--sc-accent)]/50 disabled:cursor-not-allowed disabled:opacity-70"
@@ -2489,7 +2529,7 @@ const MATCH_OPTION_STATUS_LABELS = {
   [MATCH_STATUS.SCHEDULED]: "Scheduled",
   [MATCH_STATUS.INITIALIZED]: "Starting",
   [MATCH_STATUS.POSTPONED]: "Postponed",
-  [MATCH_STATUS.CANCELED]: "Canceled",
+  [MATCH_STATUS.CANCELED]: "Cancelled",
 };
 
 // "14 Oct 18:30 · Live · TeamA 6 – 5 TeamB". The score sits between the names

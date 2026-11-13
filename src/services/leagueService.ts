@@ -178,7 +178,7 @@ export async function getRecentEvents(limit = 4): Promise<EventRow[]> {
     async () => {
       const { data, error } = await supabase
         .from("events")
-        .select("id, name, type, start_date, end_date, location, created_at, rules")
+        .select("id, name, slug, type, start_date, end_date, location, created_at, rules")
         .order("start_date", { ascending: false })
         .limit(limit);
 
@@ -221,7 +221,7 @@ export async function getEventsList(limit = 12, options: GetEventsListOptions = 
     async () => {
       let query = supabase
         .from("events")
-        .select('id, name, type, start_date, end_date, location, created_at, status:Status, rules')
+        .select('id, name, slug, type, start_date, end_date, location, created_at, status:Status, rules')
         .order("start_date", { ascending: false })
         .limit(limit);
 
@@ -285,7 +285,7 @@ export async function getEventsByIds(ids: string[]): Promise<EventRow[]> {
     async () => {
       const { data, error } = await supabase
         .from("events")
-        .select("id, name, type, start_date, end_date, location, created_at, rules")
+        .select("id, name, slug, type, start_date, end_date, location, created_at, rules")
         .in("id", uniqueIds);
 
       if (error) {
@@ -341,6 +341,7 @@ type RawEventHierarchy = EventRow & {
 const EVENT_HIERARCHY_SELECT = `
   id,
   name,
+  slug,
   type,
   start_date,
   end_date,

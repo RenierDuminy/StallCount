@@ -1,15 +1,16 @@
 /**
  * Which events use the standard event page (`EventWorkspaceTemplate`).
  *
- * Every event uses the standard page by default, at `/event/<slug of its
+ * Every event uses the standard page by default, at `/events/<slug of its
  * name>`. A new event gets a working page the moment it exists in the
  * database: nothing to add here, no file to write.
  *
  * The only exceptions are the events listed in CUSTOM_WORKSPACE_EVENTS: those
- * render their own file from `events workspace/` at `/events/<slug>`. A
+ * render their own file from `events workspace/` at `/events/<its slug>`. A
  * workspace file for an event NOT listed there is ignored (kept as a backup,
- * still bundled, not routed) and its old `/events/<slug>` URL redirects to the
- * standard page.
+ * still bundled, not routed; its old URL no longer redirects, retired
+ * 2026-11-13). Backup files still hold old-style `?eventId=` links; fix them
+ * with getEventSectionPath() before restoring one.
  */
 
 /** Events that keep their custom workspace page instead of the standard one. */

@@ -558,7 +558,7 @@ export default function SpiritScoresPage() {
           <SectionHeader
             title="Spirit scores"
             action={
-              <Link to="/score-keeper" className="sc-button is-dark">
+              <Link to="/scorekeeper" className="sc-button is-dark">
                 Back to score keeper
               </Link>
             }
@@ -852,7 +852,7 @@ export default function SpiritScoresPage() {
             <button type="submit" disabled={submitting} className="sc-button is-dark disabled:cursor-not-allowed">
               {submitting ? "Submitting..." : "Submit spirit scores"}
             </button>
-            <Link to="/score-keeper" className="sc-button is-dark">
+            <Link to="/scorekeeper" className="sc-button is-dark">
               Cancel
             </Link>
           </div>

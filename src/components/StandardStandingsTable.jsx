@@ -5,6 +5,7 @@ import {
   FORM_OUTCOME_LABELS,
   formatScoreDiff,
 } from "../utils/standings";
+import { teamPath } from "../utils/links";
 
 function cx(...classes) {
   return classes.filter(Boolean).join(" ");
@@ -168,7 +169,7 @@ export function StandardStandingsTable({
               <td className="min-w-0 px-1 py-1 align-top" title={row.name}>
                 {row.id ? (
                   <Link
-                    to={`/teams/${row.id}`}
+                    to={teamPath(row.id)}
                     className="block truncate text-inherit! hover:underline"
                   >
                     {row.name}

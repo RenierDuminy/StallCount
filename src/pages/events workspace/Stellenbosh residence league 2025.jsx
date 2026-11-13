@@ -407,7 +407,7 @@ function ResultCard({ match }) {
         compact
         eyebrow=""
         title={`${seedLabel(match.seedA)}${match.teamA} vs ${seedLabel(match.seedB)}${match.teamB}`}
-        status={match.guilty?.length ? `${match.guilty.join(" and ")} forfeited` : "Canceled"}
+        status={match.guilty?.length ? `${match.guilty.join(" and ")} forfeited` : "Cancelled"}
         phase={match.guilty?.length ? "forfeit" : "canceled"}
       />
     );

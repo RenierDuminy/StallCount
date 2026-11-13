@@ -12,6 +12,7 @@ import {
   isMatchFinal,
   isMatchLive,
 } from "./homeFormat";
+import { playerPath, teamPath } from "../../utils/links";
 
 function Fact({ label, value }) {
   if (!value) return null;
@@ -26,7 +27,7 @@ function PlayerCard({ player }) {
   const { totals } = player;
   const played = totals.matches > 0;
   return (
-    <Panel as={Link} to={`/players/${player.playerId}`} variant="tinted" className="home-list-card home-team-card">
+    <Panel as={Link} to={playerPath(player.playerId)} variant="tinted" className="home-list-card home-team-card">
       <span className="home-list-card__title font-semibold text-ink">
         {player.name}
         {player.jerseyNumber !== null && player.jerseyNumber !== undefined ? (
@@ -69,7 +70,7 @@ export function HomeYourTeams({ teams, players = [], matches, teamsLoading, play
           <ul className="home-card-list__items">
             {teams.map((team) => (
               <li key={team.teamId}>
-                <Panel as={Link} to={`/teams/${team.teamId}`} variant="tinted" className="home-list-card home-team-card">
+                <Panel as={Link} to={teamPath(team.teamId)} variant="tinted" className="home-list-card home-team-card">
                   <span className="home-list-card__title font-semibold text-ink">{team.name}</span>
                   <span className="home-team-card__facts">
                     <Fact label="Record" value={formatRecord(team.record)} />

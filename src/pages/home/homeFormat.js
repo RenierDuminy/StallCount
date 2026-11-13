@@ -1,4 +1,10 @@
-import { MATCH_STATUS, isConcludedStatus, isInProgressStatus } from "../../constants/statusCodes";
+import {
+  MATCH_STATUS,
+  isConcludedStatus,
+  isInProgressStatus,
+  toDisplayStatusWord,
+} from "../../constants/statusCodes";
+import { matchPath } from "../../utils/links";
 
 const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
@@ -134,11 +140,11 @@ export function formatLiveScore(match) {
 export function formatMatchStatus(status) {
   const normalized = (status || "").toString().trim().toLowerCase();
   if (!normalized) return "";
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  return toDisplayStatusWord(normalized.charAt(0).toUpperCase() + normalized.slice(1));
 }
 
 export function buildMatchLink(matchId, options = {}) {
-  const path = matchId ? `/matches?matchId=${matchId}` : "/matches";
+  const path = matchPath(matchId);
   if (options.absolute && typeof window !== "undefined") {
     return `${window.location.origin}${path}`;
   }

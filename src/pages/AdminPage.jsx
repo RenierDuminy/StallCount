@@ -5,7 +5,7 @@ import { Card, Panel, SectionHeader, SectionShell } from "../components/ui/primi
 import { normaliseRoleList, SPIRIT_SCORES_ACCESS_ROLES } from "../utils/accessControl";
 
 const ADMIN_MODULE_PRIORITY = [
-  "Score keeper",
+  "Scorekeeper",
   "Spirit scores",
   "Captain",
   "Event access control",
@@ -29,10 +29,10 @@ const COLOR_VAR_HEX = {
 
 const ADMIN_MODULES = [
   {
-    label: "Score keeper",
+    label: "Scorekeeper",
     description:
       "Open the live scoring console. Pick Competitive or Casual tracking in match setup.",
-    to: "/score-keeper",
+    to: "/scorekeeper",
     accent: "border border-live-border bg-live-bg text-live-ink",
     colorVar: "--sc-live",
   },
@@ -56,7 +56,7 @@ const ADMIN_MODULES = [
     label: "Sys admin",
     description:
       "Browse and edit any Supabase table directly, with cascade-aware deletes and build diagnostics.",
-    to: "/sys-admin",
+    to: "/admin/system",
     accent: "border border-admin-border bg-admin-bg text-admin-ink",
     colorVar: "--sc-admin",
   },
@@ -87,8 +87,8 @@ const ADMIN_MODULES = [
   {
     label: "Tournament director",
     description:
-      "Desktop command center to view, create, and alter tournament data across every table.",
-    to: "/tournament-director",
+      "Desktop command centre to view, create, and alter tournament data across every table.",
+    to: "/admin/tournament-director",
     accent: "border border-admin-border bg-admin-bg text-admin-ink",
     colorVar: "--sc-admin",
   },
@@ -96,7 +96,7 @@ const ADMIN_MODULES = [
     label: "Match corrections",
     description:
       "Audit a match's point-by-point log, find discrepancies, and fix scores, scorers, and assists.",
-    to: "/match-corrections",
+    to: "/admin/match-corrections",
     accent: "border border-admin-border bg-admin-bg text-admin-ink",
     colorVar: "--sc-admin",
     // Mirrors MATCH_CORRECTIONS_ACCESS_ROLES on the route. `administrator` and
@@ -122,7 +122,7 @@ const ADMIN_MODULES = [
   {
     label: "Media",
     description:
-      "Attach stream links to matches and manage team branding colors for streaming overlays.",
+      "Attach stream links to matches and manage team branding colours for streaming overlays.",
     to: "/admin/media",
     accent: "border border-media-border bg-media-bg text-media-ink",
     colorVar: "--sc-media",

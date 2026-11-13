@@ -6,7 +6,13 @@
       "source": "/sitemap",
       "destination": "/sitemap.xml",
       "permanent": true
-    }
+    },
+    { "source": "/event/:slug", "destination": "/events/:slug", "permanent": true },
+    { "source": "/tournament-director", "destination": "/admin/tournament-director", "permanent": true },
+    { "source": "/match-corrections", "destination": "/admin/match-corrections", "permanent": true },
+    { "source": "/sys-admin", "destination": "/admin/system", "permanent": true },
+    { "source": "/sys-admin/:path*", "destination": "/admin/system/:path*", "permanent": true },
+    { "source": "/score-keeper", "destination": "/scorekeeper", "permanent": true }
   ],
   "headers": [
     {
@@ -33,6 +39,7 @@
     }
   ],
   "rewrites": [
+    { "source": "/sitemap.xml", "destination": "/api/sitemap" },
     {
       "source": "/((?!.*\\.).*)",
       "destination": "/index.html"

@@ -238,7 +238,7 @@ function buildPayload(event: LiveEventRow) {
   const url =
     (typeof data.url === "string" && data.url) ||
     (typeof data.link === "string" && data.link) ||
-    (event.match_id ? `/matches?matchId=${encodeURIComponent(event.match_id)}` : "/notifications");
+    (event.match_id ? `/matches/${encodeURIComponent(event.match_id)}` : "/notifications");
 
   const decorate = (value: string | undefined, fallback: string) => {
     if (value && fallbackName && !value.toLowerCase().includes(fallbackName.toLowerCase())) {

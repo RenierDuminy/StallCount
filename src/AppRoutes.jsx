@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import SeoManager from "./components/SeoManager";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -17,7 +17,7 @@ import {
   TOURNAMENT_DIRECTOR_ACCESS_ROLES,
   MATCH_CORRECTIONS_ACCESS_ROLES,
 } from "./utils/accessControl";
-import { eventWorkspaces } from "./pages/eventWorkspaces";
+import { EVENT_SECTIONS } from "./pages/eventWorkspaces";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
@@ -52,27 +52,16 @@ const OverlayControlPage = lazy(() => import("./pages/OverlayControlPage"));
 const EventRostersPageLazy = lazy(() => import("./pages/EventRostersPage"));
 const EventSpiritPageLazy = lazy(() => import("./pages/EventSpiritPage"));
 const EventRulesPageLazy = lazy(() => import("./pages/EventRulesPage"));
-const StandardEventPage = lazy(() => import("./pages/StandardEventPage"));
-const StandardEventRedirect = lazy(() =>
-  import("./pages/StandardEventPage").then((mod) => ({ default: mod.StandardEventRedirect })),
+// Every event lives at /events/<slug>: a custom workspace (listed in
+// standardEventTemplates.js) under its own slug, every other event on the
+// standard page under the slug of its name. Sub-pages are /events/<slug>/<section>.
+const EventPage = lazy(() => import("./pages/StandardEventPage"));
+const LegacyStandardEventRedirect = lazy(() =>
+  import("./pages/StandardEventPage").then((mod) => ({ default: mod.LegacyStandardEventRedirect })),
 );
-const LegacyEventSlugRedirect = lazy(() =>
-  import("./pages/StandardEventPage").then((mod) => ({ default: mod.LegacyEventSlugRedirect })),
+const LegacyEventSectionRedirect = lazy(() =>
+  import("./pages/StandardEventPage").then((mod) => ({ default: mod.LegacyEventSectionRedirect })),
 );
-const cptMxLeagueWorkspace = eventWorkspaces.find(
-  (workspace) => workspace.path === "/events/ctfda-mx-league",
-);
-
-// Every event lives on the standard page at /event/<name> unless
-// standardEventTemplates.js lists it as custom. A workspace file for any other
-// event only keeps its old URL redirecting there; the component stays bundled
-// as a backup.
-const renderWorkspace = (workspace) =>
-  workspace.usesStandardTemplate ? (
-    <StandardEventRedirect eventId={workspace.eventId} />
-  ) : (
-    <workspace.Component />
-  );
 
 const routeFallback = (
   <div className="sc-shell flex min-h-[40vh] items-center justify-center text-sm text-[var(--sc-ink-muted)]">
@@ -102,28 +91,16 @@ function Guarded({ name, children }) {
 }
 
 /**
- * `/score-keeper-modular` -> `/score-keeper`, keeping the query string.
- *
- * The console moved onto the plain path once it replaced the 7v7 and 5v5
- * builds. The search params have to survive the trip because `?mode=` is what
- * selects the format — dropping it would land a bookmarked Casual match on the
- * format picker instead.
+ * An address that moved on 2026-11-13 (staff tools under /admin, the
+ * scorekeeper's spelling). Keeps the query string and hash, and, when `from`
+ * is given, the rest of the path after it. The server 301s these too
+ * (vercel.json); this covers an installed PWA, whose service worker answers
+ * navigations itself. Retire after 2027-05-13.
  */
-function RedirectToScoreKeeper() {
-  const { search } = useLocation();
-  return <Navigate to={`/score-keeper${search}`} replace />;
-}
-
-/**
- * `/matches/<id>` -> `/matches?matchId=<id>`.
- *
- * The match detail lives on the list page behind `?matchId=`, but push
- * notifications linked the path form, and already-delivered notifications
- * still carry it, so the path has to keep resolving.
- */
-function RedirectToMatchDetail() {
-  const { matchId } = useParams();
-  return <Navigate to={`/matches?matchId=${encodeURIComponent(matchId ?? "")}`} replace />;
+function MovedPath({ from = null, to }) {
+  const { pathname, search, hash } = useLocation();
+  const rest = from ? pathname.slice(from.length) : "";
+  return <Navigate to={`${to}${rest}${search}${hash}`} replace />;
 }
 
 export default function AppRoutes() {
@@ -140,38 +117,23 @@ export default function AppRoutes() {
           <Route path="/players/:playerId" element={<Guarded name="Player profile"><PlayerProfilePage /></Guarded>} />
           <Route path="/teams" element={<Guarded name="Teams"><Teams /></Guarded>} />
           <Route path="/teams/:teamId" element={<Guarded name="Team profile"><TeamProfilePage /></Guarded>} />
-          <Route path="/matches" element={<Guarded name="Matches"><MatchesPage /></Guarded>} />
-          <Route path="/matches/:matchId" element={<RedirectToMatchDetail />} />
+          {/* One route for the list and a match (`/matches/<id>`), so picking a
+              match never remounts the page. `/matches?matchId=` is the legacy
+              form, redirected by MatchesPage. Build links with matchPath(). */}
+          <Route path="/matches/:matchId?" element={<Guarded name="Matches"><MatchesPage /></Guarded>} />
           <Route path="/events" element={<Guarded name="Events"><EventsPage /></Guarded>} />
           <Route path="/community" element={<Guarded name="Community"><CommunityPage /></Guarded>} />
-          <Route path="/event-rosters" element={<Guarded name="Event rosters"><EventRostersPageLazy /></Guarded>} />
-          <Route path="/event-spirit" element={<Guarded name="Event spirit"><EventSpiritPageLazy /></Guarded>} />
-          <Route path="/event-rules"element={<Guarded name="Event rules"><EventRulesPageLazy /></Guarded>} />
-          {cptMxLeagueWorkspace ? (
-            <Route
-              path="/events/ctfda-mx-league"
-              element={<Guarded name="CPT MX League workspace">{renderWorkspace(cptMxLeagueWorkspace)}</Guarded>}
-            />
-          ) : null}
-          {eventWorkspaces
-            .filter((workspace) => workspace.path !== "/events/ctfda-mx-league")
-            .map((workspace) => (
-            <Route
-              key={workspace.path}
-              path={workspace.path}
-              element={<Guarded name={`Event workspace: ${workspace.path}`}>{renderWorkspace(workspace)}</Guarded>}
-            />
-          ))}
-          {/* Old, misspelled slug of the Res League 2025 workspace. */}
-          <Route
-            path="/events/stellenbosh-residence-league-2026"
-            element={<Navigate to="/events/stellenbosch-residence-league-2025" replace />}
-          />
-          {/* Every other event gets the standard page by name. The static
-              workspace routes above outrank the /events/:slug catch-all,
-              which only forwards stray old links to /event/:slug. */}
-          <Route path="/event/:slug" element={<Guarded name="Event"><StandardEventPage /></Guarded>} />
-          <Route path="/events/:slug" element={<Guarded name="Event"><LegacyEventSlugRedirect /></Guarded>} />
+          {/* Events: one prefix. Build links with getEventPagePath() /
+              getEventSectionPath() (pages/eventWorkspaces.js). */}
+          <Route path="/events/:slug" element={<Guarded name="Event"><EventPage /></Guarded>} />
+          <Route path={`/events/:slug/${EVENT_SECTIONS.SPIRIT}`} element={<Guarded name="Event spirit"><EventSpiritPageLazy /></Guarded>} />
+          <Route path={`/events/:slug/${EVENT_SECTIONS.RULES}`} element={<Guarded name="Event rules"><EventRulesPageLazy /></Guarded>} />
+          <Route path={`/events/:slug/${EVENT_SECTIONS.ROSTERS}`} element={<Guarded name="Event rosters"><EventRostersPageLazy /></Guarded>} />
+          {/* Moved 2026-11-13; retire after 2027-05-13 (see StandardEventPage.jsx). */}
+          <Route path="/event/:slug" element={<Guarded name="Event"><LegacyStandardEventRedirect /></Guarded>} />
+          <Route path="/event-spirit" element={<Guarded name="Event spirit"><LegacyEventSectionRedirect section={EVENT_SECTIONS.SPIRIT} /></Guarded>} />
+          <Route path="/event-rules" element={<Guarded name="Event rules"><LegacyEventSectionRedirect section={EVENT_SECTIONS.RULES} /></Guarded>} />
+          <Route path="/event-rosters" element={<Guarded name="Event rosters"><LegacyEventSectionRedirect section={EVENT_SECTIONS.ROSTERS} /></Guarded>} />
           <Route
             path="/notifications"
             element={
@@ -227,7 +189,7 @@ export default function AppRoutes() {
             }
           />
           <Route
-            path="/tournament-director"
+            path="/admin/tournament-director"
             element={
               <ProtectedRoute allowedRoles={TOURNAMENT_DIRECTOR_ACCESS_ROLES}>
                 <Guarded name="Tournament director"><TournamentDirectorPage /></Guarded>
@@ -235,7 +197,7 @@ export default function AppRoutes() {
             }
           />
           <Route
-            path="/match-corrections"
+            path="/admin/match-corrections"
             element={
               <ProtectedRoute allowedRoles={MATCH_CORRECTIONS_ACCESS_ROLES}>
                 <Guarded name="Match corrections"><MatchCorrectionsPage /></Guarded>
@@ -291,50 +253,47 @@ export default function AppRoutes() {
             }
           />
           <Route
-            path="/sys-admin"
+            path="/admin/system"
             element={
               <ProtectedRoute allowedPermissions={SYS_ADMIN_ACCESS_PERMISSIONS}>
                 <Guarded name="Sys admin"><SysAdminPage /></Guarded>
               </ProtectedRoute>
             }
           />
-          {/* Same admin_override gate as /sys-admin: the merge deletes player
-              rows and rewrites every reference to them. */}
+          {/* Same admin_override gate as /admin/system: the merge deletes
+              player rows and rewrites every reference to them. */}
           <Route
-            path="/sys-admin/player-merge"
+            path="/admin/system/player-merge"
             element={
               <ProtectedRoute allowedPermissions={SYS_ADMIN_ACCESS_PERMISSIONS}>
                 <Guarded name="Player merge"><PlayerMergePage /></Guarded>
               </ProtectedRoute>
             }
           />
+          {/* Staff tools moved under /admin on 2026-11-13; retire after 2027-05-13. */}
+          <Route path="/tournament-director" element={<MovedPath from="/tournament-director" to="/admin/tournament-director" />} />
+          <Route path="/match-corrections" element={<MovedPath from="/match-corrections" to="/admin/match-corrections" />} />
+          <Route path="/sys-admin/*" element={<MovedPath from="/sys-admin" to="/admin/system" />} />
         </Route>
         {/* The modular console, and the only one. It replaced the separate 7v7
             and 5v5 consoles, which are gone: the format now comes from `?mode=`
             (`full` / `lite`, or the legacy `7v7` / `5v5` spellings), so one
             console covers both. With no valid mode this is the landing page. */}
         <Route
-          path="/score-keeper"
+          path="/scorekeeper"
           element={
             <ProtectedRoute
               allowedRoles={SCOREKEEPER_ACCESS_ROLES}
               allowedPermissions={SCOREKEEPER_ACCESS_PERMISSIONS}
             >
-              <Guarded name="Score keeper"><ModularScoreKeeperPage /></Guarded>
+              <Guarded name="Scorekeeper"><ModularScoreKeeperPage /></Guarded>
             </ProtectedRoute>
           }
         />
-        {/* Bookmarks and links from before the replacement. `/score-keeper-5v5`
-            carries its format across so those land on the Casual console rather
-            than dumping the operator back on the picker. */}
-        <Route
-          path="/score-keeper-modular"
-          element={<RedirectToScoreKeeper />}
-        />
-        <Route
-          path="/score-keeper-5v5"
-          element={<Navigate to="/score-keeper?mode=5v5" replace />}
-        />
+        {/* Was `/score-keeper` until 2026-11-13 (renamed to the dictionary
+            spelling). Keeps `?mode=` and `?setup=`, so a bookmarked Casual
+            console still lands on Casual. Retire after 2027-05-13. */}
+        <Route path="/score-keeper" element={<MovedPath to="/scorekeeper" />} />
         <Route
           path="/admin/scrimmage"
           element={

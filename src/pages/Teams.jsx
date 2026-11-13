@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getTeamsPage } from "../services/teamService";
 import { Card, Panel, SectionHeader, SectionShell, Field, Input } from "../components/ui/primitives";
+import { teamPath } from "../utils/links";
 
 const TEAMS_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -142,7 +143,7 @@ export default function TeamsPage() {
             teams.map((team) => (
               <Link
                 key={team.id}
-                to={`/teams/${team.id}`}
+                to={teamPath(team.id)}
                 className="flex min-w-0 items-center justify-between gap-4 border-b border-border px-1 py-3 text-ink! transition hover:border-accent hover:text-accent! sm:px-2"
               >
                 <div className="min-w-0">

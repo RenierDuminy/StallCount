@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { OPEN_MATCH_STATUSES } from "../../constants/statusCodes";
+import { OPEN_MATCH_STATUSES, toDisplayStatusWord } from "../../constants/statusCodes";
 import { getEventsList } from "../../services/leagueService";
 import { getMatchesByEvent, getMatchById } from "../../services/matchService";
 import { getPlayersByTeam } from "../../services/playerService";
@@ -1533,7 +1533,7 @@ useEffect(() => {
     (activeMatch?.venue_id && venueLookup[activeMatch.venue_id]) ||
     (selectedMatch?.venue_id && venueLookup[selectedMatch.venue_id]) ||
     null;
-  const statusLabel = (activeMatch?.status || selectedMatch?.status || "pending").toUpperCase();
+  const statusLabel = toDisplayStatusWord((activeMatch?.status || selectedMatch?.status || "pending").toUpperCase());
   const getAbbaDescriptor = useCallback(
     (orderIndex) => {
       if (!["male", "female"].includes(rules.abbaPattern) || orderIndex < 0) {

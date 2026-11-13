@@ -33,6 +33,8 @@ import BracketStructureView from "../pages/playoff/BracketStructureView";
 import StandingsRulesInfo from "./StandingsRulesInfo";
 import GetTheAppCard from "./GetTheAppCard";
 import { buildVenueMapsUrl } from "../utils/mapsLink";
+import { EVENT_SECTIONS, getEventSectionPath } from "../pages/eventWorkspaces";
+import { formatSearchDateRange, usePageMeta, withSiteName } from "../utils/pageMeta";
 import EventFollowNotice from "./EventFollowNotice";
 
 // Generic event workspace, modelled on the Stellenbosch Internal Draft League VI
@@ -242,6 +244,7 @@ function PdfIcon(props) {
 export default function EventWorkspaceTemplate({
   eventId,
   fallbackName = "Event",
+  eventSlug = null,
   ruleDocuments = [],
 }) {
   // One cached read for the whole page (see eventPageService). A revisit, or a
@@ -480,6 +483,41 @@ export default function EventWorkspaceTemplate({
   };
 
   const eventTitle = eventData?.name || fallbackName;
+  // Sub-page links follow the route's event (its stored slug, passed in by the
+  // page that found it), so they stay on the same address.
+  const sectionPath = (section) =>
+    getEventSectionPath(
+      { id: eventId, slug: eventSlug || eventData?.slug, name: fallbackName || eventTitle },
+      section,
+    );
+
+  // What search engines show for this event: its name as the title, a line
+  // saying what is on the page, and a schema.org SportsEvent "fact card"
+  // (name, dates, place) Google can show beside the result.
+  const searchDates = formatSearchDateRange(eventData?.start_date, eventData?.end_date);
+  const searchKind = eventData?.type ? `${eventData.type.charAt(0).toUpperCase()}${eventData.type.slice(1)}` : "Ultimate frisbee event";
+  usePageMeta(
+    eventData?.name
+      ? {
+          title: withSiteName(eventData.name),
+          description: [
+            `${searchKind}${searchDates ? `, ${searchDates}` : ""}${eventData.location ? `, ${eventData.location}` : ""}.`,
+            "Fixtures, live scores, standings, brackets and results.",
+          ].join(" "),
+          structuredData: {
+            "@context": "https://schema.org",
+            "@type": "SportsEvent",
+            name: eventData.name,
+            sport: "Ultimate frisbee",
+            ...(eventData.start_date ? { startDate: String(eventData.start_date).slice(0, 10) } : {}),
+            ...(eventData.end_date ? { endDate: String(eventData.end_date).slice(0, 10) } : {}),
+            ...(eventData.location
+              ? { location: { "@type": "Place", name: eventData.location, address: eventData.location } }
+              : {}),
+          },
+        }
+      : null,
+  );
 
   return (
     <div className="pb-16 text-ink">
@@ -490,13 +528,13 @@ export default function EventWorkspaceTemplate({
           />
           <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-row sm:flex-wrap sm:justify-end">
             <Link
-              to={`/event-rules?eventId=${encodeURIComponent(eventId)}`}
+              to={sectionPath(EVENT_SECTIONS.RULES)}
               className="sc-button w-full whitespace-nowrap sm:w-auto"
             >
               Event rules
             </Link>
             <Link
-              to={`/event-rosters?eventId=${encodeURIComponent(eventId)}`}
+              to={sectionPath(EVENT_SECTIONS.ROSTERS)}
               className="sc-button w-full whitespace-nowrap sm:w-auto"
             >
               Team rosters
@@ -508,7 +546,7 @@ export default function EventWorkspaceTemplate({
               Player standings
             </Link>
             <Link
-              to={`/event-spirit?eventId=${encodeURIComponent(eventId)}`}
+              to={sectionPath(EVENT_SECTIONS.SPIRIT)}
               className="sc-button w-full whitespace-nowrap sm:w-auto"
             >
               Spirit scores
