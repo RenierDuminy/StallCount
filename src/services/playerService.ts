@@ -138,6 +138,7 @@ export async function getAllPlayers(): Promise<PlayerRow[]> {
     team_id: row.team_id ?? row.teams?.id ?? null,
     team_name: row.teams?.name ?? null,
     jersey_number: row.players?.jersey_number ?? null,
+    event_id: row.event_id ?? null,
   }));
 }
 
@@ -149,6 +150,7 @@ export async function getPlayersByTeam(teamId: string, eventId?: string | null) 
     .select(
       `
         id,
+        event_id,
         players:player(id, name, gender_code, jersey_number)
       `
     )
@@ -169,6 +171,7 @@ export async function getPlayersByTeam(teamId: string, eventId?: string | null) 
 
   const rows = (data ?? []) as Array<{
     id: string;
+    event_id: string | null;
     players: {
       id: string;
       name: string;

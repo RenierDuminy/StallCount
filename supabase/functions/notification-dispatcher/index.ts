@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+// The wording of every notification (shared with scripts/sendLiveEventNotifications.js).
+import {
+  SILENT_EVENT_CODES,
+  buildNotificationText,
+  buildPlayerNotificationText,
+} from "../_shared/notificationText.js";
 
 // Delivers queued `live_events` rows as Web Push notifications.
 //
@@ -130,6 +136,10 @@ type MatchScope = {
   division_id: string | null;
   team_a: string | null;
   team_b: string | null;
+  score_a: number | null;
+  score_b: number | null;
+  team_a_name?: string | null;
+  team_b_name?: string | null;
 };
 
 // A live_events row names only the acting team (the scorer's, the thrower's,
@@ -143,11 +153,23 @@ async function fetchMatchScopes(matchIds: string[]): Promise<Map<string, MatchSc
   if (!ids.length) return scopes;
   const { data, error } = await supabase
     .from("matches")
-    .select("id, event_id, division_id, team_a, team_b")
+    .select("id, event_id, division_id, team_a, team_b, score_a, score_b")
     .in("id", ids);
   if (error) throw error;
-  for (const row of (data ?? []) as Array<MatchScope & { id: string }>) {
-    scopes.set(row.id, row);
+  const rows = (data ?? []) as Array<MatchScope & { id: string }>;
+  // Team names for the wording ("Match start | X vs Y", "Final: X 13 – 9 Y").
+  const teamIds = Array.from(new Set(rows.flatMap((row) => [row.team_a, row.team_b]).filter(Boolean)));
+  const names = new Map<string, string>();
+  if (teamIds.length) {
+    const { data: teams } = await supabase.from("teams").select("id, name").in("id", teamIds);
+    for (const team of (teams ?? []) as Array<{ id: string; name: string }>) names.set(team.id, team.name);
+  }
+  for (const row of rows) {
+    scopes.set(row.id, {
+      ...row,
+      team_a_name: row.team_a ? names.get(row.team_a) ?? null : null,
+      team_b_name: row.team_b ? names.get(row.team_b) ?? null : null,
+    });
   }
   return scopes;
 }
@@ -195,14 +217,21 @@ function normalizeTopic(topic?: unknown) {
   return typeof topic === "string" ? topic.trim().toLowerCase() : "";
 }
 
+type MatchedSubscription = {
+  profile_id: string;
+  topics: string[] | null;
+  target_type: string;
+  target_id: string;
+};
+
 async function fetchMatchingSubscriptions(targets: TargetMap, eventType: string) {
-  const matches: Array<{ profile_id: string; topics: string[] | null }> = [];
+  const matches: MatchedSubscription[] = [];
 
   for (const [type, ids] of targets.entries()) {
     if (!ids.size) continue;
     const { data, error } = await supabase
       .from("subscriptions")
-      .select("profile_id, topics")
+      .select("profile_id, topics, target_type, target_id")
       .eq("target_type", type)
       .in("target_id", Array.from(ids));
     if (error) throw error;
@@ -229,33 +258,20 @@ async function fetchPushEndpoints(profileIds: string[]): Promise<PushSubscriptio
   return (data ?? []) as PushSubscriptionRow[];
 }
 
-function buildPayload(event: LiveEventRow) {
+// The title and body come from _shared/notificationText.js, not from the
+// `title` / `body` the database writes into `data` (a generic "Score - X"
+// template, kept only as a last resort). `text` is the wording chosen for this
+// recipient (general, or player-specific for a player follow).
+function buildPayload(event: LiveEventRow, text: { title: string; body: string }) {
   const data = (event.data ?? {}) as Record<string, unknown>;
-  const fallbackName =
-    (typeof data.target_name === "string" && data.target_name) ||
-    (typeof data.match_name === "string" && data.match_name) ||
-    "";
-  const url =
-    (typeof data.url === "string" && data.url) ||
-    (typeof data.link === "string" && data.link) ||
-    (event.match_id ? `/matches/${encodeURIComponent(event.match_id)}` : "/notifications");
-
-  const decorate = (value: string | undefined, fallback: string) => {
-    if (value && fallbackName && !value.toLowerCase().includes(fallbackName.toLowerCase())) {
-      return `${value} - ${fallback}`;
-    }
-    return value ?? fallback;
-  };
+  // Always the match page: `/matches/<id>`.
+  const url = event.match_id
+    ? `/matches/${encodeURIComponent(event.match_id)}`
+    : (typeof data.url === "string" && data.url) || "/notifications";
 
   return JSON.stringify({
-    title: decorate(
-      typeof data.title === "string" ? data.title : undefined,
-      fallbackName ? `Update: ${fallbackName}` : `Match update: ${event.event_type}`,
-    ),
-    body: decorate(
-      typeof data.body === "string" ? data.body : undefined,
-      (typeof data.description === "string" && data.description) || "New activity on StallCount.",
-    ),
+    title: text.title || (typeof data.title === "string" ? data.title : "StallCount"),
+    body: text.body,
     icon: (typeof data.icon === "string" && data.icon) || "/icon-192.png",
     badge: (typeof data.badge === "string" && data.badge) || "/icon-192.png",
     tag: (typeof data.tag === "string" && data.tag) || `live-event-${event.id}`,
@@ -342,6 +358,19 @@ async function processEvent(event: LiveEventRow, scope?: MatchScope) {
     return { eventId: event.id, status: "expired", delivered: 0, endpoints: 0 };
   }
 
+  // No alert for the end of a timeout, halftime or stoppage: the start is the
+  // news. The row still exists (the home page's live ticker reads it).
+  if (SILENT_EVENT_CODES.has(event.event_type)) {
+    await updateEvent(event.id, {
+      sent: true,
+      attempts,
+      last_attempt_at: now,
+      delivered_count: 0,
+      last_error: null,
+    });
+    return { eventId: event.id, status: "silent", delivered: 0, endpoints: 0 };
+  }
+
   const targets = buildTargetMap(event, scope);
   const matchingSubs = await fetchMatchingSubscriptions(targets, event.event_type);
   const profileIds = Array.from(new Set(matchingSubs.map((sub) => sub.profile_id)));
@@ -357,10 +386,28 @@ async function processEvent(event: LiveEventRow, scope?: MatchScope) {
     return { eventId: event.id, status: "no_recipients", delivered: 0, endpoints: 0 };
   }
 
-  const payload = buildPayload(event);
+  // Wording: general for everyone, except a profile that follows a player
+  // named on this row, which gets the player's own wording ("Emma Belcher
+  // scores"). Built once per distinct wording.
+  const data = (event.data ?? {}) as Record<string, unknown>;
+  const matchInfo = {
+    teamAName: scope?.team_a_name ?? null,
+    teamBName: scope?.team_b_name ?? null,
+    scoreA: scope?.score_a ?? null,
+    scoreB: scope?.score_b ?? null,
+  };
+  const generalPayload = buildPayload(event, buildNotificationText(event.event_type, data, matchInfo));
+  const payloadByProfile = new Map<string, string>();
+  for (const sub of matchingSubs) {
+    if (sub.target_type !== "player" || payloadByProfile.has(sub.profile_id)) continue;
+    const playerText = buildPlayerNotificationText(event.event_type, data, sub.target_id);
+    if (playerText) payloadByProfile.set(sub.profile_id, buildPayload(event, playerText));
+  }
+
   const counts = { delivered: 0, pruned: 0, config_error: 0, transient: 0 };
   let lastDetail = "";
   for (const endpoint of endpoints) {
+    const payload = payloadByProfile.get(endpoint.profile_id) ?? generalPayload;
     const result = await deliver(endpoint, payload);
     counts[result.outcome] += 1;
     if (result.detail && result.outcome !== "delivered") lastDetail = result.detail;

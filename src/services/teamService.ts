@@ -446,6 +446,17 @@ export type PlayerStatRow = {
   callahans: number;
   games: number;
   matchIds: string[];
+  /** Per-match lines, so a page can total one event's games only. */
+  perMatch: PlayerStatMatchLine[];
+};
+
+export type PlayerStatMatchLine = {
+  matchId: string;
+  goals: number;
+  assists: number;
+  blocks: number;
+  turnovers: number;
+  callahans: number;
 };
 
 export type PlayerMatchStatRow = {
@@ -567,15 +578,27 @@ function attachCallahanCounts(
   }));
 }
 
-export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[]> {
+/**
+ * Player stats for a team. Pass `scope` to load one event's games only (the
+ * team page's default); without it, every game the team has played.
+ * Cache keys all start `teams:player-stats:<teamId>`, which is what
+ * corrections and player merges invalidate by prefix.
+ */
+export async function getTeamPlayerStats(
+  teamId: string,
+  scope?: { eventId: string; matchIds: string[] },
+): Promise<PlayerStatRow[]> {
   if (!teamId) {
+    return [];
+  }
+  if (scope && scope.matchIds.length === 0) {
     return [];
   }
 
   return getCachedQuery(
-    `teams:player-stats:${teamId}`,
+    scope ? `teams:player-stats:${teamId}:event:${scope.eventId}` : `teams:player-stats:${teamId}`,
     async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("player_match_stats")
         .select(
           `
@@ -589,6 +612,10 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
           `
         )
         .eq("team_id", teamId);
+      if (scope) {
+        query = query.in("match_id", scope.matchIds);
+      }
+      const { data, error } = await query;
 
       if (error) {
         throw new Error(error.message || "Failed to load player stats");
@@ -605,6 +632,7 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
         string,
         PlayerStatRow & {
           matchIds: Set<string>;
+          perMatchMap: Map<string, PlayerStatMatchLine>;
         }
       >();
 
@@ -624,6 +652,7 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
             callahans: 0,
             games: 0,
             matchIds: new Set<string>(),
+            perMatchMap: new Map<string, PlayerStatMatchLine>(),
           });
         }
 
@@ -634,8 +663,25 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
         entry.assists += row.assists ?? 0;
         entry.blocks += row.blocks ?? 0;
         entry.turnovers += row.turnovers ?? 0;
-        entry.callahans += callahanCounts.get(`${row.match_id}:${playerId}`) ?? 0;
+        const callahans = callahanCounts.get(`${row.match_id}:${playerId}`) ?? 0;
+        entry.callahans += callahans;
         entry.matchIds.add(row.match_id);
+        const line = entry.perMatchMap.get(row.match_id) ?? {
+          matchId: row.match_id,
+          goals: 0,
+          assists: 0,
+          blocks: 0,
+          turnovers: 0,
+          callahans: 0,
+        };
+        line.goals += row.goals ?? 0;
+        line.assists += row.assists ?? 0;
+        line.blocks += row.blocks ?? 0;
+        line.turnovers += row.turnovers ?? 0;
+        if (!entry.perMatchMap.has(row.match_id)) {
+          line.callahans = callahans;
+          entry.perMatchMap.set(row.match_id, line);
+        }
       }
 
       const results: PlayerStatRow[] = Array.from(statsMap.values()).map((entry) => ({
@@ -649,6 +695,7 @@ export async function getTeamPlayerStats(teamId: string): Promise<PlayerStatRow[
         callahans: entry.callahans,
         games: entry.matchIds.size,
         matchIds: Array.from(entry.matchIds),
+        perMatch: Array.from(entry.perMatchMap.values()),
       }));
 
       return results.sort((a, b) => {

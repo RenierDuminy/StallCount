@@ -28,15 +28,34 @@ const GAME_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
+const EMPTY_LIST = [];
+
+function pickMostRecentEventId(matches) {
+  let best = null;
+  for (const match of matches ?? []) {
+    const eventId = match?.event?.id;
+    if (!eventId) continue;
+    const time = match.start_time || "";
+    if (!best || time > best.time) best = { eventId, time };
+  }
+  return best?.eventId ?? null;
+}
+
 export default function TeamProfilePage() {
   const { teamId } = useParams();
   const [activeTab, setActiveTab] = useState("games");
-  const [eventFilter, setEventFilter] = useState("all");
+  // "" until the team's matches load, then the most recent event. "All events"
+  // is opt-in because it loads every game's stats.
+  const [eventFilter, setEventFilter] = useState("");
   const [state, setState] = useState({
     loading: true,
     error: "",
     team: null,
     matches: [],
+  });
+  const [scoped, setScoped] = useState({
+    loading: true,
+    key: "",
     roster: [],
     playerStats: [],
     spiritScores: [],
@@ -48,51 +67,23 @@ export default function TeamProfilePage() {
 
     async function loadProfile() {
       if (!teamId) {
-        setState({
-          loading: false,
-          error: "No team selected.",
-          team: null,
-          matches: [],
-          roster: [],
-          playerStats: [],
-          spiritScores: [],
-        });
+        setState({ loading: false, error: "No team selected.", team: null, matches: [] });
         return;
       }
 
-      setState((prev) => ({
-        ...prev,
-        loading: true,
-        error: "",
-      }));
+      setState((prev) => ({ ...prev, loading: true, error: "" }));
+      setEventFilter("");
 
       try {
-        const [team, matches, roster, playerStats] = await Promise.all([
-          getTeamDetails(teamId),
-          getTeamMatches(teamId),
-          getPlayersByTeam(teamId),
-          getTeamPlayerStats(teamId),
-        ]);
+        const [team, matches] = await Promise.all([getTeamDetails(teamId), getTeamMatches(teamId)]);
 
         if (!team) {
           throw new Error("Team not found.");
         }
 
-        const spiritScores =
-          matches.length > 0
-            ? await getSpiritScoresForMatches(matches.map((match) => match.id))
-            : [];
-
         if (!ignore) {
-          setState({
-            loading: false,
-            error: "",
-            team,
-            matches,
-            roster,
-            playerStats,
-            spiritScores,
-          });
+          setState({ loading: false, error: "", team, matches });
+          setEventFilter(pickMostRecentEventId(matches) ?? "all");
         }
       } catch (err) {
         if (!ignore) {
@@ -101,9 +92,6 @@ export default function TeamProfilePage() {
             error: err instanceof Error ? err.message : "Unable to load team profile.",
             team: null,
             matches: [],
-            roster: [],
-            playerStats: [],
-            spiritScores: [],
           });
         }
       }
@@ -114,6 +102,42 @@ export default function TeamProfilePage() {
       ignore = true;
     };
   }, [teamId]);
+
+  // Roster, player stats and spirit for the selected event only.
+  useEffect(() => {
+    if (!teamId || !eventFilter || state.loading || !state.team) return undefined;
+    let ignore = false;
+    const key = `${teamId}:${eventFilter}`;
+    const scopeMatchIds =
+      eventFilter === "all"
+        ? state.matches.map((match) => match.id)
+        : state.matches.filter((match) => match.event?.id === eventFilter).map((match) => match.id);
+
+    Promise.all([
+      getPlayersByTeam(teamId, eventFilter === "all" ? null : eventFilter),
+      getTeamPlayerStats(
+        teamId,
+        eventFilter === "all" ? undefined : { eventId: eventFilter, matchIds: scopeMatchIds },
+      ),
+      getSpiritScoresForMatches(scopeMatchIds),
+    ])
+      .then(([roster, playerStats, spiritScores]) => {
+        if (!ignore) setScoped({ loading: false, key, roster, playerStats, spiritScores });
+      })
+      .catch((err) => {
+        console.error("Unable to load team event data", err);
+        if (!ignore) setScoped({ loading: false, key, roster: [], playerStats: [], spiritScores: [] });
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [teamId, eventFilter, state.loading, state.team, state.matches]);
+
+  const scopedReady = scoped.key === `${teamId}:${eventFilter}` && !scoped.loading;
+  const roster = scopedReady ? scoped.roster : EMPTY_LIST;
+  const playerStats = scopedReady ? scoped.playerStats : EMPTY_LIST;
+  const spiritScores = scopedReady ? scoped.spiritScores : EMPTY_LIST;
 
   useEffect(() => {
     const venueIds = state.matches
@@ -177,22 +201,71 @@ export default function TeamProfilePage() {
 
   const filteredSpiritScores = useMemo(() => {
     if (eventFilter === "all") {
-      return state.spiritScores;
+      return spiritScores;
     }
-    return state.spiritScores.filter((entry) => {
+    return spiritScores.filter((entry) => {
       const match = matchesById.get(entry.match_id);
       return match?.event?.id === eventFilter;
     });
-  }, [state.spiritScores, matchesById, eventFilter]);
+  }, [spiritScores, matchesById, eventFilter]);
 
+  // The whole roster (for the chosen event, or every event) plus anyone else
+  // with stats for this team in those games, e.g. a sub-in. Rostered players
+  // without stats show with zeros.
   const filteredPlayerStats = useMemo(() => {
-    if (eventFilter === "all") {
-      return state.playerStats;
+    const inScope = (matchId) =>
+      eventFilter === "all" || matchesById.get(matchId)?.event?.id === eventFilter;
+    const rows = new Map();
+
+    for (const player of playerStats) {
+      // Older cached rows have no per-match lines; fall back to their totals.
+      const lines = Array.isArray(player.perMatch)
+        ? player.perMatch.filter((line) => inScope(line.matchId))
+        : null;
+      const matchIds = (player.matchIds ?? []).filter(inScope);
+      if (matchIds.length === 0) continue;
+      const sum = (key) =>
+        lines ? lines.reduce((total, line) => total + (line[key] ?? 0), 0) : player[key] ?? 0;
+      rows.set(player.playerId, {
+        ...player,
+        goals: sum("goals"),
+        assists: sum("assists"),
+        blocks: sum("blocks"),
+        turnovers: sum("turnovers"),
+        callahans: sum("callahans"),
+        games: matchIds.length,
+        matchIds,
+      });
     }
-    return state.playerStats.filter((player) =>
-      player.matchIds?.some((matchId) => matchesById.get(matchId)?.event?.id === eventFilter),
+
+    for (const member of roster) {
+      if (eventFilter !== "all" && member.event_id !== eventFilter) continue;
+      if (!member.id || rows.has(member.id)) continue;
+      rows.set(member.id, {
+        playerId: member.id,
+        playerName: member.name,
+        jerseyNumber: member.jersey_number ?? null,
+        goals: 0,
+        assists: 0,
+        blocks: 0,
+        turnovers: 0,
+        callahans: 0,
+        games: 0,
+        matchIds: [],
+      });
+    }
+
+    return Array.from(rows.values());
+  }, [playerStats, roster, matchesById, eventFilter]);
+
+  const rosterCount = useMemo(() => {
+    const ids = new Set(
+      roster
+        .filter((member) => eventFilter === "all" || member.event_id === eventFilter)
+        .map((member) => member.id),
     );
-  }, [state.playerStats, matchesById, eventFilter]);
+    return ids.size;
+  }, [roster, eventFilter]);
 
   const metrics = useMemo(() => {
     const sourceMatches = filteredMatches;
@@ -216,7 +289,7 @@ export default function TeamProfilePage() {
         goalsAgainst: 0,
         goalDiff: 0,
         spiritAverage: null,
-        activePlayers: eventFilter === "all" ? state.roster.length : filteredPlayerStats.length,
+        activePlayers: rosterCount,
       };
     }
 
@@ -258,9 +331,9 @@ export default function TeamProfilePage() {
       goalsAgainst,
       goalDiff: goalsFor - goalsAgainst,
       spiritAverage,
-      activePlayers: eventFilter === "all" ? state.roster.length : filteredPlayerStats.length,
+      activePlayers: rosterCount,
     };
-  }, [eventFilter, filteredMatches, filteredPlayerStats, filteredSpiritScores, state.roster, state.team]);
+  }, [filteredMatches, filteredSpiritScores, rosterCount, state.team]);
 
   const spiritBreakdown = useMemo(() => {
     if (!state.team) {
@@ -363,7 +436,7 @@ export default function TeamProfilePage() {
                   <Field className="w-full max-w-xs" label="Event" htmlFor="team-event-filter">
                     <Select
                       id="team-event-filter"
-                      value={eventFilter}
+                      value={eventFilter || "all"}
                       onChange={(event) => setEventFilter(event.target.value)}
                     >
                       <option value="all">All events</option>
@@ -408,7 +481,7 @@ export default function TeamProfilePage() {
               </div>
 
               <div className="space-y-3 sm:space-y-4">
-                {state.loading ? (
+                {state.loading || (activeTab !== "games" && !scopedReady) ? (
                   <Panel
                     variant="light"
                     className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/70 p-4 text-center text-sm text-[var(--sc-surface-light-ink)]/70 sm:p-6"
@@ -423,7 +496,7 @@ export default function TeamProfilePage() {
                     {activeTab === "players" && (
                       <PlayersTable
                         stats={filteredPlayerStats}
-                        rosterCount={eventFilter === "all" ? state.roster.length : filteredPlayerStats.length}
+                        rosterCount={rosterCount}
                       />
                     )}
                     {activeTab === "spirit" && visibleTabs.some((tab) => tab.id === "spirit") && (
@@ -605,9 +678,9 @@ function PlayersTable({ stats, rosterCount }) {
   if (!stats?.length) {
     return (
       <div className="space-y-3 sm:space-y-4">
-        <EmptyState message="No player stats recorded for this team yet." />
+        <EmptyState message="No players on the roster or with stats for this team yet." />
         <p className="text-center text-sm text-[var(--sc-surface-light-ink)]/70">
-          Active roster count: {rosterCount || 0}
+          Roster count: {rosterCount || 0}
         </p>
       </div>
     );
@@ -667,7 +740,7 @@ function PlayersTable({ stats, rosterCount }) {
         </table>
       </Panel>
       <p className="text-center text-sm text-[var(--sc-surface-light-ink)]/70">
-        Active roster count: {rosterCount || 0}
+        Roster count: {rosterCount || 0}
       </p>
     </div>
   );

@@ -55,19 +55,37 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+// Tapping a notification opens its match page (`/matches/<id>`):
+// 1. a StallCount window already on that page is brought forward;
+// 2. otherwise an open StallCount window is brought forward AND moved to the
+//    page, so an installed app is reused instead of a browser tab opening;
+// 3. only with no StallCount window open is a new one opened.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || "/";
+  const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin).href;
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientsArr) => {
-      for (const client of clientsArr) {
-        if (client.url.includes(targetUrl) || client.url === self.location.origin + targetUrl) {
-          client.focus();
-          return;
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const sameOrigin = windows.filter((client) => client.url.startsWith(self.location.origin));
+      const onTarget = sameOrigin.find((client) => client.url.split("#")[0] === targetUrl);
+      if (onTarget) {
+        await onTarget.focus();
+        return;
+      }
+      const existing = sameOrigin.find((client) => client.focused) || sameOrigin[0];
+      if (existing) {
+        try {
+          const focused = await existing.focus();
+          // navigate() needs a window this worker controls; fall back below
+          // when the browser refuses (it returns null or throws).
+          const moved = await (focused || existing).navigate(targetUrl);
+          if (moved) return;
+        } catch {
+          // Fall through to a new window.
         }
       }
-      return self.clients.openWindow(targetUrl);
-    }),
+      await self.clients.openWindow(targetUrl);
+    })(),
   );
 });
 

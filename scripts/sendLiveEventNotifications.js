@@ -7,6 +7,12 @@
 import process from "node:process";
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
+// The wording of every notification, shared with the Edge Function.
+import {
+  SILENT_EVENT_CODES,
+  buildNotificationText,
+  buildPlayerNotificationText,
+} from "../supabase/functions/_shared/notificationText.js";
 
 const config = {
   supabaseUrl: process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL,
@@ -102,10 +108,23 @@ async function fetchMatchScopes(matchIds) {
   if (!ids.length) return scopes;
   const { data, error } = await supabase
     .from("matches")
-    .select("id, event_id, division_id, team_a, team_b")
+    .select("id, event_id, division_id, team_a, team_b, score_a, score_b")
     .in("id", ids);
   if (error) throw new Error(error.message || "Failed to load match scopes.");
-  (data || []).forEach((row) => scopes.set(row.id, row));
+  const rows = data || [];
+  const teamIds = Array.from(new Set(rows.flatMap((row) => [row.team_a, row.team_b]).filter(Boolean)));
+  const names = new Map();
+  if (teamIds.length) {
+    const { data: teams } = await supabase.from("teams").select("id, name").in("id", teamIds);
+    (teams || []).forEach((team) => names.set(team.id, team.name));
+  }
+  rows.forEach((row) =>
+    scopes.set(row.id, {
+      ...row,
+      team_a_name: row.team_a ? names.get(row.team_a) ?? null : null,
+      team_b_name: row.team_b ? names.get(row.team_b) ?? null : null,
+    }),
+  );
   return scopes;
 }
 
@@ -182,14 +201,14 @@ async function fetchPushEndpoints(profileIds) {
   return data || [];
 }
 
-function buildNotificationPayload(event) {
+// Same as the Edge Function: wording from _shared/notificationText.js, link
+// always to the match page.
+function buildNotificationPayload(event, text) {
   const data = event.data || {};
-  const title = data.title || `Match update: ${event.event_type || "event"}`;
-  const body = data.body || data.description || "Something just happened in StallCount.";
-  const url = data.url || data.link || (event.match_id ? `/matches/${encodeURIComponent(event.match_id)}` : "/notifications");
+  const url = event.match_id ? `/matches/${encodeURIComponent(event.match_id)}` : data.url || "/notifications";
   return JSON.stringify({
-    title,
-    body,
+    title: text.title || data.title || "StallCount",
+    body: text.body,
     icon: data.icon || "/icon-192.png",
     badge: data.badge || "/icon-192.png",
     tag: data.tag || `live-event-${event.id}`,
@@ -259,6 +278,12 @@ async function processEvent(event, scope) {
     return { eventId: event.id, status: "expired", deliveries: 0, endpoints: 0 };
   }
 
+  // No alert for the end of a timeout, halftime or stoppage.
+  if (SILENT_EVENT_CODES.has(event.event_type)) {
+    await updateEvent(event.id, { sent: true, attempts, last_attempt_at: now, delivered_count: 0, last_error: null });
+    return { eventId: event.id, status: "silent", deliveries: 0, endpoints: 0 };
+  }
+
   const targets = buildEventTargets(event, scope);
   const subscriptions = await fetchMatchingSubscriptions(targets, event.event_type);
   const profileIds = Array.from(new Set(subscriptions.map((sub) => sub.profile_id)));
@@ -274,10 +299,25 @@ async function processEvent(event, scope) {
     return { eventId: event.id, status: "no_recipients", deliveries: 0, endpoints: 0 };
   }
 
-  const payload = buildNotificationPayload(event);
+  const data = event.data || {};
+  const matchInfo = {
+    teamAName: scope?.team_a_name ?? null,
+    teamBName: scope?.team_b_name ?? null,
+    scoreA: scope?.score_a ?? null,
+    scoreB: scope?.score_b ?? null,
+  };
+  const generalPayload = buildNotificationPayload(event, buildNotificationText(event.event_type, data, matchInfo));
+  const payloadByProfile = new Map();
+  for (const sub of subscriptions) {
+    if (sub.target_type !== "player" || payloadByProfile.has(sub.profile_id)) continue;
+    const playerText = buildPlayerNotificationText(event.event_type, data, sub.target_id);
+    if (playerText) payloadByProfile.set(sub.profile_id, buildNotificationPayload(event, playerText));
+  }
+
   const counts = { delivered: 0, pruned: 0, config_error: 0, transient: 0 };
   let lastDetail = "";
   for (const endpoint of endpoints) {
+    const payload = payloadByProfile.get(endpoint.profile_id) ?? generalPayload;
     const result = await deliverToEndpoint(endpoint, payload);
     counts[result.outcome] += 1;
     if (result.detail && result.outcome !== "delivered") lastDetail = result.detail;
