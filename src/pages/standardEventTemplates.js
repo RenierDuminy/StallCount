@@ -7,10 +7,10 @@
  *
  * The only exceptions are the events listed in CUSTOM_WORKSPACE_EVENTS: those
  * render their own file from `events workspace/` at `/events/<its slug>`. A
- * workspace file for an event NOT listed there is ignored (kept as a backup,
- * still bundled, not routed; its old URL no longer redirects, retired
- * 2026-11-13). Backup files still hold old-style `?eventId=` links; fix them
- * with getEventSectionPath() before restoring one.
+ * workspace file for an event NOT listed there is ignored and not routed. The
+ * old unrouted backup workspaces were deleted on 2026-11-14 (they are in git
+ * history; their links use the retired `?eventId=` form, so fix them with
+ * getEventSectionPath() before restoring one).
  */
 
 /** Events that keep their custom workspace page instead of the standard one. */

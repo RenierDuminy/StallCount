@@ -1,39 +1,31 @@
 import { useEffect, useRef } from "react";
-import { supabase } from "../services/supabaseClient";
 
-// Idle safety net. Nothing is live, so nothing will push us an update — but a
-// match scheduled for 17:00 has to be noticed by a tab that was opened at 16:45.
-// This is the only traffic the home page generates while the league is quiet,
-// so it is deliberately slow.
+// Idle safety net. Nothing is live, but a match scheduled for 17:00 has to be
+// noticed by a tab that was opened at 16:45. This is the only traffic the home
+// page generates while the league is quiet, so it is deliberately slow.
 const IDLE_POLL_INTERVAL_MS = 2 * 60 * 1000;
 
-// Fallback poll while a match is live, in case the realtime channel silently
-// drops (backgrounded tab, flaky network, dropped socket). Realtime should beat
-// this to the punch almost every time; it exists so a dead socket degrades to
-// "slightly stale" instead of "frozen until reload".
+// While a match is live. The home summaries are edge-cached for about 15 s
+// (api/home-summary.js), so polling faster than this would mostly re-read the
+// same cached copy.
 const LIVE_POLL_INTERVAL_MS = 30 * 1000;
 
-// Realtime fires per row. A single point can touch `matches` (score) and
-// `live_events` (ticker) at once, and several matches can score together, so
-// coalesce a burst into one refetch.
-const REALTIME_DEBOUNCE_MS = 1200;
-
 /**
- * Keeps the home page's live surfaces current without polling the server on a
- * fast timer.
+ * Keeps the home page's live surfaces current by polling, switched between two
+ * cadences by `hasLiveMatches`: every 30 s while something is live, every
+ * 2 min otherwise. A hidden tab does not poll; returning to it refreshes at
+ * once.
  *
- * Two modes, switched automatically by `hasLiveMatches`:
+ * There is deliberately no Supabase Realtime channel here (removed
+ * 2026-11-14). The home page is the one page every visitor opens, and a
+ * channel per viewer on all `matches` updates meant every score fanned out to
+ * every open tab, each change was checked against RLS once per subscriber, and
+ * the plan's realtime connection cap became the limit on how many people could
+ * watch. The data is the same for everyone, so a shared, edge-cached poll is
+ * cheaper and scales. The match page keeps its own realtime channel for the
+ * one match it shows.
  *
- *  - Idle (nothing live): no realtime channel at all, just a slow ~10 min poll.
- *    Costs effectively nothing on a quiet day, and is what eventually notices
- *    that a scheduled match has kicked off.
- *  - Live (something is live): opens one channel watching `matches` and
- *    `live_events`, debounced, plus a 30 s fallback poll. When the last match
- *    finishes the caller flips `hasLiveMatches` back to false, the channel is
- *    torn down, and we drop back to the idle cadence.
- *
- * `onRefresh` must be stable-safe: it is held in a ref, so changing it does not
- * resubscribe. Only the live/idle transition tears the channel down.
+ * `onRefresh` is held in a ref, so changing it does not restart the timer.
  */
 export function useHomeLiveRefresh({ hasLiveMatches, onRefresh, enabled = true }) {
   const onRefreshRef = useRef(onRefresh);
@@ -46,11 +38,10 @@ export function useHomeLiveRefresh({ hasLiveMatches, onRefresh, enabled = true }
     if (!enabled) return undefined;
 
     let isActive = true;
-    let debounceTimer = null;
     let isRefreshing = false;
 
-    // Guards against overlapping refetches: a burst of realtime events plus a
-    // fallback poll landing together must not fire two concurrent loads.
+    // Guards against overlapping refetches (a poll landing while the
+    // visibility refresh is still running).
     const runRefresh = async () => {
       if (!isActive || isRefreshing) return;
       isRefreshing = true;
@@ -63,27 +54,16 @@ export function useHomeLiveRefresh({ hasLiveMatches, onRefresh, enabled = true }
       }
     };
 
-    const scheduleRefresh = () => {
-      if (!isActive) return;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        void runRefresh();
-      }, REALTIME_DEBOUNCE_MS);
-    };
-
     const pollIntervalMs = hasLiveMatches ? LIVE_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS;
     const pollTimer = setInterval(() => {
-      // A hidden tab cannot be read, and waking it up just to refetch burns a
-      // request for nobody. The visibilitychange listener below catches up the
-      // moment the user comes back.
+      // A hidden tab cannot be read; the visibilitychange listener below
+      // catches up the moment the user comes back.
       if (typeof document !== "undefined" && document.hidden) return;
       void runRefresh();
     }, pollIntervalMs);
 
     const handleVisibilityChange = () => {
       if (typeof document === "undefined" || document.hidden) return;
-      // Returning to the tab is the one moment staleness is most visible, so
-      // refresh immediately rather than waiting for the next tick.
       void runRefresh();
     };
 
@@ -91,36 +71,11 @@ export function useHomeLiveRefresh({ hasLiveMatches, onRefresh, enabled = true }
       document.addEventListener("visibilitychange", handleVisibilityChange);
     }
 
-    let channel = null;
-    if (hasLiveMatches) {
-      channel = supabase
-        .channel("home-live-updates")
-        .on(
-          "postgres_changes",
-          // Score writes and the live -> finished transition both land here, so
-          // this one subscription keeps the hero score current *and* is what
-          // tells us the last live match has ended.
-          { event: "UPDATE", schema: "public", table: "matches" },
-          () => scheduleRefresh(),
-        )
-        .on(
-          "postgres_changes",
-          // Clock / point-status ticker detail behind the hero card.
-          { event: "INSERT", schema: "public", table: "live_events" },
-          () => scheduleRefresh(),
-        )
-        .subscribe();
-    }
-
     return () => {
       isActive = false;
-      if (debounceTimer) clearTimeout(debounceTimer);
       clearInterval(pollTimer);
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", handleVisibilityChange);
-      }
-      if (channel) {
-        supabase.removeChannel(channel);
       }
     };
   }, [enabled, hasLiveMatches]);

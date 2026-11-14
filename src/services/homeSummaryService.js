@@ -110,6 +110,49 @@ export function getHomeFinalsSummaryKey(limits) {
   return buildHomeFinalsSummaryCacheKey(normalizeHomeFinalsLimits(limits));
 }
 
+// The shared, edge-cached copy of each summary (api/home-summary.js). Every
+// visitor reads the same copy, so a crowd on the home page costs about one
+// database read per section every 15-60 s instead of one per browser. Any
+// failure (endpoint missing, 502, timeout, wrong shape) returns null and the
+// caller reads Supabase directly as before, so the endpoint can never take the
+// home page down. Skipped in `vite dev`, which has no /api routes, and when
+// VITE_HOME_SUMMARY_EDGE is "off".
+const EDGE_SUMMARY_TIMEOUT_MS = 5000;
+const EDGE_SUMMARY_ENABLED =
+  !import.meta.env.DEV && String(import.meta.env.VITE_HOME_SUMMARY_EDGE ?? "").toLowerCase() !== "off";
+
+// The array each section must carry for its edge copy to be trusted.
+const EDGE_SUMMARY_REQUIRED_FIELD = {
+  hero: "openMatches",
+  "below-fold": "events",
+  streaming: "latestMatches",
+  finals: "recentFinalMatches",
+};
+
+async function readEdgeSummary(section, limits) {
+  if (!EDGE_SUMMARY_ENABLED || typeof fetch !== "function") return null;
+  const params = new URLSearchParams({ section });
+  Object.entries(limits).forEach(([name, value]) => params.set(name, String(value)));
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), EDGE_SUMMARY_TIMEOUT_MS) : null;
+  try {
+    const response = await fetch(`/api/home-summary?${params.toString()}`, {
+      headers: { Accept: "application/json" },
+      signal: controller?.signal,
+    });
+    if (!response.ok) return null;
+    if (!(response.headers.get("content-type") || "").includes("application/json")) return null;
+    const body = await response.json();
+    if (!body || !Array.isArray(body[EDGE_SUMMARY_REQUIRED_FIELD[section]])) return null;
+    return { ...body, failures: Array.isArray(body.failures) ? body.failures : [] };
+  } catch (error) {
+    console.warn(`[homeSummary] Shared ${section} summary unavailable; reading directly.`, error);
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function toSettled(promise) {
   return promise
     .then((value) => ({ status: "fulfilled", value }))
@@ -162,6 +205,8 @@ export async function getHomeHeroSummary(options = {}) {
   return getCachedQuery(
     cacheKey,
     async () => {
+      const shared = await readEdgeSummary("hero", limits);
+      if (shared) return shared;
       // Whenever this summary actually fetches, the reads underneath must skip
       // their own caches too — otherwise the summary refetches but gets handed
       // the same cached rows it already had, and data ends up two TTLs old.
@@ -199,6 +244,8 @@ export async function getHomeBelowFoldSummary(options = {}) {
   return getCachedQuery(
     cacheKey,
     async () => {
+      const shared = await readEdgeSummary("below-fold", limits);
+      if (shared) return shared;
       const readOptions = { forceRefresh: true };
       const results = await Promise.all([
         toSettled(getEventsList(limits.events, readOptions)),
@@ -246,6 +293,8 @@ export async function getHomeStreamingSummary(options = {}) {
   return getCachedQuery(
     cacheKey,
     async () => {
+      const shared = await readEdgeSummary("streaming", limits);
+      if (shared) return shared;
       const readOptions = { forceRefresh: true };
       const results = await Promise.all([
         toSettled(getRecentMatches(limits.recentMatches, readOptions)),
@@ -282,6 +331,8 @@ export async function getHomeFinalsSummary(options = {}) {
   return getCachedQuery(
     cacheKey,
     async () => {
+      const shared = await readEdgeSummary("finals", limits);
+      if (shared) return shared;
       const results = await Promise.all([
         toSettled(getRecentFinalMatches(limits.finalMatches, { forceRefresh: true })),
       ]);

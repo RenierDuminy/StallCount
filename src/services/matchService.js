@@ -1,5 +1,6 @@
 ﻿import { supabase } from "./supabaseClient";
 import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
+import { selectAllRows, selectAllRowsForIds } from "./fetchAllRows";
 import { fromSupabaseError } from "../utils/errorMessages";
 import {
   ALL_STATUS_CODES,
@@ -126,26 +127,29 @@ export async function getMatchesByEvent(eventId, limit = 24, options = {}) {
   return getCachedQuery(
     `matches:event:${eventId}:limit=${limit}:includeFinished=${includeFinished}`,
     async () => {
-      let query = supabase
-        .from("matches")
-        .select(MATCH_FIELDS)
-        .eq("event_id", eventId)
-        .order("start_time", { ascending: true });
+      const buildQuery = () => {
+        let query = supabase
+          .from("matches")
+          .select(MATCH_FIELDS)
+          .eq("event_id", eventId)
+          .order("start_time", { ascending: true })
+          // Unique tie-break, so paging cannot repeat or skip a match.
+          .order("id", { ascending: true });
 
-      // `limit = null` fetches every row; callers that must not miss a match
-      // (the scorekeeper console) pass it.
-      if (limit != null) {
-        query = query.limit(limit);
-      }
+        // Exclude every closed status, not just the concluded ones. Forfeits and
+        // cancellations are the oldest rows, so leaving them to a client-side
+        // filter let them fill the limit window and push the newest fixtures out.
+        if (!includeFinished) {
+          query = query.not("status", "in", `(${CLOSED_STATUSES.join(",")})`);
+        }
+        return query;
+      };
 
-      // Exclude every closed status, not just the concluded ones. Forfeits and
-      // cancellations are the oldest rows, so leaving them to a client-side
-      // filter let them fill the limit window and push the newest fixtures out.
-      if (!includeFinished) {
-        query = query.not("status", "in", `(${CLOSED_STATUSES.join(",")})`);
-      }
-
-      const { data, error } = await query;
+      // `limit = null` fetches every row, paged past Supabase's 1000-row cap;
+      // every page that shows an event's results or standings passes it, so a
+      // big event is never cut short.
+      const { data, error } =
+        limit != null ? await buildQuery().limit(limit) : await selectAllRows(buildQuery);
 
       if (error) {
         throw fromSupabaseError(error, "Failed to load matches for event");
@@ -546,10 +550,9 @@ export async function getMatchesByIds(ids = []) {
   return getCachedQuery(
     `matches:ids:${uniqueIds.join(",")}`,
     async () => {
-      const { data, error } = await supabase
-        .from("matches")
-        .select(MATCH_FIELDS)
-        .in("id", uniqueIds);
+      const { data, error } = await selectAllRowsForIds(uniqueIds, (chunk) =>
+        supabase.from("matches").select(MATCH_FIELDS).in("id", chunk).order("id", { ascending: true })
+      );
 
       if (error) {
         throw fromSupabaseError(error, "Failed to load matches by id");

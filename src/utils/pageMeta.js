@@ -11,6 +11,19 @@ const listeners = new Set();
 
 export const SITE_NAME = "StallCount";
 
+// The one official address. StallCount has no domain of its own; it is served
+// from Vercel's production address. Canonical URLs, og:url, the sitemap and
+// calendar feeds always name it, never the address a page happens to be opened
+// on (a preview deployment, localhost), so search engines file one copy and
+// nobody subscribes to a preview.
+export const PRODUCTION_ORIGIN = "https://stallcount.vercel.app";
+
+/** The official origin, overridable with VITE_SITE_URL. No trailing slash. */
+export function getSiteOrigin() {
+  const envSiteUrl = import.meta.env.VITE_SITE_URL?.trim();
+  return envSiteUrl ? envSiteUrl.replace(/\/$/, "") : PRODUCTION_ORIGIN;
+}
+
 function emit() {
   listeners.forEach((listener) => listener());
 }

@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
+import { selectAllRows, selectAllRowsForIds } from "./fetchAllRows";
 import { CONCLUDED_STATUSES, IN_PROGRESS_STATUSES } from "../constants/statusCodes";
 
 const TOURNAMENT_OVERVIEW_CACHE_TTL_MS = 30 * 1000;
@@ -114,11 +115,14 @@ export async function getTournamentOverview(eventId, options = {}) {
   return getCachedQuery(
     `tournament-director:overview:${eventId}`,
     async () => {
-      const { data: matches, error: matchesError } = await supabase
-        .from("matches")
-        .select(TOURNAMENT_OVERVIEW_MATCH_FIELDS)
-        .eq("event_id", eventId)
-        .order("start_time", { ascending: true, nullsFirst: false });
+      const { data: matches, error: matchesError } = await selectAllRows(() =>
+        supabase
+          .from("matches")
+          .select(TOURNAMENT_OVERVIEW_MATCH_FIELDS)
+          .eq("event_id", eventId)
+          .order("start_time", { ascending: true, nullsFirst: false })
+          .order("id", { ascending: true })
+      );
 
       if (matchesError) {
         throw new Error(matchesError.message || "Failed to load tournament overview matches.");
@@ -129,15 +133,18 @@ export async function getTournamentOverview(eventId, options = {}) {
 
       let spiritRows = [];
       if (matchIds.length > 0) {
-        const { data, error } = await supabase
-          .from("spirit_scores")
-          .select(
-            "match_id, rated_team_id, rules_knowledge, fouls_contact, positive_attitude, communication, self_control, submitted_at",
-          )
-          .in("match_id", matchIds)
-          // Final rows only, matching every public page; a later draft must
-          // not replace the published score here.
-          .eq("is_final", true);
+        const { data, error } = await selectAllRowsForIds(matchIds, (chunk) =>
+          supabase
+            .from("spirit_scores")
+            .select(
+              "id, match_id, rated_team_id, rules_knowledge, fouls_contact, positive_attitude, communication, self_control, submitted_at",
+            )
+            .in("match_id", chunk)
+            // Final rows only, matching every public page; a later draft must
+            // not replace the published score here.
+            .eq("is_final", true)
+            .order("id", { ascending: true })
+        );
 
         if (error) {
           throw new Error(error.message || "Failed to load spirit score data.");

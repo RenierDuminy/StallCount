@@ -159,7 +159,7 @@ export default function MediaAdminPage() {
       setMatchesLoading(true);
       setMatchesError("");
       try {
-        const rows = await getMatchesByEvent(selectedEventId, 200, { includeFinished: true });
+        const rows = await getMatchesByEvent(selectedEventId, null, { includeFinished: true });
         if (!ignore) {
           const nextMatches = rows ?? [];
           setMatches(nextMatches);

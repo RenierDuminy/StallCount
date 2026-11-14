@@ -67,7 +67,8 @@ import {
 import { matchPath } from "../utils/links";
 
 const PLAYOFF_STRUCTURE_EVENT_KEY = "stallcount.playoffStructure.eventId";
-const MATCH_LIMIT = 400;
+// null = every match in the event, paged past Supabase's 1000-row cap.
+const MATCH_LIMIT = null;
 // Seeding and advancement now run server-side (api/_lib/playoffResolve.js), so
 // the finished-status vocabulary that used to live here moved with them. The
 // canonical list is exported from playoffStructureService for anything on the

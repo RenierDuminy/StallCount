@@ -46,6 +46,25 @@ const FINAL_EVENT_STATUSES = new Set(["completed", "finished"]);
 export const isCompletedEventStatus = (status) =>
   FINAL_EVENT_STATUSES.has((status || "").toString().trim().toLowerCase());
 
+const todayDateKey = () => {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
+
+/**
+ * An event that is over: completed/finished, or its end date has passed
+ * (an event ending today is not past). The date check covers the gap before
+ * advance_event_statuses() moves the status. Past events offer no calendar
+ * and no WFDF rules link. api/_lib/calendarFeed.js isConcludedEvent is a copy
+ * (change both).
+ */
+export const isPastEvent = ({ status = null, endDate = null } = {}) => {
+  if (isCompletedEventStatus(status)) return true;
+  const end = typeof endDate === "string" ? endDate.slice(0, 10) : "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(end) && end < todayDateKey();
+};
+
 /** Stage separator entry for a form line. */
 export const FORM_SEPARATOR = Object.freeze({ separator: true });
 

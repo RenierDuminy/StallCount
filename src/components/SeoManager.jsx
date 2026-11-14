@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { SITE_NAME, getPageMetaOverride, subscribePageMeta } from "../utils/pageMeta";
+import { SITE_NAME, getPageMetaOverride, getSiteOrigin, subscribePageMeta } from "../utils/pageMeta";
 
-// The one official address. StallCount has no domain of its own; it is served
-// from Vercel's production address. Canonical URLs, og:url and the sitemap
-// always name it, never the address a page happens to be opened on (a
-// preview deployment, localhost), so search engines file one copy.
-const PRODUCTION_ORIGIN = "https://stallcount.vercel.app";
+// The official address (PRODUCTION_ORIGIN / getSiteOrigin) lives in
+// src/utils/pageMeta.js, shared with the calendar links.
 const DEFAULT_DESCRIPTION =
   "StallCount provides live Ultimate Frisbee scoring, event tracking, and team updates.";
 
@@ -97,11 +94,6 @@ const ROUTE_META = [
     description: "Sign in to access role-based StallCount tools.",
   },
 ];
-
-function getSiteOrigin() {
-  const envSiteUrl = import.meta.env.VITE_SITE_URL?.trim();
-  return envSiteUrl ? envSiteUrl.replace(/\/$/, "") : PRODUCTION_ORIGIN;
-}
 
 function getRouteMeta(pathname) {
   for (const item of ROUTE_META) {

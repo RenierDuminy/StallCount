@@ -209,7 +209,7 @@ export default function SpiritScoresPage() {
       setMatchListLoading(true);
       setMatchError(null);
       try {
-        const rows = await getMatchesByEvent(eventId, 100, { includeFinished: true });
+        const rows = await getMatchesByEvent(eventId, null, { includeFinished: true });
         const nextMatches = rows ?? [];
         setMatches(nextMatches);
 

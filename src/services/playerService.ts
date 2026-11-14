@@ -1,4 +1,5 @@
 import { supabase, type PlayerRow } from "./supabaseClient";
+import { selectAllRows, selectAllRowsForIds } from "./fetchAllRows";
 import { getCachedQuery, invalidateCachedQueries, invalidateCachedQuery } from "../utils/queryCache";
 
 const PLAYER_DIRECTORY_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -110,19 +111,23 @@ function normalizeRosterWriteError(error: unknown, fallback: string) {
 }
 
 export async function getAllPlayers(): Promise<PlayerRow[]> {
-  const { data, error } = await supabase
-    .from("team_roster")
-    .select(
-      `
-        id,
-        event_id,
-        team_id,
-        players:player(id, name, gender_code, jersey_number),
-        teams:teams(id, name, short_name)
-      `
-    )
-    .order("team_id", { ascending: true })
-    .order("jersey_number", { ascending: true, foreignTable: "player" });
+  // Every roster row there is: paged, or Supabase stops at 1000.
+  const { data, error } = await selectAllRows(() =>
+    supabase
+      .from("team_roster")
+      .select(
+        `
+          id,
+          event_id,
+          team_id,
+          players:player(id, name, gender_code, jersey_number),
+          teams:teams(id, name, short_name)
+        `
+      )
+      .order("team_id", { ascending: true })
+      .order("id", { ascending: true })
+      .order("jersey_number", { ascending: true, foreignTable: "player" })
+  );
 
   if (error) {
     throw new Error(error.message || "Failed to load players");
@@ -191,10 +196,15 @@ export async function getPlayerDirectory(): Promise<PlayerDirectoryRow[]> {
   return getCachedQuery(
     "players:directory",
     async () => {
-      const { data, error } = await supabase
-        .from("player")
-        .select(PLAYER_SELECT)
-        .order("name", { ascending: true });
+      // Paged: past 1000 players a single read silently dropped the rest from
+      // the Players, Community and captain search pages.
+      const { data, error } = await selectAllRows(() =>
+        supabase
+          .from("player")
+          .select(PLAYER_SELECT)
+          .order("name", { ascending: true })
+          .order("id", { ascending: true })
+      );
 
       if (error) {
         throw new Error(error.message || "Failed to load player directory");
@@ -212,7 +222,9 @@ export async function getPlayersByIds(ids: string[]): Promise<PlayerDirectoryRow
   return getCachedQuery(
     `players:ids:${uniqueIds.join(",")}`,
     async () => {
-      const { data, error } = await supabase.from("player").select(PLAYER_SELECT).in("id", uniqueIds);
+      const { data, error } = await selectAllRowsForIds(uniqueIds, (chunk) =>
+        supabase.from("player").select(PLAYER_SELECT).in("id", chunk).order("id", { ascending: true })
+      );
       if (error) {
         throw new Error(error.message || "Failed to load players");
       }
@@ -362,23 +374,27 @@ export async function getEventRosters(eventId: string): Promise<EventRosterEntry
     return [];
   }
 
-  const { data, error } = await supabase
-    .from("team_roster")
-    .select(
-      `
-        id,
-        event_id,
-        team_id,
-        is_captain,
-        is_spirit_captain,
-        player:player(id, name, jersey_number, gender_code, has_birthday),
-        team:teams(id, name, short_name)
-      `
-    )
-    .eq("event_id", eventId)
-    .order("team_id", { ascending: true })
-    .order("jersey_number", { ascending: true, foreignTable: "player" })
-    .order("name", { ascending: true, foreignTable: "player" });
+  // Paged: a big event (40 teams x 25 players) reaches Supabase's 1000-row cap.
+  const { data, error } = await selectAllRows(() =>
+    supabase
+      .from("team_roster")
+      .select(
+        `
+          id,
+          event_id,
+          team_id,
+          is_captain,
+          is_spirit_captain,
+          player:player(id, name, jersey_number, gender_code, has_birthday),
+          team:teams(id, name, short_name)
+        `
+      )
+      .eq("event_id", eventId)
+      .order("team_id", { ascending: true })
+      .order("id", { ascending: true })
+      .order("jersey_number", { ascending: true, foreignTable: "player" })
+      .order("name", { ascending: true, foreignTable: "player" })
+  );
 
   if (error) {
     throw new Error(error.message || "Failed to load event rosters");

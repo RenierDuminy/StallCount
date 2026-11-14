@@ -34,8 +34,7 @@ const eventWorkspaces = Object.entries(workspaceModules)
       path: `/events/${derivedSlug}`,
       Component,
       priority,
-      // Not listed as custom in standardEventTemplates.js: not routed at all;
-      // `Component` stays bundled only as a backup.
+      // Not listed as custom in standardEventTemplates.js: not routed at all.
       usesStandardTemplate: isStandardTemplateEvent(eventId),
       meta: {
         eventName: eventName || derivedSlug.replace(/-/g, " "),
@@ -140,7 +139,7 @@ export function findEventBySlug(events, slug) {
   );
   if (byLoose) return byLoose;
   // A custom workspace's own slug names its event (its URL need not resemble
-  // the event's name). Backup workspaces' slugs are no longer aliases: those
+  // the event's name). Other workspaces' slugs are not aliases: those
   // old redirects were retired on 2026-11-13.
   const workspace = eventWorkspaces.find(
     (row) => !row.usesStandardTemplate && compactSlug(row.slug) === loose,

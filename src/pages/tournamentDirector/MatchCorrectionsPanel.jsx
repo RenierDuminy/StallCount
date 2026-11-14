@@ -43,8 +43,9 @@ const LIGHT_INPUT_CLASS =
 
 // Corrections are usually made after the fact, so the finished matches the
 // scorekeeper hides are exactly the ones wanted here. The service default of 24
-// would silently truncate a tournament's fixture list.
-const MATCH_FETCH_LIMIT = 500;
+// would silently truncate a tournament's fixture list, so: every match (null),
+// paged past Supabase's 1000-row cap.
+const MATCH_FETCH_LIMIT = null;
 
 const SEVERITY_STYLES = {
   [SEVERITY.ERROR]: "border-rose-200 bg-rose-50 text-rose-700",

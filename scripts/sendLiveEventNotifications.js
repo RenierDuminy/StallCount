@@ -2,6 +2,9 @@
 // Same rules as supabase/functions/notification-dispatcher/index.ts: an event
 // is only marked `sent` after a successful delivery or once it has no valid
 // recipients; failures are recorded on the row and retried with backoff.
+// Lookups are chunked and paged the same way. Unlike the Edge Function it has
+// no claim and no per-device memory (`delivered_endpoints`): it is a manual
+// run, so do not run it while the Edge Function is dispatching.
 //
 //   npm run dispatch:notifications
 import process from "node:process";
@@ -26,7 +29,30 @@ const config = {
   maxAttempts: Number(process.env.NOTIFICATION_MAX_ATTEMPTS || 5),
   staleAfterMinutes: Number(process.env.NOTIFICATION_STALE_AFTER_MINUTES || 60),
   pushTtlSeconds: Number(process.env.NOTIFICATION_PUSH_TTL_SECONDS || 600),
+  sendConcurrency: Math.max(1, Number(process.env.NOTIFICATION_SEND_CONCURRENCY || 20)),
 };
+
+// Same limits as the Edge Function: PostgREST caps a response at 1000 rows,
+// and a long `in.(...)` list makes the URL too long.
+const ID_CHUNK_SIZE = 100;
+const PAGE_SIZE = 1000;
+
+function chunk(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+async function selectAllPages(build, failureMessage) {
+  const rows = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await build().range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message || failureMessage);
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) return rows;
+  }
+}
 
 function resolveDefaultSupabaseSecretKey(rawSecretKeys) {
   if (!rawSecretKeys) return undefined;
@@ -180,25 +206,40 @@ async function fetchMatchingSubscriptions(targetMap, eventType) {
   for (const [type, idSet] of targetMap.entries()) {
     const ids = Array.from(idSet);
     if (!ids.length) continue;
-    const { data, error } = await supabase
-      .from("subscriptions")
-      .select("id, profile_id, target_type, target_id, topics")
-      .eq("target_type", type)
-      .in("target_id", ids);
-    if (error) throw new Error(error.message || "Failed to load subscriptions.");
-    results.push(...(data || []));
+    for (const idChunk of chunk(ids, ID_CHUNK_SIZE)) {
+      const rows = await selectAllPages(
+        () =>
+          supabase
+            .from("subscriptions")
+            .select("id, profile_id, target_type, target_id, topics")
+            .eq("target_type", type)
+            .in("target_id", idChunk)
+            .order("id", { ascending: true }),
+        "Failed to load subscriptions.",
+      );
+      results.push(...rows);
+    }
   }
   return filterByTopics(results, eventType);
 }
 
 async function fetchPushEndpoints(profileIds) {
   if (!profileIds.length) return [];
-  const { data, error } = await supabase
-    .from("push_subscriptions")
-    .select("profile_id, endpoint, p256dh_key, auth_key")
-    .in("profile_id", profileIds);
-  if (error) throw new Error(error.message || "Failed to load push subscriptions.");
-  return data || [];
+  const rows = [];
+  for (const idChunk of chunk(profileIds, ID_CHUNK_SIZE)) {
+    rows.push(
+      ...(await selectAllPages(
+        () =>
+          supabase
+            .from("push_subscriptions")
+            .select("profile_id, endpoint, p256dh_key, auth_key")
+            .in("profile_id", idChunk)
+            .order("id", { ascending: true }),
+        "Failed to load push subscriptions.",
+      )),
+    );
+  }
+  return rows;
 }
 
 // Same as the Edge Function: wording from _shared/notificationText.js, link
@@ -316,12 +357,18 @@ async function processEvent(event, scope) {
 
   const counts = { delivered: 0, pruned: 0, config_error: 0, transient: 0 };
   let lastDetail = "";
-  for (const endpoint of endpoints) {
-    const payload = payloadByProfile.get(endpoint.profile_id) ?? generalPayload;
-    const result = await deliverToEndpoint(endpoint, payload);
-    counts[result.outcome] += 1;
-    if (result.detail && result.outcome !== "delivered") lastDetail = result.detail;
-  }
+  let next = 0;
+  const worker = async () => {
+    while (next < endpoints.length) {
+      const endpoint = endpoints[next];
+      next += 1;
+      const payload = payloadByProfile.get(endpoint.profile_id) ?? generalPayload;
+      const result = await deliverToEndpoint(endpoint, payload);
+      counts[result.outcome] += 1;
+      if (result.detail && result.outcome !== "delivered") lastDetail = result.detail;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(config.sendConcurrency, endpoints.length) }, worker));
 
   const unresolved = counts.config_error + counts.transient;
   const done = unresolved === 0 || counts.delivered > 0 || attempts >= config.maxAttempts;

@@ -3,7 +3,9 @@ import { getMatchesByEvent } from "./matchService";
 import { getEventHierarchy, getEventLifecycle } from "./leagueService";
 import { getBracketsByEvent } from "./playoffStructureService";
 
-export const EVENT_PAGE_MATCH_LIMIT = 200;
+// null = every match, paged (getMatchesByEvent). Standings and results are
+// built from this list, so a cap here silently gave a big event wrong tables.
+export const EVENT_PAGE_MATCH_LIMIT = null;
 // How many events /event/:slug loads to resolve a slug; enough to cover every
 // event.
 export const EVENT_LIST_LIMIT = 200;

@@ -8,6 +8,7 @@ import {
   SectionShell,
 } from "./ui/primitives";
 import { StandardEventMatchCard } from "./StandardEventMatchCard";
+import CalendarSubscribeButton from "./CalendarSubscribeButton";
 import { isForfeitStatus } from "../constants/statusCodes";
 import {
   StandardStandingsLegend,
@@ -28,6 +29,7 @@ import {
   getPlayoffMatchIds,
   getFinalStandingsModes,
   isCompletedEventStatus,
+  isPastEvent,
 } from "../utils/eventStandings";
 import BracketStructureView from "../pages/playoff/BracketStructureView";
 import StandingsRulesInfo from "./StandingsRulesInfo";
@@ -302,6 +304,8 @@ export default function EventWorkspaceTemplate({
   }, [brackets]);
 
   const isEventCompleted = isCompletedEventStatus(eventStatus);
+  // Over by status or by end date: no calendar, no WFDF rules link.
+  const isEventPast = isPastEvent({ status: eventStatus, endDate: eventData?.end_date });
 
   // Per-division final standings mode (see getFinalStandingsModes): a division
   // with playoffs gets a playoff-only final table once one has a result and
@@ -551,14 +555,21 @@ export default function EventWorkspaceTemplate({
             >
               Spirit scores
             </Link>
-            <a
-              href="https://wfdf.sport/2025/01/wfdf-publishes-2025-2028-ultimate-rules/"
-              target="_blank"
-              rel="noreferrer"
-              className="sc-button w-full whitespace-nowrap sm:w-auto"
-            >
-              WFDF rules
-            </a>
+            {/* Past events show neither. Both wait for the page data so
+                they never flash on an event that turns out to be over. */}
+            {pageQuery.data && !isEventPast ? (
+              <>
+                <CalendarSubscribeButton eventId={eventId} className="w-full sm:w-auto" />
+                <a
+                  href="https://wfdf.sport/2025/01/wfdf-publishes-2025-2028-ultimate-rules/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="sc-button w-full whitespace-nowrap sm:w-auto"
+                >
+                  WFDF rules
+                </a>
+              </>
+            ) : null}
           </div>
           {error && <div className="sc-alert is-error">{error}</div>}
         </Card>

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { MatchMediaButton } from "../components/MatchMediaButton";
+import CalendarSubscribeButton from "../components/CalendarSubscribeButton";
+import { isPastEvent } from "../utils/eventStandings";
 import { Card, Chip, Panel, SectionHeader, SectionShell, Field, Select } from "../components/ui/primitives";
 import { getPlayersByTeam } from "../services/playerService";
 import {
@@ -179,7 +181,13 @@ export default function TeamProfilePage() {
       const startTime = match.start_time || null;
       const existing = options.get(eventId);
       if (!existing) {
-        options.set(eventId, { id: eventId, name: match.event?.name || "Event", startTime });
+        options.set(eventId, {
+          id: eventId,
+          name: match.event?.name || "Event",
+          status: match.event?.status ?? null,
+          endDate: match.event?.end_date ?? null,
+          startTime,
+        });
       } else if (startTime && (!existing.startTime || startTime > existing.startTime)) {
         existing.startTime = startTime;
       }
@@ -191,6 +199,11 @@ export default function TeamProfilePage() {
       return a.name.localeCompare(b.name);
     });
   }, [state.matches]);
+
+  // The calendar is per team within one event, so it is offered only when one
+  // event is chosen, and not once that event has concluded.
+  const selectedEventOption =
+    eventFilter && eventFilter !== "all" ? eventOptions.find((option) => option.id === eventFilter) : null;
 
   const filteredMatches = useMemo(() => {
     if (eventFilter === "all") {
@@ -433,20 +446,30 @@ export default function TeamProfilePage() {
                 title="Performance overview"
                 description="Key indicators compiled from schedule, roster, and spirit data."
                 action={
-                  <Field className="w-full max-w-xs" label="Event" htmlFor="team-event-filter">
-                    <Select
-                      id="team-event-filter"
-                      value={eventFilter || "all"}
-                      onChange={(event) => setEventFilter(event.target.value)}
-                    >
-                      <option value="all">All events</option>
-                      {eventOptions.map((event) => (
-                        <option key={event.id} value={event.id}>
-                          {event.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
+                    <Field className="w-full max-w-xs" label="Event" htmlFor="team-event-filter">
+                      <Select
+                        id="team-event-filter"
+                        value={eventFilter || "all"}
+                        onChange={(event) => setEventFilter(event.target.value)}
+                      >
+                        <option value="all">All events</option>
+                        {eventOptions.map((event) => (
+                          <option key={event.id} value={event.id}>
+                            {event.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    {selectedEventOption && state.team?.id ? (
+                      <CalendarSubscribeButton
+                        eventId={selectedEventOption.id}
+                        teamId={state.team.id}
+                        concluded={isPastEvent(selectedEventOption)}
+                        className="w-full max-w-xs sm:w-auto"
+                      />
+                    ) : null}
+                  </div>
                 }
               />
               <div className="grid gap-2 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">

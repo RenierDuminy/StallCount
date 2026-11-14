@@ -349,7 +349,7 @@ export default function NotificationsPage() {
         } else if (targetType === "match") {
           rows = matchEventId
             ? filterFollowable(
-                await getMatchesByEvent(matchEventId, 200, { includeFinished: false }),
+                await getMatchesByEvent(matchEventId, null, { includeFinished: false }),
                 FOLLOWABLE_MATCH_STATUSES,
               )
             : [];

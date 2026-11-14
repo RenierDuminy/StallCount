@@ -12,10 +12,12 @@ import {
 //
 // Invoked by the database (a pg_net trigger on `live_events` insert and a
 // pg_cron sweeper every minute; see supabase/migrations/*notification_dispatch*).
-// Safe to call concurrently: an event is only marked `sent` after at least one
-// successful delivery (or once it has no valid recipients), and failures are
-// recorded on the row (`attempts`, `last_error`) so they retry with backoff
-// instead of vanishing.
+// Safe to call concurrently: each run claims an event (a conditional update on
+// `attempts`) before sending, so two overlapping runs never both send it.
+// Devices already reached are remembered in `delivered_endpoints` (hashes), so
+// a retry, or a run that continues after the time budget, sends only to the
+// devices still missing. Failures are recorded on the row (`attempts`,
+// `last_error`) and retry with backoff instead of vanishing.
 
 type PushSubscriptionRow = {
   profile_id: string;
@@ -35,6 +37,7 @@ type LiveEventRow = {
   created_at: string;
   attempts?: number | null;
   last_attempt_at?: string | null;
+  delivered_endpoints?: string[] | null;
 };
 
 const REQUIRED_ENV = ["SUPABASE_URL", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"] as const;
@@ -70,6 +73,13 @@ const config = {
   staleAfterMinutes: Number(Deno.env.get("NOTIFICATION_STALE_AFTER_MINUTES") ?? 60),
   // Push services discard undelivered messages after this many seconds.
   pushTtlSeconds: Number(Deno.env.get("NOTIFICATION_PUSH_TTL_SECONDS") ?? 600),
+  // Push sends in flight at once. A push service answers in ~100-300 ms, so
+  // one at a time took minutes for a few thousand devices.
+  sendConcurrency: Math.max(1, Number(Deno.env.get("NOTIFICATION_SEND_CONCURRENCY") ?? 20)),
+  // A run stops starting new sends after this long, well inside the Edge
+  // Function wall-clock limit (150 s on the free plan). What is left is saved
+  // and finished by the next run (the cron job runs every minute).
+  timeBudgetMs: Number(Deno.env.get("NOTIFICATION_TIME_BUDGET_MS") ?? 100_000),
 };
 
 for (const key of REQUIRED_ENV) {
@@ -83,6 +93,57 @@ if (!config.serviceRoleKey) {
 
 const supabase = createClient(config.supabaseUrl!, config.serviceRoleKey!);
 webpush.setVapidDetails(config.vapidSubject, config.vapidPublicKey!, config.vapidPrivateKey!);
+
+// PostgREST returns at most 1000 rows per request (Supabase's max_rows) and
+// says nothing when it cuts a result short, and a long `in.(...)` list makes
+// the request URL too long (~200 uuids). Every id-list lookup below is
+// therefore split into chunks and read page by page.
+const ID_CHUNK_SIZE = 100;
+const PAGE_SIZE = 1000;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+// `build` must return a fresh query with a stable `.order()`, or pages can
+// overlap or skip rows.
+// deno-lint-ignore no-explicit-any
+async function selectAllPages<T>(build: () => any): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await build().range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as T[];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) return rows;
+  }
+}
+
+// `delivered_endpoints` arrives with migration
+// 20261114120000_live_events_delivery_progress.sql (applied by hand). Until it
+// exists the dispatcher works as before: no per-device memory, so a partly
+// delivered event is not retried (that would resend to everyone) and a run
+// never pauses mid-event.
+let deliveryProgressAvailable = true;
+
+function isMissingDeliveryColumn(error: unknown) {
+  const err = error as { code?: string; message?: string } | null;
+  if (!err) return false;
+  return (
+    err.code === "42703" ||
+    err.code === "PGRST204" ||
+    /delivered_endpoints/.test(err.message ?? "")
+  );
+}
+
+// The endpoint URL is a capability (whoever has it can push to that device),
+// so the row stores a short hash of it rather than the URL itself.
+async function endpointKey(endpoint: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(endpoint));
+  return Array.from(new Uint8Array(digest).slice(0, 12), (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 // VERBATIM COPY of src/constants/notificationTopics.js. Deno cannot import from
 // the Vite bundle, so this and scripts/sendLiveEventNotifications.js each carry
@@ -229,13 +290,17 @@ async function fetchMatchingSubscriptions(targets: TargetMap, eventType: string)
 
   for (const [type, ids] of targets.entries()) {
     if (!ids.size) continue;
-    const { data, error } = await supabase
-      .from("subscriptions")
-      .select("profile_id, topics, target_type, target_id")
-      .eq("target_type", type)
-      .in("target_id", Array.from(ids));
-    if (error) throw error;
-    matches.push(...(data ?? []));
+    for (const idChunk of chunk(Array.from(ids), ID_CHUNK_SIZE)) {
+      const rows = await selectAllPages<MatchedSubscription>(() =>
+        supabase
+          .from("subscriptions")
+          .select("profile_id, topics, target_type, target_id")
+          .eq("target_type", type)
+          .in("target_id", idChunk)
+          .order("id", { ascending: true })
+      );
+      matches.push(...rows);
+    }
   }
 
   const normalizedEvent = (eventType ?? "").toLowerCase();
@@ -250,12 +315,19 @@ async function fetchMatchingSubscriptions(targets: TargetMap, eventType: string)
 
 async function fetchPushEndpoints(profileIds: string[]): Promise<PushSubscriptionRow[]> {
   if (!profileIds.length) return [];
-  const { data, error } = await supabase
-    .from("push_subscriptions")
-    .select("profile_id, endpoint, p256dh_key, auth_key")
-    .in("profile_id", profileIds);
-  if (error) throw error;
-  return (data ?? []) as PushSubscriptionRow[];
+  const rows: PushSubscriptionRow[] = [];
+  for (const idChunk of chunk(profileIds, ID_CHUNK_SIZE)) {
+    rows.push(
+      ...(await selectAllPages<PushSubscriptionRow>(() =>
+        supabase
+          .from("push_subscriptions")
+          .select("profile_id, endpoint, p256dh_key, auth_key")
+          .in("profile_id", idChunk)
+          .order("id", { ascending: true })
+      )),
+    );
+  }
+  return rows;
 }
 
 // The title and body come from _shared/notificationText.js, not from the
@@ -324,9 +396,56 @@ async function deliver(endpoint: PushSubscriptionRow, payload: string): Promise<
   }
 }
 
-async function updateEvent(id: string, patch: Record<string, unknown>) {
-  const { error } = await supabase.from("live_events").update(patch).eq("id", id);
+async function updateEvent(id: string, patch: Record<string, unknown>): Promise<void> {
+  const body = { ...patch };
+  if (!deliveryProgressAvailable) delete body.delivered_endpoints;
+  const { error } = await supabase.from("live_events").update(body).eq("id", id);
+  if (error && "delivered_endpoints" in body && isMissingDeliveryColumn(error)) {
+    deliveryProgressAvailable = false;
+    return updateEvent(id, patch);
+  }
   if (error) throw error;
+}
+
+// Takes the event for this run. The update only matches while `attempts` is
+// still the value this run read, so of two overlapping runs (the insert
+// trigger and the cron job often fire together) exactly one wins; the other
+// sees zero rows and leaves the event alone. The claim also moves
+// `last_attempt_at`, so later runs wait for the backoff unless this run
+// finishes or hands the event back.
+async function claimEvent(event: LiveEventRow, attempts: number, now: string) {
+  const { data, error } = await supabase
+    .from("live_events")
+    .update({ attempts, last_attempt_at: now })
+    .eq("id", event.id)
+    .eq("sent", false)
+    .eq("attempts", event.attempts ?? 0)
+    .select("id");
+  if (error) throw error;
+  return Array.isArray(data) && data.length > 0;
+}
+
+type Outcome = { outcome: DeliveryOutcome; detail?: string };
+
+// Sends to every target, `sendConcurrency` at a time, until done or until
+// `deadline`. `finished` is false when the deadline stopped it early.
+async function deliverAll(
+  targets: Array<{ endpoint: PushSubscriptionRow; key: string; payload: string }>,
+  deadline: number,
+) {
+  const results: Array<{ key: string; result: Outcome }> = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < targets.length && Date.now() < deadline) {
+      const target = targets[next];
+      next += 1;
+      const result = await deliver(target.endpoint, target.payload);
+      results.push({ key: target.key, result });
+    }
+  };
+  const workers = Array.from({ length: Math.min(config.sendConcurrency, targets.length) }, worker);
+  await Promise.all(workers);
+  return { results, finished: results.length === targets.length };
 }
 
 function isStale(event: LiveEventRow) {
@@ -344,9 +463,13 @@ function backoffElapsed(event: LiveEventRow) {
   return Date.now() - last >= waitMs;
 }
 
-async function processEvent(event: LiveEventRow, scope?: MatchScope) {
+async function processEvent(event: LiveEventRow, scope: MatchScope | undefined, deadline: number) {
   const attempts = (event.attempts ?? 0) + 1;
   const now = new Date().toISOString();
+
+  if (!(await claimEvent(event, attempts, now))) {
+    return { eventId: event.id, status: "claimed_elsewhere", delivered: 0, endpoints: 0 };
+  }
 
   if (isStale(event)) {
     await updateEvent(event.id, {
@@ -404,18 +527,53 @@ async function processEvent(event: LiveEventRow, scope?: MatchScope) {
     if (playerText) payloadByProfile.set(sub.profile_id, buildPayload(event, playerText));
   }
 
+  const alreadyDelivered = new Set(deliveryProgressAvailable ? event.delivered_endpoints ?? [] : []);
+  const keyed = await Promise.all(
+    endpoints.map(async (endpoint) => ({
+      endpoint,
+      key: await endpointKey(endpoint.endpoint),
+      payload: payloadByProfile.get(endpoint.profile_id) ?? generalPayload,
+    })),
+  );
+  const pending = keyed.filter((target) => !alreadyDelivered.has(target.key));
+  // Without per-device memory, pausing would resend to everyone on the next
+  // run, so the run carries on to the end of the event instead.
+  const sendDeadline = deliveryProgressAvailable ? deadline : Number.POSITIVE_INFINITY;
+  const { results, finished } = await deliverAll(pending, sendDeadline);
+
   const counts = { delivered: 0, pruned: 0, config_error: 0, transient: 0 };
   let lastDetail = "";
-  for (const endpoint of endpoints) {
-    const payload = payloadByProfile.get(endpoint.profile_id) ?? generalPayload;
-    const result = await deliver(endpoint, payload);
+  const deliveredKeys = new Set(alreadyDelivered);
+  for (const { key, result } of results) {
     counts[result.outcome] += 1;
+    if (result.outcome === "delivered") deliveredKeys.add(key);
     if (result.detail && result.outcome !== "delivered") lastDetail = result.detail;
+  }
+  const deliveredTotal = deliveredKeys.size;
+
+  if (!finished) {
+    // Out of time. Save the progress and hand the event back (attempts and
+    // last_attempt_at as they were), so the next run continues at once with
+    // the devices still missing.
+    await updateEvent(event.id, {
+      attempts: event.attempts ?? 0,
+      last_attempt_at: event.last_attempt_at ?? null,
+      delivered_endpoints: Array.from(deliveredKeys),
+      delivered_count: deliveredTotal,
+      last_error: `paused: time budget reached, delivered ${deliveredTotal}/${endpoints.length}`,
+    });
+    return { eventId: event.id, status: "paused", delivered: counts.delivered, endpoints: endpoints.length };
   }
 
   const unresolved = counts.config_error + counts.transient;
-  const done = unresolved === 0 || counts.delivered > 0 || attempts >= config.maxAttempts;
-  const summary = `delivered ${counts.delivered}/${endpoints.length}` +
+  // With per-device memory a retry reaches only the devices that failed, so a
+  // partial delivery is retried. Without it a retry would resend to everyone,
+  // so (as before) one success counts as done.
+  const done =
+    unresolved === 0 ||
+    attempts >= config.maxAttempts ||
+    (!deliveryProgressAvailable && counts.delivered > 0);
+  const summary = `delivered ${deliveredTotal}/${endpoints.length}` +
     (counts.pruned ? `, pruned ${counts.pruned}` : "") +
     (counts.config_error ? `, vapid rejected ${counts.config_error}` : "") +
     (counts.transient ? `, failed ${counts.transient}` : "") +
@@ -425,7 +583,8 @@ async function processEvent(event: LiveEventRow, scope?: MatchScope) {
     sent: done,
     attempts,
     last_attempt_at: now,
-    delivered_count: counts.delivered,
+    delivered_endpoints: Array.from(deliveredKeys),
+    delivered_count: deliveredTotal,
     last_error: unresolved ? summary : null,
   });
 
@@ -433,16 +592,24 @@ async function processEvent(event: LiveEventRow, scope?: MatchScope) {
   return { eventId: event.id, status, delivered: counts.delivered, endpoints: endpoints.length, summary };
 }
 
-async function fetchPendingEvents(limit: number) {
+const PENDING_EVENT_COLUMNS =
+  "id, match_id, event_type, data, team_id, player_id, secondary_player_id, created_at, attempts, last_attempt_at";
+
+async function fetchPendingEvents(limit: number): Promise<LiveEventRow[]> {
+  const columns = deliveryProgressAvailable
+    ? `${PENDING_EVENT_COLUMNS}, delivered_endpoints`
+    : PENDING_EVENT_COLUMNS;
   const { data, error } = await supabase
     .from("live_events")
-    .select(
-      "id, match_id, event_type, data, team_id, player_id, secondary_player_id, created_at, attempts, last_attempt_at",
-    )
+    .select(columns)
     .eq("sent", false)
     .lt("attempts", config.maxAttempts)
     .order("created_at", { ascending: true })
     .limit(limit);
+  if (error && deliveryProgressAvailable && isMissingDeliveryColumn(error)) {
+    deliveryProgressAvailable = false;
+    return fetchPendingEvents(limit);
+  }
   if (error) throw error;
   return ((data ?? []) as LiveEventRow[]).filter(backoffElapsed);
 }
@@ -472,6 +639,7 @@ function isAuthorised(req: Request) {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204 });
   if (!isAuthorised(req)) return json({ error: "Forbidden" }, 403);
+  const deadline = Date.now() + config.timeBudgetMs;
   try {
     const events = await fetchPendingEvents(config.batchSize);
     // A failed lookup must not block match and player follows, which need no scope.
@@ -481,8 +649,11 @@ serve(async (req) => {
     });
     const reports = [];
     for (const event of events) {
+      // Out of time: leave the rest for the next run rather than be cut off
+      // by the platform mid-send.
+      if (Date.now() >= deadline) break;
       try {
-        reports.push(await processEvent(event, scopes.get(event.match_id)));
+        reports.push(await processEvent(event, scopes.get(event.match_id), deadline));
       } catch (err) {
         console.error("Failed to process live event", event.id, err);
         reports.push({ eventId: event.id, status: "error", error: (err as Error).message });

@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient";
 import { invalidateCachedQueries } from "../utils/queryCache";
 import { fromSupabaseError } from "../utils/errorMessages";
+import { selectAllRowsForIds } from "./fetchAllRows";
 import { isConcludedStatus } from "../constants/statusCodes";
 import { dedupeSpiritRows } from "../utils/spirit";
 
@@ -65,11 +66,14 @@ export async function getSpiritScoresForMatches(matchIds) {
   const ids = (matchIds || []).filter(Boolean);
   if (!ids.length) return new Map();
 
-  const { data, error } = await supabase
-    .from("spirit_scores")
-    .select(SPIRIT_FIELDS)
-    .in("match_id", ids)
-    .eq("is_final", true);
+  const { data, error } = await selectAllRowsForIds(ids, (chunk) =>
+    supabase
+      .from("spirit_scores")
+      .select(SPIRIT_FIELDS)
+      .in("match_id", chunk)
+      .eq("is_final", true)
+      .order("id", { ascending: true })
+  );
 
   if (error) {
     throw fromSupabaseError(error, "Unable to load spirit scores.");

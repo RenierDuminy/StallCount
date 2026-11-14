@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { latestFinalSpiritRows } from "../utils/spirit";
+import { selectAllRows, selectAllRowsForIds } from "./fetchAllRows";
 import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
 
 const TEAMS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -374,6 +375,8 @@ export type TeamMatchRow = {
   event: {
     id: string;
     name: string;
+    status?: string | null;
+    end_date?: string | null;
   } | null;
   division: {
     id: string;
@@ -414,7 +417,7 @@ export async function getTeamMatches(teamId: string): Promise<TeamMatchRow[]> {
             media_status,
             has_media,
             venue_id,
-            event:events(id, name),
+            event:events(id, name, end_date, status:Status),
             division:divisions(id, name),
             pool:pools(id, name),
             venue:venues(id, name),
@@ -534,21 +537,34 @@ async function buildCallahanCountMap(options: {
     new Set((options.playerIds ?? []).filter((id) => typeof id === "string" && id.trim().length > 0)),
   );
 
-  let query = supabase
-    .from("match_logs")
-    .select("match_id, actor_id")
-    .eq("event_type_id", CALLAHAN_EVENT_TYPE_ID)
-    .not("actor_id", "is", null);
+  const baseQuery = () =>
+    supabase
+      .from("match_logs")
+      .select("id, match_id, actor_id")
+      .eq("event_type_id", CALLAHAN_EVENT_TYPE_ID)
+      .not("actor_id", "is", null);
 
+  // Filter in SQL on one id list (split into URL-safe chunks), and on the
+  // other here: two long `in` lists in one URL would be too long, and the
+  // product of their chunks is needless requests. Callahans are rare, so the
+  // extra rows are few.
+  let result;
   if (uniqueMatchIds.length) {
-    query = query.in("match_id", uniqueMatchIds);
+    result = await selectAllRowsForIds(uniqueMatchIds, (chunk) =>
+      baseQuery().in("match_id", chunk).order("id", { ascending: true })
+    );
+  } else if (uniquePlayerIds.length) {
+    result = await selectAllRowsForIds(uniquePlayerIds, (chunk) =>
+      baseQuery().in("actor_id", chunk).order("id", { ascending: true })
+    );
+  } else {
+    result = await selectAllRows(() => baseQuery().order("id", { ascending: true }));
   }
-
-  if (uniquePlayerIds.length) {
-    query = query.in("actor_id", uniquePlayerIds);
-  }
-
-  const { data, error } = await query;
+  const { error } = result;
+  const playerFilter = uniqueMatchIds.length && uniquePlayerIds.length ? new Set(uniquePlayerIds) : null;
+  const data = (result.data ?? []).filter(
+    (row: CallahanMatchLogRow) => !playerFilter || (row.actor_id && playerFilter.has(row.actor_id)),
+  );
 
   if (error) {
     throw new Error(error.message || "Failed to load Callahan match logs");
@@ -598,24 +614,28 @@ export async function getTeamPlayerStats(
   return getCachedQuery(
     scope ? `teams:player-stats:${teamId}:event:${scope.eventId}` : `teams:player-stats:${teamId}`,
     async () => {
-      let query = supabase
-        .from("player_match_stats")
-        .select(
-          `
-            match_id,
-            player_id,
-            goals,
-            assists,
-            blocks,
-            turnovers,
-            player:player(id, name, jersey_number)
-          `
-        )
-        .eq("team_id", teamId);
-      if (scope) {
-        query = query.in("match_id", scope.matchIds);
-      }
-      const { data, error } = await query;
+      const statsQuery = () =>
+        supabase
+          .from("player_match_stats")
+          .select(
+            `
+              match_id,
+              player_id,
+              goals,
+              assists,
+              blocks,
+              turnovers,
+              player:player(id, name, jersey_number)
+            `
+          )
+          .eq("team_id", teamId);
+      // Paged (a team's career rows pass 1000) and, when scoped to an event,
+      // the match ids split into URL-safe chunks.
+      const { data, error } = scope
+        ? await selectAllRowsForIds(scope.matchIds, (chunk) =>
+            statsQuery().in("match_id", chunk).order("match_id").order("player_id")
+          )
+        : await selectAllRows(() => statsQuery().order("match_id").order("player_id"));
 
       if (error) {
         throw new Error(error.message || "Failed to load player stats");
@@ -719,10 +739,9 @@ export async function getEventPlayerMatchStats(eventId: string): Promise<PlayerM
   return getCachedQuery(
     `player-match-stats:event:${normalizedEventId}`,
     async () => {
-      const { data: matchRows, error: matchError } = await supabase
-        .from("matches")
-        .select("id")
-        .eq("event_id", normalizedEventId);
+      const { data: matchRows, error: matchError } = await selectAllRows(() =>
+        supabase.from("matches").select("id").eq("event_id", normalizedEventId).order("id")
+      );
 
       if (matchError) {
         throw new Error(matchError.message || "Failed to load event matches");
@@ -736,11 +755,16 @@ export async function getEventPlayerMatchStats(eventId: string): Promise<PlayerM
         return [];
       }
 
-      const { data, error } = await supabase
-        .from("player_match_stats")
-        .select(PLAYER_MATCH_STATS_SELECT)
-        .in("match_id", matchIds)
-        .order("match_id", { ascending: false });
+      // An event's stats rows easily pass 1000 (every player, every match), and
+      // its match ids are too many for one URL: chunked and paged.
+      const { data, error } = await selectAllRowsForIds(matchIds, (chunk) =>
+        supabase
+          .from("player_match_stats")
+          .select(PLAYER_MATCH_STATS_SELECT)
+          .in("match_id", chunk)
+          .order("match_id", { ascending: false })
+          .order("player_id", { ascending: true })
+      );
 
       if (error) {
         throw new Error(error.message || "Failed to load player match stats");
@@ -761,11 +785,14 @@ export async function getEventPlayerMatchStats(eventId: string): Promise<PlayerM
 export async function getPlayerMatchStats(playerId: string): Promise<PlayerMatchStatRow[]> {
   if (!playerId) return [];
 
-  const { data, error } = await supabase
-    .from("player_match_stats")
-    .select(PLAYER_MATCH_STATS_SELECT)
-    .eq("player_id", playerId)
-    .order("match_id", { ascending: false });
+  const { data, error } = await selectAllRows(() =>
+    supabase
+      .from("player_match_stats")
+      .select(PLAYER_MATCH_STATS_SELECT)
+      .eq("player_id", playerId)
+      .order("match_id", { ascending: false })
+      .order("team_id", { ascending: true })
+  );
 
   if (error) {
     throw new Error(error.message || "Failed to load player match stats");
@@ -808,34 +835,37 @@ export async function getSpiritScoresForMatches(matchIds: string[]): Promise<Spi
     return [];
   }
 
-  const { data, error } = await supabase
-    .from("spirit_scores")
-    .select(
-      `
-        id,
-        match_id,
-        rated_team_id,
-        total,
-        comments,
-        rules_knowledge,
-        fouls_contact,
-        positive_attitude,
-        communication,
-        self_control,
-        submitted_at,
-        is_final,
-        match:matches(
+  const { data, error } = await selectAllRowsForIds(matchIds, (chunk) =>
+    supabase
+      .from("spirit_scores")
+      .select(
+        `
           id,
-          start_time,
-          score_a,
-          score_b,
-          team_a:teams!matches_team_a_fkey(id, name, short_name),
-          team_b:teams!matches_team_b_fkey(id, name, short_name)
-        )
-      `
-    )
-    .in("match_id", matchIds)
-    .eq("is_final", true);
+          match_id,
+          rated_team_id,
+          total,
+          comments,
+          rules_knowledge,
+          fouls_contact,
+          positive_attitude,
+          communication,
+          self_control,
+          submitted_at,
+          is_final,
+          match:matches(
+            id,
+            start_time,
+            score_a,
+            score_b,
+            team_a:teams!matches_team_a_fkey(id, name, short_name),
+            team_b:teams!matches_team_b_fkey(id, name, short_name)
+          )
+        `
+      )
+      .in("match_id", chunk)
+      .eq("is_final", true)
+      .order("id", { ascending: true })
+  );
 
   if (error) {
     throw new Error(error.message || "Failed to load spirit scores");
@@ -871,10 +901,9 @@ export async function getSpiritScoresByEvent(eventId: string): Promise<EventSpir
   return getCachedQuery(
     `spirit-scores:event:${normalizedEventId}`,
     async () => {
-      const { data: matchRows, error: matchError } = await supabase
-        .from("matches")
-        .select("id")
-        .eq("event_id", normalizedEventId);
+      const { data: matchRows, error: matchError } = await selectAllRows(() =>
+        supabase.from("matches").select("id").eq("event_id", normalizedEventId).order("id")
+      );
 
       if (matchError) {
         throw new Error(matchError.message || "Failed to load event matches");
@@ -886,13 +915,17 @@ export async function getSpiritScoresByEvent(eventId: string): Promise<EventSpir
 
       if (!matchIds.length) return [];
 
-      const { data, error } = await supabase
-        .from("spirit_scores")
-        .select(
-          "match_id, rated_team_id, rules_knowledge, fouls_contact, positive_attitude, communication, self_control, submitted_at",
-        )
-        .eq("is_final", true)
-        .in("match_id", matchIds);
+      // Chunked and paged: an event's match ids are too many for one URL.
+      const { data, error } = await selectAllRowsForIds(matchIds, (chunk) =>
+        supabase
+          .from("spirit_scores")
+          .select(
+            "id, match_id, rated_team_id, rules_knowledge, fouls_contact, positive_attitude, communication, self_control, submitted_at",
+          )
+          .eq("is_final", true)
+          .in("match_id", chunk)
+          .order("id", { ascending: true })
+      );
 
       if (error) {
         throw new Error(error.message || "Failed to load spirit scores");
