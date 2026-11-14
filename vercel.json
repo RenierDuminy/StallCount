@@ -40,6 +40,11 @@
   ],
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
+    { "source": "/calendar/:event([0-9a-fA-F-]{36}).ics", "destination": "/api/calendar?event=:event" },
+    {
+      "source": "/calendar/:event([0-9a-fA-F-]{36})/:team([0-9a-fA-F-]{36}).ics",
+      "destination": "/api/calendar?event=:event&team=:team"
+    },
     {
       "source": "/((?!.*\\.).*)",
       "destination": "/index.html"

@@ -79,7 +79,6 @@ export default async function handler(req, res) {
 
     res.setHeader("Content-Type", "text/calendar; charset=utf-8");
     res.setHeader("Content-Disposition", `inline; filename="${fileName}.ics"`);
-    res.setHeader("X-Robots-Tag", "noindex");
     res.setHeader(
       "Cache-Control",
       `public, max-age=0, s-maxage=${maxAge}, stale-while-revalidate=${maxAge}`,
