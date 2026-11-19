@@ -289,14 +289,18 @@ export default function PlayersPage() {
     setSortDirection("desc");
   };
 
+  // The Callahans column only appears when someone in the list has one.
+  const showCallahans = sortedRows.some((row) => (row.callahans || 0) > 0);
+  // `full` once the table is wide enough (container query on the table's
+  // panel, so it follows a split-screen window too), else `label`.
   const statHeaders = [
-    { key: "total", label: "Tot" },
-    { key: "goals", label: "G" },
-    { key: "assists", label: "A" },
-    { key: "blocks", label: "B" },
-    { key: "turnovers", label: "TO" },
-    { key: "games", label: "GP" },
-    { key: "callahans", label: "Cal" },
+    { key: "total", label: "Tot", full: "Total" },
+    { key: "goals", label: "G", full: "Goals" },
+    { key: "assists", label: "A", full: "Assists" },
+    { key: "blocks", label: "B", full: "Blocks" },
+    { key: "turnovers", label: "TO", full: "Turnovers" },
+    { key: "games", label: "GP", full: "Games" },
+    ...(showCallahans ? [{ key: "callahans", label: "Cal", full: "Callahans" }] : []),
   ];
   const tableColumnCount = statHeaders.length + 3;
 
@@ -410,7 +414,7 @@ export default function PlayersPage() {
             }
           />
 
-          <Panel variant="light" className="overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)]">
+          <Panel variant="light" className="@container overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)]">
             <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
               <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
                 <tr>
@@ -418,17 +422,19 @@ export default function PlayersPage() {
                   <th className="px-3 py-1.5">Player</th>
                   <th className="px-3 py-1.5">Team</th>
                   {statHeaders.map((col) => (
-                    <th key={col.key} className="px-3 py-1.5 text-right">
+                    <th key={col.key} className="whitespace-nowrap px-2 py-1.5 text-center sm:px-3">
                       <button
                         type="button"
                         onClick={() => toggleSort(col.key)}
-                        className={`inline-flex items-center justify-end gap-px text-xs font-semibold transition ${
+                        title={col.full}
+                        className={`inline-flex items-center justify-center gap-px text-xs font-semibold uppercase transition ${
                           sortBy === col.key
                             ? "text-[var(--sc-surface-light-ink)]"
                             : "text-[var(--sc-surface-light-ink)]/60 hover:text-[var(--sc-surface-light-ink)]"
                         }`}
                       >
-                        <span>{col.label}</span>
+                        <span className="@4xl:hidden">{col.label}</span>
+                        <span className="hidden @4xl:inline">{col.full}</span>
                         {sortBy === col.key && (
                           <span className="text-[10px] leading-none">
                             {sortDirection === "asc" ? "↑" : "↓"}
@@ -493,7 +499,7 @@ export default function PlayersPage() {
                         {row.teamName ? (
                           row.teamId ? (
                             <Link
-                              to={teamPath(row.teamId)}
+                              to={teamPath(row.teamId, { eventId: eventFilter || null })}
                               className="text-(--sc-surface-light-ink)/70! underline decoration-dotted decoration-(--sc-surface-light-border) underline-offset-4 transition hover:text-(--sc-surface-light-ink)!"
                             >
                               {row.teamName}
@@ -505,13 +511,13 @@ export default function PlayersPage() {
                           <span className="text-[var(--sc-surface-light-ink)]/40">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-1.5 text-right font-semibold text-[var(--sc-surface-light-ink)]">{row.total}</td>
-                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.goals}</td>
-                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.assists}</td>
-                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.blocks}</td>
-                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.turnovers}</td>
-                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.games}</td>
-                      <td className="px-3 py-1.5 text-right text-[var(--sc-surface-light-ink)]/85">{row.callahans}</td>
+                      <StatCell value={row.total} strong />
+                      <StatCell value={row.goals} />
+                      <StatCell value={row.assists} />
+                      <StatCell value={row.blocks} />
+                      <StatCell value={row.turnovers} />
+                      <StatCell value={row.games} />
+                      {showCallahans ? <StatCell value={row.callahans} circled /> : null}
                     </tr>
                   ))
                 )}
@@ -521,5 +527,28 @@ export default function PlayersPage() {
         </Card>
       </SectionShell>
     </div>
+  );
+}
+
+// Centred under its heading. `circled`: a non-zero value gets a circle
+// outline (the Callahans column, as on the player page).
+function StatCell({ value, strong = false, circled = false }) {
+  const shown = value ?? 0;
+  return (
+    <td
+      className={`whitespace-nowrap px-2 py-1.5 text-center tabular-nums sm:px-3 ${
+        strong ? "font-semibold text-[var(--sc-surface-light-ink)]" : "text-[var(--sc-surface-light-ink)]/85"
+      }`}
+    >
+      {circled && shown ? (
+        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-current px-1 leading-none">
+          {shown}
+        </span>
+      ) : circled ? (
+        <span className="text-[var(--sc-surface-light-ink)]/40">–</span>
+      ) : (
+        shown
+      )}
+    </td>
   );
 }

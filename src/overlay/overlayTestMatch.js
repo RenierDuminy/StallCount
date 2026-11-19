@@ -100,6 +100,9 @@ export function createDefaultTestMatch(id = createTestMatchId()) {
     scoreB: 0,
     timeCapMinutes: 90,
     interPointSeconds: 75,
+    // Overlays show no StallCount logo by default; this gives them a dummy
+    // event logo so logo slots can be previewed.
+    placeholderLogo: false,
     teams: {
       A: {
         name: "Riverside Falcons",

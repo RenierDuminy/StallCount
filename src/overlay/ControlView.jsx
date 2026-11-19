@@ -9,6 +9,7 @@ import {
   getVenueName,
 } from "./WeatherCard";
 import { MATCH_LOG_EVENT_CODES } from "../services/matchLogService";
+import { OVERLAY_OPTIONS } from "./overlayOptions";
 
 function TimedButton({ children, onClick, durationSeconds, disabled, autoFade = true, className = "" }) {
   const [animKey, setAnimKey] = useState(0);
@@ -22,8 +23,11 @@ function TimedButton({ children, onClick, durationSeconds, disabled, autoFade = 
   const handleClick = useCallback(() => {
     if (disabled) return;
     if (!autoFade) {
+      // On and off both send the card: with auto-fade off, the overlay treats
+      // a repeat of the card that is showing as "hide it". Sending only on
+      // the way on left the card up after the button was switched off.
       setLatched((prev) => !prev);
-      if (!latched) onClick?.();
+      onClick?.();
       return;
     }
     setAnimKey((k) => k + 1);
@@ -233,14 +237,19 @@ function AddonTestButton({ enabled, onClick, seconds = 5, label = "Test" }) {
 function OverlayConfigDialog({
   onClose,
   bannerAutoFade,
+  scoreboardHidden,
+  setScoreboardHidden,
   breakChanceEnabled,
   setBreakChanceEnabled,
   handleTriggerBreakChance,
   overlayAddons,
   setOverlayAddons,
   handleTriggerAddonPreview,
+  autopilot = {},
+  setAutopilot,
 }) {
   const closeRef = useRef(null);
+  const setPilot = (key) => (value) => setAutopilot?.((prev) => ({ ...prev, [key]: value }));
   useEffect(() => {
     const handleKey = (event) => {
       if (event.key === "Escape") onClose();
@@ -276,6 +285,12 @@ function OverlayConfigDialog({
               Auto fade on: the banner leaves on its own. Off: its button latches, press it again to take the banner down.
             </p>
             <div className="overlay-addons__list">
+              <ConfigRow
+                title="Hide scoreboard"
+                description="Hides the ENTIRE scoring box on the overlay: teams, score and match clock, with everything attached to it."
+                active={scoreboardHidden}
+                actions={renderSwitch("Hidden", scoreboardHidden, setScoreboardHidden)}
+              />
               {bannerAutoFade.map((banner) => (
                 <ConfigRow
                   key={banner.title}
@@ -284,6 +299,33 @@ function OverlayConfigDialog({
                   actions={renderSwitch("Auto fade", banner.value, banner.onChange)}
                 />
               ))}
+            </div>
+          </section>
+
+          <section className="overlay-config__section">
+            <h3 className="overlay-config__heading">Autopilot</h3>
+            <p className="overlay-config__hint">
+              Cards that show themselves at the right moment and fade on their own. Works while this control room is open.
+            </p>
+            <div className="overlay-addons__list">
+              <ConfigRow
+                title="Match info, then team rosters"
+                description="5 minutes before the scheduled start time: match info, then team rosters straight after it."
+                active={Boolean(autopilot.preStartCards)}
+                actions={renderSwitch("Enabled", Boolean(autopilot.preStartCards), setPilot("preStartCards"))}
+              />
+              <ConfigRow
+                title="Match statistics at halftime"
+                description="When halftime starts."
+                active={Boolean(autopilot.statsAtHalftime)}
+                actions={renderSwitch("Enabled", Boolean(autopilot.statsAtHalftime), setPilot("statsAtHalftime"))}
+              />
+              <ConfigRow
+                title="Match statistics at full time"
+                description="When the match end is logged."
+                active={Boolean(autopilot.statsAtFullTime)}
+                actions={renderSwitch("Enabled", Boolean(autopilot.statsAtFullTime), setPilot("statsAtFullTime"))}
+              />
             </div>
           </section>
 
@@ -334,7 +376,7 @@ function OverlayConfigDialog({
 
               <ConfigRow
                 title="Score info"
-                description="Team, scorer and assist after every goal."
+                description="Scorer and assist after every goal."
                 active={scoreInfo.enabled}
                 actions={
                   <>
@@ -346,36 +388,7 @@ function OverlayConfigDialog({
                     />
                   </>
                 }
-              >
-                <AddonNumberField
-                  label="Duration"
-                  unit="s"
-                  hint="Seconds on screen."
-                  min={1}
-                  value={scoreInfo.displaySeconds}
-                  onChange={(value) => update("scoreInfo", { displaySeconds: value })}
-                />
-                <div className="overlay-addon-checks">
-                  <AddonCheckbox label="Team" checked={scoreInfo.showTeam} onChange={(showTeam) => update("scoreInfo", { showTeam })} />
-                  <AddonCheckbox label="Assist" checked={scoreInfo.showAssist} onChange={(showAssist) => update("scoreInfo", { showAssist })} />
-                  <AddonCheckbox
-                    label="Clean / hold / break"
-                    checked={scoreInfo.showPointType}
-                    onChange={(showPointType) => update("scoreInfo", { showPointType })}
-                  />
-                  <AddonCheckbox
-                    label="Turnovers"
-                    checked={scoreInfo.showTurnovers}
-                    onChange={(showTurnovers) => update("scoreInfo", { showTurnovers })}
-                  />
-                  <AddonCheckbox
-                    label="Point time"
-                    checked={scoreInfo.showPointTime}
-                    onChange={(showPointTime) => update("scoreInfo", { showPointTime })}
-                  />
-                  <AddonCheckbox label="Score" checked={scoreInfo.showScore} onChange={(showScore) => update("scoreInfo", { showScore })} />
-                </div>
-              </ConfigRow>
+              />
 
               <ConfigRow
                 title="Gender line"
@@ -409,7 +422,53 @@ function OverlayConfigDialog({
   );
 }
 
+// One line per overlay that is reporting in: layout, size, OBS state, and a
+// warning when the browser source is not a 16:9 output size.
+function OverlayStatusReadout({ statuses = [] }) {
+  if (!statuses.length) {
+    return <span className="overlay-status-readout is-empty">No overlay connected</span>;
+  }
+  return (
+    <span className="overlay-status-readout">
+      {statuses.map((status) => {
+        const option = OVERLAY_OPTIONS.find((o) => o.value.endsWith(status.layoutFile));
+        const name = option?.label || status.layoutFile || "Overlay";
+        const ratio = Number(status.pixelRatio) || 1;
+        const renderedWidth = Math.round(status.width * ratio);
+        const renderedHeight = Math.round(status.height * ratio);
+        // The layouts are 1920x1080 scaled to fit: 1.00 = 1080p, 1.33 = 1440p, 2.00 = 4K.
+        const scale = Math.min(renderedWidth / 1920, renderedHeight / 1080);
+        const size = `${renderedWidth}×${renderedHeight} (×${scale.toFixed(2)})`;
+        const sixteenNine = Math.abs(status.width / status.height - 16 / 9) < 0.02;
+        const badSize = !sixteenNine || renderedWidth < 1280;
+        const state = !status.inObs
+          ? "Browser"
+          : status.streaming
+            ? "Live"
+            : status.recording
+              ? "Recording"
+              : status.streaming === false
+                ? "OBS, not live"
+                : "OBS";
+        return (
+          <span key={status.clientId} className={`overlay-status-readout__item ${status.streaming ? "is-live" : ""}`}>
+            {name} · {size} · {state}
+            {badSize ? (
+              <span className="overlay-status-readout__warn">
+                {" "}· Set the browser source to your output size (e.g. 1920×1080)
+              </span>
+            ) : null}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 export function ControlView({
+  overlayStatuses,
+  autopilot,
+  setAutopilot,
   overlayUrl,
   overlayPreviewUrl,
   canPreview,
@@ -450,6 +509,8 @@ export function ControlView({
   setMatchStatusAutoFade,
   breakChanceEnabled,
   setBreakChanceEnabled,
+  scoreboardHidden,
+  setScoreboardHidden,
   overlayAddons,
   setOverlayAddons,
   handleTriggerAddonPreview,
@@ -517,6 +578,7 @@ export function ControlView({
       <header className="overlay-header overlay-header--minimal overlay-header--compact overlay-header--with-actions">
         <div className="overlay-header__text">
           <h1 className="overlay-header__title overlay-header__title--compact">Control</h1>
+          <OverlayStatusReadout statuses={overlayStatuses} />
         </div>
         <div className="overlay-header__actions">
           <button type="button" className="sc-button is-ghost" onClick={() => setConfigOpen(true)}>
@@ -596,7 +658,7 @@ export function ControlView({
 
                   <dl className="overlay-matchstatus-meta">
                     <div>
-                      <dt>Match start</dt>
+                      <dt>Scheduled start</dt>
                       <dd>{formatKickoffCat(matchDetails?.start_time)}</dd>
                     </div>
                     <div>
@@ -663,7 +725,7 @@ export function ControlView({
                           <optgroup label={matchDetails?.team_a?.name || "Team A"}>
                             {bannerPlayerOptions.teamA.map((player) => (
                               <option key={player.id} value={player.id}>
-                                {Number.isFinite(player.number) ? `#${player.number} ` : ""}{player.name}
+                                {player.name}{Number.isFinite(player.number) ? ` #${player.number}` : ""}
                               </option>
                             ))}
                           </optgroup>
@@ -672,7 +734,7 @@ export function ControlView({
                           <optgroup label={matchDetails?.team_b?.name || "Team B"}>
                             {bannerPlayerOptions.teamB.map((player) => (
                               <option key={player.id} value={player.id}>
-                                {Number.isFinite(player.number) ? `#${player.number} ` : ""}{player.name}
+                                {player.name}{Number.isFinite(player.number) ? ` #${player.number}` : ""}
                               </option>
                             ))}
                           </optgroup>
@@ -1017,12 +1079,16 @@ export function ControlView({
         <OverlayConfigDialog
           onClose={closeConfig}
           bannerAutoFade={bannerAutoFade}
+          scoreboardHidden={scoreboardHidden}
+          setScoreboardHidden={setScoreboardHidden}
           breakChanceEnabled={breakChanceEnabled}
           setBreakChanceEnabled={setBreakChanceEnabled}
           handleTriggerBreakChance={handleTriggerBreakChance}
           overlayAddons={overlayAddons}
           setOverlayAddons={setOverlayAddons}
           handleTriggerAddonPreview={handleTriggerAddonPreview}
+          autopilot={autopilot}
+          setAutopilot={setAutopilot}
         />
       ) : null}
     </>

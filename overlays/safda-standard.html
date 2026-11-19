@@ -1,0 +1,1969 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>SAFDA Standard Overlay</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Semi+Condensed:wght@400;600;700&display=swap");
+
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
+        width: 100%; height: 100%;
+        background: transparent;
+        overflow: hidden;
+      }
+
+      #viewport {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      #canvas {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        transform-origin: top left;
+      }
+
+      /* -- SAFDA standard -- */
+      /* [event name ............ | status]
+         [logo] [team A name  swatch | score]
+         [logo] [team B name  swatch | score]
+         [clock] */
+      .sa-root {
+        --sa-accent: #111111;
+        --sa-dark: #111111;
+        position: absolute;
+        z-index: 2;
+        top: 36px;
+        left: 40px;
+        /* Sized to its content between 540px (about 10% narrower) and 600px;
+           longer team names end in "..." at the maximum. */
+        width: max-content;
+        min-width: 540px;
+        max-width: 600px;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        white-space: nowrap;
+      }
+
+      .sa-strip {
+        display: flex;
+        height: 34px;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .sa-strip__event {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+        background: var(--sa-accent);
+        color: #ffffff;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .sa-strip__status {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 110px;
+        padding: 0 10px;
+        background: var(--sa-dark);
+        color: #ffffff;
+      }
+
+      .sa-body {
+        display: flex;
+        gap: 4px;
+        margin-top: 4px;
+      }
+
+      .sa-logo {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 100px;
+        height: 100px;
+        padding: 6px;
+        background: #ffffff;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+      }
+
+      .sa-logo img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        display: none;
+      }
+
+      .sa-logo.has-image img { display: block; }
+      /* No event logo (missing, failed, or only the StallCount default): drop the box. */
+      .sa-logo:not(.has-image),
+      .sa-logo.is-default-logo { display: none; }
+      .sa-logo.has-image .sa-logo-fallback { display: none; }
+
+      .sa-logo-fallback {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--sa-dark);
+      }
+
+      .sa-teams {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      /* #teamABox / #teamBBox receive --team-bg from the runtime: the swatch */
+      .sa-team {
+        position: relative;
+        display: flex;
+        align-items: stretch;
+        height: 48px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+      }
+
+      .sa-team__name {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px 0 10px;
+        background: #ffffff;
+        color: var(--sa-dark);
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        overflow: hidden;
+      }
+
+      .sa-team__name span:not(.sa-swatch) {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .sa-swatch {
+        flex-shrink: 0;
+        width: 22px;
+        height: 36px;
+        background: var(--team-bg, #ffffff);
+      }
+
+      .sa-score {
+        line-height: 1;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 56px;
+        padding: 0 10px;
+        background: var(--sa-dark);
+        color: #ffffff;
+        font-size: 30px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .sa-clock {
+        line-height: 1;
+        text-align: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100px;
+        height: 36px;
+        margin-top: 4px;
+        background: var(--sa-accent);
+        color: #ffffff;
+        font-size: 28px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+      }
+
+      .cp-break-strip {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 100%;
+        padding: 6px 12px;
+        background: #dc2626;
+        color: #ffffff;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        text-align: center;
+        white-space: normal;
+        line-height: 1.15;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.18s ease;
+      }
+
+      .cp-break-strip.is-active,
+      .cp-break-strip.is-persistent {
+        opacity: 1;
+      }
+
+      /* Break-chance / timeout banners above bar */
+      .cp-above {
+        position: absolute;
+        left: 0; right: 0;
+        top: 100%;
+        display: flex;
+        justify-content: center;
+        pointer-events: none;
+      }
+
+      /* Break chance: an inline tab to the right of the calling team's row. */
+      .sa-team .cp-break-strip {
+        top: 0;
+        bottom: 0;
+        left: 100%;
+        right: auto;
+        display: flex;
+        align-items: center;
+        width: max-content;
+        padding: 0 8px;
+        white-space: nowrap;
+        /* Same type as the point duration pop-up. */
+        font-family: "Barlow Semi Condensed", sans-serif;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: normal;
+        line-height: 1;
+        color: #ffffff;
+        text-transform: uppercase;
+      }
+
+      /* Timeout: same tab as break chance, in blue. */
+      .sa-team .cp-break-strip.sa-timeout-strip { background: #1d4ed8; }
+
+      /* Add-ons (gender line, point duration) slide out of the clock to the
+         right. The rail clips them, so they appear to come from behind it. */
+      .sa-clock-wrap {
+        position: relative;
+        display: inline-block;
+        margin-top: 4px;
+      }
+
+      .sa-clock-wrap .sa-clock { margin-top: 0; }
+
+      /* A flex row: the gender line sits first and pushes point duration
+         along when both show. Chips slide by growing from zero width. */
+      .sa-addons {
+        position: absolute;
+        top: 0;
+        left: calc(100% + 4px); /* same 4px gap as between the logo and the teams */
+        height: 100%;
+        display: flex;
+        pointer-events: none;
+      }
+
+      .sa-addons .overlay-addon-chip {
+        position: static;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 100%;
+        max-width: 0;
+        padding: 0;
+        overflow: hidden;
+        border: 0;
+        border-radius: 0;
+        background: var(--sa-dark);
+        color: #ffffff;
+        box-shadow: none;
+        opacity: 1;
+        transform: none;
+        white-space: nowrap;
+        transition: max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+          padding 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .sa-addons .overlay-addon-chip.is-visible {
+        max-width: 480px;
+        padding: 0 14px;
+        /* Same 4px gap as between the team rows; trailing, so it only ever
+           shows between two visible chips. */
+        margin-right: 4px;
+      }
+
+      .sa-addons .overlay-addon-chip--genderLine { order: -1; }
+
+      /* Same white type and size as the match timer (extra class beats the
+         shared gender-line rule in overlayOutput.css). */
+      .sa-addons .overlay-addon-chip .overlay-addon-chip__label,
+      .sa-addons .overlay-addon-chip .overlay-addon-chip__value {
+        font-family: "Barlow Semi Condensed", sans-serif;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: normal;
+        line-height: 1;
+        color: #ffffff;
+        font-variant-numeric: tabular-nums;
+        text-transform: uppercase;
+      }
+
+      /* Match events and field calls: cards on the timer rail, sliding out the
+         same way as the add-ons. Halftime blue, stoppage red, field calls
+         yellow (dark text), every other event dark yellow. */
+      .sa-addons .sa-card {
+        display: flex;
+        align-items: center;
+        height: 100%;
+        max-width: 0;
+        padding: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        background: #b8860b;
+        color: #ffffff;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1;
+        text-transform: uppercase;
+        transition: max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+          padding 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .sa-addons .sa-card.is-active,
+      .sa-addons .sa-card.is-persistent {
+        max-width: 480px;
+        padding: 0 14px;
+        margin-right: 4px;
+      }
+
+      .sa-addons .sa-card--event { order: -3; }
+      .sa-addons .sa-card--fieldcall { order: -2; background: #f2c200; color: #111111; }
+      .sa-addons .sa-card--event.is-halftime { background: #1d4ed8; }
+      .sa-addons .sa-card--event.is-stoppage { background: #dc2626; }
+
+      .sa-addons .overlay-addon-chip__tag { display: none; }
+
+      .cp-event-banner {
+        background: #991b1b;
+        color: #ffffff;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        padding: 6px 20px;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+
+      .cp-event-banner.is-active { opacity: 1; }
+
+      /* Cards below copied from ctfda.html (player stats, match stats,
+         rosters, match info). */
+      /* ── Player stats banner ── */
+      #overlayBanner {
+        position: absolute;
+        left: 50%;
+        bottom: 48px;
+        transform: translateX(-50%) translateY(24px);
+        opacity: 0;
+        pointer-events: none;
+        display: inline-flex;
+        align-items: stretch;
+        overflow: hidden;
+        box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+        font-family: "Barlow Semi Condensed", sans-serif;
+        white-space: nowrap;
+      }
+
+      #overlayBanner.is-active {
+        animation: cb-banner-rise-hold-fade 6.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+
+      #overlayBanner.is-persistent {
+        animation: none;
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+
+      @keyframes cb-banner-rise-hold-fade {
+        0%   { opacity: 0; transform: translateX(-50%) translateY(24px); }
+        12%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+        80%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+        100% { opacity: 0; transform: translateX(-50%) translateY(0); }
+      }
+
+      .cb-banner-team {
+        background: var(--banner-team-bg, #1f2933);
+        color: var(--banner-team-text, #ffffff);
+        display: flex;
+        align-items: center;
+        padding: 0 20px 0 0;
+        min-width: 180px;
+      }
+
+      .cb-banner-logo-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        align-self: stretch;
+        width: 52px;
+        flex-shrink: 0;
+        padding: 1px 1px 1px 2.3px;
+      }
+
+      /* No team icon uploaded: drop the icon cell entirely and pad the name instead */
+      .cb-banner-logo-cell:not(.has-image) { display: none; }
+      .cb-banner-team.no-logo { padding-left: 20px; }
+
+      .cb-banner-logo-circle {
+        width: 100%;
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+
+      .cb-banner-logo-circle img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: none;
+      }
+
+      .cb-banner-logo-circle.has-image img { display: block; }
+
+      .cb-banner-logo-fallback {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--banner-team-text, #ffffff);
+        letter-spacing: 0.05em;
+        text-align: center;
+        line-height: 1;
+      }
+
+      .cb-banner-logo-circle.has-image .cb-banner-logo-fallback { display: none; }
+
+      #bannerPlayerName {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .cb-banner-stats {
+        display: flex;
+        align-items: stretch;
+        background: #111111;
+      }
+
+      .cb-banner-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 20px;
+        gap: 2px;
+        border-left: 1px solid rgba(255,255,255,0.12);
+      }
+
+      .cb-banner-stat__label {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #ffffff;
+      }
+
+      .cb-banner-stat__value {
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 32px;
+        letter-spacing: 0.08em;
+        color: #ffffff;
+        line-height: 1;
+      }
+
+      /* ── Match stats banner ── */
+      #matchStatsBanner {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0.97);
+        opacity: 0;
+        pointer-events: none;
+        display: block;
+        width: 640px;
+        transition: opacity 0.18s ease, transform 0.18s ease;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        z-index: 10;
+      }
+
+      #matchStatsBanner.is-active {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .cb-matchstats-card {
+        background: #111111;
+        border: 1px solid rgba(255,255,255,0.12);
+        box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+        overflow: hidden;
+      }
+
+      #matchStatsTitle {
+        display: block;
+        text-align: center;
+        padding: 10px 16px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        background: #1a1a1a;
+        color: rgba(255,255,255,0.7);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .cb-matchstats-body {
+        display: grid;
+        grid-template-columns: minmax(0,1fr) minmax(0,0.9fr) minmax(0,1fr);
+        align-items: stretch;
+      }
+
+      .cb-matchstats-col {
+        display: grid;
+        grid-template-rows: minmax(48px,auto) repeat(4, 44px);
+        min-width: 0;
+      }
+
+      .cb-matchstats-col--team {
+        background: var(--team-bg, #1f2933);
+        color: var(--team-text, #ffffff);
+      }
+
+      .cb-matchstats-col--team > * + * { border-top: 1px solid rgba(255,255,255,0.12); }
+
+      .cb-matchstats-col--metrics {
+        background: #1a1a1a;
+        color: rgba(255,255,255,0.85);
+        border-left: 1px solid rgba(255,255,255,0.1);
+        border-right: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .cb-matchstats-col--metrics > * + * { border-top: 1px solid rgba(255,255,255,0.08); }
+
+      #matchStatsTeamA, #matchStatsTeamB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        text-align: center;
+        line-height: 1.1;
+      }
+
+      #matchStatsScoreline {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 28px;
+        letter-spacing: 0.1em;
+        color: #ffffff;
+      }
+
+      #matchStatsHoldsA, #matchStatsHoldsB,
+      #matchStatsBreaksA, #matchStatsBreaksB,
+      #matchStatsTurnoversA, #matchStatsTurnoversB,
+      #matchStatsBlocksA, #matchStatsBlocksB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Bebas Neue", sans-serif;
+        font-size: 26px;
+        letter-spacing: 0.06em;
+      }
+
+      .cb-matchstats-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.55);
+        text-align: center;
+        padding: 0 4px;
+      }
+
+      /* ── Team rosters banner ── */
+      #teamRostersBanner {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%) scale(0.97);
+        opacity: 0;
+        pointer-events: none;
+        display: block;
+        width: 900px;
+        transition: opacity 0.18s ease, transform 0.18s ease;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        z-index: 10;
+      }
+
+      #teamRostersBanner.is-active {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .cb-roster-card {
+        background: #111111;
+        border: 1px solid rgba(255,255,255,0.12);
+        box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+        overflow: hidden;
+        max-height: 760px;
+      }
+
+      #teamRostersTitle {
+        display: block;
+        text-align: center;
+        padding: 10px 16px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        background: #1a1a1a;
+        color: rgba(255,255,255,0.7);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+
+      .cb-roster-body {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0,1fr));
+      }
+
+      #teamRostersColumnA, #teamRostersColumnB {
+        display: grid;
+        grid-template-rows: minmax(48px,auto) minmax(0,1fr);
+        background: var(--team-bg, #1f2933);
+        color: var(--team-text, #ffffff);
+      }
+
+      #teamRostersColumnB { border-left: 1px solid rgba(255,255,255,0.12); }
+
+      #teamRostersTeamA, #teamRostersTeamB {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        border-bottom: 1px solid rgba(255,255,255,0.12);
+      }
+
+      #teamRostersListA, #teamRostersListB {
+        margin: 0;
+        padding: 12px;
+        list-style: none;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0,1fr));
+        gap: 6px 12px;
+        align-content: start;
+      }
+
+      .roster-banner-item {
+        display: flex;
+        justify-content: flex-start;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
+      }
+
+      .roster-banner-identity {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .roster-banner-tag {
+        min-width: 1.3rem;
+        height: 1.3rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.4);
+        background: rgba(255,255,255,0.12);
+      }
+
+      .roster-banner-tag--captain {
+        background: var(--team-text, #ffffff);
+        border-color: var(--team-text, #ffffff);
+        color: var(--team-bg, #111111);
+      }
+
+      /* ── Readability: pop-ups (everything outside the score box) scaled up
+         for viewing at a distance. Cards are zoomed by --ce-popup-zoom and
+         given ~10% more room on top of that. ── */
+      #canvas { --ce-popup-zoom: 1.3; }
+
+      #overlayBanner > * { zoom: var(--ce-popup-zoom); }
+      #overlayBanner .cb-banner-team { min-width: 200px; }
+
+      #matchStatsBanner { width: calc(640px * var(--ce-popup-zoom) * 1.1); }
+      #matchStatsBanner .cb-matchstats-card { zoom: var(--ce-popup-zoom); }
+
+      #teamRostersBanner { width: calc(900px * var(--ce-popup-zoom) * 1.1); max-width: 1840px; }
+      #teamRostersBanner .cb-roster-card { zoom: var(--ce-popup-zoom); }
+
+      /* Match info styles come from overlay.css; ids out-rank its class rules */
+      /* 15% narrower than CTFDA's */
+      #matchStatusBanner { width: calc(680px * var(--ce-popup-zoom) * 1.1 * 0.85); }
+      #matchStatusBanner .matchstatus-card { zoom: var(--ce-popup-zoom); }
+      /* Double the score (1.2rem in overlay.css); the pre-match "vs" keeps its size */
+      #matchStatusBanner .matchstatus-score:not(.matchstatus-score--pre) { font-size: 2.4rem; }
+      /* Double the event name (0.95rem in overlay.css) */
+      #matchStatusBanner .matchstatus-event { font-size: 1.9rem; }
+
+      /* ── Flat cards: no shading and no outlines. The only lines are the
+         dividers between sections (strip | strip, clock | add-on tab). ── */
+      .ce-tab,
+      .ce-main,
+      #overlayBanner,
+      #matchStatsBanner .cb-matchstats-card,
+      #matchStatusBanner .matchstats-card,
+      #teamRostersBanner .cb-roster-card {
+        box-shadow: none;
+      }
+      .ce-strips { filter: none; }
+
+      /* Match info card: one typeface throughout, the scoreboard's. */
+      #matchStatusBanner,
+      #matchStatusBanner * {
+        font-family: "Barlow Semi Condensed", sans-serif;
+      }
+
+      /* Refined match info: solid status band in the event-card colours, then
+         one even footer line. Same padding (--sa-pad) for every section. */
+      #matchStatusBanner { --sa-pad: 14px; }
+      #matchStatusBanner .matchstatus-card { padding-bottom: 0; }
+      #matchStatusBanner .matchstatus-header { padding: var(--sa-pad) var(--sa-pad); }
+
+      /* Rows: [status][logo A | name A | score | name B | logo B][spacer].
+         The spacer is the status row's height, so the team/score row sits
+         exactly in the vertical middle of the white section. Status and score
+         share the middle column, so they are always the same width. */
+      #matchStatusBanner .matchstatus-title {
+        /* minmax(0, 1fr): both name columns stay equal however long a name is,
+           so the score stays centred and long names wrap evenly. */
+        grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr) auto;
+        align-items: center;
+        grid-template-rows: var(--sa-chip-h) auto var(--sa-chip-h);
+        column-gap: 0.55rem;
+        row-gap: 6px;
+        --sa-chip-h: 20px;
+      }
+      #matchStatusBanner .matchstatus-team {
+        grid-row: 2;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        overflow-wrap: anywhere;
+        line-height: 1.05;
+        font-size: 1.9rem; /* was 1.7rem */
+      }
+      /* Each name is only as wide as its text and sits against the score;
+         when it wraps, its lines are centred within the space it takes. */
+      #matchStatusBanner #matchStatusTeamA,
+      #matchStatusBanner #matchStatusTeamB {
+        width: fit-content;
+        max-width: 100%;
+        text-align: center;
+      }
+      #matchStatusBanner #matchStatusTeamA { grid-column: 2; justify-self: end; }
+      #matchStatusBanner #matchStatusTeamB { grid-column: 4; justify-self: start; }
+      /* The image box is the image itself (fixed height, width from its own
+         proportions), so the colour behind it never shows past its edges. */
+      #matchStatusBanner .sa-ms-logo {
+        grid-row: 2;
+        height: 55px;
+        width: auto;
+        max-width: 110px;
+        object-fit: contain;
+        display: none;
+      }
+      #matchStatusBanner .sa-ms-logo.has-image { display: block; }
+      /* Logos are usually drawn in the kit's inverse (white on a dark kit), so
+         each sits on a square of its team's current colour. */
+      #matchStatusBanner .sa-ms-logo--a { grid-column: 1; background: var(--sa-team-a-bg, #111111); }
+      #matchStatusBanner .sa-ms-logo--b { grid-column: 5; background: var(--sa-team-b-bg, #111111); }
+      #matchStatusBanner .matchstatus-score {
+        grid-column: 3;
+        grid-row: 2;
+        justify-self: stretch;
+        text-align: center;
+      }
+      /* Before the match: no score box, just "VS" in the team-name colour. */
+      #matchStatusBanner .matchstatus-score.matchstatus-score--pre {
+        background: transparent;
+        color: #0f172a;
+        font-size: 2.4rem; /* same box height as a real score */
+        font-weight: 800;
+        letter-spacing: normal;
+        text-transform: uppercase;
+      }
+      /* Tournament logo above the event name, 50% larger (3.2rem -> 4.8rem). */
+      #matchStatusBanner .matchstatus-event {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+      #matchStatusBanner .matchstatus-logo {
+        position: static;
+        transform: none;
+        width: 4.8rem;
+        height: 4.8rem;
+        object-fit: contain;
+      }
+      #matchStatusBanner .matchstatus-logo.is-hidden { display: none; }
+      #matchStatusBanner .matchstatus-chip {
+        grid-column: 3;
+        grid-row: 1;
+        align-self: stretch;
+        justify-self: stretch;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 10px;
+        background: #3d4450;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        line-height: 1;
+        text-align: center;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      #matchStatusBanner .matchstatus-chip--live { background: #dc2626; color: #ffffff; }
+      #matchStatusBanner .matchstatus-chip--ht { background: #1d4ed8; color: #ffffff; }
+      #matchStatusBanner .matchstatus-chip--after { background: #111111; color: #ffffff; }
+      #matchStatusBanner .matchstatus-chip--pre { background: #3d4450; color: #ffffff; }
+
+      #matchStatusBanner .sa-info {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        column-gap: 28px; /* spacing alone separates the items, no dots */
+        padding: 10px var(--sa-pad);
+        /* Same dark band as the title */
+        background: #1a1a1a;
+        color: #ffffff;
+        font-size: 18px;
+        line-height: 1.2;
+      }
+      #matchStatusBanner .sa-info__item { display: flex; align-items: baseline; gap: 6px; }
+      #matchStatusBanner .sa-info__item.is-hidden,
+      #matchStatusBanner .sa-info__item.is-empty { display: none; }
+      #matchStatusBanner .sa-info__label {
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      #matchStatusBanner .sa-info__value { font-weight: 700; }
+      #matchStatusBanner .sa-info:not(:has(.sa-info__item:not(.is-hidden):not(.is-empty))) { display: none; }
+
+      /* Player stats: the team logo sits in a square with the same space on
+         every side (top, bottom, left, and before the name). */
+      #overlayBanner .cb-banner-team { padding-left: 0; }
+      #overlayBanner .cb-banner-team.no-logo { padding-left: 20px; }
+      #overlayBanner .cb-banner-logo-cell {
+        align-self: center;
+        width: auto;
+        padding: 8px;
+        margin-right: 8px; /* extra room between the logo and the player name */
+      }
+      #overlayBanner .cb-banner-logo-circle {
+        width: 48px;
+        height: 48px;
+        aspect-ratio: auto;
+      }
+
+      /* Player stats: always the same size (320 + 4 x 86 = 664px before the
+         1.3 zoom). Each stat block is fixed at the width "TURNOVERS" needs
+         (66px) plus 10px each side; nothing resizes it, not even the Score info
+         labels. A long player name wraps onto a second line inside the fixed
+         team section instead of widening the card. */
+      #overlayBanner .cb-banner-team {
+        width: 320px;
+        min-width: 0;
+        flex: 0 0 auto;
+      }
+      #overlayBanner #bannerPlayerName {
+        min-width: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.05;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+      #overlayBanner .cb-banner-stats { display: flex; }
+      #overlayBanner .cb-banner-stat {
+        flex: 0 0 auto;
+        width: 86px;
+        padding-left: 0;
+        padding-right: 0;
+        overflow: hidden;
+      }
+
+      /* Match statistics: the scoreboard's typeface throughout, white heading
+         and labels, event logo at the left of the heading, event name footer. */
+      #matchStatsBanner,
+      #matchStatsBanner * { font-family: "Barlow Semi Condensed", sans-serif; }
+      #matchStatsBanner #matchStatsScoreline,
+      #matchStatsBanner [id^="matchStatsHolds"],
+      #matchStatsBanner [id^="matchStatsBreaks"],
+      #matchStatsBanner [id^="matchStatsTurnovers"],
+      #matchStatsBanner [id^="matchStatsBlocks"] {
+        font-weight: 700;
+        letter-spacing: normal;
+      }
+      #matchStatsBanner .sa-stats-head {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 88px;
+        padding: 8px 104px;
+        background: #1a1a1a;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+      #matchStatsBanner #matchStatsTitle {
+        display: inline;
+        padding: 0;
+        background: none;
+        border: 0;
+        color: #ffffff;
+        font-size: 24px; /* +50% */
+        letter-spacing: 0.12em;
+      }
+      #matchStatsBanner .sa-stats-logo {
+        position: absolute;
+        left: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        height: 72px; /* doubled */
+        max-width: 88px;
+        object-fit: contain;
+        display: none;
+      }
+      #matchStatsBanner .sa-stats-logo.has-image { display: block; }
+      #matchStatsBanner .cb-matchstats-label { color: #ffffff; font-size: 18px; /* was 16px */ }
+      /* Middle column about 20% narrower (0.9fr -> 0.72fr). */
+      #matchStatsBanner .cb-matchstats-body {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 0.72fr) minmax(0, 1fr);
+      }
+      #matchStatsBanner .sa-stats-foot {
+        padding: 8px 16px;
+        background: #1a1a1a;
+        border-top: 1px solid rgba(255,255,255,0.1);
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        text-align: center;
+      }
+      #matchStatsBanner .sa-stats-foot {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        font-size: 16px; /* was 14px */
+      }
+      /* With only one of the two present, it is centred. */
+      #matchStatsBanner .sa-stats-foot span:empty { display: none; }
+      #matchStatsBanner .sa-stats-foot span:only-child,
+      #matchStatsBanner .sa-stats-foot span:empty + span,
+      #matchStatsBanner .sa-stats-foot span:has(+ span:empty) { margin: 0 auto; }
+      #matchStatsBanner .sa-stats-foot:not(:has(span:not(:empty))) { display: none; }
+
+      /* Match statistics extras: status after the title, team logos above the
+         names (on the team colour, sized to the image), hold rate and timeouts. */
+      #matchStatsBanner .sa-stats-title {
+        color: #ffffff;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      #matchStatsBanner .cb-matchstats-col { grid-template-rows: minmax(48px, auto) repeat(6, 44px); }
+      /* Logos line up across both columns: they sit at the top, names below. */
+      #matchStatsBanner .sa-stats-team {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 6px;
+        padding: 8px;
+      }
+      #matchStatsBanner .sa-stats-team #matchStatsTeamA,
+      #matchStatsBanner .sa-stats-team #matchStatsTeamB { padding: 0; }
+      #matchStatsBanner .sa-stats-teamlogo {
+        height: 44px;
+        max-width: 88px;
+        object-fit: contain;
+        display: none;
+      }
+      #matchStatsBanner .sa-stats-teamlogo.has-image { display: block; }
+      #matchStatsBanner .sa-stats-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 26px;
+        font-weight: 700;
+      }
+
+      /* Match statistics: one fixed size. Width was already fixed; every row
+         now has a fixed height too: heading 88px, team row 116px (logo plus at
+         most two lines of name, longer names end in "..."), stat rows 44px,
+         footer one line. */
+      #matchStatsBanner .sa-stats-head { height: 88px; min-height: 0; }
+      /* Team row: 4px + logo 44px + 6px + a two-line name slot (40px) + 4px =
+         98px with logos; with no team logos at all the logo space goes
+         (44px, the same as a stat row). Either way it is the same for the whole match. A one-line name
+         is centred in its two-line slot, so the logos still line up. */
+      #matchStatsBanner .cb-matchstats-col { grid-template-rows: 98px repeat(6, 44px); }
+      #matchStatsBanner:not(:has(.sa-stats-teamlogo.has-image)) .cb-matchstats-col {
+        grid-template-rows: 44px repeat(6, 44px);
+      }
+      #matchStatsBanner .sa-stats-team { padding-top: 4px; padding-bottom: 4px; }
+      #matchStatsBanner:not(:has(.sa-stats-teamlogo.has-image)) .sa-stats-team { justify-content: center; padding-top: 2px; padding-bottom: 2px; }
+      #matchStatsBanner .sa-stats-nameslot {
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 0;
+        max-width: 100%;
+      }
+      #matchStatsBanner #matchStatsTeamA,
+      #matchStatsBanner #matchStatsTeamB { font-size: 18px; line-height: 1.1; }
+      #matchStatsBanner .sa-stats-team { overflow: hidden; }
+      #matchStatsBanner #matchStatsTeamA,
+      #matchStatsBanner #matchStatsTeamB {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+      }
+      #matchStatsBanner .sa-stats-foot {
+        height: 36px;
+        align-items: center;
+        padding-top: 0;
+        padding-bottom: 0;
+      }
+      #matchStatsBanner .sa-stats-foot span {
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Team rosters: same treatment as match statistics: scoreboard typeface,
+         white 24px heading with the event logo (72px) at its left, team logos
+         on the inside (by the middle line), event name + match status footer,
+         and one fixed size (see below; a very long list is cut at the bottom). */
+      #teamRostersBanner,
+      #teamRostersBanner * { font-family: "Barlow Semi Condensed", sans-serif; }
+      #teamRostersBanner .cb-roster-card { max-height: none; }
+      #teamRostersBanner .sa-stats-head {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 88px;
+        padding: 8px 104px;
+        background: #1a1a1a;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+      }
+      #teamRostersBanner .sa-stats-title {
+        color: #ffffff;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      #teamRostersBanner #teamRostersTitle {
+        display: inline;
+        padding: 0;
+        background: none;
+        border: 0;
+        color: inherit;
+        font-size: inherit;
+        letter-spacing: inherit;
+      }
+      #teamRostersBanner .sa-stats-logo {
+        position: absolute;
+        left: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        height: 72px;
+        max-width: 88px;
+        object-fit: contain;
+        display: none;
+      }
+      #teamRostersBanner .sa-stats-logo.has-image { display: block; }
+      /* Fixed height: half the 1080px screen (540px on screen = 540 / 1.3 zoom
+         inside the card). The players get room from width instead: the card is
+         wider and each team lists in three columns (about 27 players a team). */
+      /* Top stays where it was (270px); the card runs 65% of the screen
+         height (702px) downwards from there. */
+      #teamRostersBanner {
+        width: 1700px;
+        max-width: 1840px;
+        top: 270px;
+        transform: translateX(-50%) scale(0.97);
+        transform-origin: top center;
+      }
+      #teamRostersBanner.is-active { transform: translateX(-50%) scale(1); }
+      #teamRostersBanner .cb-roster-card {
+        height: calc(702px / var(--ce-popup-zoom));
+        display: flex;
+        flex-direction: column;
+      }
+      #teamRostersBanner .cb-roster-body { flex: 1 1 auto; min-height: 0; }
+      #teamRostersBanner #teamRostersColumnA,
+      #teamRostersBanner #teamRostersColumnB { grid-template-rows: 64px minmax(0, 1fr); min-height: 0; }
+      /* At most 30 players a team, in three columns of ten that run down the
+         page. Each column is independent, so a long name wraps only within its
+         own entry and never moves entries in the other columns. */
+      #teamRostersBanner #teamRostersListA,
+      #teamRostersBanner #teamRostersListB {
+        display: block;
+        column-count: 3;
+        column-gap: 12px;
+      }
+      #teamRostersBanner .roster-banner-item {
+        break-inside: avoid;
+        margin-bottom: 6px;
+      }
+      #teamRostersBanner .roster-banner-item:nth-child(n + 31) { display: none; }
+      #teamRostersBanner .sa-stats-head,
+      #teamRostersBanner .sa-stats-foot { flex: 0 0 auto; }
+      #teamRostersBanner .sa-roster-team {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        min-width: 0;
+        padding: 6px 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.12);
+      }
+      #teamRostersBanner #teamRostersTeamA,
+      #teamRostersBanner #teamRostersTeamB {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        text-align: center;
+        line-height: 1.1;
+        overflow-wrap: anywhere;
+      }
+      #teamRostersBanner .sa-stats-teamlogo {
+        flex-shrink: 0;
+        height: 44px;
+        max-width: 88px;
+        object-fit: contain;
+        display: none;
+      }
+      #teamRostersBanner .sa-stats-teamlogo.has-image { display: block; }
+      #teamRostersBanner #teamRostersListA,
+      #teamRostersBanner #teamRostersListB { overflow: hidden; }
+      #teamRostersBanner .roster-banner-item { font-size: 18px; } /* was 15px */
+      #teamRostersBanner .sa-stats-foot {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        height: 36px;
+        padding: 0 16px;
+        background: #1a1a1a;
+        border-top: 1px solid rgba(255,255,255,0.1);
+        color: #ffffff;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      #teamRostersBanner .sa-stats-foot span {
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #teamRostersBanner .sa-stats-foot span:empty { display: none; }
+      #teamRostersBanner .sa-stats-foot span:empty + span,
+      #teamRostersBanner .sa-stats-foot span:has(+ span:empty) { margin: 0 auto; }
+      #teamRostersBanner .sa-stats-foot:not(:has(span:not(:empty))) { display: none; }
+
+      /* ── Team rosters, refined ──
+         Width: at least 1100px on screen, and wider only when a name needs it:
+         the card is as wide as its content, and the two team halves are always
+         equal (each as wide as the wider one needs). Names never wrap.
+         Players: two columns of fifteen per team (30 at most), down then across.
+         Height: fixed, 750px on screen from the 270px top (ends at 1020px). */
+      #teamRostersBanner {
+        width: max-content;
+        min-width: 1100px;
+        max-width: 1880px;
+      }
+      #teamRostersBanner .cb-roster-card { height: calc(750px / var(--ce-popup-zoom)); }
+      #teamRostersBanner .cb-roster-body { grid-template-columns: 1fr 1fr; }
+      #teamRostersBanner #teamRostersListA,
+      #teamRostersBanner #teamRostersListB {
+        display: grid;
+        column-count: auto;
+        grid-auto-flow: column;
+        grid-template-rows: repeat(15, auto);
+        /* Overrides the copied CTFDA rule that forced two equal columns. */
+        grid-template-columns: repeat(2, max-content);
+        grid-auto-columns: max-content;
+        column-gap: 28px;
+        row-gap: 2px;
+        align-content: start;
+        padding: 12px 16px;
+      }
+      #teamRostersBanner .roster-banner-item {
+        margin-bottom: 0;
+        white-space: nowrap;
+        overflow-wrap: normal;
+      }
+      /* The name never shrinks below its full length (it used to be squeezed
+         and spill into the next column). */
+      #teamRostersBanner .roster-banner-identity { flex-wrap: nowrap; gap: 6px; flex-shrink: 0; min-width: max-content; }
+      #teamRostersBanner .roster-banner-item { line-height: 1.2; }
+
+      /* A clear split between the two teams: a 6px dark bar down the middle. */
+      #teamRostersBanner #teamRostersColumnB { border-left: 6px solid #111111; }
+
+      /* Team header: bigger names and logos in the same 64px row (the logo
+         fills most of the height, so less empty space above and below). */
+      #teamRostersBanner .sa-roster-team { padding-top: 4px; padding-bottom: 4px; }
+      #teamRostersBanner #teamRostersTeamA,
+      #teamRostersBanner #teamRostersTeamB { font-size: 22px; }
+      #teamRostersBanner .sa-stats-teamlogo { height: 54px; max-width: 108px; }
+
+      /* Captain / spirit captain marks: bold, larger, centred, clearly visible. */
+      #teamRostersBanner .roster-banner-tag {
+        /* No taller than a line of text, so rows stay even. */
+        width: 1.3rem;
+        min-width: 1.3rem;
+        height: 1.3rem;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0;
+        line-height: 1;
+        text-align: center;
+        color: #ffffff;
+        border: 1.5px solid #ffffff;
+        background: rgba(0, 0, 0, 0.25);
+      }
+      #teamRostersBanner .roster-banner-tag--captain {
+        color: var(--team-bg, #111111);
+        background: var(--team-text, #ffffff);
+        border-color: var(--team-text, #ffffff);
+      }
+
+      /* Footers (match statistics, team rosters): a dash in the exact centre,
+         the event name right-aligned against it on the left, the match status
+         left-aligned against it on the right. With only one of the two, it is
+         centred on its own and the dash goes. */
+      #matchStatsBanner .sa-stats-foot,
+      #teamRostersBanner .sa-stats-foot {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+        column-gap: 12px;
+      }
+      #matchStatsBanner .sa-stats-foot > span,
+      #teamRostersBanner .sa-stats-foot > span { margin: 0; display: block; }
+      #matchStatsBanner .sa-stats-foot > span:first-child,
+      #teamRostersBanner .sa-stats-foot > span:first-child { text-align: right; }
+      #matchStatsBanner .sa-stats-foot > span:last-child,
+      #teamRostersBanner .sa-stats-foot > span:last-child { text-align: left; }
+      #matchStatsBanner .sa-stats-foot:has(> span:first-child:empty) > .sa-foot-dash,
+      #matchStatsBanner .sa-stats-foot:has(> span:last-child:empty) > .sa-foot-dash,
+      #teamRostersBanner .sa-stats-foot:has(> span:first-child:empty) > .sa-foot-dash,
+      #teamRostersBanner .sa-stats-foot:has(> span:last-child:empty) > .sa-foot-dash { visibility: hidden; }
+      #matchStatsBanner .sa-stats-foot:has(> span:last-child:empty),
+      #matchStatsBanner .sa-stats-foot:has(> span:first-child:empty),
+      #teamRostersBanner .sa-stats-foot:has(> span:last-child:empty),
+      #teamRostersBanner .sa-stats-foot:has(> span:first-child:empty) {
+        grid-template-columns: 1fr;
+      }
+      #matchStatsBanner .sa-stats-foot:has(> span:last-child:empty) > span:not(:empty),
+      #matchStatsBanner .sa-stats-foot:has(> span:first-child:empty) > span:not(:empty),
+      #teamRostersBanner .sa-stats-foot:has(> span:last-child:empty) > span:not(:empty),
+      #teamRostersBanner .sa-stats-foot:has(> span:first-child:empty) > span:not(:empty) { text-align: center; }
+      #matchStatsBanner .sa-stats-foot:has(> span:last-child:empty) > .sa-foot-dash,
+      #matchStatsBanner .sa-stats-foot:has(> span:first-child:empty) > .sa-foot-dash,
+      #teamRostersBanner .sa-stats-foot:has(> span:last-child:empty) > .sa-foot-dash,
+      #teamRostersBanner .sa-stats-foot:has(> span:first-child:empty) > .sa-foot-dash { display: none; }
+      #matchStatsBanner .sa-stats-foot:has(> span:first-child:empty):has(> span:last-child:empty),
+      #teamRostersBanner .sa-stats-foot:has(> span:first-child:empty):has(> span:last-child:empty) { display: none; }
+
+      /* Score info: built like player statistics (same place, size and
+         animation): the scoring team on the left, then one row per name. */
+      #scoreInfoBanner {
+        position: absolute;
+        left: 50%;
+        bottom: 48px;
+        transform: translateX(-50%) translateY(24px);
+        opacity: 0;
+        pointer-events: none;
+        display: inline-flex;
+        align-items: stretch;
+        overflow: hidden;
+        font-family: "Barlow Semi Condensed", sans-serif;
+        white-space: nowrap;
+      }
+      #scoreInfoBanner > * { zoom: var(--ce-popup-zoom); }
+      #scoreInfoBanner.is-active {
+        animation: cb-banner-rise-hold-fade 6.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+      #scoreInfoBanner .cb-banner-team {
+        /* As wide as the logo and name need, within 180-320px. */
+        width: max-content;
+        min-width: 180px;
+        max-width: 320px;
+        padding-right: 24px;
+        min-height: 66px;
+        padding-left: 0;
+        background: var(--banner-team-bg, #1f2933);
+        color: var(--banner-team-text, #ffffff);
+      }
+      #scoreInfoBanner .sa-si-logo-cell { align-self: center; width: auto; padding: 8px; margin-right: 8px; }
+      /* The copied CTFDA rule hides a logo cell without .has-image; here the
+         image carries it, so show the cell whenever its image has loaded. */
+      #scoreInfoBanner .sa-si-logo-cell:has(img.has-image) { display: flex; }
+      #scoreInfoBanner .sa-si-logo-cell:not(:has(img.has-image)) { display: none; }
+      #scoreInfoBanner .cb-banner-team:not(:has(img.has-image)) { padding-left: 20px; }
+      #scoreInfoBanner .cb-banner-logo-circle { width: 48px; height: 48px; }
+      #scoreInfoBanner .cb-banner-logo-circle img { display: none; width: 100%; height: 100%; object-fit: contain; }
+      #scoreInfoBanner .cb-banner-logo-circle img.has-image { display: block; }
+      #scoreInfoTeam {
+        min-width: 0;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        white-space: normal;
+        line-height: 1.05;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+      /* Rows as a grid: labels, dashes and names each line up in a column. */
+      #scoreInfoBanner .score-info-rows {
+        width: 344px;
+        display: grid;
+        grid-template-columns: max-content max-content minmax(0, 1fr);
+        align-content: center;
+        column-gap: 8px;
+        row-gap: 4px;
+        padding: 8px 16px;
+        background: #111111;
+        color: #ffffff;
+        text-transform: uppercase;
+      }
+      #scoreInfoBanner .score-info-row { display: contents; }
+      #scoreInfoBanner .score-info-row__label,
+      #scoreInfoBanner .score-info-row__dash {
+        align-self: center;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+      #scoreInfoBanner .score-info-row__name {
+        align-self: center;
+        min-width: 0;
+        font-size: 20px;
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Names on the team colour, in the team's text colour, with a faint
+         line between the team and the names. The scorer (or Callahan scorer)
+         is the headline; the assist sits smaller below it. */
+      #scoreInfoBanner .score-info-rows {
+        background: var(--banner-team-bg, #1f2933);
+        color: var(--banner-team-text, #ffffff);
+        border-left: 2px solid color-mix(in srgb, var(--banner-team-text, #ffffff) 30%, transparent);
+        row-gap: 2px;
+      }
+      #scoreInfoBanner .score-info-row--scorer .score-info-row__name,
+      #scoreInfoBanner .score-info-row--callahan .score-info-row__name { font-size: 26px; }
+      #scoreInfoBanner .score-info-row--assist .score-info-row__name { font-size: 18px; }
+      #scoreInfoBanner .score-info-row--assist .score-info-row__label,
+      #scoreInfoBanner .score-info-row--assist .score-info-row__dash { font-size: 14px; opacity: 0.85; }
+
+
+      /* Match statistics: team logos beside the names, on the inside (next to
+         the middle column), as on team rosters. The team row is 64px with
+         logos (logo 54px) and 44px without. */
+      #matchStatsBanner .sa-stats-team {
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 4px 12px;
+      }
+      #matchStatsBanner #matchStatsColumnA .sa-stats-teamlogo { order: 2; }
+      #matchStatsBanner .sa-stats-teamlogo { height: 54px; max-width: 108px; flex-shrink: 0; }
+      #matchStatsBanner .sa-stats-nameslot { min-width: 0; }
+      #matchStatsBanner .cb-matchstats-col { grid-template-rows: 64px repeat(6, 44px); }
+      #matchStatsBanner:not(:has(.sa-stats-teamlogo.has-image)) .cb-matchstats-col {
+        grid-template-rows: 44px repeat(6, 44px);
+      }
+
+      /* ── Card transition: a wipe from both sides ──
+         Leaving: the card stays still while its left and right edges are cut
+         away towards the middle at the same speed (0.4 s), until nothing is
+         left. Arriving is the reverse: it is revealed from the middle outwards.
+         The cards keep their own position. `#canvas` in each selector
+         out-ranks the cards' earlier fade rules and animations. */
+      #canvas #overlayBanner,
+      #canvas #scoreInfoBanner,
+      #canvas #matchStatsBanner,
+      #canvas #teamRostersBanner,
+      #canvas #matchStatusBanner {
+        --sa-card-pos: translateX(-50%);
+        animation: none;
+        transform: var(--sa-card-pos);
+        clip-path: inset(0 50% 0 50%);
+        opacity: 0;
+        transition:
+          clip-path 0.4s cubic-bezier(0.55, 0, 0.75, 0.2),
+          opacity 0s linear 0.4s;
+      }
+      #canvas #matchStatsBanner,
+      #canvas #matchStatusBanner { --sa-card-pos: translate(-50%, -50%); }
+
+      #canvas #overlayBanner:is(.is-active, .is-persistent),
+      #canvas #scoreInfoBanner:is(.is-active, .is-persistent),
+      #canvas #matchStatsBanner:is(.is-active, .is-persistent),
+      #canvas #teamRostersBanner:is(.is-active, .is-persistent),
+      #canvas #matchStatusBanner:is(.is-active, .is-persistent) {
+        animation: none;
+        transform: var(--sa-card-pos);
+        clip-path: inset(0 0 0 0);
+        opacity: 1;
+        transition:
+          clip-path 0.45s cubic-bezier(0.2, 0.8, 0.3, 1),
+          opacity 0s linear;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #canvas #overlayBanner,
+        #canvas #scoreInfoBanner,
+        #canvas #matchStatsBanner,
+        #canvas #teamRostersBanner,
+        #canvas #matchStatusBanner { transition: opacity 0.2s linear; clip-path: none; }
+      }
+
+      /* ── Team rosters, sturdy layout (replaces the content-sized version) ──
+         The card is a fixed 1500px wide on screen, so name length never changes
+         it. Each team splits its own players evenly over two columns, down
+         then across (9 players: 5 + 4; 20: 10 + 10; at most 30: 15 + 15), so
+         neither column is ever left empty and both teams start at the top.
+         --sa-rows is set per list by the script at the end of the page. A name
+         too long for its column ends in "..."; the C / SC marks and the jersey
+         number are never cut. */
+      #canvas #teamRostersBanner { width: 1500px; min-width: 0; max-width: none; }
+      #teamRostersBanner .cb-roster-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+      #teamRostersBanner #teamRostersListA,
+      #teamRostersBanner #teamRostersListB {
+        display: grid;
+        grid-auto-flow: column;
+        grid-template-rows: repeat(var(--sa-rows, 15), auto);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-auto-columns: minmax(0, 1fr);
+        column-gap: 24px;
+        row-gap: 4px;
+        align-content: start;
+        padding: 12px 18px;
+      }
+      #teamRostersBanner .roster-banner-item { min-width: 0; white-space: nowrap; }
+      #teamRostersBanner .roster-banner-item.is-empty { grid-column: 1 / -1; }
+      #teamRostersBanner .roster-banner-identity {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        max-width: 100%;
+        flex-shrink: 1;
+      }
+      #teamRostersBanner .roster-banner-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #teamRostersBanner .roster-banner-tag,
+      #teamRostersBanner .roster-banner-number { flex-shrink: 0; }
+
+      /* Team rosters height follows the bigger team: the card is as tall as its
+         rows need (15 rows at most, which fits the old 750px), and never
+         shorter than 5 rows, so a small squad still gets a proper card. The
+         top stays where it is; the card grows downwards. */
+      #teamRostersBanner .cb-roster-card { height: auto; max-height: calc(750px / var(--ce-popup-zoom)); }
+      #teamRostersBanner .cb-roster-body { flex: 0 0 auto; }
+      #teamRostersBanner #teamRostersColumnA,
+      #teamRostersBanner #teamRostersColumnB { grid-template-rows: 64px auto; }
+      #teamRostersBanner #teamRostersListA,
+      #teamRostersBanner #teamRostersListB { min-height: calc(5 * 1.2em + 4 * 4px + 24px); font-size: 18px; }
+    </style>
+    <script>
+      if (new URLSearchParams(window.location.search).has('preview')) document.head.insertAdjacentHTML('beforeend', '<style>' +
+        '#canvas{outline:1px solid rgba(255,255,255,0.4);background-image:repeating-linear-gradient(45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 12px),repeating-linear-gradient(-45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 12px),url(/overlay-demo.jpg);background-size:auto,auto,cover;background-position:0 0,0 0,center}' +
+      '</style>');
+    </script>
+  </head>
+  <body class="overlay-fixed" data-addon-position="top-right">
+    <div id="viewport">
+      <div id="canvas">
+        <div class="sa-root">
+          <div class="sa-strip">
+            <span class="sa-strip__event" id="eventName">Event</span>
+            <span class="sa-strip__status" id="statusLabel" data-role="status-label">LIVE</span>
+          </div>
+          <div class="sa-body" id="overlayBar">
+            <div class="sa-logo">
+              <img id="eventLogo" alt="" />
+              <span class="sa-logo-fallback" id="eventLogoFallback">SC</span>
+            </div>
+            <div class="sa-teams">
+              <div class="sa-team" id="teamABox">
+                <div class="sa-team__name"><span class="sa-swatch"></span><span id="teamAName">Team A</span></div>
+                <span class="sa-score" id="scoreA">0</span>
+                <div class="cp-break-strip" id="breakChanceBannerA">Break Chance</div>
+                <div class="cp-break-strip sa-timeout-strip" id="timeoutBannerA">Timeout</div>
+              </div>
+              <div class="sa-team" id="teamBBox">
+                <div class="sa-team__name"><span class="sa-swatch"></span><span id="teamBName">Team B</span></div>
+                <span class="sa-score" id="scoreB">0</span>
+                <div class="cp-break-strip" id="breakChanceBannerB">Break Chance</div>
+                <div class="cp-break-strip sa-timeout-strip" id="timeoutBannerB">Timeout</div>
+              </div>
+            </div>
+          </div>
+          <div class="sa-clock-wrap">
+            <span class="sa-clock" id="matchClock">00:00</span>
+            <!-- Add-on popups: the runtime fills this rail; data-position stops it
+                 applying the generic corner placement. -->
+            <div class="sa-addons" id="overlayAddonRail" data-position="safda-standard">
+              <!-- Match events and field calls ride the same rail as the add-ons. -->
+              <div class="sa-card sa-card--event" id="matchEventBanner">
+                <span id="matchEventBannerLabel">MATCH EVENT</span>
+              </div>
+              <div class="sa-card sa-card--fieldcall" id="fieldCallBanner">
+                <span id="fieldCallBannerLabel">FIELD CALL</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Player stats banner -->
+        <div id="overlayBanner">
+          <div class="cb-banner-team no-logo" id="bannerTeam">
+            <div class="cb-banner-logo-cell" id="bannerLogoSlot">
+              <div class="cb-banner-logo-circle" id="bannerLogoCell">
+                <img id="bannerLogo" alt="" />
+                <span class="cb-banner-logo-fallback" id="bannerLogoFallback"></span>
+              </div>
+            </div>
+            <span id="bannerPlayerName">PLAYER NAME</span>
+          </div>
+          <div class="cb-banner-stats">
+            <div class="cb-banner-stat">
+              <span class="cb-banner-stat__label">Goals</span>
+              <span class="cb-banner-stat__value" id="bannerStatGls">0</span>
+            </div>
+            <div class="cb-banner-stat">
+              <span class="cb-banner-stat__label">Assists</span>
+              <span class="cb-banner-stat__value" id="bannerStatAst">0</span>
+            </div>
+            <div class="cb-banner-stat">
+              <span class="cb-banner-stat__label">Blocks</span>
+              <span class="cb-banner-stat__value" id="bannerStatBlk">0</span>
+            </div>
+            <div class="cb-banner-stat">
+              <span class="cb-banner-stat__label">Turnovers</span>
+              <span class="cb-banner-stat__value" id="bannerStatTrn">0</span>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- Score info card (filled by the runtime's Score info add-on) -->
+        <div id="scoreInfoBanner">
+          <div class="cb-banner-team" id="scoreInfoTeamCell">
+            <div class="cb-banner-logo-cell sa-si-logo-cell">
+              <div class="cb-banner-logo-circle">
+                <img id="scoreInfoLogo" alt="" />
+              </div>
+            </div>
+            <span id="scoreInfoTeam">TEAM</span>
+          </div>
+          <div class="score-info-rows" id="scoreInfoRows"></div>
+        </div>
+
+        <!-- Match stats banner -->
+        <div id="matchStatsBanner">
+          <div class="cb-matchstats-card">
+            <div class="sa-stats-head">
+              <img class="sa-stats-logo sa-mirror-event-logo" id="saStatsLogo" alt="" />
+              <span class="sa-stats-title"><span id="matchStatsTitle">Match statistics</span></span>
+            </div>
+            <div class="cb-matchstats-body">
+              <div class="cb-matchstats-col cb-matchstats-col--team" id="matchStatsColumnA">
+                <div class="sa-stats-team"><img class="sa-stats-teamlogo" id="saStatsLogoA" alt="" /><span class="sa-stats-nameslot"><span id="matchStatsTeamA">Team A</span></span></div>
+                <div id="matchStatsHoldsA">--</div>
+                <div id="matchStatsBreaksA">--</div>
+                <div id="matchStatsTurnoversA">--</div>
+                <div id="matchStatsBlocksA">--</div>
+                <div class="sa-stats-cell sa-possession" id="matchStatsPossessionA">--</div>
+                <div class="sa-stats-cell" id="matchStatsTimeoutsA">--</div>
+              </div>
+              <div class="cb-matchstats-col cb-matchstats-col--metrics">
+                <div id="matchStatsScoreline">0 - 0</div>
+                <div class="cb-matchstats-label">Holds</div>
+                <div class="cb-matchstats-label">Breaks</div>
+                <div class="cb-matchstats-label">Turnovers</div>
+                <div class="cb-matchstats-label">Blocks</div>
+                <div class="cb-matchstats-label sa-possession">Possession</div>
+                <div class="cb-matchstats-label">Timeouts</div>
+              </div>
+              <div class="cb-matchstats-col cb-matchstats-col--team" id="matchStatsColumnB">
+                <div class="sa-stats-team"><img class="sa-stats-teamlogo" id="saStatsLogoB" alt="" /><span class="sa-stats-nameslot"><span id="matchStatsTeamB">Team B</span></span></div>
+                <div id="matchStatsHoldsB">--</div>
+                <div id="matchStatsBreaksB">--</div>
+                <div id="matchStatsTurnoversB">--</div>
+                <div id="matchStatsBlocksB">--</div>
+                <div class="sa-stats-cell sa-possession" id="matchStatsPossessionB">--</div>
+                <div class="sa-stats-cell" id="matchStatsTimeoutsB">--</div>
+              </div>
+            </div>
+            <!-- Footer: event name, and the match status from the database. -->
+            <div class="sa-stats-foot">
+              <span id="saStatsEventName" class="sa-mirror-event-name"></span>
+              <span class="sa-foot-dash" aria-hidden="true">–</span>
+              <span id="matchStatsPhase" data-role="match-db-status"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Team rosters banner -->
+        <div id="teamRostersBanner">
+          <div class="cb-roster-card">
+            <div class="sa-stats-head">
+              <img class="sa-stats-logo sa-mirror-event-logo" alt="" />
+              <span class="sa-stats-title"><span id="teamRostersTitle">Team rosters</span></span>
+            </div>
+            <div class="cb-roster-body">
+              <div id="teamRostersColumnA">
+                <!-- Team logos sit on the inside, next to the middle line. -->
+                <div class="sa-roster-team"><span id="teamRostersTeamA">Team A</span><img class="sa-stats-teamlogo" id="saRosterLogoA" alt="" /></div>
+                <ul id="teamRostersListA"></ul>
+              </div>
+              <div id="teamRostersColumnB">
+                <div class="sa-roster-team"><img class="sa-stats-teamlogo" id="saRosterLogoB" alt="" /><span id="teamRostersTeamB">Team B</span></div>
+                <ul id="teamRostersListB"></ul>
+              </div>
+            </div>
+            <div class="sa-stats-foot">
+              <span class="sa-mirror-event-name"></span>
+              <span class="sa-foot-dash" aria-hidden="true">–</span>
+              <span data-role="match-db-status"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Match info banner -->
+        <div class="overlay-matchstatus-banner" id="matchStatusBanner" aria-live="polite">
+          <div class="matchstats-card matchstatus-card">
+            <div class="matchstatus-event">
+              <img class="matchstatus-logo" id="matchStatusLogo" alt="" />
+              <span id="matchStatusEvent">Event</span>
+            </div>
+            <div class="matchstatus-header">
+              <div class="matchstatus-title">
+                <img class="sa-ms-logo sa-ms-logo--a" id="saMsLogoA" alt="" />
+                <span class="matchstatus-team" id="matchStatusTeamA">Team A</span>
+                <span class="matchstatus-score" id="matchStatusScore">vs</span>
+                <span class="matchstatus-team" id="matchStatusTeamB">Team B</span>
+                <img class="sa-ms-logo sa-ms-logo--b" id="saMsLogoB" alt="" />
+                <!-- Status, under the score and the same width; the runtime sets
+                     the text and a matchstatus-chip--* class. -->
+                <span class="matchstatus-chip" id="matchStatusPhase">Upcoming</span>
+              </div>
+            </div>
+            <!-- One footer line; items with no data are dropped (is-empty / is-hidden). -->
+            <div class="sa-info">
+              <div class="sa-info__item" id="matchStatusKickoffRow">
+                <span class="sa-info__label">Start</span>
+                <span class="sa-info__value" id="matchStatusKickoff">--</span>
+              </div>
+              <div class="sa-info__item" id="saInfoVenue">
+                <span class="sa-info__value" id="matchStatusVenue">--</span>
+              </div>
+              <div class="sa-info__item" id="matchStatusWeatherRow">
+                <span class="sa-info__value" id="matchStatusWeather">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="meta" id="meta"></div>
+      </div>
+    </div>
+
+    <script>
+      function scaleCanvas() {
+        const canvas = document.getElementById('canvas');
+        if (!canvas) return;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const scale = Math.min(vw / 1920, vh / 1080);
+        // Lay the 1920x1080 canvas out at the real output size with CSS zoom, so
+        // text, borders and edges are drawn natively at 1440p / 4K. A transform
+        // instead stretches the drawn picture, which can look soft.
+        canvas.style.transform = "none";
+        canvas.style.zoom = String(scale);
+      }
+      window.addEventListener('resize', scaleCanvas);
+      scaleCanvas();
+
+    </script>
+    <script>
+
+      // Sync banner logo with whichever team the player stats banner belongs to
+      (function () {
+        function syncBannerLogo() {
+          var banner = document.getElementById('overlayBanner');
+          var img = document.getElementById('bannerLogo');
+          var cell = document.getElementById('bannerLogoCell');
+          var fallback = document.getElementById('bannerLogoFallback');
+          var slot = document.getElementById('bannerLogoSlot');
+          var teamBox = document.getElementById('bannerTeam');
+          if (!banner || !img || !cell) return;
+          // The icon cell only exists while a logo is actually showing.
+          function setHasLogo(on) {
+            cell.classList.toggle('has-image', on);
+            if (slot) slot.classList.toggle('has-image', on);
+            if (teamBox) teamBox.classList.toggle('no-logo', !on);
+          }
+          var key = banner.classList.contains('is-team-b')
+            ? 'stallcount:logo-team-b'
+            : 'stallcount:logo-team-a';
+          var teamNameEl = banner.classList.contains('is-team-b')
+            ? document.getElementById('teamBName')
+            : document.getElementById('teamAName');
+          try {
+            var src = localStorage.getItem(key);
+            setHasLogo(false);
+            if (src) {
+              img.onload = function () { setHasLogo(true); };
+              img.onerror = function () { setHasLogo(false); };
+              img.src = src;
+            }
+            if (fallback && teamNameEl) {
+              var words = (teamNameEl.textContent || '').trim().split(/\s+/);
+              fallback.textContent = words.length === 1
+                ? words[0].slice(0, 3).toUpperCase()
+                : words.slice(0, 2).map(function (w) { return w[0]; }).join('').toUpperCase();
+            }
+          } catch (e) {}
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+          var banner = document.getElementById('overlayBanner');
+          if (banner) {
+            new MutationObserver(syncBannerLogo).observe(banner, { attributes: true, attributeFilter: ['class'] });
+          }
+        });
+      })();
+    </script>
+    <script>
+      // Match info: drop footer items that have no data rather than show "--".
+      (function () {
+        var pairs = [
+          ['matchStatusKickoffRow', 'matchStatusKickoff'],
+          ['saInfoVenue', 'matchStatusVenue'],
+          ['matchStatusWeatherRow', 'matchStatusWeather'],
+        ];
+        var EMPTY = { '': 1, '--': 1, 'No weather data': 1 };
+        function sync() {
+          pairs.forEach(function (pair) {
+            var item = document.getElementById(pair[0]);
+            var value = document.getElementById(pair[1]);
+            if (!item || !value) return;
+            item.classList.toggle('is-empty', EMPTY[(value.textContent || '').trim()] === 1);
+          });
+        }
+        pairs.forEach(function (pair) {
+          var value = document.getElementById(pair[1]);
+          if (value) new MutationObserver(sync).observe(value, { childList: true, characterData: true, subtree: true });
+        });
+        sync();
+      })();
+    </script>
+    <script>
+      // Match info: copy each team's current colour (set on the scoreboard by
+      // the runtime) onto the card, as the background behind its logo.
+      (function () {
+        var card = document.getElementById('matchStatusBanner');
+        if (!card) return;
+        function sync() {
+          [['teamABox', '--sa-team-a-bg'], ['teamBBox', '--sa-team-b-bg']].forEach(function (pair) {
+            var box = document.getElementById(pair[0]);
+            var colour = box ? box.style.getPropertyValue('--team-bg').trim() : '';
+            if (colour) card.style.setProperty(pair[1], colour);
+            else card.style.removeProperty(pair[1]);
+          });
+        }
+        ['teamABox', 'teamBBox'].forEach(function (id) {
+          var box = document.getElementById(id);
+          if (box) new MutationObserver(sync).observe(box, { attributes: true, attributeFilter: ['style'] });
+        });
+        sync();
+      })();
+
+      // Match info: team logos (from the control room) on the outer sides.
+      (function () {
+        [['saMsLogoA', 'stallcount:logo-team-a'], ['saMsLogoB', 'stallcount:logo-team-b']].forEach(function (pair) {
+          var img = document.getElementById(pair[0]);
+          if (!img) return;
+          var src = '';
+          try { src = localStorage.getItem(pair[1]) || ''; } catch (e) {}
+          if (!src) return;
+          img.onload = function () { img.classList.add('has-image'); };
+          img.onerror = function () { img.classList.remove('has-image'); };
+          img.src = src;
+        });
+      })();
+    </script>
+    <script>
+      // Match statistics: mirror the event logo (only a real one) and the
+      // event name from the scoreboard onto the card.
+      (function () {
+        var logo = document.getElementById('eventLogo');
+        var name = document.getElementById('eventName');
+        // Every card that carries them: match statistics and team rosters.
+        var cardLogos = document.querySelectorAll('.sa-mirror-event-logo');
+        var foots = document.querySelectorAll('.sa-mirror-event-name');
+        function sync() {
+          if (logo) {
+            var cell = logo.parentElement;
+            var real = cell && cell.classList.contains('has-image') && !cell.classList.contains('is-default-logo');
+            var src = real ? logo.getAttribute('src') || '' : '';
+            cardLogos.forEach(function (cardLogo) {
+              if (src) {
+                if (cardLogo.getAttribute('src') !== src) cardLogo.src = src;
+                cardLogo.classList.add('has-image');
+              } else {
+                cardLogo.removeAttribute('src');
+                cardLogo.classList.remove('has-image');
+              }
+            });
+          }
+          if (name) {
+            var text = (name.textContent || '').trim();
+            foots.forEach(function (foot) { foot.textContent = text === 'Event' ? '' : text; });
+          }
+        }
+        if (logo) new MutationObserver(sync).observe(logo.parentElement || logo, { attributes: true, subtree: true });
+        if (name) new MutationObserver(sync).observe(name, { childList: true, characterData: true, subtree: true });
+        sync();
+      })();
+    </script>
+    <script>
+      // Match statistics and team rosters: team logos from the control room.
+      (function () {
+        [['saStatsLogoA', 'stallcount:logo-team-a'], ['saStatsLogoB', 'stallcount:logo-team-b'],
+         ['saRosterLogoA', 'stallcount:logo-team-a'], ['saRosterLogoB', 'stallcount:logo-team-b']].forEach(function (pair) {
+          var img = document.getElementById(pair[0]);
+          var src = '';
+          try { src = localStorage.getItem(pair[1]) || ''; } catch (e) {}
+          if (!img || !src) return;
+          img.onload = function () { img.classList.add('has-image'); };
+          img.onerror = function () { img.classList.remove('has-image'); };
+          img.src = src;
+        });
+      })();
+    </script>
+    <script>
+      // Team rosters: each list gets as many rows as half its players (rounded
+      // up, at most 15), so its two columns are always balanced.
+      (function () {
+        ['teamRostersListA', 'teamRostersListB'].forEach(function (id) {
+          var list = document.getElementById(id);
+          if (!list) return;
+          function sync() {
+            var count = list.querySelectorAll('.roster-banner-item:not(.is-empty)').length;
+            var rows = Math.max(1, Math.min(15, Math.ceil(Math.min(count, 30) / 2)));
+            list.style.setProperty('--sa-rows', String(rows));
+          }
+          new MutationObserver(sync).observe(list, { childList: true });
+          sync();
+        });
+      })();
+    </script>
+    <script type="module" src="/src/overlay/overlayRuntime.js"></script>
+  </body>
+</html>
+
+
+

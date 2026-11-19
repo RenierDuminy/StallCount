@@ -8,6 +8,9 @@ import {
   onMetaMessage,
   onEventLogo,
   onBreakChanceSetting,
+  onScoreboardVisibility,
+  onTeamLogo,
+  sendOverlayStatus,
   onAddonSettings,
   onClockTick,
   getGameElapsedMs,
@@ -20,6 +23,7 @@ import {
   isStoppageActive,
   getActiveTimeoutTeam,
   isHalftimeActive,
+  isTestPlaceholderLogoOn,
   getTeamThemes,
   getEventTypeCache,
   getTestPlayerName,
@@ -37,7 +41,6 @@ import {
   resolveInterPointSeconds,
   derivePointTimeline,
   getCurrentPointElapsedMs,
-  describePointType,
   formatDuration,
   getAbbaLineForIndex,
   resolveAbbaStartCode,
@@ -239,6 +242,8 @@ function applyLogo(src) {
     elements.logo.parentElement?.classList.remove("has-image");
     return;
   }
+  // Layouts that only want a real event logo (SAFDA standard) hide the default.
+  elements.logo.parentElement?.classList.toggle("is-default-logo", src === DEFAULT_LOGO_SRC);
   elements.logo.src = src;
   elements.logo.onload = () => elements.logo.parentElement?.classList.add("has-image");
   elements.logo.onerror = () => {
@@ -466,6 +471,66 @@ function applyMatchStatsPayload(payload) {
   setMatchStatsValue(elements.matchStatsBlocksA, stats.blocksA);
   setMatchStatsValue(elements.matchStatsBlocksB, stats.blocksB);
   if (elements.matchStatsTitle && payload?.title) elements.matchStatsTitle.textContent = payload.title;
+  // Optional possession row (#matchStatsPossessionA/B): hidden by the layout
+  // (via .has-no-possession) when no turnover or block was logged.
+  const possessionA = document.getElementById("matchStatsPossessionA");
+  const possessionB = document.getElementById("matchStatsPossessionB");
+  if (possessionA) possessionA.textContent = stats.possessionA || "--";
+  if (possessionB) possessionB.textContent = stats.possessionB || "--";
+  elements.matchStatsBanner?.classList.toggle("has-no-possession", !stats.hasPossessionData);
+  updateMatchStatsLiveExtras();
+}
+
+// Optional extras a layout can opt into by including the element:
+// #matchStatsPhase (match status in the heading) and #matchStatsTimeoutsA/B
+// (timeouts used, counted from the log). Refreshed on every score update.
+function updateMatchStatsLiveExtras() {
+  // Every [data-role="match-db-status"] (match statistics and team rosters
+  // footers) shows the match's database status.
+  const statusText = describeMatchStatusForStats(getCurrentMatch()?.status);
+  document.querySelectorAll('[data-role="match-db-status"]').forEach((el) => {
+    el.textContent = statusText;
+  });
+  const timeoutsA = document.getElementById("matchStatsTimeoutsA");
+  const timeoutsB = document.getElementById("matchStatsTimeoutsB");
+  if (!timeoutsA && !timeoutsB) return;
+  const match = getCurrentMatch();
+  const cache = getEventTypeCache();
+  let a = 0;
+  let b = 0;
+  (getMatchLogs() || []).forEach((log) => {
+    const code = (resolveEventCode(log.eventType || cache.get(log.event_type_id)) || "").toLowerCase();
+    if (code !== MATCH_LOG_EVENT_CODES.TIMEOUT_START && code !== "timeout") return;
+    if (match?.team_a?.id && log.team_id === match.team_a.id) a += 1;
+    else if (match?.team_b?.id && log.team_id === match.team_b.id) b += 1;
+  });
+  if (timeoutsA) timeoutsA.textContent = String(a);
+  if (timeoutsB) timeoutsB.textContent = String(b);
+}
+
+// The match's own status from the database, worded for the match statistics
+// card. Unknown statuses show nothing.
+const MATCH_STATS_STATUS_TEXT = {
+  scheduled: "Scheduled",
+  initialized: "Match is starting soon",
+  live: "Live",
+  halftime: "Halftime",
+  canceled: "Match is cancelled",
+  cancelled: "Match is cancelled",
+  final: "Completed",
+  completed: "Completed",
+  finished: "Completed",
+};
+function describeMatchStatusForStats(status) {
+  return MATCH_STATS_STATUS_TEXT[(status || "").toString().trim().toLowerCase()] || "";
+}
+
+// "Upcoming" is shown as "Starting soon" once the operator has locked the
+// overlay (or the match is initialised), otherwise "Scheduled".
+function displayPhaseLabel(phaseLabel) {
+  if (phaseLabel !== "Upcoming") return phaseLabel;
+  const matchStatus = (getCurrentMatch()?.status || "").toString().trim().toLowerCase();
+  return getOverlayInitialized() || matchStatus === "initialized" ? "Starting soon" : "Scheduled";
 }
 
 function renderRosterList(element, players) {
@@ -542,30 +607,33 @@ function formatSunCat(ms) {
 
 function formatWeatherLine(weather, startTime) {
   if (!weather) return "";
+  // Written out in full ("Sunny, 22°, feels like 20°"), not abbreviated.
+  const unit = weather.tempUnit || "°";
   const parts = [];
-  // Lead with feels-like (apparent) temperature; fall back to actual temp.
-  const displayTemp = Number.isFinite(weather.feelsLike) ? weather.feelsLike : weather.temp;
-  if (displayTemp != null) parts.push(`${displayTemp}${weather.tempUnit || "°"} feels like`);
   if (weather.condition) parts.push(weather.condition);
-  let line = parts.join(" ");
+  if (Number.isFinite(weather.temp)) parts.push(`${weather.temp}${unit}`);
+  if (Number.isFinite(weather.feelsLike) && weather.feelsLike !== weather.temp) {
+    parts.push(`feels like ${weather.feelsLike}${unit}`);
+  }
+  let line = parts.join(", ");
 
   const t = WEATHER_DISPLAY_THRESHOLDS;
   const extras = [];
 
   // Wind: always shown (key ultimate metric).
-  if (weather.wind != null) extras.push(`${weather.wind} ${weather.windUnit || ""}`.trim() + " wind");
+  if (weather.wind != null) extras.push(`Wind ${`${weather.wind} ${weather.windUnit || ""}`.trim()}`);
 
   // Humidity: only when notably high or notably dry.
   if (
     Number.isFinite(weather.humidity) &&
     (weather.humidity >= t.humidityHighPct || weather.humidity <= t.humidityLowPct)
   ) {
-    extras.push(`${weather.humidity}% hum`);
+    extras.push(`Humidity ${weather.humidity}%`);
   }
 
   // Rain chance: only when meaningful (no rain on a clear day).
   if (Number.isFinite(weather.rainChance) && weather.rainChance >= t.rainChancePct) {
-    extras.push(`${weather.rainChance}% rain`);
+    extras.push(`${weather.rainChance}% chance of rain`);
   }
 
   // Sun time: only near dawn/dusk relative to match start. Never mid-day, only one shows.
@@ -573,13 +641,13 @@ function formatWeatherLine(weather, startTime) {
   if (Number.isFinite(startMs)) {
     const windowMs = t.sunWindowMin * 60 * 1000;
     if (Number.isFinite(weather.sunriseMs) && Math.abs(startMs - weather.sunriseMs) <= windowMs) {
-      extras.push(`🌅 ${formatSunCat(weather.sunriseMs)}`);
+      extras.push(`Sunrise ${formatSunCat(weather.sunriseMs)}`);
     } else if (Number.isFinite(weather.sunsetMs) && Math.abs(startMs - weather.sunsetMs) <= windowMs) {
-      extras.push(`🌇 ${formatSunCat(weather.sunsetMs)}`);
+      extras.push(`Sunset ${formatSunCat(weather.sunsetMs)}`);
     }
   }
 
-  if (extras.length) line += ` · ${extras.join(" · ")}`;
+  if (extras.length) line = [line, ...extras].filter(Boolean).join(", ");
   return line;
 }
 
@@ -590,13 +658,49 @@ const MATCHSTATUS_CHIP_CLASS = {
   Upcoming: "matchstatus-chip--pre",
 };
 
+// The control room's phase comes from matches.status at the moment of the
+// click, which lags the log (and is never "halftime" on some matches). The
+// overlay knows better: it has the live match and its log.
+const FINISHED_MATCH_STATUSES = new Set(["finished", "completed", "complete", "final", "ended", "done"]);
+const LIVE_MATCH_STATUSES = new Set(["live", "in_progress", "playing", "running", "halftime"]);
+
+function deriveLivePhaseLabel(fallback) {
+  const match = getCurrentMatch();
+  if (!match) return fallback;
+  const cache = getEventTypeCache();
+  const codes = new Set(
+    (getMatchLogs() || []).map((log) =>
+      (resolveEventCode(log.eventType || cache.get(log.event_type_id)) || "").toLowerCase(),
+    ),
+  );
+  const status = (match.status || "").toString().trim().toLowerCase();
+  if (codes.has(MATCH_LOG_EVENT_CODES.MATCH_END) || FINISHED_MATCH_STATUSES.has(status)) return "Full time";
+  if (isHalftimeActive()) return "Halftime";
+  if (codes.has(MATCH_LOG_EVENT_CODES.MATCH_START) || LIVE_MATCH_STATUSES.has(status)) return "Live";
+  return "Upcoming";
+}
+
+let _lastMatchStatusPayload = null;
+
+// Keeps a showing match info card in step with the match: status and score.
+function refreshMatchStatusCard(scoreA, scoreB) {
+  const banner = elements.matchStatusBanner;
+  if (!banner || !_lastMatchStatusPayload) return;
+  if (!banner.classList.contains("is-active") && !banner.classList.contains("is-persistent")) return;
+  const next = { ..._lastMatchStatusPayload };
+  if (Number.isFinite(scoreA)) next.scoreA = scoreA;
+  if (Number.isFinite(scoreB)) next.scoreB = scoreB;
+  applyMatchStatusPayload(next);
+}
+
 function applyMatchStatusPayload(payload) {
-  const phaseLabel = payload?.phaseLabel || "Match info";
+  _lastMatchStatusPayload = payload;
+  const phaseLabel = deriveLivePhaseLabel(payload?.phaseLabel || "Match info");
   // Upcoming = not yet started; everything else (Live/Halftime/Full time) has a score.
   const started = phaseLabel !== "Upcoming";
 
   if (elements.matchStatusPhase) {
-    elements.matchStatusPhase.textContent = phaseLabel;
+    elements.matchStatusPhase.textContent = started ? phaseLabel : displayPhaseLabel("Upcoming");
     elements.matchStatusPhase.className = "matchstatus-chip";
     const chipClass = MATCHSTATUS_CHIP_CLASS[phaseLabel];
     if (chipClass) elements.matchStatusPhase.classList.add(chipClass);
@@ -726,18 +830,38 @@ let _scoreboardLogo = "";
 // Logo received over realtime from the control app; null until one arrives.
 let _receivedEventLogo = null;
 
+// No StallCount logo by default: with no real logo the slot stays empty (layouts
+// show their fallback or hide it). Only the debug page keeps the StallCount
+// logo, and a test match can switch on a dummy one to preview logo slots.
+const IS_DEBUG_PAGE = /overlay-debug\.html$/i.test(window.location.pathname);
+const PLACEHOLDER_LOGO_SRC = `data:image/svg+xml;utf8,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">' +
+    '<circle cx="60" cy="60" r="56" fill="#64748b"/>' +
+    '<circle cx="60" cy="60" r="44" fill="none" stroke="#e2e8f0" stroke-width="4"/>' +
+    '<text x="60" y="68" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">LOGO</text>' +
+    "</svg>",
+)}`;
+
+function fallbackEventLogo() {
+  if (IS_DEBUG_PAGE) return DEFAULT_LOGO_SRC;
+  if (isTestPlaceholderLogoOn()) return PLACEHOLDER_LOGO_SRC;
+  return "";
+}
+
 // An uploaded tournament logo overrides the scoreboard's logo.
 function resolveEventLogo() {
   let customEventLogo = "";
   try { customEventLogo = localStorage.getItem(EVENT_LOGO_STORAGE_KEY) || ""; } catch { /* storage unavailable */ }
   if (_receivedEventLogo !== null) customEventLogo = _receivedEventLogo;
-  return customEventLogo || _scoreboardLogo || DEFAULT_LOGO_SRC;
+  return customEventLogo || _scoreboardLogo || fallbackEventLogo();
 }
 
 function applyEventLogo(src) {
   applyLogo(src);
   if (elements.matchStatusLogo) {
-    if (src) {
+    // The match info card shows only a real event logo, never the StallCount
+    // fallback: no logo, no image.
+    if (src && src !== DEFAULT_LOGO_SRC) {
       elements.matchStatusLogo.src = src;
       elements.matchStatusLogo.classList.remove("is-hidden");
     } else {
@@ -1014,11 +1138,12 @@ function _tickAddons(fromClock = false) {
     else _hideAddonChip("pointDuration");
   }
 
-  // Gender line: for `displaySeconds` once the inter-point time has run out.
+  // Gender line: for `displaySeconds` from its cue: the inter-point time running
+  // out after a score, the end of any timeout, the end of halftime, kick-off.
   if (_addonPreviewUntil.genderLine <= now) {
     const gl = _addons.genderLine;
     const line = current ? getAbbaLineForIndex(built.abbaStart, current.index) : null;
-    const sinceStart = current?.open ? now - current.startMs : null;
+    const sinceStart = current?.open && Number.isFinite(current.genderCueMs) ? now - current.genderCueMs : null;
     const visible = gl.enabled && line && sinceStart !== null && sinceStart >= 0 && sinceStart < gl.displaySeconds * 1000;
     if (visible) _showAddonChip("genderLine", { value: line });
     else _hideAddonChip("genderLine");
@@ -1094,61 +1219,111 @@ async function _resolvePlayerNames(ids) {
   return ids.map((id) => (id ? _playerNames.get(id) || "" : ""));
 }
 
-async function _showScoreInfo(point) {
-  if (!elements.banner || !point) return;
+// A layout can give Score info its own card (#scoreInfoBanner, SAFDA
+// standard): the scoring team on the left like player statistics, then one row
+// per name, "Scorer – name" and "Assist – name", or a single "Callahan – name".
+// A row without a name is left out; a point with no names shows nothing.
+let scoreInfoCard = document.getElementById("scoreInfoBanner");
+
+// Layouts without their own card get the shared one (styled in
+// overlayOutput.css), in the same scaled container as their other banners.
+function _ensureScoreInfoCard() {
+  if (scoreInfoCard) return scoreInfoCard;
+  scoreInfoCard = document.createElement("div");
+  scoreInfoCard.id = "scoreInfoBanner";
+  scoreInfoCard.className = "score-info-card";
+  scoreInfoCard.innerHTML =
+    '<div class="score-info-card__team"><img id="scoreInfoLogo" alt="" />' +
+    '<span id="scoreInfoTeam"></span></div>' +
+    '<div class="score-info-rows" id="scoreInfoRows"></div>';
+  (elements.banner?.parentElement || document.body).append(scoreInfoCard);
+  return scoreInfoCard;
+}
+let scoreInfoCardHandle = null;
+// Name lookups can finish out of order; only the latest score may show.
+let scoreInfoRequestSeq = 0;
+
+async function _showScoreInfoCard(point) {
+  const requestSeq = ++scoreInfoRequestSeq;
   const opts = _addons.scoreInfo;
+  const isPreview = point.id === "preview";
+  const [resolvedScorer, resolvedAssist] = await _resolvePlayerNames([
+    point.actorId,
+    point.isCallahan ? null : point.secondaryActorId,
+  ]);
+  // The Test button on a match with no named score still shows the card.
+  const scorer = resolvedScorer || (isPreview ? "Scorer name" : "");
+  const assist = resolvedAssist || (isPreview && !point.isCallahan ? "Assist name" : "");
+  const rows = point.isCallahan
+    ? (scorer ? [["Callahan", scorer]] : [])
+    : [scorer ? ["Scorer", scorer] : null, assist ? ["Assist", assist] : null].filter(Boolean);
+  if (requestSeq !== scoreInfoRequestSeq || !rows.length) return;
+
+  _ensureScoreInfoCard();
   const match = getCurrentMatch();
   const team = point.team === "A" ? match?.team_a : point.team === "B" ? match?.team_b : null;
-  const [scorer, assist] = await _resolvePlayerNames([point.actorId, point.isCallahan ? null : point.secondaryActorId]);
-
-  const cells = [];
-  if (opts.showPointType) cells.push({ label: "POINT", value: describePointType(point) });
-  if (opts.showTurnovers) cells.push({ label: "TRN", value: String(point.turnovers ?? 0) });
-  if (opts.showPointTime) cells.push({ label: "TIME", value: formatDuration(point.durationMs) });
-  if (opts.showScore) cells.push({ label: "SCORE", value: `${point.scoreA ?? 0}-${point.scoreB ?? 0}` });
-
-  const nameParts = [];
-  if (opts.showTeam && team) nameParts.push(formatTeamShortName(team));
-  nameParts.push(scorer || (point.isCallahan ? "CALLAHAN" : "GOAL"));
-  const assistText = opts.showAssist && assist ? ` · AST ${assist}` : "";
   const seconds = opts.displaySeconds;
+  const teamEl = document.getElementById("scoreInfoTeam");
+  const rowsEl = document.getElementById("scoreInfoRows");
+  const logoEl = document.getElementById("scoreInfoLogo");
 
   playerStatsBannerHandle?.cancel();
-  activePlayerStatsKey = `scoreInfo:${point.id}`;
-  playerStatsBannerHandle = manageBannerState({ type: "scoreInfo" }, {
+  scoreInfoCardHandle?.cancel();
+  scoreInfoCardHandle = manageBannerState({ type: "scoreInfo" }, {
     targets: [{
-      element: elements.banner,
+      element: scoreInfoCard,
       onPrepare: () => {
-        const bannerCells = _playerBannerCells();
-        if (!_playerBannerSnapshot) {
-          _playerBannerSnapshot = { labels: bannerCells.map((cell) => cell.labelEl?.textContent ?? "") };
-        }
-        applyBannerTheme({ teamSlot: point.team });
-        elements.banner.classList.add("is-score-info");
-        // The layouts' rise-hold-fade keyframes are percentage based, so stretching
-        // the animation stretches the hold.
-        elements.banner.style.animationDuration = `${seconds + 0.2}s`;
-        if (elements.bannerPlayerName) {
-          elements.bannerPlayerName.textContent = nameParts.join(" · ").toUpperCase();
-          if (assistText) {
-            const assistEl = document.createElement("span");
-            assistEl.className = "overlay-score-info-assist";
-            assistEl.textContent = assistText.toUpperCase();
-            elements.bannerPlayerName.append(assistEl);
+        const { colors } = resolveBannerTeamStyles(null, point.team);
+        const palette = deriveBannerPalette(colors);
+        scoreInfoCard.style.setProperty("--banner-team-bg", palette.teamBg);
+        scoreInfoCard.style.setProperty("--banner-team-text", palette.teamText);
+        scoreInfoCard.style.animationDuration = `${seconds + 0.2}s`;
+        if (teamEl) teamEl.textContent = team ? formatTeamName(team) : "";
+        if (logoEl) {
+          let src = "";
+          try {
+            src = point.team ? localStorage.getItem(`stallcount:logo-team-${point.team.toLowerCase()}`) || "" : "";
+          } catch { /* storage unavailable */ }
+          if (!src) {
+            logoEl.classList.remove("has-image");
+            logoEl.removeAttribute("src");
+          } else if (logoEl.getAttribute("src") === src && logoEl.complete && logoEl.naturalWidth > 0) {
+            logoEl.classList.add("has-image");
+          } else {
+            logoEl.classList.remove("has-image");
+            logoEl.onload = () => logoEl.classList.add("has-image");
+            logoEl.onerror = () => logoEl.classList.remove("has-image");
+            logoEl.src = src;
           }
         }
-        bannerCells.forEach((cell, index) => {
-          const content = cells[index];
-          if (cell.cell) cell.cell.style.display = content ? "" : "none";
-          if (cell.divider) cell.divider.style.display = content ? "" : "none";
-          if (!content) return;
-          if (cell.labelEl) cell.labelEl.textContent = content.label;
-          cell.valueEl.textContent = content.value;
-        });
+        if (rowsEl) {
+          rowsEl.replaceChildren(
+            ...rows.map(([label, name]) => {
+              const row = document.createElement("div");
+              row.className = `score-info-row score-info-row--${label.toLowerCase()}`;
+              const labelEl = document.createElement("span");
+              labelEl.className = "score-info-row__label";
+              labelEl.textContent = label;
+              const dash = document.createElement("span");
+              dash.className = "score-info-row__dash";
+              dash.textContent = "–";
+              const nameEl = document.createElement("span");
+              nameEl.className = "score-info-row__name";
+              nameEl.textContent = name;
+              row.append(labelEl, dash, nameEl);
+              return row;
+            }),
+          );
+        }
       },
     }],
     timeout: seconds * 1000 + 200,
   });
+}
+
+async function _showScoreInfo(point) {
+  if (!point || !_addons.scoreInfo.enabled) return;
+  await _showScoreInfoCard(point);
 }
 
 _refreshAddonTimer();
@@ -1379,6 +1554,7 @@ function showMatchEventBanner(payload) {
       onPrepare: () => {
         elements.matchEventBannerLabel.textContent = getMatchEventLabel(payload);
         elements.matchEventBanner.classList.toggle("is-stoppage", isStoppagePayload(payload));
+        elements.matchEventBanner.classList.toggle("is-halftime", getMatchEventLabel(payload) === "HALFTIME");
       },
     }],
     timeout: autoFade ? 4600 : null,
@@ -1389,7 +1565,7 @@ function showMatchEventBanner(payload) {
 
 function hideMatchEventBanner() {
   matchEventBannerHandle?.cancel();
-  elements.matchEventBanner?.classList.remove("is-stoppage");
+  elements.matchEventBanner?.classList.remove("is-stoppage", "is-halftime");
   activeMatchEventKey = null;
   matchEventBannerHandle = null;
 }
@@ -1471,6 +1647,8 @@ function handleOverlayBannerPayload(payload) {
 
 onScoreUpdate((payload) => {
   updateOverlay(payload);
+  refreshMatchStatusCard(Number(payload?.scoreA), Number(payload?.scoreB));
+  updateMatchStatsLiveExtras();
   if (_bcEnabled) _syncBreakChance(payload.match);
   _tickAddons();
 });
@@ -1488,6 +1666,24 @@ function _setBreakChanceEnabled(enabled) {
 }
 
 onBreakChanceSetting(_setBreakChanceEnabled);
+
+// "Hide scoreboard": the whole block holding the score (the scoreboard's
+// top-level container on the canvas, so its clock, chips and strips go too).
+function _scoreboardRoot() {
+  let el = document.getElementById("scoreA");
+  while (el?.parentElement && el.parentElement.id !== "canvas" && el.parentElement !== document.body) {
+    el = el.parentElement;
+  }
+  return el && el.id !== "canvas" ? el : null;
+}
+function _setScoreboardHidden(hidden) {
+  _scoreboardRoot()?.classList.toggle("overlay-scoreboard-hidden", Boolean(hidden));
+}
+onScoreboardVisibility(_setScoreboardHidden);
+try {
+  const raw = window.localStorage.getItem(APP_SETTINGS_STORAGE_KEY);
+  _setScoreboardHidden(Boolean(raw && JSON.parse(raw)?.scoreboardHidden));
+} catch { /* storage unavailable: shown */ }
 onAddonSettings((addons) => { if (addons) _setAddonSettings(addons); });
 
 // The shared heartbeat. Layout scripts with their own countdowns (badge-centre's
@@ -1497,11 +1693,30 @@ onClockTick((info) => {
   window.dispatchEvent(new CustomEvent("overlay:clock-tick", { detail: info }));
 });
 
+// The control room sends every card twice: through localStorage (same-browser
+// previews) and over realtime (OBS). With auto-fade off a repeat trigger
+// toggles the card off, so the second copy hid the card the moment it showed.
+// Each send carries a deliveryId; a copy already handled is dropped.
+const _handledDeliveryIds = new Set();
+function isRepeatDelivery(payload) {
+  const id = payload?.deliveryId;
+  if (!id) return false;
+  if (_handledDeliveryIds.has(id)) return true;
+  _handledDeliveryIds.add(id);
+  if (_handledDeliveryIds.size > 50) {
+    _handledDeliveryIds.delete(_handledDeliveryIds.values().next().value);
+  }
+  return false;
+}
+
 onBannerTrigger((type, data) => {
   if (type === "syncStoppage") { syncStoppageBanner(); return; }
   if (type === "syncTimeout") { syncTimeoutBanner(); return; }
-  if (type === "syncHalftime") { syncHalftimeBanner(); return; }
-  if (type === "timeout") { showTimeoutBanner(data?.team); return; }
+  if (type === "syncHalftime") { syncHalftimeBanner(); refreshMatchStatusCard(); return; }
+  if (isRepeatDelivery(data)) return;
+  // A timeout from the control room is a full payload (it carries autoFade);
+  // the engine's own log-driven trigger passes only { team }.
+  if (type === "timeout" && data?.type !== "timeout") { showTimeoutBanner(data?.team); return; }
   // All other banner types are routed by handleOverlayBannerPayload below
   if (VALID_OVERLAY_PAYLOAD_TYPES.has(type)) {
     handleOverlayBannerPayload(data);
@@ -1561,6 +1776,7 @@ window.addEventListener("storage", (event) => {
     };
 
     _setBreakChanceEnabled(settings.breakChanceEnabled);
+    _setScoreboardHidden(settings.scoreboardHidden);
     if (settings.overlayAddons) _setAddonSettings(settings.overlayAddons);
     return;
   }
@@ -1577,6 +1793,7 @@ window.addEventListener("storage", (event) => {
     const payload = JSON.parse(event.newValue);
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
     if (!VALID_OVERLAY_PAYLOAD_TYPES.has(payload.type)) return;
+    if (isRepeatDelivery(payload)) return;
     handleOverlayBannerPayload(payload);
   } catch {
     // ignore malformed payloads
@@ -1591,4 +1808,106 @@ init(matchId, {
   manualOverrides,
   isPreview,
   overlayInitialized,
+});
+
+
+// ─── Status heartbeat for the control room ────────────────────────────────────
+// Every 10 s (and when OBS starts or stops streaming/recording) each overlay
+// tells the control room which layout it is, the size it is drawn at, and,
+// inside OBS, whether OBS is streaming or recording. window.obsstudio exists
+// only in an OBS browser source; getStatus needs the source's page permission
+// to allow reading OBS status (the default does). Anything missing is null.
+// The setup page's own preview does not report.
+if (!isPreview) {
+  const clientId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const layoutFile = (window.location.pathname.split("/").pop() || "").toString();
+  const readObsStatus = (done) => {
+    const obs = window.obsstudio;
+    if (!obs || typeof obs.getStatus !== "function") {
+      done(null);
+      return;
+    }
+    let answered = false;
+    const finish = (status) => {
+      if (answered) return;
+      answered = true;
+      done(status || null);
+    };
+    try {
+      obs.getStatus(finish);
+    } catch {
+      finish(null);
+    }
+    // A source without permission never answers.
+    window.setTimeout(() => finish(null), 1500);
+  };
+  const reportStatus = () => {
+    readObsStatus((status) => {
+      sendOverlayStatus({
+        clientId,
+        layoutFile,
+        width: Math.round(window.innerWidth),
+        height: Math.round(window.innerHeight),
+        // Pixels actually drawn per CSS pixel (1 in OBS); with the size this
+        // tells whether the overlay is rendered at full resolution.
+        pixelRatio: Number(window.devicePixelRatio || 1),
+        inObs: Boolean(window.obsstudio),
+        obsVersion: window.obsstudio?.pluginVersion || null,
+        streaming: status ? Boolean(status.streaming) : null,
+        recording: status ? Boolean(status.recording) : null,
+        sentAt: Date.now(),
+      });
+    });
+  };
+  window.setTimeout(reportStatus, 2500);
+  window.setInterval(reportStatus, 10000);
+  window.addEventListener("resize", reportStatus);
+  ["obsStreamingStarted", "obsStreamingStopped", "obsRecordingStarted", "obsRecordingStopped"].forEach((name) =>
+    window.addEventListener(name, reportStatus),
+  );
+}
+
+
+// ─── Team logos from the control room ─────────────────────────────────────────
+// Layouts read the team logos from this browser's storage when the page loads.
+// In OBS (a separate browser) that storage is filled from here. When a logo
+// actually changed, the page reloads once so every layout shows it; an
+// unchanged logo (the normal case, re-sent on every connect) does nothing.
+// Reloads are capped so a storage problem can never cause a reload loop.
+const _teamLogoKeys = { A: "stallcount:logo-team-a", B: "stallcount:logo-team-b" };
+let _teamLogoReloadTimer = null;
+onTeamLogo(({ slot, dataUrl }) => {
+  if (isPreview) return; // the setup preview shares the control room's storage
+  const key = _teamLogoKeys[slot];
+  let current;
+  try {
+    current = localStorage.getItem(key) || "";
+  } catch {
+    return;
+  }
+  if (current === dataUrl) return;
+  try {
+    if (dataUrl) localStorage.setItem(key, dataUrl);
+    else localStorage.removeItem(key);
+    if ((localStorage.getItem(key) || "") !== dataUrl) return; // write did not stick
+  } catch {
+    return;
+  }
+  let recent = [];
+  try {
+    recent = JSON.parse(sessionStorage.getItem("stallcount:logo-reloads") || "[]").filter((t) => Date.now() - t < 60000);
+  } catch {
+    recent = [];
+  }
+  if (recent.length >= 3) return;
+  if (_teamLogoReloadTimer) window.clearTimeout(_teamLogoReloadTimer);
+  // Short wait so both teams' logos land before the single reload.
+  _teamLogoReloadTimer = window.setTimeout(() => {
+    try {
+      sessionStorage.setItem("stallcount:logo-reloads", JSON.stringify([...recent, Date.now()]));
+    } catch {
+      /* fine */
+    }
+    window.location.reload();
+  }, 1500);
 });

@@ -914,6 +914,57 @@ function SourceEditor({
   );
 }
 
+// How a Swiss division has to be set up for the draw, the public event page and
+// any bracket seeded from the draw to work together. Shown when the Swiss draw
+// template is chosen. Keep in step with the Swiss notes in CLAUDE.md
+// (Playoff Structure) and with src/utils/eventStandings.js.
+function SwissSetupGuide() {
+  return (
+    <Panel variant="muted" className="space-y-2 border border-white/40 p-3 text-sm text-ink-muted">
+      <p className="font-semibold text-ink">Setting up a Swiss division</p>
+      <ol className="list-decimal space-y-1.5 pl-5">
+        <li>
+          <span className="text-ink">One pool holds the draw&apos;s teams.</span> In Event setup,
+          give the division a single pool listing every team in the draw, and schedule no pool
+          games in it. The pool only says which teams take part; the draw supplies the games.
+        </li>
+        <li>
+          <span className="text-ink">Seed round 1 with chosen teams.</span> Below, set the seed
+          list to &ldquo;Chosen teams&rdquo; and pick a team for each seed, strongest first. Do not
+          use &ldquo;Pool finishing positions&rdquo;: the Swiss pool plays no pool games, so those
+          positions are never decided and round 1 would never fill. The template pairs the seeds
+          for round 1 and gives the round 1 bye to the last seed when the number of teams is odd.
+          Seeds also settle ties that nothing else separates.
+        </li>
+        <li>
+          <span className="text-ink">Every game belongs to the division, not the pool.</span>{" "}
+          When you create or link the match for each game, set its division and leave its pool
+          blank, for every round including round 1. A game placed in a pool would be loaded by
+          the Event setup wizard as a pool game.
+        </li>
+        <li>
+          <span className="text-ink">Turn on automatic resolving for the event.</span> Each round
+          is paired from the results of the one before, about two minutes after its last game
+          finishes. &ldquo;Resolve playoffs&rdquo; on this page does the same at once.
+        </li>
+        <li>
+          <span className="text-ink">Seed later games from the standings.</span> A bracket that
+          takes teams from the draw (a promotion game, or a playoff for the top teams) uses the
+          source &ldquo;Swiss standings position&rdquo;. It fills only once every game in the draw
+          has a result.
+        </li>
+      </ol>
+      <p>
+        What the public sees: on the event page the pool&apos;s table is the live Swiss table,
+        covering every round played so far, in the same order used for pairing and seeding: wins,
+        fewest losses, the tie-break chosen above, then points scored. A bye counts as a win with
+        no points. The division&apos;s final standings appear once the last round is complete, in
+        that same order.
+      </p>
+    </Panel>
+  );
+}
+
 const SWISS_STATUS_LABELS = { advanced: "Advanced", out: "Out", active: "Still in" };
 
 // Standings for the selected Swiss draw, as the server's Swiss engine sees them
@@ -2764,6 +2815,8 @@ export default function PlayoffStructurePage() {
               </p>
             ) : null}
 
+            {isSwissTemplate ? <SwissSetupGuide /> : null}
+
             {templateSeedRows.length ? (
               <div className="space-y-1">
                 <div className="flex flex-wrap items-end justify-between gap-2">
@@ -3463,7 +3516,14 @@ export default function PlayoffStructurePage() {
                             </Select>
                           </Field>
 
-                          <Field label="Pool">
+                          <Field
+                            label="Pool"
+                            hint={
+                              selectedBracket?.type === "swiss"
+                                ? "Leave blank for Swiss games: they belong to the division, and the Swiss pool's table shows them."
+                                : undefined
+                            }
+                          >
                             <Select
                               value={createMatchForm.poolId}
                               onChange={(event) =>

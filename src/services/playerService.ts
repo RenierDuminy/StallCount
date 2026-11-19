@@ -189,6 +189,9 @@ export async function getPlayersByTeam(teamId: string, eventId?: string | null) 
     id: row.players?.id ?? row.id,
     name: row.players?.name ?? "Unnamed player",
     jersey_number: row.players?.jersey_number ?? null,
+    // The team page filters the roster by event; without this every rostered
+    // player without stats was dropped once an event was selected.
+    event_id: row.event_id ?? null,
   }));
 }
 

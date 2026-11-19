@@ -126,12 +126,23 @@ export const FORM_OUTCOME_LABELS = Object.freeze({
   draw: "Draw",
 });
 
+// The legend's wording where it differs from a dot's own hover text. The light
+// blue dot is a win without a game: an opponent's forfeit, or a Swiss bye
+// (which the Swiss draw scores as a win). The legend names both;
+// each dot's hover text still says which it was.
+export const FORM_LEGEND_LABELS = Object.freeze({
+  ...FORM_OUTCOME_LABELS,
+  forfeit_innocent: "Bye / opponent forfeit",
+});
+
+// Legend order follows a game's life: not yet played, then the results it
+// can end in, with the two forfeit outcomes last.
 export const FORM_LEGEND_ITEMS = Object.freeze([
+  "scheduled",
   "win",
   "loss",
-  "forfeit_innocent",
   "forfeit_guilty",
-  "scheduled",
+  "forfeit_innocent",
 ]);
 
 /**

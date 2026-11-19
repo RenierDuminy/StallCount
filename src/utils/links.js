@@ -5,7 +5,8 @@
 // src/pages/eventWorkspaces.js.
 //
 // Scheme (collection + id): /matches/<id>, /teams/<id>, /players/<id>.
-// A filter stays a query parameter: /players/<id>?eventId=<event>.
+// A filter stays a query parameter: /players/<id>?eventId=<event>, and the
+// same for /teams/<id>?eventId=<event>.
 
 const pathWithId = (base, id) => {
   const value = `${id ?? ""}`.trim();
@@ -25,9 +26,14 @@ export function matchPath(matchId) {
   return pathWithId(MATCHES_PATH, matchId);
 }
 
-/** A team page. */
-export function teamPath(teamId) {
-  return pathWithId(TEAMS_PATH, teamId);
+/**
+ * A team page, optionally opened on one event (`?eventId=`). Links from an
+ * event's pages pass the event, so the team page shows that event; without it
+ * the team page picks the team's most recent event.
+ */
+export function teamPath(teamId, { eventId = null } = {}) {
+  const path = pathWithId(TEAMS_PATH, teamId);
+  return eventId && path !== TEAMS_PATH ? `${path}?eventId=${encodeURIComponent(eventId)}` : path;
 }
 
 /** A player page, optionally filtered to one event (`?eventId=`). */

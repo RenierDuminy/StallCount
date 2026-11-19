@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import {
   FORM_DOT_COLORS,
   FORM_LEGEND_ITEMS,
-  FORM_OUTCOME_LABELS,
+  FORM_LEGEND_LABELS,
   formatScoreDiff,
 } from "../utils/standings";
 import { teamPath } from "../utils/links";
@@ -79,7 +79,7 @@ export function StandardStandingsLegend({ className = "" }) {
             className="inline-block h-1.5 w-1.5 rounded-full"
             style={{ backgroundColor: FORM_DOT_COLORS[outcome] }}
           />
-          {FORM_OUTCOME_LABELS[outcome]}
+          {FORM_LEGEND_LABELS[outcome]}
         </span>
       ))}
     </div>
@@ -110,6 +110,8 @@ export function StandardStandingsTable({
   showScoreDiff = true,
   emptyLabel = "No standings available yet.",
   className = "",
+  // The event these standings belong to: team links open on it.
+  eventId = null,
 }) {
   if (!rows?.length) {
     return <p className="text-sm text-ink-muted">{emptyLabel}</p>;
@@ -169,7 +171,7 @@ export function StandardStandingsTable({
               <td className="min-w-0 px-1 py-1 align-top" title={row.name}>
                 {row.id ? (
                   <Link
-                    to={teamPath(row.id)}
+                    to={teamPath(row.id, { eventId })}
                     className="block truncate text-inherit! hover:underline"
                   >
                     {row.name}

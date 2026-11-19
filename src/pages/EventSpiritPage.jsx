@@ -36,7 +36,7 @@ function rankDivisionTeams(teams, ranking) {
   return rows.map((row) => ({ ...row, rank: row.spirit ? (rank += 1) : null }));
 }
 
-function SpiritRankingTable({ rows }) {
+function SpiritRankingTable({ rows, eventId = null }) {
   return (
     <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded border border-border bg-surface">
       <table className="w-full whitespace-nowrap text-xs">
@@ -67,7 +67,7 @@ function SpiritRankingTable({ rows }) {
             >
               <td className="px-0.5 py-1 text-center tabular-nums text-ink-muted">{rank ?? "–"}</td>
               <td className="px-1 py-1">
-                <Link to={teamPath(team.id)} className="block truncate text-inherit! hover:underline">
+                <Link to={teamPath(team.id, { eventId })} className="block truncate text-inherit! hover:underline">
                   {team.name}
                 </Link>
               </td>
@@ -237,7 +237,7 @@ export default function EventSpiritPage() {
                 {scoreRows.length ? null : (
                   <p className="text-xs text-ink-muted">No spirit scores have been submitted yet.</p>
                 )}
-                <SpiritRankingTable rows={division.rows} />
+                <SpiritRankingTable rows={division.rows} eventId={eventId} />
               </div>
             </section>
             ))}

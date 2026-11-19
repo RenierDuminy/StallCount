@@ -4,6 +4,10 @@
 
 /* Light theme for both views (Setup and Control): the room is bright. */
 .overlay-page {
+  /* The app declares color-scheme: dark, so the browser drew native dropdown
+     lists dark, with this page's near-black option text on them: the player
+     list looked empty. This page is light, so its native controls are too. */
+  color-scheme: light;
   background: #f0f7f3;
   color: #111111;
   --sc-ink: #111111;
@@ -608,7 +612,6 @@
   padding: 0;
   margin: 0;
   cursor: pointer;
-  color: inherit;
 }
 
 .weather-card__toggle-caret {
@@ -2277,4 +2280,50 @@
 .overlay-page .test-match-switch {
   align-self: center;
   margin-right: 0.25rem;
+}
+
+/* Focused fields: the global .sc-input focus swaps in a dark green background,
+   which on this page's dark text made what you type unreadable. Here focus
+   only highlights the border; background and text stay as they were. */
+.overlay-page .sc-input:focus,
+.overlay-page .sc-input:focus-visible {
+  outline: none;
+  background: var(--sc-field-bg);
+  border-color: var(--sc-accent);
+  box-shadow: 0 0 0 1px var(--sc-accent);
+}
+
+/* Add-on rows: title/description take the remaining width and wrap inside it;
+   the switch and Test button always stay on the right. */
+.overlay-page .overlay-addon__header { flex-wrap: nowrap; }
+.overlay-page .overlay-addon__text { flex: 1 1 0; }
+.overlay-page .overlay-addon__actions { flex: 0 0 auto; flex-wrap: nowrap; }
+
+/* The preview frame keeps the dark scheme its overlay page declares. When the
+   frame element's color-scheme differs from its document's, the browser paints
+   an opaque backdrop behind the page, which hid the stage image and made the
+   (transparent) overlay look broken after the page went light. */
+.overlay-page .preview-stage,
+.overlay-page .preview-frame {
+  color-scheme: dark;
+}
+
+/* Control header: which overlays are connected, at what size, OBS state. */
+.overlay-page .overlay-status-readout {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-left: 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #111111;
+  vertical-align: middle;
+}
+.overlay-page .overlay-status-readout.is-empty { color: #555555; font-weight: 500; }
+.overlay-page .overlay-status-readout__item.is-live { color: #b91c1c; }
+.overlay-page .overlay-status-readout__warn { color: #b45309; }
+.overlay-page .overlay-header__text:has(.overlay-status-readout) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
 }

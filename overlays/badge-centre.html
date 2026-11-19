@@ -747,7 +747,11 @@
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         const scale = Math.min(vw / 1920, vh / 1080);
-        canvas.style.transform = `scale(${scale})`;
+        // Lay the 1920x1080 canvas out at the real output size with CSS zoom, so
+        // text, borders and edges are drawn natively at 1440p / 4K. A transform
+        // instead stretches the drawn picture, which can look soft.
+        canvas.style.transform = "none";
+        canvas.style.zoom = String(scale);
       }
       window.addEventListener('resize', scaleCanvas);
       scaleCanvas();

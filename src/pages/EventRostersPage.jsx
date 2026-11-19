@@ -315,7 +315,7 @@ export default function EventRostersPage() {
                     {groupedTeams.map((team) => (
                       <th key={team.teamId} className="border-b border-border px-3 py-2 text-center whitespace-nowrap">
                         <div className="text-sm font-semibold text-ink">
-                          <Link to={teamPath(team.teamId)} className="text-inherit! hover:text-inherit!">
+                          <Link to={teamPath(team.teamId, { eventId: selectedEventId })} className="text-inherit! hover:text-inherit!">
                             {team.name}
                           </Link>
                         </div>

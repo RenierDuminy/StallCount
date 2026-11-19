@@ -20,6 +20,25 @@ const STREAMING_COLOR_FIELDS = [
   "secondaryColor",
   "textOnSecondary",
 ];
+// Editor layout: two columns (primary / text on primary | secondary / text on
+// secondary), row-major, with accent centred on its own row underneath.
+const STREAMING_COLOR_EDITOR_ORDER = [
+  "primaryColor",
+  "secondaryColor",
+  "textOnPrimary",
+  "textOnSecondary",
+  "accentColor",
+];
+
+// Explicit grid cells, so the white divider in the middle column never
+// shifts the fields' auto-placement.
+const STREAMING_COLOR_EDITOR_PLACEMENT = {
+  primaryColor: "col-start-1 row-start-1",
+  textOnPrimary: "col-start-1 row-start-2",
+  secondaryColor: "col-start-3 row-start-1",
+  textOnSecondary: "col-start-3 row-start-2",
+  accentColor: "col-span-3 col-start-1 row-start-3 w-[calc(50%-0.75rem)] justify-self-center",
+};
 
 export default function MediaAdminPage() {
   const { session, roles, rolesLoading } = useAuth();
@@ -654,7 +673,7 @@ export default function MediaAdminPage() {
                       type="button"
                       onClick={() => handleSelectTeam(team)}
                       aria-pressed={isSelectedTeam}
-                      className={`grid grid-cols-2 gap-1.5 rounded-2xl border-2 p-1.5 text-left transition ${
+                      className={`grid grid-cols-2 rounded-xl border-2 p-1.5 text-left transition ${
                         isSelectedTeam
                           ? "border-[var(--sc-accent)]"
                           : inMatch
@@ -664,7 +683,7 @@ export default function MediaAdminPage() {
                       title={inMatch ? `${team.name} (active match)` : team.name}
                     >
                       <span
-                        className="flex min-h-15 items-center justify-center rounded-xl border px-2 py-2 text-center text-sm font-semibold"
+                        className="flex min-h-15 items-center justify-center border-[1.5px] px-2 py-2 text-center text-sm font-semibold"
                         style={{
                           backgroundColor: isHexColor(colorAttributes.primaryColor)
                             ? colorAttributes.primaryColor
@@ -672,13 +691,13 @@ export default function MediaAdminPage() {
                           color: isHexColor(colorAttributes.textOnPrimary)
                             ? colorAttributes.textOnPrimary
                             : "var(--sc-ink)",
-                          borderColor: "color-mix(in srgb, var(--sc-border) 70%, transparent)",
+                          borderColor: isHexColor(colorAttributes.accentColor) ? colorAttributes.accentColor : "color-mix(in srgb, var(--sc-border) 70%, transparent)",
                         }}
                       >
                         {team.name}
                       </span>
                       <span
-                        className="flex min-h-15 items-center justify-center rounded-xl border px-2 py-2 text-center text-sm font-semibold"
+                        className="flex min-h-15 items-center justify-center border-[1.5px] px-2 py-2 text-center text-sm font-semibold"
                         style={{
                           backgroundColor: isHexColor(colorAttributes.secondaryColor)
                             ? colorAttributes.secondaryColor
@@ -686,7 +705,7 @@ export default function MediaAdminPage() {
                           color: isHexColor(colorAttributes.textOnSecondary)
                             ? colorAttributes.textOnSecondary
                             : "var(--sc-ink)",
-                          borderColor: "color-mix(in srgb, var(--sc-border) 70%, transparent)",
+                          borderColor: isHexColor(colorAttributes.accentColor) ? colorAttributes.accentColor : "color-mix(in srgb, var(--sc-border) 70%, transparent)",
                         }}
                       >
                         {team.name}
@@ -724,9 +743,15 @@ export default function MediaAdminPage() {
                         Enter colours as HEX (preferred, the most exact: #1D4ED8), rgb(29, 78, 216),
                         hsl(224, 76%, 48%) or a colour name. Every colour is saved as HEX.
                       </p>
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                        {STREAMING_COLOR_FIELDS.map((field) => (
-                          <Field key={`${selectedTeam.id}-${field}`} label={field} htmlFor={`${selectedTeam.id}-${field}`}>
+                      <div className="grid max-w-[calc(42ch+1.5rem+1px)] grid-cols-[1fr_1px_1fr] gap-3">
+                        <div aria-hidden="true" className="col-start-2 row-span-2 row-start-1 bg-white" />
+                        {STREAMING_COLOR_EDITOR_ORDER.map((field) => (
+                          <Field
+                            key={`${selectedTeam.id}-${field}`}
+                            label={TEAM_COLOR_LABELS[field] || field}
+                            htmlFor={`${selectedTeam.id}-${field}`}
+                            className={STREAMING_COLOR_EDITOR_PLACEMENT[field]}
+                          >
                             <Input
                               id={`${selectedTeam.id}-${field}`}
                               type="text"
@@ -970,9 +995,9 @@ function isTeamInSelectedMatch(teamId, selectedMatch) {
 
 const TEAM_COLOR_LABELS = {
   accentColor: "Accent (border)",
-  primaryColor: "Primary (dark background)",
+  primaryColor: "Primary (dark kit)",
   textOnPrimary: "Text on primary",
-  secondaryColor: "Secondary (light background)",
+  secondaryColor: "Secondary (light kit)",
   textOnSecondary: "Text on secondary",
 };
 

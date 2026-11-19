@@ -15,16 +15,11 @@ export const DEFAULT_OVERLAY_ADDONS = {
     enabled: false,
     showAfterMinutes: 6,
   },
+  // One fixed card: "Scorer – name" over "Assist – name", or "Callahan – name".
+  // Only the on/off switch is configurable; it shows for a fixed 7 seconds.
   scoreInfo: {
     enabled: false,
     displaySeconds: 7,
-    // Scorer is always shown; by default only the assist is added to it.
-    showTeam: false,
-    showAssist: true,
-    showPointType: false,
-    showTurnovers: false,
-    showPointTime: false,
-    showScore: false,
   },
   genderLine: {
     enabled: false,
@@ -63,13 +58,7 @@ export function normalizeOverlayAddons(raw) {
     },
     scoreInfo: {
       enabled: toBool(si.enabled, d.scoreInfo.enabled),
-      displaySeconds: toSeconds(si.displaySeconds, d.scoreInfo.displaySeconds, { min: 1, max: 120 }),
-      showTeam: toBool(si.showTeam, d.scoreInfo.showTeam),
-      showAssist: toBool(si.showAssist, d.scoreInfo.showAssist),
-      showPointType: toBool(si.showPointType, d.scoreInfo.showPointType),
-      showTurnovers: toBool(si.showTurnovers, d.scoreInfo.showTurnovers),
-      showPointTime: toBool(si.showPointTime, d.scoreInfo.showPointTime),
-      showScore: toBool(si.showScore, d.scoreInfo.showScore),
+      displaySeconds: d.scoreInfo.displaySeconds,
     },
     genderLine: {
       enabled: toBool(gl.enabled, d.genderLine.enabled),
@@ -141,6 +130,10 @@ export function derivePointTimeline(chronologicalLogs, { startingPuller = null, 
   let prePullTimeout = false;
   let scoreA = 0;
   let scoreB = 0;
+  // When the gender line should show: the inter-point timer running out after a
+  // score, the end of any timeout, the end of halftime, and kick-off. Kept apart
+  // from startMs so a mid-point timeout does not restart the point's clock.
+  let genderCueMs = null;
 
   const resetPoint = (nextStartMs, nextOpen) => {
     startMs = nextStartMs;
@@ -160,6 +153,7 @@ export function derivePointTimeline(chronologicalLogs, { startingPuller = null, 
 
     if (code === "match_start") {
       resetPoint(ts, true);
+      genderCueMs = ts;
     } else if (code === "score" || code === "callahan") {
       if (team === "A") scoreA += 1;
       if (team === "B") scoreB += 1;
@@ -181,6 +175,7 @@ export function derivePointTimeline(chronologicalLogs, { startingPuller = null, 
         secondaryActorId: log.secondaryActorId || null,
       });
       resetPoint(ts + interPointMs, true);
+      genderCueMs = ts + interPointMs;
     } else if (code === "turnover" || code === "block") {
       if (open) turnovers += 1;
     } else if (code === "timeout_start") {
@@ -190,6 +185,8 @@ export function derivePointTimeline(chronologicalLogs, { startingPuller = null, 
         startMs = Math.max(startMs, ts);
         prePullTimeout = false;
       }
+      // A timeout before the pull ends no earlier than the inter-point timer.
+      genderCueMs = Number.isFinite(startMs) ? Math.max(startMs, ts) : ts;
     } else if (code === "stoppage_start") {
       if (open && stoppageStartMs === null && Number.isFinite(startMs) && ts >= startMs) stoppageStartMs = ts;
     } else if (code === "stoppage_end") {
@@ -199,10 +196,13 @@ export function derivePointTimeline(chronologicalLogs, { startingPuller = null, 
       }
     } else if (code === "halftime_start") {
       resetPoint(null, false);
+      genderCueMs = null;
     } else if (code === "halftime_end") {
       resetPoint(ts, true);
+      genderCueMs = ts;
     } else if (code === "match_end") {
       resetPoint(null, false);
+      genderCueMs = null;
     }
   }
 
@@ -217,6 +217,7 @@ export function derivePointTimeline(chronologicalLogs, { startingPuller = null, 
       pausedMs,
       stoppageStartMs,
       turnovers,
+      genderCueMs,
     },
   };
 }

@@ -433,8 +433,8 @@ export default function BracketStructureView({
                       //
                       // No title override: once teams are assigned this must be
                       // the same card the Week 1-7 schedule renders, which titles
-                      // itself with the matchup. The node's bracket identity is
-                      // already carried by the column heading above it.
+                      // itself with the matchup. The host page puts the node's
+                      // name in the card's corner label, as on the schedule.
                       <div className="sc-bracket-match">
                         {renderMatchCard(node.match)}
                       </div>

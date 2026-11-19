@@ -4,9 +4,11 @@ import { supabase } from "../services/supabaseClient";
 import { MATCH_LOG_EVENT_CODES } from "../services/matchLogService";
 import { LEGACY_TIMEOUT_CODE, resolveEventCode } from "../overlay/overlayEngine";
 import { ConfigView } from "../overlay/ConfigView";
+import { OVERLAY_OPTIONS } from "../overlay/overlayOptions";
 import { ControlView } from "../overlay/ControlView";
 import { readCachedWeatherForVenue, summarizeWeather, getVenueName } from "../overlay/WeatherCard";
-import { findBreakLogIds } from "../utils/matchBreaks";
+import { computePossessionTime, findBreakLogIds } from "../utils/matchBreaks";
+import { resolveInterPointSeconds } from "../overlay/overlayAddons";
 import { isForfeitMatch } from "../utils/standings";
 import { normalizeOverlayAddons } from "../overlay/overlayAddons";
 import {
@@ -80,8 +82,11 @@ function getInitialOverlayChoice() {
     return (searchParams.get("overlay") || "").trim() || "overlays/wfdf-competitive.html";
   }
 
+  // A remembered layout that no longer exists (e.g. a removed test variant)
+  // would point the preview and OBS link at a missing page: use the default.
   const persisted = readPersistedAppSettings().overlayChoice;
-  return persisted && persisted !== "custom" ? persisted : "overlays/wfdf-competitive.html";
+  const known = OVERLAY_OPTIONS.some((option) => option.value === persisted);
+  return persisted && known ? persisted : "overlays/wfdf-competitive.html";
 }
 
 
@@ -303,12 +308,10 @@ function computeMatchStats(matchDetails, sortedMatchLogs, resolvedEventCodeCache
   };
   const fallbackOffense = normalizeTeamKey(inferInitialOffense()) || "teamA";
   let pointStartingOffense = fallbackOffense;
-  let pointStartingDefense = getOppositeTeam(pointStartingOffense);
   let currentPossession = pointStartingOffense;
   const resetPointState = (nextOffense) => {
     const normalized = normalizeTeamKey(nextOffense) || fallbackOffense;
     pointStartingOffense = normalized;
-    pointStartingDefense = getOppositeTeam(normalized);
     currentPossession = pointStartingOffense;
   };
   resetPointState(fallbackOffense);
@@ -328,6 +331,22 @@ function computeMatchStats(matchDetails, sortedMatchLogs, resolvedEventCodeCache
   let scoreB = 0;
   let hasScoreEvents = false;
 
+  // Holds and breaks follow the shared rules in matchBreaks.js (the same as
+  // the Break chance banner and the match log cards): a break is a score by
+  // the team that pulled that point, a hold is one by the receiving team. The
+  // pull flips at halftime, and the opening puller comes from the match start
+  // entry, falling back to starting_team_id. The walk below kept its own
+  // offence tracking, which missed the halftime flip.
+  const codeOf = (log) =>
+    (resolvedEventCodeCache.get(log.event_type_id) ?? resolveEventCode(eventTypeCache.get(log.event_type_id)) ?? "")
+      .toString()
+      .toLowerCase();
+  const toSlot = (teamId) => (teamId && teamId === teamAId ? "A" : teamId && teamId === teamBId ? "B" : null);
+  const breakIds = findBreakLogIds(
+    sortedMatchLogs.map((log) => ({ id: log.id, eventCode: codeOf(log), team: toSlot(log.team_id) })),
+    toSlot(matchDetails?.starting_team_id),
+  );
+
   for (const log of sortedMatchLogs) {
     const eventType = eventTypeCache.get(log.event_type_id);
     const eventCode = resolvedEventCodeCache.get(log.event_type_id) ?? resolveEventCode(eventType);
@@ -345,11 +364,8 @@ function computeMatchStats(matchDetails, sortedMatchLogs, resolvedEventCodeCache
       if (teamKey === "teamB") scoreB += 1;
 
       if (teamKey) {
-        if (teamKey === pointStartingOffense) {
-          totals[teamKey].holds += 1;
-        } else if (teamKey === pointStartingDefense) {
-          totals[teamKey].breaks += 1;
-        }
+        if (breakIds.has(log.id)) totals[teamKey].breaks += 1;
+        else totals[teamKey].holds += 1;
       }
 
       const nextOffense = teamKey ? getOppositeTeam(teamKey) : getOppositeTeam(pointStartingOffense);
@@ -404,7 +420,28 @@ function computeMatchStats(matchDetails, sortedMatchLogs, resolvedEventCodeCache
     turnoversB: totals.teamB.turnovers,
     blocksA: totals.teamA.blocks,
     blocksB: totals.teamB.blocks,
+    ...computePossessionShare(matchDetails, sortedMatchLogs, codeOf, toSlot),
   };
+}
+
+// Possession as whole percentages of active playing time (see
+// computePossessionTime in matchBreaks.js). Empty only before any play.
+function computePossessionShare(matchDetails, sortedMatchLogs, codeOf, toSlot) {
+  const { A, B, hasData } = computePossessionTime(
+    sortedMatchLogs.map((log) => ({
+      eventCode: codeOf(log),
+      team: toSlot(log.team_id),
+      ts: new Date(log.created_at).getTime(),
+    })),
+    {
+      startingPuller: toSlot(matchDetails?.starting_team_id),
+      interPointSeconds: resolveInterPointSeconds(matchDetails?.event?.rules),
+    },
+  );
+  const total = A + B;
+  if (!hasData || total <= 0) return { possessionA: "", possessionB: "", hasPossessionData: false };
+  const possessionA = Math.round((A / total) * 100);
+  return { possessionA: `${possessionA}%`, possessionB: `${100 - possessionA}%`, hasPossessionData: true };
 }
 
 export default function OverlayControlPage() {
@@ -422,12 +459,27 @@ export default function OverlayControlPage() {
   const [manualClock] = useState(getInitialManualClock());
   const [manualScoreA] = useState(getInitialManualScore("manualScoreA"));
   const [manualScoreB] = useState(getInitialManualScore("manualScoreB"));
+  // Hides the whole scoreboard on every overlay (Overlay configuration > Banners).
+  const [scoreboardHidden, setScoreboardHidden] = useState(
+    () => Boolean(readPersistedAppSettings().scoreboardHidden),
+  );
   const [breakChanceEnabled, setBreakChanceEnabled] = useState(
     () => Boolean(readPersistedAppSettings().breakChanceEnabled),
   );
   const [overlayAddons, setOverlayAddons] = useState(
     () => normalizeOverlayAddons(readPersistedAppSettings().overlayAddons),
   );
+  // Autopilot (Overlay configuration): cards that show themselves.
+  const [autopilot, setAutopilot] = useState(() => {
+    const saved = readPersistedAppSettings().autopilot || {};
+    return {
+      preStartCards: Boolean(saved.preStartCards),
+      statsAtHalftime: Boolean(saved.statsAtHalftime),
+      statsAtFullTime: Boolean(saved.statsAtFullTime),
+    };
+  });
+  // Overlays currently reporting in (see the heartbeat in overlayRuntime.js).
+  const [overlayStatuses, setOverlayStatuses] = useState({});
   const [playerStatsAutoFade, setPlayerStatsAutoFade] = useState(getInitialPopupAutoFade("playerStatsAutoFade"));
   const [matchStatsAutoFade, setMatchStatsAutoFade] = useState(getInitialPopupAutoFade("matchStatsAutoFade"));
   const [timeoutAutoFade, setTimeoutAutoFade] = useState(getInitialPopupAutoFade("timeoutAutoFade"));
@@ -451,6 +503,9 @@ export default function OverlayControlPage() {
   const [rosterError, setRosterError] = useState("");
   const [liveRosterPlayersById, setRosterPlayersById] = useState({});
   const [liveRosterByTeam, setRosterByTeam] = useState({});
+  // Which event + teams the roster above belongs to, set once it has settled
+  // (loaded, cached or failed). Lets "Load a match by ID" wait for the roster.
+  const [rosterSettledKey, setRosterSettledKey] = useState("");
   const [testMatch, setTestMatch] = useState(() => {
     const stored = readStoredTestMatch();
     const initialMatchId = getInitialMatchId();
@@ -488,6 +543,47 @@ export default function OverlayControlPage() {
     eventLogoRef.current = eventLogo;
   }, [eventLogo]);
 
+  // Team logos too: OBS is a separate browser, so it never sees this
+  // browser's storage. Each logo goes in its own message, shrunk to 256 px
+  // (realtime messages are size-capped; 256 px still covers the largest team
+  // logo slot at 4K). The shrunk copy is cached per source image.
+  const teamLogoBroadcastCache = useRef(new Map());
+  const shrinkLogoForBroadcast = (dataUrl) => {
+    if (!dataUrl) return Promise.resolve("");
+    const cached = teamLogoBroadcastCache.current.get(dataUrl);
+    if (cached) return Promise.resolve(cached);
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => {
+        try {
+          const scale = Math.min(1, 256 / Math.max(image.naturalWidth || 1, image.naturalHeight || 1));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+          canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+          canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+          let small = canvas.toDataURL("image/webp", 0.85);
+          if (!small.startsWith("data:image/webp")) small = canvas.toDataURL("image/png");
+          teamLogoBroadcastCache.current.set(dataUrl, small);
+          resolve(small);
+        } catch {
+          resolve(dataUrl);
+        }
+      };
+      image.onerror = () => resolve("");
+      image.src = dataUrl;
+    });
+  };
+  const teamLogosRef = useRef({ A: "", B: "" });
+  const broadcastTeamLogos = () => {
+    ["A", "B"].forEach((slot) => {
+      shrinkLogoForBroadcast(teamLogosRef.current[slot]).then((dataUrl) => {
+        overlayBannerChannelRef.current
+          ?.send({ type: "broadcast", event: "team-logo", payload: { slot, dataUrl: dataUrl || "" } })
+          .catch(() => {});
+      });
+    });
+  };
+
   // Overlays in another browser (e.g. OBS) can't read this browser's storage,
   // so the tournament logo is also pushed to them over realtime.
   const broadcastEventLogo = (dataUrl) => {
@@ -498,6 +594,16 @@ export default function OverlayControlPage() {
 
   // Same for the break chance switch, which overlays otherwise only see through
   // localStorage.
+  const scoreboardHiddenRef = useRef(scoreboardHidden);
+  const broadcastScoreboardVisibility = (hidden) => {
+    overlayBannerChannelRef.current
+      ?.send({ type: "broadcast", event: "scoreboard-visibility", payload: { hidden: Boolean(hidden) } })
+      .catch(() => {});
+  };
+  useEffect(() => {
+    scoreboardHiddenRef.current = scoreboardHidden;
+    broadcastScoreboardVisibility(scoreboardHidden);
+  }, [scoreboardHidden]);
   const breakChanceEnabledRef = useRef(breakChanceEnabled);
   const broadcastBreakChanceSetting = (enabled) => {
     overlayBannerChannelRef.current
@@ -520,6 +626,12 @@ export default function OverlayControlPage() {
     overlayAddonsRef.current = overlayAddons;
     broadcastAddonSettings(overlayAddons);
   }, [overlayAddons]);
+
+  useEffect(() => {
+    teamLogosRef.current = { A: teamALogo || "", B: teamBLogo || "" };
+    broadcastTeamLogos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamALogo, teamBLogo]);
 
   const setEventLogo = (dataUrl) => {
     if (!saveLogoDataUrl(LOGO_STORAGE_KEY_EVENT, dataUrl)) return;
@@ -588,6 +700,26 @@ export default function OverlayControlPage() {
   };
   const handleSelectRealMatch = () => {
     setMatchId(realMatchIdBeforeTest);
+  };
+
+  // Test mode: load any match by id (a past one too) into the test match.
+  // The real match is selected for a moment so the usual loaders fetch its
+  // details, roster and log; once they finish, it is copied in as on the
+  // Test match switch, and the page returns to test mode.
+  const [pendingTestCopyId, setPendingTestCopyId] = useState("");
+  const [testCopyError, setTestCopyError] = useState("");
+  const [testCopyResult, setTestCopyResult] = useState("");
+  // Set once a load for the pending id has started, so the stale details of
+  // the previous match are never read as "not found".
+  const testCopyLoadStartedRef = useRef(false);
+  const handleCopyMatchIntoTest = (rawId) => {
+    const id = (rawId || "").toString().trim();
+    if (!id || isTestMatchId(id)) return;
+    setTestCopyError("");
+    setTestCopyResult("");
+    testCopyLoadStartedRef.current = false;
+    setPendingTestCopyId(id);
+    setMatchId(id);
   };
   // Copying mid-load would give the test match an empty roster or log.
   const testToggleBusy =
@@ -660,9 +792,8 @@ export default function OverlayControlPage() {
           withoutNumbers.push({ id: player.id, name: player.name, number: null, teamId: player.teamId });
         }
       });
-      withNumbers.sort((a, b) => a.number !== b.number ? a.number - b.number : a.name.localeCompare(b.name));
-      withoutNumbers.sort((a, b) => a.name.localeCompare(b.name));
-      return [...withNumbers, ...withoutNumbers];
+      // Alphabetical, as on the team rosters card (number shown after the name).
+      return [...withNumbers, ...withoutNumbers].sort((a, b) => a.name.localeCompare(b.name));
     };
     return {
       teamA: sortRoster(teamARoster),
@@ -697,6 +828,79 @@ export default function OverlayControlPage() {
     return cache;
   }, [eventTypesVersion]);
 
+  // Load-by-ID must never leave the button stuck on "Loading…": it gives up
+  // if another match is picked meanwhile, and after 20 seconds regardless.
+  useEffect(() => {
+    if (!pendingTestCopyId) return undefined;
+    const timer = window.setTimeout(() => {
+      setPendingTestCopyId("");
+      setTestCopyError("Loading that match took too long. Check the ID and try again.");
+      if (testMatchRef.current?.id) setMatchId(testMatchRef.current.id);
+    }, 20000);
+    return () => window.clearTimeout(timer);
+  }, [pendingTestCopyId]);
+
+  useEffect(() => {
+    if (!pendingTestCopyId) return;
+    if (trimmedMatchId !== pendingTestCopyId) {
+      // Another match was picked while this one loaded: abandon the copy.
+      setPendingTestCopyId("");
+      return;
+    }
+    if (isLoadingDetails || isLoadingRoster || isLoadingLogs) {
+      testCopyLoadStartedRef.current = true;
+      return;
+    }
+    if (liveMatchDetails?.id === pendingTestCopyId) {
+      // Details are in; the roster loads only after them, so wait for the
+      // roster of exactly this event and these teams to settle.
+      const teamKey = [liveMatchDetails.team_a?.id, liveMatchDetails.team_b?.id].filter(Boolean).sort().join(",");
+      const expectedKey = `${liveMatchDetails.event_id}:${teamKey || "all"}`;
+      if (liveMatchDetails.event_id && rosterSettledKey !== expectedKey) return;
+    }
+    if (!liveMatchDetails || liveMatchDetails.id !== pendingTestCopyId) {
+      if (testCopyLoadStartedRef.current) {
+        setTestCopyError(detailsError || "No match found with that ID.");
+        setPendingTestCopyId("");
+        if (testMatch?.id) setMatchId(testMatch.id);
+      }
+      return;
+    }
+    const testId = testMatch?.id || createTestMatchId();
+    // Say what was copied, so an empty roster is visible rather than silent.
+    const countFor = (team) => (liveRosterByTeam[team?.id] || []).length;
+    const nameFor = (team, fallback) => team?.name || fallback;
+    const countA = countFor(liveMatchDetails.team_a);
+    const countB = countFor(liveMatchDetails.team_b);
+    const emptyTeams = [
+      countA ? null : nameFor(liveMatchDetails.team_a, "Team A"),
+      countB ? null : nameFor(liveMatchDetails.team_b, "Team B"),
+    ].filter(Boolean);
+    setTestCopyResult(
+      `Loaded ${nameFor(liveMatchDetails.team_a, "Team A")} (${countA} players) vs ` +
+        `${nameFor(liveMatchDetails.team_b, "Team B")} (${countB} players), ${liveMatchLogs.length} log entries.`,
+    );
+    if (emptyTeams.length || rosterError) {
+      setTestCopyError(
+        rosterError
+          ? `The roster could not be loaded: ${rosterError}`
+          : `No players on the event roster for ${emptyTeams.join(" and ")}, so there is nobody to pick for player statistics or team rosters.`,
+      );
+    }
+    setTestMatch(
+      createTestMatchFromMatch(testId, {
+        match: liveMatchDetails,
+        rosterByTeam: liveRosterByTeam,
+        logs: liveMatchLogs,
+        resolveCode: (eventTypeId) =>
+          resolvedEventCodeCache.get(eventTypeId) ?? resolveEventCode(eventTypeCache.get(eventTypeId)),
+      }),
+    );
+    setPendingTestCopyId("");
+    setMatchId(testId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTestCopyId, trimmedMatchId, isLoadingDetails, isLoadingRoster, isLoadingLogs, liveMatchDetails, detailsError, rosterSettledKey]);
+
   const matchStats = useMemo(
     () => computeMatchStats(matchDetails, sortedMatchLogs, resolvedEventCodeCache),
     [matchDetails, sortedMatchLogs, resolvedEventCodeCache],
@@ -722,7 +926,13 @@ export default function OverlayControlPage() {
     setIsInitialized(false);
   };
 
-  const publishOverlayPayload = async (payload) => {
+  const publishOverlayPayload = async (basePayload) => {
+    // One id per send, so an overlay that receives it both ways (storage and
+    // realtime) acts on it once.
+    const payload = {
+      ...basePayload,
+      deliveryId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+    };
     try {
       window.localStorage.setItem("overlayBanner", JSON.stringify(payload));
     } catch {
@@ -793,12 +1003,13 @@ export default function OverlayControlPage() {
     }
   };
 
-  const handleTriggerMatchStats = async () => {
+  // `options.autoFade` lets autopilot force a card to leave on its own.
+  const handleTriggerMatchStats = async (options = {}) => {
     const stats = matchStats || {};
     const payload = {
       type: "matchStats",
-      autoFade: matchStatsAutoFade,
-      title: "Match stats",
+      autoFade: options.autoFade ?? matchStatsAutoFade,
+      title: "Match statistics",
       stats: {
         holdsA: stats.holdsA ?? "",
         holdsB: stats.holdsB ?? "",
@@ -808,6 +1019,9 @@ export default function OverlayControlPage() {
         turnoversB: stats.turnoversB ?? "",
         blocksA: stats.blocksA ?? "",
         blocksB: stats.blocksB ?? "",
+        possessionA: stats.possessionA ?? "",
+        possessionB: stats.possessionB ?? "",
+        hasPossessionData: Boolean(stats.hasPossessionData),
       },
       ts: Date.now(),
     };
@@ -821,10 +1035,10 @@ export default function OverlayControlPage() {
     }
   };
 
-  const handleTriggerTeamRosters = async () => {
+  const handleTriggerTeamRosters = async (options = {}) => {
     const payload = {
       type: "teamRosters",
-      autoFade: teamRostersAutoFade,
+      autoFade: options.autoFade ?? teamRostersAutoFade,
       title: "Team rosters",
       teamAName: matchDetails?.team_a?.name || "Team A",
       teamBName: matchDetails?.team_b?.name || "Team B",
@@ -856,7 +1070,88 @@ export default function OverlayControlPage() {
     }
   };
 
-  const handleTriggerMatchStatus = async () => {
+  // Drop overlays that stopped reporting (30 s without a heartbeat).
+  const [statusClock, setStatusClock] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setStatusClock(Date.now()), 5000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    setOverlayStatuses({});
+  }, [trimmedMatchId]);
+  const overlayStatusList = useMemo(
+    () =>
+      Object.values(overlayStatuses)
+        .filter((status) => statusClock - status.receivedAt < 30000)
+        .sort((a, b) => (a.clientId < b.clientId ? -1 : 1)),
+    [overlayStatuses, statusClock],
+  );
+
+  // ── Autopilot ──
+  // Watches the match log for new rows (rows present when a match is opened
+  // are history) and the Lock & go live switch. Cards it shows always fade on
+  // their own. Runs only while this control room is open.
+  const autopilotSeenRef = useRef(null);
+  const autopilotLoadStartedRef = useRef(false);
+  const autopilotHandlersRef = useRef({});
+  useEffect(() => {
+    autopilotSeenRef.current = null;
+    autopilotLoadStartedRef.current = false;
+  }, [trimmedMatchId]);
+  useEffect(() => {
+    const rows = sortedMatchLogs || [];
+    if (isLoadingLogs) autopilotLoadStartedRef.current = true;
+    if (autopilotSeenRef.current === null) {
+      // History is everything there once the log has loaded for this match
+      // (a test match has no load step). Until then nothing can fire.
+      const ready = isTestMode || (autopilotLoadStartedRef.current && !isLoadingLogs);
+      if (ready) autopilotSeenRef.current = new Set(rows.map((row) => row.id));
+      return;
+    }
+    const fresh = rows.filter((row) => row?.id && !autopilotSeenRef.current.has(row.id));
+    fresh.forEach((row) => autopilotSeenRef.current.add(row.id));
+    if (!fresh.length) return;
+    const codes = new Set(
+      fresh.map((row) =>
+        (row.event_type_id != null
+          ? resolvedEventCodeCache.get(row.event_type_id) ?? resolveEventCode(eventTypeCache.get(row.event_type_id))
+          : "") || "",
+      ),
+    );
+    const handlers = autopilotHandlersRef.current;
+    if (autopilot.statsAtHalftime && codes.has("halftime_start")) handlers.matchStats?.({ autoFade: true });
+    if (autopilot.statsAtFullTime && codes.has("match_end")) handlers.matchStats?.({ autoFade: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortedMatchLogs, isLoadingLogs, isTestMode]);
+  // 5 minutes before the scheduled start time: match info, then team rosters
+  // as soon as the match info card has left (it fades after 10 s). Once per
+  // match; a page opened later than that moment (by more than a minute) does
+  // not show them late.
+  const preStartFiredRef = useRef("");
+  const scheduledStart = matchDetails?.start_time || "";
+  useEffect(() => {
+    if (!autopilot.preStartCards || !trimmedMatchId || !scheduledStart) return undefined;
+    const fireAt = new Date(scheduledStart).getTime() - 5 * 60 * 1000;
+    if (!Number.isFinite(fireAt)) return undefined;
+    const key = `${trimmedMatchId}:${scheduledStart}`;
+    if (preStartFiredRef.current === key) return undefined;
+    const delay = fireAt - Date.now();
+    if (delay < -60 * 1000) return undefined;
+    // setTimeout cannot wait longer than ~24.8 days; nobody keeps the page open that long.
+    if (delay > 2147483647) return undefined;
+    let rostersTimer = null;
+    const startTimer = window.setTimeout(() => {
+      preStartFiredRef.current = key;
+      autopilotHandlersRef.current.matchInfo?.({ autoFade: true });
+      rostersTimer = window.setTimeout(() => autopilotHandlersRef.current.rosters?.({ autoFade: true }), 10500);
+    }, Math.max(0, delay));
+    return () => {
+      window.clearTimeout(startTimer);
+      if (rostersTimer) window.clearTimeout(rostersTimer);
+    };
+  }, [autopilot.preStartCards, trimmedMatchId, scheduledStart]);
+
+  const handleTriggerMatchStatus = async (options = {}) => {
     try {
       const status = (matchDetails?.status || "").toString().trim().toLowerCase();
       const phaseLabel =
@@ -874,7 +1169,7 @@ export default function OverlayControlPage() {
 
       const payload = {
         type: "matchStatus",
-        autoFade: matchStatusAutoFade,
+        autoFade: options.autoFade ?? matchStatusAutoFade,
         phaseLabel,
         teamAName: matchDetails?.team_a?.name || "Team A",
         teamBName: matchDetails?.team_b?.name || "Team B",
@@ -894,6 +1189,13 @@ export default function OverlayControlPage() {
       setBannerStatus(`Match info error: ${error?.message || error}`);
       window.setTimeout(() => setBannerStatus(""), 5000);
     }
+  };
+
+  // Autopilot calls the latest handlers (declared above, so the ref exists).
+  autopilotHandlersRef.current = {
+    matchInfo: (options) => handleTriggerMatchStatus(options),
+    matchStats: (options) => handleTriggerMatchStats(options),
+    rosters: (options) => handleTriggerTeamRosters(options),
   };
 
 
@@ -992,16 +1294,24 @@ export default function OverlayControlPage() {
     const channel = supabase.channel(`overlay-banner:${trimmedMatchId}`);
     overlayBannerChannelRef.current = channel;
     channel
+      .on("broadcast", { event: "overlay-status" }, ({ payload }) => {
+        if (!payload?.clientId) return;
+        setOverlayStatuses((prev) => ({ ...prev, [payload.clientId]: { ...payload, receivedAt: Date.now() } }));
+      })
       .on("broadcast", { event: "event-logo-request" }, () => {
         if (eventLogoRef.current) broadcastEventLogo(eventLogoRef.current);
+        broadcastTeamLogos();
         broadcastBreakChanceSetting(breakChanceEnabledRef.current);
+        broadcastScoreboardVisibility(scoreboardHiddenRef.current);
         broadcastAddonSettings(overlayAddonsRef.current);
         if (testMatchRef.current?.id === trimmedMatchId) broadcastTestMatch(testMatchRef.current);
       })
       .subscribe((status) => {
         if (status !== "SUBSCRIBED") return;
         if (eventLogoRef.current) broadcastEventLogo(eventLogoRef.current);
+        broadcastTeamLogos();
         broadcastBreakChanceSetting(breakChanceEnabledRef.current);
+        broadcastScoreboardVisibility(scoreboardHiddenRef.current);
         broadcastAddonSettings(overlayAddonsRef.current);
         if (testMatchRef.current?.id === trimmedMatchId) broadcastTestMatch(testMatchRef.current);
       });
@@ -1136,6 +1446,8 @@ export default function OverlayControlPage() {
       manualScoreA,
       manualScoreB,
       breakChanceEnabled,
+      scoreboardHidden,
+      autopilot,
       overlayAddons,
       playerStatsAutoFade,
       matchStatsAutoFade,
@@ -1167,6 +1479,8 @@ export default function OverlayControlPage() {
     manualScoreA,
     manualScoreB,
     breakChanceEnabled,
+    scoreboardHidden,
+    autopilot,
     overlayAddons,
     playerStatsAutoFade,
     matchStatsAutoFade,
@@ -1334,6 +1648,7 @@ export default function OverlayControlPage() {
       setRosterByTeam(cached.rosterByTeam || {});
       setRosterError("");
       setIsLoadingRoster(false);
+      setRosterSettledKey(cacheKey);
       return () => {
         isActive = false;
       };
@@ -1359,6 +1674,7 @@ export default function OverlayControlPage() {
       if (error) {
         setRosterError(error.message || "Unable to load team roster.");
         setIsLoadingRoster(false);
+        setRosterSettledKey(cacheKey);
         return;
       }
 
@@ -1398,6 +1714,7 @@ export default function OverlayControlPage() {
         }),
       );
       rosterCache.set(cacheKey, { playersById, rosterByTeam });
+      setRosterSettledKey(cacheKey);
       setRosterPlayersById(playersById);
       setRosterByTeam(rosterByTeam);
       setIsLoadingRoster(false);
@@ -1588,6 +1905,10 @@ export default function OverlayControlPage() {
             setTestMatch={setTestMatch}
             onSelectTestMatch={handleSelectTestMatch}
             onSelectRealMatch={handleSelectRealMatch}
+            onCopyMatchIntoTest={handleCopyMatchIntoTest}
+            testCopyPending={Boolean(pendingTestCopyId)}
+            testCopyError={testCopyError}
+            testCopyResult={testCopyResult}
             testToggleBusy={testToggleBusy}
           />
         ) : null}
@@ -1634,8 +1955,13 @@ export default function OverlayControlPage() {
             setMatchStatusAutoFade={setMatchStatusAutoFade}
             breakChanceEnabled={breakChanceEnabled}
             setBreakChanceEnabled={setBreakChanceEnabled}
+            scoreboardHidden={scoreboardHidden}
+            setScoreboardHidden={setScoreboardHidden}
             overlayAddons={overlayAddons}
             setOverlayAddons={setOverlayAddons}
+            autopilot={autopilot}
+            setAutopilot={setAutopilot}
+            overlayStatuses={overlayStatusList}
             handleTriggerAddonPreview={handleTriggerAddonPreview}
             handleTriggerBanner={handleTriggerBanner}
             handleTriggerMatchStats={handleTriggerMatchStats}

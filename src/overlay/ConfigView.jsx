@@ -1,18 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Field, Input, Select } from "../components/ui/primitives";
 import { TestMatchEditor, TestMatchSimulator } from "./OverlayTestMatchPanel";
+import { OVERLAY_OPTIONS } from "./overlayOptions";
 
-const OVERLAY_OPTIONS = [
-  { value: "overlays/badge-centre.html", label: "Badge centre", hasTeamLogos: true },
-  { value: "overlays/compact-bar.html", label: "Compact bar", hasTeamLogos: true },
-  { value: "overlays/corner-box-bottom-left.html", label: "Corner box (Bottom-L)", hasTeamLogos: true },
-  { value: "overlays/corner-box.html", label: "Corner box (Top-L)", hasTeamLogos: true },
-  { value: "overlays/ctfda.html", label: "CTFDA overlay", hasEventLogo: true },
-  { value: "overlays/top-right-list.html", label: "Top-right list" },
-  { value: "overlays/wfdf-competitive.html", label: "WFDF competitive", hasEventLogo: true },
-  { value: "overlays/wide-bar.html", label: "Wide bar", hasTeamLogos: true },
-  { value: "overlay-debug.html", label: "Debug", hasEventLogo: true },
-];
 
 
 const LOGO_MAX_DIMENSION = 512;
@@ -169,7 +159,12 @@ export function ConfigView({
   onSelectTestMatch,
   onSelectRealMatch,
   testToggleBusy,
+  onCopyMatchIntoTest,
+  testCopyPending,
+  testCopyError,
+  testCopyResult,
 }) {
+  const [copyMatchId, setCopyMatchId] = useState("");
   const overlayOption = OVERLAY_OPTIONS.find((o) => o.value === overlayChoice);
   const showTeamLogos = Boolean(overlayOption?.hasTeamLogos);
   const showEventLogo = Boolean(overlayOption?.hasEventLogo);
@@ -253,6 +248,37 @@ export function ConfigView({
                   ? " Copied from the match that was selected; switching Test match off returns to it."
                   : " Switch off Test match to pick a real match."}
               </p>
+            ) : null}
+
+            {isTestMode ? (
+              <Field
+                label="Load a match by ID"
+                hint="Any match, past ones too: its teams, rosters, log and statistics are copied into the test match. Nothing is written to the database."
+              >
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <Input
+                    value={copyMatchId}
+                    onChange={(event) => setCopyMatchId(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") onCopyMatchIntoTest?.(copyMatchId);
+                    }}
+                    placeholder="Paste a match ID"
+                    disabled={configLocked || testCopyPending}
+                  />
+                  <button
+                    type="button"
+                    className="sc-button"
+                    onClick={() => onCopyMatchIntoTest?.(copyMatchId)}
+                    disabled={configLocked || testCopyPending || !copyMatchId.trim()}
+                  >
+                    {testCopyPending ? "Loading…" : "Load"}
+                  </button>
+                </div>
+                {testCopyResult ? <p className="overlay-option-note">{testCopyResult}</p> : null}
+                {testCopyError ? (
+                  <p className="overlay-data-state overlay-data-state--error">{testCopyError}</p>
+                ) : null}
+              </Field>
             ) : (
             <>
             <Field label="Event">
@@ -303,13 +329,8 @@ export function ConfigView({
                 <p className="overlay-data-state overlay-data-state--error">{eventMatchesError}</p>
               ) : null}
 
-              <div className="config-field-or">or paste a match ID</div>
-              <Input
-                value={matchId}
-                onChange={(event) => setMatchId(event.target.value)}
-                placeholder="e.g. 5e2b7c94"
-                disabled={configLocked}
-              />
+              {/* Pasting a match ID is for the test environment only (Test
+                  match > Load a match by ID); real matches are picked above. */}
               {trimmedMatchId ? (
                 isLoadingDetails ? (
                   <p className="overlay-option-note">Loading…</p>

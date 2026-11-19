@@ -167,6 +167,22 @@ export function TestMatchEditor({ testMatch, setTestMatch }) {
           <Field label="Inter-point (seconds)">
             <Input type="number" min={0} value={testMatch.interPointSeconds} onChange={set("interPointSeconds")} />
           </Field>
+          <Field label="Placeholder logo" hint="Overlays show no StallCount logo; this gives them a dummy event logo to preview.">
+            <label className="overlay-switch">
+              <span className="overlay-switch__label">{testMatch.placeholderLogo ? "On" : "Off"}</span>
+              <span className="overlay-switch__control">
+                <input
+                  type="checkbox"
+                  checked={testMatch.placeholderLogo === true}
+                  onChange={(event) => {
+                    const placeholderLogo = event.target.checked;
+                    setTestMatch((current) => ({ ...current, placeholderLogo }));
+                  }}
+                />
+                <span className="overlay-switch__slider" aria-hidden="true"></span>
+              </span>
+            </label>
+          </Field>
           <Field label="ABBA starts with">
             <Select value={testMatch.abbaPattern} onChange={set("abbaPattern")}>
               <option value="none">No ABBA</option>

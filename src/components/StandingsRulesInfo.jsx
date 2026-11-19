@@ -5,8 +5,9 @@ const WFDF_APPENDIX_HREF =
   "https://rules.wfdf.sport/wp-content/uploads/2026/03/WFDF-Rules-of-Ultimate-2025-2028-Appendix-v2.0.pdf";
 
 // Plain-language summary of how the standings tables are built. Keep in step
-// with src/utils/standings.js (ranking) and src/utils/eventStandings.js (which
-// games each table counts).
+// with src/utils/standings.js (ranking), src/utils/eventStandings.js (which
+// games each table counts) and api/_lib/swissDraw.js (the Swiss draw's order,
+// compareRowsFor).
 const TIE_BREAKERS = [
   "Games won in games between the tied teams",
   "Fewest games forfeited",
@@ -164,6 +165,29 @@ export default function StandingsRulesInfo({ className = "" }) {
               </p>
             </RulesSection>
 
+            <RulesSection title="Swiss draw">
+              <p>
+                A division played as a Swiss draw is one pool played in rounds. Teams do
+                not meet everyone: after each round, teams on similar records are paired
+                with each other, avoiding rematches, so the table settles over the rounds.
+                Its pool table covers every Swiss round played so far.
+              </p>
+              <p>
+                It is ranked differently from a round robin pool, because not every team
+                plays every other team, so head-to-head results cannot settle a tie. The
+                order is games won, then fewest games lost, then points difference, then
+                points scored. (A draw can be set up to compare the strength of each
+                team&rsquo;s opponents before points difference.) A team with a bye that round is given a win with no points
+                scored or conceded, so W-L includes byes.
+              </p>
+              <p>
+                This is the same order the next round is paired from, and the order used
+                to seed any game that takes teams from the Swiss draw, such as a promotion
+                game. The division&rsquo;s final standings appear once the last round is
+                complete, in the same order.
+              </p>
+            </RulesSection>
+
             <RulesSection title="Forfeits">
               <p>
                 When a team is recorded as forfeiting, the other team is given the win,
@@ -180,6 +204,15 @@ export default function StandingsRulesInfo({ className = "" }) {
                 placed above the loser. A placement game not yet played leaves both
                 teams level, shown as &ldquo;3=&rdquo;. Final standings with playoffs
                 count playoff games only.
+              </p>
+              <p>
+                Each division places only its own teams. A team from another division
+                that plays one of its games, such as in a promotion game, is not placed in
+                this division&rsquo;s table, and that game does not change this
+                division&rsquo;s places.
+              </p>
+              <p>
+                A Swiss draw division is placed by its final Swiss table, described above.
               </p>
               <p>
                 Without playoffs, the final table ranks every team in the division on

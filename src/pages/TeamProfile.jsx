@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { MatchMediaButton } from "../components/MatchMediaButton";
 import CalendarSubscribeButton from "../components/CalendarSubscribeButton";
 import { isPastEvent } from "../utils/eventStandings";
@@ -11,7 +11,7 @@ import {
   getTeamMatches,
   getTeamPlayerStats,
 } from "../services/teamService";
-import { hydrateVenueLookup } from "../services/venueService";
+import { getEventPagePath } from "./eventWorkspaces";
 import { getMatchMediaDetails } from "../utils/matchMedia";
 import { matchPath, playerPath, teamPath } from "../utils/links";
 import { usePageMeta, withSiteName } from "../utils/pageMeta";
@@ -45,6 +45,9 @@ function pickMostRecentEventId(matches) {
 
 export default function TeamProfilePage() {
   const { teamId } = useParams();
+  // Arriving from an event's page carries ?eventId=: open on that event.
+  const [searchParams] = useSearchParams();
+  const requestedEventId = searchParams.get("eventId") || "";
   const [activeTab, setActiveTab] = useState("games");
   // "" until the team's matches load, then the most recent event. "All events"
   // is opt-in because it loads every game's stats.
@@ -62,7 +65,6 @@ export default function TeamProfilePage() {
     playerStats: [],
     spiritScores: [],
   });
-  const [venueLookup, setVenueLookup] = useState({});
 
   useEffect(() => {
     let ignore = false;
@@ -85,7 +87,9 @@ export default function TeamProfilePage() {
 
         if (!ignore) {
           setState({ loading: false, error: "", team, matches });
-          setEventFilter(pickMostRecentEventId(matches) ?? "all");
+          const playedRequested =
+            requestedEventId && matches.some((match) => match.event?.id === requestedEventId);
+          setEventFilter(playedRequested ? requestedEventId : pickMostRecentEventId(matches) ?? "all");
         }
       } catch (err) {
         if (!ignore) {
@@ -103,7 +107,7 @@ export default function TeamProfilePage() {
     return () => {
       ignore = true;
     };
-  }, [teamId]);
+  }, [teamId, requestedEventId]);
 
   // Roster, player stats and spirit for the selected event only.
   useEffect(() => {
@@ -140,28 +144,6 @@ export default function TeamProfilePage() {
   const roster = scopedReady ? scoped.roster : EMPTY_LIST;
   const playerStats = scopedReady ? scoped.playerStats : EMPTY_LIST;
   const spiritScores = scopedReady ? scoped.spiritScores : EMPTY_LIST;
-
-  useEffect(() => {
-    const venueIds = state.matches
-      .map((match) => match.venue_id)
-      .filter((id) => id && venueLookup[id] === undefined);
-    if (venueIds.length === 0) return;
-
-    let ignore = false;
-    hydrateVenueLookup(venueIds)
-      .then((lookup) => {
-        if (!ignore) {
-          setVenueLookup((prev) => ({ ...prev, ...lookup }));
-        }
-      })
-      .catch((err) => {
-        console.error("Unable to load venues", err);
-      });
-
-    return () => {
-      ignore = true;
-    };
-  }, [state.matches, venueLookup]);
 
   const matchesById = useMemo(() => {
     const map = new Map();
@@ -268,7 +250,16 @@ export default function TeamProfilePage() {
       });
     }
 
-    return Array.from(rows.values());
+    const all = Array.from(rows.values());
+    // "All events" lists only players who contributed (any goal, assist,
+    // block, turnover or Callahan), so a team with several seasons does not
+    // list every player it ever rostered. One event shows its full roster.
+    if (eventFilter === "all") {
+      return all.filter(
+        (row) => row.goals + row.assists + row.blocks + row.turnovers + (row.callahans ?? 0) > 0,
+      );
+    }
+    return all;
   }, [playerStats, roster, matchesById, eventFilter]);
 
   const rosterCount = useMemo(() => {
@@ -514,7 +505,7 @@ export default function TeamProfilePage() {
                 ) : (
                   <>
                     {activeTab === "games" && (
-                      <GamesTable matches={filteredMatches} teamId={state.team?.id} venueLookup={venueLookup} />
+                      <GamesTable matches={filteredMatches} teamId={state.team?.id} />
                     )}
                     {activeTab === "players" && (
                       <PlayersTable
@@ -540,13 +531,10 @@ export default function TeamProfilePage() {
   );
 }
 
-function GamesTable({ matches, teamId, venueLookup }) {
+function GamesTable({ matches, teamId }) {
   if (!matches?.length) {
     return <EmptyState message="No games available for this team yet." />;
   }
-
-  const resolveVenueName = (match) =>
-    match.venue?.name || (match.venue_id && venueLookup?.[match.venue_id]) || "Venue TBD";
 
   return (
     <Panel variant="light" className="overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)]">
@@ -558,7 +546,7 @@ function GamesTable({ matches, teamId, venueLookup }) {
             <th className="px-3 py-2 text-center sm:px-4 sm:py-3">Score</th>
             <th className="px-3 py-2 sm:px-4 sm:py-3">Team 2</th>
             <th className="px-3 py-2 sm:px-4 sm:py-3">Pool</th>
-            <th className="px-3 py-2 sm:px-4 sm:py-3">Field</th>
+            <th className="px-3 py-2 sm:px-4 sm:py-3">Event</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
@@ -605,7 +593,7 @@ function GamesTable({ matches, teamId, venueLookup }) {
                     <span>{leftTeam.name}</span>
                   ) : (
                     <Link
-                      to={teamPath(leftTeam.id)}
+                      to={teamPath(leftTeam.id, { eventId: match.event?.id })}
                       className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                     >
                       {leftTeam.name}
@@ -624,7 +612,7 @@ function GamesTable({ matches, teamId, venueLookup }) {
                     <span>{rightTeam.name}</span>
                   ) : (
                     <Link
-                      to={teamPath(rightTeam.id)}
+                      to={teamPath(rightTeam.id, { eventId: match.event?.id })}
                       className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                     >
                       {rightTeam.name}
@@ -635,7 +623,16 @@ function GamesTable({ matches, teamId, venueLookup }) {
                   {match.pool?.name || match.division?.name || "—"}
                 </td>
                 <td className="px-3 py-2 text-[var(--sc-surface-light-ink)]/70 sm:px-4 sm:py-3">
-                  {resolveVenueName(match)}
+                  {match.event?.id ? (
+                    <Link
+                      to={getEventPagePath(match.event)}
+                      className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
+                    >
+                      {match.event.name || "Event"}
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
                 </td>
               </tr>
             );
@@ -735,18 +732,19 @@ function PlayersTable({ stats, rosterCount }) {
                     {index + 1}
                   </td>
                   <td className="px-3 py-1.5">
+                    {/* Jersey after the name, as on Player standings. */}
                     <div className="flex items-center gap-2">
-                      {stat.jerseyNumber != null && (
-                        <span className="w-6 shrink-0 text-right text-xs font-semibold text-[var(--sc-surface-light-ink)]/50">
-                          {stat.jerseyNumber}
-                        </span>
-                      )}
                       <Link
                         to={playerPath(stat.playerId)}
                         className="font-semibold text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                       >
                         {stat.playerName}
                       </Link>
+                      {stat.jerseyNumber != null && (
+                        <span className="shrink-0 text-xs font-semibold text-(--sc-surface-light-ink)/40">
+                          #{stat.jerseyNumber}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-3 py-1.5 text-right font-semibold text-[var(--sc-surface-light-ink)]">{total}</td>
@@ -851,7 +849,7 @@ function SpiritTable({ entries, emptyLabel, teamId, variant = "received" }) {
                       <span>{opponent.name}</span>
                     ) : (
                       <Link
-                        to={teamPath(opponent.id)}
+                        to={teamPath(opponent.id, { eventId: entry.match?.event?.id })}
                         className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
                       >
                         {opponent.name}

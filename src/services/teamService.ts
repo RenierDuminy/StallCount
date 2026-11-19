@@ -375,6 +375,7 @@ export type TeamMatchRow = {
   event: {
     id: string;
     name: string;
+    slug?: string | null;
     status?: string | null;
     end_date?: string | null;
   } | null;
@@ -417,7 +418,7 @@ export async function getTeamMatches(teamId: string): Promise<TeamMatchRow[]> {
             media_status,
             has_media,
             venue_id,
-            event:events(id, name, end_date, status:Status),
+            event:events(id, name, slug, end_date, status:Status),
             division:divisions(id, name),
             pool:pools(id, name),
             venue:venues(id, name),

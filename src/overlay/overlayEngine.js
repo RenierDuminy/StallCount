@@ -125,6 +125,8 @@ const _callbacks = {
   metaMessage: [],
   eventLogo: [],
   breakChanceSetting: [],
+  scoreboardVisibility: [],
+  teamLogo: [],
   addonSettings: [],
 };
 
@@ -147,6 +149,8 @@ export function onMetaMessage(fn) { _callbacks.metaMessage.push(fn); }
 export function onEventLogo(fn) { _callbacks.eventLogo.push(fn); }
 // Break chance on/off switch from the control app, sent over realtime for the same reason.
 export function onBreakChanceSetting(fn) { _callbacks.breakChanceSetting.push(fn); }
+export function onScoreboardVisibility(fn) { _callbacks.scoreboardVisibility.push(fn); }
+export function onTeamLogo(fn) { _callbacks.teamLogo.push(fn); }
 // Add-on settings (point duration, score info, gender line) from the control app.
 export function onAddonSettings(fn) { _callbacks.addonSettings.push(fn); }
 
@@ -779,9 +783,16 @@ function _handleIncomingLog(incoming) {
 
 // ─── Test match ───────────────────────────────────────────────────────────────
 
+let _testPlaceholderLogo = false;
+// Test match only: the editor's "Placeholder logo" switch.
+export function isTestPlaceholderLogoOn() {
+  return isTestMatchId(_matchId) && _testPlaceholderLogo;
+}
+
 function _applyTestMatchState(rawState) {
   const state = normalizeTestMatch(rawState);
   if (!state || state.id !== _matchId) return;
+  _testPlaceholderLogo = state.placeholderLogo === true;
   const records = buildTestMatchRecords(state);
 
   _testPlayerNames.clear();
@@ -839,7 +850,17 @@ function _initTestMatch() {
     _fire("metaMessage", { text: "Waiting for the test match from the control room...", isError: false });
   }
 
-  const overlayBannerChannel = _setupBannerChannel();
+  const buildTestChannel = () => {
+    if (_rebuildTimer) {
+      window.clearTimeout(_rebuildTimer);
+      _rebuildTimer = null;
+    }
+    _removeChannels();
+    _channelGeneration += 1;
+    _channels = [_setupBannerChannel(_channelStatusHandler(_channelGeneration, buildTestChannel))];
+  };
+  buildTestChannel();
+  _startHealing(buildTestChannel);
   window.addEventListener("storage", (event) => {
     if (event.key !== TEST_MATCH_STORAGE_KEY || !event.newValue) return;
     try {
@@ -848,16 +869,21 @@ function _initTestMatch() {
       // ignore malformed state
     }
   });
-  window.addEventListener("beforeunload", () => {
-    supabase.removeChannel(overlayBannerChannel);
-  });
 }
 
 // ─── Supabase subscriptions ───────────────────────────────────────────────────
 
 // Shared by real and test matches: banners, logo, break chance and add-on
 // settings from the control app, plus the test match state itself.
-function _setupBannerChannel() {
+let _bannerChannel = null;
+// Overlay -> control room status ("overlay-status"): layout, size, OBS state.
+export function sendOverlayStatus(payload) {
+  _bannerChannel
+    ?.send({ type: "broadcast", event: "overlay-status", payload })
+    ?.catch?.(() => {});
+}
+
+function _setupBannerChannel(onStatus) {
   const overlayBannerChannel = supabase
     .channel(`overlay-banner:${_matchId}`)
     .on("broadcast", { event: "overlay-banner" }, ({ payload }) => {
@@ -865,6 +891,13 @@ function _setupBannerChannel() {
     })
     .on("broadcast", { event: "event-logo" }, ({ payload }) => {
       _fire("eventLogo", typeof payload?.dataUrl === "string" ? payload.dataUrl : "");
+    })
+    .on("broadcast", { event: "team-logo" }, ({ payload }) => {
+      if (payload?.slot !== "A" && payload?.slot !== "B") return;
+      _fire("teamLogo", { slot: payload.slot, dataUrl: typeof payload.dataUrl === "string" ? payload.dataUrl : "" });
+    })
+    .on("broadcast", { event: "scoreboard-visibility" }, ({ payload }) => {
+      _fire("scoreboardVisibility", Boolean(payload?.hidden));
     })
     .on("broadcast", { event: "break-chance-setting" }, ({ payload }) => {
       _fire("breakChanceSetting", Boolean(payload?.enabled));
@@ -882,13 +915,160 @@ function _setupBannerChannel() {
       if (status === "SUBSCRIBED") {
         overlayBannerChannel.send({ type: "broadcast", event: "event-logo-request", payload: {} });
       }
+      onStatus?.(status);
     });
+  _bannerChannel = overlayBannerChannel;
   return overlayBannerChannel;
 }
 
-function _setupSubscriptions() {
-  const overlayBannerChannel = _setupBannerChannel();
+// ─── Staying live for hours ──────────────────────────────────────────────────
+// A realtime connection can die quietly over a long broadcast (network blip,
+// the PC sleeping, a server restart, OBS throttling a source that is not in
+// the live scene). Before this, nothing noticed: the overlay froze until the
+// OBS source was recreated. Now:
+//  - every channel reports its status; an errored, timed-out or closed channel
+//    tears all of them down and builds them again, with growing back-off;
+//  - after any reconnect, and every 3 minutes regardless, the match row and
+//    log are fetched again and merged in (catch-up for anything missed);
+//  - the same catch-up runs when the page becomes visible or the network
+//    comes back.
+const RESYNC_INTERVAL_MS = 3 * 60 * 1000;
+let _channels = [];
+let _channelGeneration = 0;
+let _rebuildTimer = null;
+let _rebuildAttempts = 0;
+let _needsCatchUp = false;
+let _resyncInFlight = false;
+let _healingStarted = false;
 
+function _channelStatusHandler(generation, rebuild) {
+  return (status) => {
+    if (generation !== _channelGeneration) return; // an old channel closing
+    if (status === "SUBSCRIBED") {
+      _rebuildAttempts = 0;
+      if (_needsCatchUp) {
+        _needsCatchUp = false;
+        _resyncFromServer();
+      }
+      return;
+    }
+    if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      _needsCatchUp = true;
+      _scheduleRebuild(rebuild);
+    }
+  };
+}
+
+function _scheduleRebuild(rebuild) {
+  if (_rebuildTimer) return;
+  const delay = Math.min(30000, 1000 * 2 ** Math.min(_rebuildAttempts, 5));
+  _rebuildAttempts += 1;
+  _rebuildTimer = window.setTimeout(() => {
+    _rebuildTimer = null;
+    rebuild();
+  }, delay);
+}
+
+function _removeChannels() {
+  const old = _channels;
+  _channels = [];
+  old.forEach((channel) => {
+    // Fire-and-forget leave; on a dead connection it never completes.
+    try {
+      channel.unsubscribe?.()?.catch?.(() => {});
+    } catch {
+      /* already gone */
+    }
+    try {
+      channel.teardown?.();
+    } catch {
+      /* already gone */
+    }
+    // Drop it from the client's list now: supabase.channel(name) returns an
+    // existing channel of the same name, so the control-room channel (whose
+    // name is fixed) would otherwise get this dead one back. _remove is
+    // internal to realtime-js; guarded so an upgrade cannot break the overlay.
+    try {
+      supabase.realtime?._remove?.(channel);
+    } catch {
+      /* not available */
+    }
+  });
+}
+
+// Fetches the match row and the whole log again and merges them in. Rows the
+// overlay missed are added quietly (no replayed banners); rows deleted
+// meanwhile are removed; the stoppage / timeout / halftime banners then follow
+// the corrected state. A failed fetch changes nothing.
+async function _resyncFromServer() {
+  if (!_matchId || isTestMatchId(_matchId) || _resyncInFlight) return;
+  _resyncInFlight = true;
+  try {
+    const { data: matchRow, error: matchError } = await supabase
+      .from("matches")
+      .select(MATCH_FIELDS)
+      .eq("id", _matchId)
+      .maybeSingle();
+    if (!matchError && matchRow) {
+      _currentMatch = { ...(_currentMatch || {}), ...matchRow };
+      _fire("matchUpdate", _currentMatch);
+    }
+
+    await _loadMatchEventTypesOnce();
+    const rows = [];
+    for (let from = 0; ; from += MATCH_LOG_PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from("match_logs")
+        .select(MATCH_LOG_FIELDS)
+        .eq("match_id", _matchId)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + MATCH_LOG_PAGE_SIZE - 1);
+      if (error) return; // keep what we have
+      rows.push(...(data || []));
+      if (!data || data.length < MATCH_LOG_PAGE_SIZE) break;
+    }
+
+    const serverIds = new Set(rows.map((row) => row.id));
+    const removed = _matchLogs.filter((log) => !serverIds.has(log.id)).map((log) => log.id);
+    removed.forEach((id) => _removeMatchLog(id));
+    rows.forEach((row) => _storeMatchLog(row));
+    _hydrateStoredMatchLogs();
+
+    _recomputeIncrementalState();
+    _fire("bannerTrigger", "syncStoppage", null);
+    _fire("bannerTrigger", "syncTimeout", null);
+    _fire("bannerTrigger", "syncHalftime", null);
+    if (_currentMatch) {
+      const sp = _buildScorePayload();
+      _fire("scoreUpdate", sp);
+      _refreshClockInterval(sp?.clockInfo);
+    }
+    _fire("metaMessage", { text: "", isError: false });
+  } catch {
+    /* network trouble: the next resync tries again */
+  } finally {
+    _resyncInFlight = false;
+  }
+}
+
+function _startHealing(rebuild) {
+  if (_healingStarted) return;
+  _healingStarted = true;
+  window.setInterval(() => {
+    if (!isTestMatchId(_matchId)) _resyncFromServer();
+  }, RESYNC_INTERVAL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && !isTestMatchId(_matchId)) _resyncFromServer();
+  });
+  window.addEventListener("online", () => {
+    _needsCatchUp = true;
+    rebuild();
+  });
+  window.addEventListener("beforeunload", _removeChannels);
+}
+
+function _setupSubscriptions() {
   _loadMatchEventTypesOnce().then(() => {
     _hydrateStoredMatchLogs();
     if (_currentMatch) {
@@ -896,8 +1076,19 @@ function _setupSubscriptions() {
     }
   });
 
+  const build = () => {
+    if (_rebuildTimer) {
+      window.clearTimeout(_rebuildTimer);
+      _rebuildTimer = null;
+    }
+    _removeChannels();
+    _channelGeneration += 1;
+    const onStatus = _channelStatusHandler(_channelGeneration, build);
+    const overlayBannerChannel = _setupBannerChannel(onStatus);
+
   const matchChannel = supabase
-    .channel(`overlay:match:${_matchId}`)
+    // Name per rebuild, so a rebuild can never be handed the old channel.
+    .channel(`overlay:match:${_matchId}:${_channelGeneration}`)
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "matches", filter: `id=eq.${_matchId}` },
@@ -933,10 +1124,10 @@ function _setupSubscriptions() {
         });
       },
     )
-    .subscribe();
+    .subscribe(onStatus);
 
   const matchLogsChannel = supabase
-    .channel(`overlay:match_logs:${_matchId}`)
+    .channel(`overlay:match_logs:${_matchId}:${_channelGeneration}`)
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "match_logs", filter: `match_id=eq.${_matchId}` },
@@ -949,13 +1140,13 @@ function _setupSubscriptions() {
         if (payload.new) _handleIncomingLog(payload.new);
       },
     )
-    .subscribe();
+    .subscribe(onStatus);
 
-  window.addEventListener("beforeunload", () => {
-    supabase.removeChannel(overlayBannerChannel);
-    supabase.removeChannel(matchChannel);
-    supabase.removeChannel(matchLogsChannel);
-  });
+    _channels = [overlayBannerChannel, matchChannel, matchLogsChannel];
+  };
+
+  build();
+  _startHealing(build);
 }
 
 // ─── Public lifecycle ─────────────────────────────────────────────────────────

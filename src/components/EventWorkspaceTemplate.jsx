@@ -26,8 +26,10 @@ import { useCachedQuery } from "../hooks/useCachedQuery";
 import {
   buildFinalStandings,
   buildPoolStandings,
+  buildSwissPoolStandings,
   getPlayoffMatchIds,
   getFinalStandingsModes,
+  getUnfinishedSwissDivisionIds,
   isCompletedEventStatus,
   isPastEvent,
 } from "../utils/eventStandings";
@@ -307,14 +309,34 @@ export default function EventWorkspaceTemplate({
   // Over by status or by end date: no calendar, no WFDF rules link.
   const isEventPast = isPastEvent({ status: eventStatus, endDate: eventData?.end_date });
 
+  // A division run as a Swiss draw is a pool stage played in rounds. Its pool
+  // shows the live Swiss table (swissByPool below), and its final table is held
+  // back until every round has a result.
+  const unfinishedSwissDivisionIds = useMemo(
+    () => getUnfinishedSwissDivisionIds(brackets, matches),
+    [brackets, matches],
+  );
+
   // Per-division final standings mode (see getFinalStandingsModes): a division
   // with playoffs gets a playoff-only final table once one has a result and
   // keeps its pool tables; a division without playoffs gets a full final table
   // once the event is completed, which replaces its pool tables.
   const finalModeByDivision = useMemo(
     () =>
-      getFinalStandingsModes({ eventData, matches, playoffMatchIds, isEventCompleted }),
-    [eventData, matches, playoffMatchIds, isEventCompleted],
+      getFinalStandingsModes({
+        eventData,
+        matches,
+        playoffMatchIds,
+        isEventCompleted,
+        unfinishedSwissDivisionIds,
+      }),
+    [eventData, matches, playoffMatchIds, isEventCompleted, unfinishedSwissDivisionIds],
+  );
+
+  // poolId -> live Swiss standings, for pools that hold a Swiss draw's teams.
+  const swissByPool = useMemo(
+    () => buildSwissPoolStandings({ eventData, matches, brackets }),
+    [eventData, matches, brackets],
   );
 
   const finalStandings = useMemo(
@@ -324,19 +346,25 @@ export default function EventWorkspaceTemplate({
   );
 
   // Division standings exclude playoff games, and skip any division whose
-  // final table has replaced them.
+  // final table has replaced them. A Swiss pool shows the Swiss table instead,
+  // because its games are all bracket games and the ordinary table would be
+  // empty.
   const standingsByPool = useMemo(() => {
     if (!eventData?.divisions?.length) return [];
     return eventData.divisions
       .filter((division) => finalModeByDivision.get(division.id) !== "all")
       .flatMap((division, divisionIndex) =>
-        (division?.pools || []).map((pool, poolIndex) => ({
-          id: pool.id || `${division.id || divisionIndex}-${poolIndex}`,
-          name: pool.name || "Pool",
-          rows: buildPoolStandings(pool, matches, playoffMatchIds),
-        })),
+        (division?.pools || []).map((pool, poolIndex) => {
+          const swiss = swissByPool.get(pool.id) || null;
+          return {
+            id: pool.id || `${division.id || divisionIndex}-${poolIndex}`,
+            name: pool.name || "Pool",
+            rows: swiss ? swiss.rows : buildPoolStandings(pool, matches, playoffMatchIds),
+            swiss,
+          };
+        }),
       );
-  }, [eventData, matches, playoffMatchIds, finalModeByDivision]);
+  }, [eventData, matches, playoffMatchIds, finalModeByDivision, swissByPool]);
 
   // Every division's pools replaced by final tables: hide the whole block.
   const showDivisionStandings =
@@ -472,12 +500,16 @@ export default function EventWorkspaceTemplate({
     [brackets],
   );
 
+  // The bracket's cards carry the game's name ("Semifinal 1", "Round 3 game 2")
+  // in the corner, exactly as the schedule cards do, so a game reads the same in
+  // both places. The column heading names the round; this names the game.
   const renderBracketMatchCard = (match) => {
     const showScore = isFinishedMatch(match.status);
     return (
       <StandardEventMatchCard
         match={match}
         eyebrow={match.start_time ? formatMatchTime(match.start_time) : "Time TBC"}
+        cornerLabel={playoffNodeNameByMatchId.get(match.id) || ""}
         title={formatMatchup(match)}
         score={showScore ? formatScoreLine(match) : null}
         status={formatMatchStatus(match.status, showScore ? "Final" : "Scheduled", match)}
@@ -631,6 +663,7 @@ export default function EventWorkspaceTemplate({
                       rows={division.rows}
                       showRank
                       showScoreDiff={division.mode !== "playoffs"}
+                      eventId={eventId}
                     />
                   </Panel>
                 ))}
@@ -670,7 +703,7 @@ export default function EventWorkspaceTemplate({
                   <p className="truncate text-xs font-semibold uppercase tracking-wide text-ink" title={pool.name}>
                     {pool.name}
                   </p>
-                  <StandardStandingsTable rows={pool.rows} />
+                  <StandardStandingsTable rows={pool.rows} showRank={Boolean(pool.swiss)} eventId={eventId} />
                 </Panel>
               ))}
             </div>

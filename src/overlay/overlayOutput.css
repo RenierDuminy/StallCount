@@ -1110,3 +1110,86 @@ body.overlay-fixed .overlay-event {
   opacity: 0.72;
   font-weight: 600;
 }
+
+/* Score info card, for layouts that do not define their own #scoreInfoBanner:
+   the scoring team on the left, then "Scorer – name" / "Assist – name" rows. */
+.score-info-card {
+  position: absolute;
+  left: 50%;
+  bottom: 48px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  transform: translateX(-50%) translateY(24px);
+  opacity: 0;
+  pointer-events: none;
+  font-family: "Barlow Semi Condensed", sans-serif;
+  white-space: nowrap;
+  transition: opacity 0.22s, transform 0.22s;
+}
+.score-info-card.is-active,
+.score-info-card.is-persistent {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.score-info-card__team {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 220px;
+  padding: 8px 20px;
+  background: var(--banner-team-bg, #1f2933);
+  color: var(--banner-team-text, #ffffff);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.score-info-card__team img { display: none; height: 48px; max-width: 96px; object-fit: contain; }
+.score-info-card__team img.has-image { display: block; }
+.score-info-card .score-info-rows {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr);
+  align-content: center;
+  column-gap: 10px;
+  row-gap: 4px;
+  min-width: 300px;
+  padding: 10px 20px;
+  background: #111111;
+  color: #ffffff;
+  text-transform: uppercase;
+}
+.score-info-card .score-info-row { display: contents; }
+.score-info-card .score-info-row__label,
+.score-info-card .score-info-row__dash { font-size: 16px; font-weight: 700; letter-spacing: 0.08em; align-self: center; }
+.score-info-card .score-info-row__name { font-size: 22px; font-weight: 700; align-self: center; }
+
+/* Names on the team colour; scorer large, assist smaller. */
+.score-info-card .score-info-rows {
+  background: var(--banner-team-bg, #1f2933);
+  color: var(--banner-team-text, #ffffff);
+  border-left: 2px solid color-mix(in srgb, var(--banner-team-text, #ffffff) 30%, transparent);
+  row-gap: 2px;
+}
+.score-info-card .score-info-row--scorer .score-info-row__name,
+.score-info-card .score-info-row--callahan .score-info-row__name { font-size: 28px; }
+.score-info-card .score-info-row--assist .score-info-row__name { font-size: 19px; }
+.score-info-card .score-info-row--assist .score-info-row__label,
+.score-info-card .score-info-row--assist .score-info-row__dash { font-size: 14px; opacity: 0.85; }
+
+/* "Hide scoreboard" in the control room's Overlay configuration. */
+.overlay-scoreboard-hidden {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transition: opacity 0.25s ease, visibility 0s linear 0.25s;
+}
+
+/* OBS layouts must always be see-through. The body rule at the top of this
+   file paints #0b1320, and the layouts' own "transparent" loses to it (this
+   file loads later), so only OBS's default custom CSS was keeping streams
+   visible: clearing that box would have covered the whole picture. */
+html:has(body.overlay-fixed),
+body.overlay-fixed {
+  background: transparent;
+}
