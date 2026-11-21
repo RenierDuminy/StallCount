@@ -1,5 +1,8 @@
 import "../theme.css";
 import "./overlayOutput.css";
+// Must stay the first module import: it swaps in the standard cards before
+// the `elements` lookups below run.
+import "./overlayCards.js";
 import {
   init,
   updateSettings,
@@ -768,6 +771,8 @@ function updateOverlay(payload) {
   const resolvedLogo = resolveEventLogo();
 
   if (elements.eventName) elements.eventName.textContent = eventName || "Event";
+  // For the standard cards' footers (overlayCards.js).
+  window.dispatchEvent(new CustomEvent("overlay:event-info", { detail: { name: eventName || "" } }));
   if (elements.logoFallback) elements.logoFallback.textContent = getInitials(eventName);
   const statusLabelEls = document.querySelectorAll('[data-role="status-label"]');
   if (statusLabelEls.length) {
@@ -858,6 +863,10 @@ function resolveEventLogo() {
 
 function applyEventLogo(src) {
   applyLogo(src);
+  // For the standard cards' heading logo: only a real event logo.
+  window.dispatchEvent(
+    new CustomEvent("overlay:event-info", { detail: { logo: src && src !== DEFAULT_LOGO_SRC ? src : "" } }),
+  );
   if (elements.matchStatusLogo) {
     // The match info card shows only a real event logo, never the StallCount
     // fallback: no logo, no image.

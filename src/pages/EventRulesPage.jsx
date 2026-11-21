@@ -5,6 +5,7 @@ import { useEventSectionRoute } from "./eventRouteHooks";
 import { usePageMeta, withSiteName } from "../utils/pageMeta";
 import { Card, Field, Panel, SectionHeader, SectionShell, Select } from "../components/ui/primitives";
 import { getEventsList } from "../services/leagueService";
+import { isPastEvent } from "../utils/eventStandings";
 
 const parseEventRules = (rawRules) => {
   if (!rawRules) return null;
@@ -211,7 +212,6 @@ export default function EventRulesPage() {
       <SectionShell as="header" className="py-4 sm:py-6">
         <Card className="space-y-4 p-5 sm:p-7">
           <SectionHeader
-            eyebrow="Event rules"
             title="Full ruleset by event"
             description="Inspect the exact rules payload configured on each event."
             action={
@@ -245,6 +245,27 @@ export default function EventRulesPage() {
       </SectionShell>
 
       <SectionShell as="main" className="space-y-4 sm:space-y-6">
+        {/* The rules of play themselves. Moved here from the event page header;
+            left out for past events, which may have played under older rules. */}
+        {selectedEvent && !isPastEvent({ status: selectedEvent.status, endDate: selectedEvent.end_date }) ? (
+          <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold text-ink">WFDF rules of ultimate</h2>
+              <p className="text-sm text-ink-muted">
+                The official 2025–2028 rules this event plays under, published by the World Flying Disc Federation.
+              </p>
+            </div>
+            <a
+              href="https://wfdf.sport/2025/01/wfdf-publishes-2025-2028-ultimate-rules/"
+              target="_blank"
+              rel="noreferrer"
+              className="sc-button rounded-lg! shrink-0 whitespace-nowrap"
+            >
+              Read the WFDF rules
+            </a>
+          </Card>
+        ) : null}
+
         {error && (
           <Card variant="muted" className="border border-rose-300/30 p-4 text-sm text-rose-700">
             {error}
@@ -253,7 +274,7 @@ export default function EventRulesPage() {
 
         <Card className="space-y-4 p-4 sm:p-6">
           <SectionHeader
-            eyebrow="Ruleset"
+            title="Ruleset"
             description={
               selectedEventId
                 ? "Structured view of the full event ruleset."

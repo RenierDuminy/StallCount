@@ -371,8 +371,7 @@ export default function SignupManagementPage() {
     <div className="min-h-screen bg-surface text-ink">
       <SectionShell as="header" className="py-6">
         <Card className="space-y-4 p-6 sm:p-8">
-          <SectionHeader
-            eyebrow="Admin"
+          <SectionHeader
             title="Signup management"
             description="Download event roster players from the database as a CSV with one column per team."
             action={
@@ -397,8 +396,7 @@ export default function SignupManagementPage() {
 
       <SectionShell as="main" className="space-y-5 pb-16">
         <Card className="space-y-4 p-5">
-          <SectionHeader
-            eyebrow="Scope"
+          <SectionHeader
             title="Event access scope"
             description={
               hasAdminAccess
@@ -464,8 +462,7 @@ export default function SignupManagementPage() {
         </Card>
 
         <Card className="space-y-4 p-5">
-          <SectionHeader
-            eyebrow="Roster CSV"
+          <SectionHeader
             title="Export preview"
             description="The downloaded CSV uses team names as column headers and lists each linked player underneath."
           />
@@ -494,7 +491,7 @@ export default function SignupManagementPage() {
                       >
                         <div className="text-sm font-semibold text-ink">{team.name}</div>
                         {team.shortName ? (
-                          <div className="text-[11px] uppercase tracking-wide text-ink-muted">
+                          <div className="text-xs uppercase tracking-wide text-ink-muted">
                             {team.shortName}
                           </div>
                         ) : null}

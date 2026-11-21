@@ -6,8 +6,8 @@
    the `theme.extend` block from the former tailwind.config.js. The `--sc-*`
    variables it references are defined in theme.css. */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
-    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  /* The body font is set in theme.css (--sc-font-body); the font-sans class follows it. */
+  --font-sans: var(--sc-font-body);
 
   --color-brand: #0e9e6e;
   --color-brand-light: #33ba8a;
@@ -25,6 +25,7 @@
   --color-border: var(--sc-border);
   --color-border-strong: var(--sc-border-strong);
   --color-border-glow: var(--sc-border-glow);
+  --color-divider: var(--sc-divider);
 
   --color-accent: var(--sc-accent);
   --color-accent-strong: var(--sc-accent-strong);
@@ -55,15 +56,62 @@
   --radius-sc-lg: var(--sc-radius-lg);
   --radius-sc-xl: var(--sc-radius-xl);
 
+  /* Light pages and other named colours (values live in theme.css). */
+  --color-light-page: var(--sc-light-page);
+  --color-light-tint: var(--sc-light-tint);
+  --color-light-zebra: var(--sc-light-zebra);
+  --color-light-selected: var(--sc-light-selected);
+  --color-light-primary: var(--sc-light-primary);
+  --color-light-edge: var(--sc-light-edge);
+  --color-light-success: var(--sc-light-success);
+  --color-light-ink: var(--sc-light-ink);
+  --color-accent-ink: var(--sc-button-ink);
+  --color-surface-menu: var(--sc-surface-menu);
+  --color-panel-green: var(--sc-panel-green);
+  --color-gold-from: var(--sc-gold-from);
+  --color-gold-to: var(--sc-gold-to);
+  --color-team-a: var(--sc-team-a);
+  --color-team-b: var(--sc-team-b);
+  --color-ev-timeout: var(--sc-ev-timeout);
+  --color-ev-stoppage: var(--sc-ev-stoppage);
+  --color-ev-halftime: var(--sc-ev-halftime);
+  --color-ev-callahan: var(--sc-ev-callahan);
+  --color-ev-goal-a: var(--sc-ev-goal-a);
+  --color-ev-goal-b: var(--sc-ev-goal-b);
+  --color-ev-turnover: var(--sc-ev-turnover);
+
   /* Reduced global rounding scale (overrides Tailwind defaults).
-     Pill/circle (`rounded-full`) is intentionally left untouched. */
-  --radius-sm: 3px;
-  --radius-DEFAULT: 4px;
-  --radius-md: 5px;
-  --radius-lg: 6px;
-  --radius-xl: 8px;
-  --radius-2xl: 10px;
-  --radius-3xl: 12px;
+     Pill/circle (`rounded-full`) is intentionally left untouched.
+     Values are set in theme.css. */
+  --radius-sm: var(--sc-rounded-sm);
+  --radius-DEFAULT: var(--sc-rounded);
+  --radius-md: var(--sc-rounded-md);
+  --radius-lg: var(--sc-rounded-lg);
+  --radius-xl: var(--sc-rounded-xl);
+  --radius-2xl: var(--sc-rounded-2xl);
+  --radius-3xl: var(--sc-rounded-3xl);
+
+  /* Type scale: discrete steps set in theme.css. xs..4xl are aliases of the steps. */
+  --text-xs: var(--sc-text-xs);
+  --text-sm: var(--sc-text-sm);
+  --text-base: var(--sc-text-base);
+  --text-lg: var(--sc-text-lg);
+  --text-xl: var(--sc-text-xl);
+  --text-2xl: var(--sc-text-2xl);
+  --text-3xl: var(--sc-text-3xl);
+  --text-4xl: var(--sc-text-4xl);
+  --text-caption: var(--sc-text-caption);
+  --text-small: var(--sc-text-small);
+  --text-body: var(--sc-text-body);
+  --text-lead: var(--sc-text-lead);
+  --text-title: var(--sc-text-title);
+  --text-h2: var(--sc-text-h2);
+  --text-h1: var(--sc-text-h1);
+  --text-h1--line-height: 1.15;
+  --text-stat-md: var(--sc-text-stat-md);
+  --text-stat-md--line-height: 1.1;
+  --text-stat: var(--sc-text-stat);
+  --text-stat--line-height: 1;
 
   --shadow-card: var(--sc-shadow-card);
   --shadow-strong: var(--sc-shadow-strong);

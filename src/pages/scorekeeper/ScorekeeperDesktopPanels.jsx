@@ -55,7 +55,7 @@ export function DesktopRosterPanel({ teamName, players, stats, loading, error })
   );
 
   return (
-    <section className="rounded-3xl border border-[#0f5132]/40 bg-white p-2 text-[#0f5132]">
+    <section className="rounded-xl border border-[#0f5132]/40 bg-white p-2 text-[#0f5132]">
       <h3 className="border-b-2 border-[#0f5132]/30 pb-1 text-base font-semibold">{teamName}</h3>
       {error ? <p className="mt-1 text-xs text-rose-700">{error}</p> : null}
       {loading ? (
@@ -122,14 +122,14 @@ export function DesktopRosterPanel({ teamName, players, stats, loading, error })
 
 export function PointSummaryPanel({ points, teamAShort, teamBShort }) {
   return (
-    <section className="rounded-3xl border border-[#0f5132]/40 bg-white p-2 text-[#0f5132]">
+    <section className="rounded-xl border border-[#0f5132]/40 bg-white p-2 text-[#0f5132]">
       <h3 className="border-b-2 border-[#0f5132]/30 pb-1 text-base font-semibold">Point summary</h3>
       {points.length === 0 ? (
         <p className="mt-2 text-xs text-slate-500">No points scored yet.</p>
       ) : (
         <table className="mt-1 w-full text-sm tabular-nums">
           <thead>
-            <tr className="text-[11px] uppercase tracking-wide text-slate-500">
+            <tr className="text-xs uppercase tracking-wide text-slate-500">
               <th className="py-1 text-left font-semibold">Pt</th>
               <th className="py-1 text-left font-semibold">Team</th>
               <th className="py-1 text-left font-semibold">Score</th>

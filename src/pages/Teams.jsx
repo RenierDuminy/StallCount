@@ -94,8 +94,7 @@ export default function TeamsPage() {
   return (
     <div className="pb-16 text-ink">
       <SectionShell as="header" className="py-4 sm:py-5">
-        <SectionHeader
-          eyebrow="Teams"
+        <SectionHeader
           title="Registered teams"
           description="Registered teams across all tournaments and leagues."
         />
@@ -104,7 +103,7 @@ export default function TeamsPage() {
       <SectionShell as="main" className="space-y-4 sm:space-y-6">
         <div className="flex flex-col gap-4 border-y border-border py-4 sm:flex-row sm:items-end sm:justify-between">
           <SectionHeader
-            eyebrow="Teams list"
+            title="Teams list"
             description={resultDescription}
           />
           <Field className="w-full max-w-xs" label="Search teams" htmlFor="teams-search">

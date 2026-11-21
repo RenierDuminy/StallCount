@@ -459,8 +459,6 @@ export default function MediaAdminPage() {
       <SectionShell as="header" className="py-4">
         <Card className="space-y-4 overflow-hidden p-5 sm:p-6">
           <SectionHeader
-            eyebrow="Media"
-            eyebrowVariant="media"
             title="Match media control"
             action={
               <div className="flex flex-wrap gap-2">
@@ -482,7 +480,7 @@ export default function MediaAdminPage() {
                 key={item.label}
                 className={`rounded-2xl border p-3 transition-all ${getStatCardClassName(item.tone)}`}
               >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ink-muted">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-muted">
                   {item.label}
                 </p>
                 <p className="mt-1.5 text-sm font-semibold text-ink sm:text-base">{item.value}</p>
@@ -721,7 +719,7 @@ export default function MediaAdminPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-base font-semibold text-ink">{selectedTeam.name}</p>
                       {isTeamInSelectedMatch(selectedTeam.id, selectedMatch) ? (
-                        <span className="rounded-full border border-[rgba(255,231,168,0.4)] bg-[rgba(255,231,168,0.12)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#fff1ba]">
+                        <span className="rounded-full border border-[rgba(255,231,168,0.4)] bg-[rgba(255,231,168,0.12)] px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.18em] text-[#fff1ba]">
                           Active match
                         </span>
                       ) : null}

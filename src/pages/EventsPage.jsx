@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { getEventsList } from "../services/leagueService";
 import { Card, Panel, SectionHeader, SectionShell } from "../components/ui/primitives";
 import EventSummaryPanel from "./events/EventSummaryPanel";
-import { getEventPagePath } from "./eventWorkspaces";
+import { getEventPagePath, getEventSlug } from "./eventWorkspaces";
 import { CLOSED_STATUSES, IN_PROGRESS_STATUSES, PENDING_STATUSES } from "../constants/statusCodes";
 
 const DIVISION_LABELS = {
@@ -49,6 +49,15 @@ const normalizeEventStatusTab = (value) => {
   return "current";
 };
 
+
+// The selected event is kept in the address by its slug: `/events?status=past&event=<slug>`.
+// Old links carry `?eventId=<uuid>` (before 2026-11-20); they still select the
+// event and the address is rewritten to the slug form. Retire after 2027-05-20.
+const findEventIdByParam = (events, slug, legacyId) => {
+  if (legacyId) return events.some((evt) => evt.id === legacyId) ? legacyId : null;
+  if (!slug) return null;
+  return events.find((evt) => getEventSlug(evt) === slug)?.id || null;
+};
 
 export default function EventsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -96,8 +105,17 @@ export default function EventsPage() {
     };
   }, [eventStatusTab, eventsByTab]);
 
-  const requestedEventId = searchParams.get("eventId") || null;
+  const requestedSlug = searchParams.get("event") || null;
+  const legacyEventId = searchParams.get("eventId") || null;
+  const requestedEventId = useMemo(
+    () => findEventIdByParam(events, requestedSlug, legacyEventId),
+    [events, requestedSlug, legacyEventId],
+  );
   const requestedStatusTab = normalizeEventStatusTab(searchParams.get("status"));
+  const slugOf = (eventId) => {
+    const event = events.find((evt) => evt.id === eventId);
+    return event ? getEventSlug(event) : null;
+  };
 
   useEffect(() => {
     setEventStatusTab(requestedStatusTab);
@@ -111,14 +129,17 @@ export default function EventsPage() {
       nextId = filteredEvents[0]?.id || null;
     }
     setSelectedEventId(nextId);
-    if (nextId) {
-      if (requestedEventId !== nextId || requestedStatusTab !== eventStatusTab) {
-        setSearchParams({ eventId: nextId, status: eventStatusTab }, { replace: true });
+    // Settle the address on the slug form (a replace: this is the page
+    // choosing a default or tidying an old link, not the user moving on).
+    const nextSlug = nextId ? getEventSlug(filteredEvents.find((evt) => evt.id === nextId)) : null;
+    if (nextSlug) {
+      if (legacyEventId || requestedSlug !== nextSlug || requestedStatusTab !== eventStatusTab) {
+        setSearchParams({ status: eventStatusTab, event: nextSlug }, { replace: true });
       }
-    } else if (requestedEventId) {
-      setSearchParams({}, { replace: true });
+    } else if (requestedSlug || legacyEventId) {
+      setSearchParams({ status: eventStatusTab }, { replace: true });
     }
-  }, [eventStatusTab, eventsByTab, filteredEvents, requestedEventId, requestedStatusTab, setSearchParams]);
+  }, [eventStatusTab, eventsByTab, filteredEvents, legacyEventId, requestedEventId, requestedSlug, requestedStatusTab, setSearchParams]);
 
   const selectedEvent = useMemo(
     () => events.find((evt) => evt.id === selectedEventId) || null,
@@ -126,12 +147,10 @@ export default function EventsPage() {
   );
 
   const handleSelectEvent = (eventId) => {
+    // A choice is a new history entry, so Back returns to the previous one.
     setSelectedEventId(eventId);
-    if (eventId) {
-      setSearchParams({ eventId, status: eventStatusTab }, { replace: true });
-    } else {
-      setSearchParams({}, { replace: true });
-    }
+    const slug = eventId ? slugOf(eventId) : null;
+    setSearchParams(slug ? { status: eventStatusTab, event: slug } : { status: eventStatusTab });
   };
 
   const handleSelectEventStatusTab = (tabKey) => {
@@ -145,10 +164,8 @@ export default function EventsPage() {
     if (cachedEvents !== null) {
       setSelectedEventId(nextEventId);
     }
-    setSearchParams(
-      nextEventId ? { eventId: nextEventId, status: nextTab } : { status: nextTab },
-      { replace: true },
-    );
+    const nextSlug = nextEventId ? slugOf(nextEventId) : null;
+    setSearchParams(nextSlug ? { status: nextTab, event: nextSlug } : { status: nextTab });
   };
 
   const formatDate = (value) => {
@@ -192,7 +209,7 @@ export default function EventsPage() {
                         key={tab.key}
                         type="button"
                         onClick={() => handleSelectEventStatusTab(tab.key)}
-                        className={`${eventStatusTab === tab.key ? "sc-button" : "sc-button is-ghost"} min-w-0 justify-center px-3`}
+                        className={`${eventStatusTab === tab.key ? "sc-button" : "sc-button is-ghost"} min-w-0 justify-center rounded-2xl! px-3`}
                       >
                         {tab.label}
                       </button>
@@ -290,17 +307,17 @@ export default function EventsPage() {
                 <h3 className="text-lg font-semibold leading-tight text-ink">{selectedEvent.name}</h3>
                 <Panel variant="muted" className="grid grid-cols-2 gap-x-4 gap-y-2 p-3 lg:grid-cols-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-wide text-ink-muted">Dates</p>
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">Dates</p>
                     <p className="text-sm font-semibold text-ink">
                       {formatDate(selectedEvent.start_date)} - {formatDate(selectedEvent.end_date)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-[11px] uppercase tracking-wide text-ink-muted">Location</p>
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">Location</p>
                     <p className="text-sm font-semibold text-ink">{selectedEvent.location || "TBD"}</p>
                   </div>
                   <div>
-                    <p className="text-[11px] uppercase tracking-wide text-ink-muted">Division</p>
+                    <p className="text-xs uppercase tracking-wide text-ink-muted">Division</p>
                     <p className="text-sm font-semibold text-ink">{divisionLabel || "Not specified"}</p>
                   </div>
                 </Panel>

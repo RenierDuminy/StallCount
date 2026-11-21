@@ -2487,8 +2487,7 @@ export default function PlayoffStructurePage() {
         style={{ paddingLeft: "clamp(0.75rem, 1.5vw, 1.5rem)", paddingRight: "clamp(0.75rem, 1.5vw, 1.5rem)" }}
       >
         <Panel variant="tintedAlt" className="space-y-2 border-white/20 p-2 sm:p-3">
-          <SectionHeader
-            eyebrow="Admin tool"
+          <SectionHeader
             title="Playoff structure"
             description="Manage brackets and bracket nodes for an event, then resolve linked matches from the saved structure."
             action={
@@ -3262,7 +3261,7 @@ export default function PlayoffStructurePage() {
                           </button>
                         </div>
 
-                        <p className="text-[0.7rem] font-medium uppercase tracking-wide text-ink-muted">
+                        <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">
                           Select the nodes that will be updated
                         </p>
                         <div className="flex flex-wrap gap-1.5">
@@ -3287,7 +3286,7 @@ export default function PlayoffStructurePage() {
                           })}
                         </div>
 
-                        <p className="text-[0.7rem] text-ink-muted">
+                        <p className="text-xs text-ink-muted">
                           {selectedIds.length} game{selectedIds.length === 1 ? "" : "s"} covered
                           {schedule.enabled === false ? " · disabled" : ""}
                           {selectedIds.length === 0
@@ -3365,7 +3364,7 @@ export default function PlayoffStructurePage() {
                             ).map((chip) => (
                               <span
                                 key={chip.key}
-                                className={`mt-0.5 mr-1 inline-block rounded-full px-2 py-0.5 text-[0.65rem] font-medium ${chip.className}`}
+                                className={`mt-0.5 mr-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${chip.className}`}
                               >
                                 {chip.label}
                               </span>

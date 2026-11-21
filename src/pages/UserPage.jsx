@@ -652,8 +652,7 @@ export default function UserPage() {
     <div className="pb-16 text-ink">
       <SectionShell className="space-y-3 sm:space-y-6">
         <Card className="space-y-3 p-4 sm:space-y-5 sm:p-7">
-          <SectionHeader
-            eyebrow="Account overview"
+          <SectionHeader
             title={displayName}
             action={
               user ? (
@@ -702,7 +701,7 @@ export default function UserPage() {
                 <Panel
                   key={entry.label}
                   variant="tinted"
-                  className="relative isolate overflow-hidden border-2 border-admin-border bg-[#216235] p-4 pb-14 text-sm sm:p-5 sm:pb-12"
+                  className="relative isolate overflow-hidden border-2 border-admin-border bg-panel-green p-4 pb-14 text-sm sm:p-5 sm:pb-12"
                 >
                   <AdminFrill />
                   <div className="relative">
@@ -711,7 +710,7 @@ export default function UserPage() {
                     </p>
                     <div className="space-y-3 px-6 pb-4 text-center sm:px-0 sm:pb-0">
                       {hasAdminRole ? (
-                        <span className="inline-flex items-center rounded-full border border-[#c8901a] bg-gradient-to-b from-[#e8b533] to-[#c8901a] px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm">
+                        <span className="inline-flex items-center rounded-full border border-gold-to bg-gradient-to-b from-gold-from to-gold-to px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm">
                           Admin
                         </span>
                       ) : null}
@@ -821,7 +820,7 @@ export default function UserPage() {
                     StallCount is a product of RCDF (Pty) Ltd. For more information or assistance, drop us an email at{" "}
                     <a
                       href="mailto:rcfdltd@gmail.com"
-                      className="inline-flex items-center rounded-full border border-[var(--sc-border)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#c6ff62] transition hover:bg-white/10"
+                      className="inline-flex items-center rounded-full border border-[var(--sc-border)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent transition hover:bg-white/10"
                     >
                       rcfdltd@gmail.com
                     </a>

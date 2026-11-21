@@ -1,8 +1,8 @@
 import { SPIRIT_DIMENSIONS, SPIRIT_MAX_SCORE } from "../utils/spirit";
 
 const TONE_STYLES = {
-  teamA: { stroke: "#1d4ed8", fill: "rgba(29, 78, 216, 0.18)" },
-  teamB: { stroke: "#b91c1c", fill: "rgba(185, 28, 28, 0.18)" },
+  teamA: { stroke: "var(--sc-team-a)", fill: "color-mix(in srgb, var(--sc-team-a) 18%, transparent)" },
+  teamB: { stroke: "var(--sc-team-b)", fill: "color-mix(in srgb, var(--sc-team-b) 18%, transparent)" },
 };
 
 /**
@@ -30,12 +30,12 @@ export default function SpiritRadarChart({
   const count = SPIRIT_DIMENSIONS.length;
   const { stroke: toneColor, fill: fillColor } = TONE_STYLES[tone] || TONE_STYLES.teamA;
   const formatValue = (raw) => (Number.isFinite(raw) ? raw.toFixed(valueDigits) : "--");
-  const gridColor = "#e2e8f0";
+  const gridColor = "var(--sc-chart-grid)";
   // The 2-per-category baseline (WFDF neutral): dashed grey, a touch heavier
   // than the 1px grid frame so it reads as a reference line, not a ring.
-  const emphasisColor = "#94a3b8";
-  const axisColor = "#cbd5f5";
-  const labelColor = "#475569";
+  const emphasisColor = "var(--sc-chart-muted)";
+  const axisColor = "var(--sc-chart-axis)";
+  const labelColor = "var(--sc-chart-label)";
   const labelMaxChars = 14;
   const labelMaxLines = 3;
   const valueLabelColor = toneColor;
@@ -123,7 +123,7 @@ export default function SpiritRadarChart({
             y={16 + index * 12}
             fontSize="10.5"
             fontWeight="600"
-            fill="#0f172a"
+            fill="var(--sc-chart-ink)"
             textAnchor="start"
           >
             {line}

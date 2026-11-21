@@ -108,6 +108,10 @@ export async function getOpenMatches(limit = 12, options = {}) {
         .in("status", OPEN_MATCH_STATUSES)
         // Applied in SQL so closed-event fixtures never consume the `limit`.
         .or(OPEN_EVENT_FILTER, { referencedTable: "event" })
+        // A pending fixture whose start is over 12 hours past was never marked
+        // played; leave it out here so it cannot use up the limit (the home page
+        // would drop it anyway). Live and halftime matches always count.
+        .or(`status.in.(live,halftime),start_time.is.null,start_time.gte.${new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()}`)
         .order("start_time", { ascending: true })
         .limit(limit);
 

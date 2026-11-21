@@ -17,7 +17,7 @@ const anonKey =
 const STATIC_ROUTES = ["/", "/events", "/matches", "/teams", "/players", "/community"];
 
 // Sub-pages of every event (src/pages/eventWorkspaces.js EVENT_SECTIONS);
-// rosters is left out with the player pages.
+// rosters and players are left out with the player pages (lists of names).
 const EVENT_SECTIONS = ["rules", "spirit"];
 
 // Event addresses come from the stored `events.slug`. `slugify` (a verbatim

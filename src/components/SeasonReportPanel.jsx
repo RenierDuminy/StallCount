@@ -98,8 +98,6 @@ export default function SeasonReportPanel({ events = [] }) {
   return (
     <Card className="space-y-5 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
       <SectionHeader
-        eyebrow="Season report"
-        eyebrowVariant="tag"
         title="Export event data"
         description="Pick an event to pull every related record — matches, logs, rosters, spirit scores, brackets and the lookup tables — and download each as its own CSV."
       />
@@ -183,16 +181,16 @@ export default function SeasonReportPanel({ events = [] }) {
                 >
                   <div className="min-w-[240px] flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                         {entry.section}
                       </span>
                       <p className="text-sm font-semibold text-ink">{entry.label}</p>
-                      <Chip variant="ghost" className="text-[11px] text-ink-muted">
+                      <Chip variant="ghost" className="text-xs text-ink-muted">
                         {count.toLocaleString()} row{count === 1 ? "" : "s"}
                       </Chip>
                     </div>
                     <p className="mt-1 text-xs text-ink-muted">{entry.summary}</p>
-                    <p className="mt-1 font-mono text-[11px] text-ink-muted">
+                    <p className="mt-1 font-mono text-xs text-ink-muted">
                       {seasonReportFilename(entry.file, selectedEvent?.name)}
                     </p>
                   </div>

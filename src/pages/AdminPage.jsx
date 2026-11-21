@@ -18,15 +18,6 @@ const ADMIN_MODULE_PRIORITY = [
 ];
 const ADMIN_MODULE_DIVIDER_AFTER = new Set(["Spirit scores", "Playoff structure"]);
 
-// Mirrors the hex values defined for each --sc-* token in src/theme.css.
-const COLOR_VAR_HEX = {
-  "--sc-accent": "#c6ff62",
-  "--sc-warning": "#fbbf24",
-  "--sc-media": "#38bdf8",
-  "--sc-admin": "#c084fc",
-  "--sc-live": "#fb7185",
-};
-
 const ADMIN_MODULES = [
   {
     label: "Scorekeeper",
@@ -230,7 +221,7 @@ export default function AdminPage() {
                     <hr
                       aria-hidden="true"
                       className="h-0.5 w-full rounded-full border-0"
-                      style={{ backgroundColor: COLOR_VAR_HEX[module.colorVar] }}
+                      style={{ backgroundColor: `var(${module.colorVar})` }}
                     />
                   </div>
                   <p className="text-sm text-ink-muted">{module.description}</p>

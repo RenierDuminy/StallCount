@@ -10,10 +10,10 @@ const TONES = {
     idle: "bg-surface text-ink-muted hover:bg-surface-muted hover:text-ink",
   },
   light: {
-    frame: "border-[#041311]/25",
-    divider: "border-[#041311]/20",
-    active: "bg-[#01611b] text-white",
-    idle: "bg-white text-[var(--sc-surface-light-ink)]/75 hover:bg-[#041311]/5 hover:text-[var(--sc-surface-light-ink)]",
+    frame: "border-light-edge/25",
+    divider: "border-light-edge/20",
+    active: "bg-light-success text-white",
+    idle: "bg-white text-[var(--sc-surface-light-ink)]/75 hover:bg-light-edge/5 hover:text-[var(--sc-surface-light-ink)]",
   },
 };
 

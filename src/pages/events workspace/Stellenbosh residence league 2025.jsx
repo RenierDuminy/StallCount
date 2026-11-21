@@ -435,7 +435,7 @@ function ResultCard({ match }) {
         </div>
       ))}
       {status ? (
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
           {status}
           {match.note ? ` · ${match.note}` : ""}
         </p>
@@ -608,7 +608,7 @@ function PlayoffsSection() {
             <RoundColumn key={round.label} label={round.label} className="space-y-5">
               {round.sections.map((section) => (
                 <div key={section.title} className="space-y-2 border-t border-white/20 pt-3 first:border-t-0 first:pt-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">{section.title}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{section.title}</p>
                   <div className="space-y-3">
                     {section.matches.map((match, index) => (
                       <ResultCard key={index} match={match} />

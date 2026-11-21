@@ -152,7 +152,7 @@ export default function ScrimmageView() {
       <span className="flex flex-col items-center text-center leading-tight">
         {jerseyText && <span className="text-sm font-extrabold">{jerseyText}</span>}
         <span
-          className={`${jerseyText ? "mt-0.5" : ""} w-full text-[0.7rem] font-semibold whitespace-normal break-words`}
+          className={`${jerseyText ? "mt-0.5" : ""} w-full text-xs font-semibold whitespace-normal break-words`}
         >
           {name}
         </span>
@@ -852,7 +852,7 @@ const handleStartDiscussionTimer = () => {
 
   return (
     <ScorekeeperShell>
-      <main className="py-2">
+      <main className="sk-console py-2">
         {consoleReady ? (
           <section className="space-y-2">
 
@@ -1035,7 +1035,7 @@ const handleStartDiscussionTimer = () => {
                           <button type="button" onClick={() => openScoreModal("A")} className="w-full rounded-full bg-[#0f5132] px-3 py-6 text-center text-sm font-semibold text-white transition hover:bg-[#0a3b24]">
                             Add score — {displayTeamAShort}
                           </button>
-                          <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
+                          <div className="px-1 text-center text-xs font-semibold uppercase tracking-wide text-[#0f5132]/80">
                             {nextAbbaDescriptor ? (
                               <div className="flex justify-center">
                                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#0f5132] text-base font-extrabold text-white">
@@ -1114,7 +1114,7 @@ const handleStartDiscussionTimer = () => {
                         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
                       </svg>
                       <span className="text-sm font-semibold text-[#0f5132]">Player roster</span>
-                      <span className="rounded-full bg-[#ecfdf3] px-1.5 py-0.5 text-[10px] font-semibold text-[#0f5132]">
+                      <span className="rounded-full bg-[#ecfdf3] px-1.5 py-0.5 text-xs font-semibold text-[#0f5132]">
                         {(sortedRosters.teamA?.length ?? 0) + (sortedRosters.teamB?.length ?? 0)}
                       </span>
                     </div>
@@ -1146,7 +1146,7 @@ const handleStartDiscussionTimer = () => {
                         <div key={label} className="overflow-hidden rounded-xl border" style={{ borderColor: `${border}30` }}>
                           <div className="flex items-center justify-between px-2.5 py-1.5" style={{ background: bg }}>
                             <span className="text-xs font-semibold" style={{ color: accent }}>{label}</span>
-                            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ background: `${accent}18`, color: accent }}>
+                            <span className="rounded-full px-1.5 py-0.5 text-xs font-bold" style={{ background: `${accent}18`, color: accent }}>
                               {players.length}
                             </span>
                           </div>
@@ -1767,7 +1767,7 @@ const handleStartDiscussionTimer = () => {
 
             {/* Add / edit form */}
             <div className="rounded-xl border border-[#0f5132]/20 bg-[#f0fdf4] p-2">
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/60">
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#0f5132]/60">
                 {playerEditorForm.id ? "Edit player" : "Add player"}
               </p>
               <form className="space-y-2" onSubmit={handleRosterPlayerSubmit}>
@@ -1851,10 +1851,10 @@ const handleStartDiscussionTimer = () => {
 
             {/* Bulk upload — one section per team */}
             <div className="rounded-xl border border-[#0f5132]/20 bg-white p-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0f5132]/60">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/60">
                 Upload players
               </p>
-              <p className="mb-2 text-[11px] leading-tight text-slate-500">
+              <p className="mb-2 text-xs leading-tight text-slate-500">
                 Line 1 = team name, then one player per line (optional 3-digit number first,
                 e.g. <span className="font-mono">7 Sam Jones</span>).
               </p>
@@ -1875,7 +1875,7 @@ const handleStartDiscussionTimer = () => {
                           {label}
                         </span>
                         <label
-                          className="cursor-pointer rounded-full border px-2 py-0.5 text-[11px] font-semibold transition hover:opacity-80"
+                          className="cursor-pointer rounded-full border px-2 py-0.5 text-xs font-semibold transition hover:opacity-80"
                           style={{ borderColor: `${accent}40`, color: accent }}
                         >
                           File
@@ -1906,10 +1906,10 @@ const handleStartDiscussionTimer = () => {
                         className="w-full resize-y rounded-md border border-slate-200 bg-white px-2 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-300 focus:border-[#0f5132] focus:outline-none focus:ring-2 focus:ring-[#0f5132]/20"
                       />
                       {state.error && (
-                        <p className="mt-1 text-[11px] font-medium text-rose-600">{state.error}</p>
+                        <p className="mt-1 text-xs font-medium text-rose-600">{state.error}</p>
                       )}
                       {state.notice && (
-                        <p className="mt-1 text-[11px] font-medium text-[#0f5132]">{state.notice}</p>
+                        <p className="mt-1 text-xs font-medium text-[#0f5132]">{state.notice}</p>
                       )}
                       <button
                         type="button"
@@ -1929,8 +1929,8 @@ const handleStartDiscussionTimer = () => {
             {/* Current players list */}
             <div className="overflow-hidden rounded-xl border border-slate-200">
               <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-2.5 py-1.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current players</p>
-                <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current players</p>
+                <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-xs font-bold text-slate-600">
                   {allRosterPlayers.length}
                 </span>
               </div>
@@ -1957,7 +1957,7 @@ const handleStartDiscussionTimer = () => {
                         <button
                           type="button"
                           onClick={() => startEditRosterPlayer(player)}
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold transition ${
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold transition ${
                             isEditing
                               ? "bg-[#0f5132] text-white"
                               : "border border-[#0f5132]/30 text-[#0f5132] hover:bg-[#ecfdf3]"
@@ -2173,7 +2173,7 @@ function SecondaryTimerDescription({ label, running, remainingSeconds, totalSeco
     );
   }
   return (
-    <div className="w-full text-center text-[10px] font-semibold leading-tight">
+    <div className="w-full text-center text-xs font-semibold leading-tight">
       <p className="text-center text-slate-900">{guide.title}</p>
       {activeStep && <p>{activeStep.text}</p>}
     </div>
@@ -2338,7 +2338,7 @@ function PlayerSideIcon({ side }) {
   if (side === "A") {
     return (
       <span
-        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#0f5132] text-[8px] font-bold leading-none text-white"
+        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#0f5132] text-xs font-bold leading-none text-white"
         title="Team A"
         aria-label="Team A"
       >
@@ -2350,7 +2350,7 @@ function PlayerSideIcon({ side }) {
   if (side === "B") {
     return (
       <span
-        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#1e3a8a] text-[8px] font-bold leading-none text-white"
+        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#1e3a8a] text-xs font-bold leading-none text-white"
         title="Team B"
         aria-label="Team B"
       >
@@ -2365,8 +2365,8 @@ function PlayerSideIcon({ side }) {
       title="Both teams"
       aria-label="Both teams"
     >
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#0f5132] text-[8px] font-bold leading-none text-white">A</span>
-      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#1e3a8a] text-[8px] font-bold leading-none text-white">B</span>
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#0f5132] text-xs font-bold leading-none text-white">A</span>
+      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#1e3a8a] text-xs font-bold leading-none text-white">B</span>
     </span>
   );
 }
@@ -2400,7 +2400,7 @@ function ReportStatList({ title, valueLabel, rows, accent }) {
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-1.5">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</span>
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{valueLabel}</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{valueLabel}</span>
       </div>
       {rows?.length ? (
         <div className="divide-y divide-slate-100">

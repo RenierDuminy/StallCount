@@ -1,0 +1,357 @@
+/* Standard cards shared by every overlay layout: player statistics, match
+   statistics and team rosters (the SAFDA standard design). Installed by
+   overlayCards.js, which replaces each layout's own copies at load.
+
+   Everything is scoped to [data-sc-card] (set only on the installed cards) and
+   uses its own scc-* class names, so a layout's leftover rules for its old
+   cards can never leak in, and SAFDA standard (which keeps its own copies) is
+   untouched. Sizes are canvas px (1920x1080); the inner card is zoomed 1.3 for
+   reading at a distance, as on SAFDA standard. */
+
+[data-sc-card],
+[data-sc-card] * {
+  box-sizing: border-box;
+  font-family: "Barlow Semi Condensed", "Arial Narrow", Arial, sans-serif;
+}
+
+/* ── Shared transition: a wipe from both sides to the middle ── */
+#canvas [data-sc-card] {
+  position: absolute;
+  left: 50%;
+  z-index: 10;
+  pointer-events: none;
+  animation: none;
+  transform: translateX(-50%);
+  clip-path: inset(0 50% 0 50%);
+  opacity: 0;
+  transition:
+    clip-path 0.4s cubic-bezier(0.55, 0, 0.75, 0.2),
+    opacity 0s linear 0.4s;
+}
+#canvas [data-sc-card]:is(.is-active, .is-persistent) {
+  clip-path: inset(0 0 0 0);
+  opacity: 1;
+  transition:
+    clip-path 0.45s cubic-bezier(0.2, 0.8, 0.3, 1),
+    opacity 0s linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  #canvas [data-sc-card] { clip-path: none; transition: opacity 0.2s linear; }
+}
+
+/* ══ Player statistics ══ */
+#canvas #overlayBanner[data-sc-card] {
+  bottom: var(--scc-player-bottom, 48px);
+  top: var(--scc-player-top, auto);
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+[data-sc-card] .scc-player__team,
+[data-sc-card] .scc-player__stats { zoom: 1.3; }
+[data-sc-card] .scc-player__team {
+  display: flex;
+  align-items: center;
+  width: 320px;
+  min-width: 0;
+  padding: 0 20px 0 0;
+  background: var(--banner-team-bg, #1f2933);
+  color: var(--banner-team-text, #ffffff);
+}
+[data-sc-card] .scc-player__team:not(.has-logo) { padding-left: 20px; }
+[data-sc-card] .scc-player__logo { padding: 8px; margin-right: 8px; flex-shrink: 0; }
+[data-sc-card] .scc-player__team:not(.has-logo) .scc-player__logo { display: none; }
+[data-sc-card] .scc-player__logo-box { width: 48px; height: 48px; display: grid; place-items: center; }
+[data-sc-card] .scc-player__logo-box img { width: 100%; height: 100%; object-fit: contain; display: none; }
+[data-sc-card] .scc-player__logo-box.has-image img { display: block; }
+[data-sc-card] .scc-player__logo-box #bannerLogoFallback { display: none; }
+[data-sc-card] #bannerPlayerName {
+  min-width: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1.05;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: inherit;
+}
+[data-sc-card] .scc-player__stats { display: flex; align-items: stretch; background: #111111; }
+[data-sc-card] .scc-player__stat {
+  flex: 0 0 auto;
+  width: 86px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 0;
+  overflow: hidden;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+[data-sc-card] .scc-player__label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+[data-sc-card] .scc-player__value {
+  font-family: "Bebas Neue", "Barlow Semi Condensed", sans-serif;
+  font-size: 32px;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  color: #ffffff;
+}
+
+/* ══ Head and footer shared by match statistics and team rosters ══ */
+[data-sc-card] .scc-card { background: #111111; overflow: hidden; zoom: 1.3; }
+[data-sc-card] .scc-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88px;
+  padding: 8px 104px;
+  background: #1a1a1a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+[data-sc-card] .scc-head__title,
+[data-sc-card] .scc-head__title > span {
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  display: inline;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+[data-sc-card] .scc-head__logo {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 72px;
+  max-width: 88px;
+  object-fit: contain;
+  display: none;
+}
+[data-sc-card] .scc-head__logo.has-image { display: block; }
+[data-sc-card] .scc-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  height: 36px;
+  padding: 0 16px;
+  background: #1a1a1a;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+[data-sc-card] .scc-foot > span { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-sc-card] .scc-foot > span:first-child { text-align: right; }
+[data-sc-card] .scc-foot > span:last-child { text-align: left; }
+/* Only one of event name / status: centred on its own, no dash. Neither: no footer. */
+[data-sc-card] .scc-foot:has(> span:first-child:empty),
+[data-sc-card] .scc-foot:has(> span:last-child:empty) { grid-template-columns: 1fr; }
+[data-sc-card] .scc-foot > span:empty,
+[data-sc-card] .scc-foot:has(> span:first-child:empty) > .scc-foot__dash,
+[data-sc-card] .scc-foot:has(> span:last-child:empty) > .scc-foot__dash { display: none; }
+[data-sc-card] .scc-foot:has(> span:first-child:empty) > span,
+[data-sc-card] .scc-foot:has(> span:last-child:empty) > span { text-align: center; }
+[data-sc-card] .scc-foot:has(> span:first-child:empty):has(> span:last-child:empty) { display: none; }
+
+[data-sc-card] .scc-teamlogo { height: 54px; max-width: 108px; object-fit: contain; flex-shrink: 0; display: none; }
+[data-sc-card] .scc-teamlogo.has-image { display: block; }
+
+/* ══ Match statistics ══ */
+#canvas #matchStatsBanner[data-sc-card] {
+  top: 50%;
+  bottom: auto;
+  width: 915px;
+  transform: translate(-50%, -50%);
+}
+[data-sc-card] .scc-stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.72fr) minmax(0, 1fr); }
+[data-sc-card] .scc-stats__col { display: grid; grid-template-rows: 64px repeat(6, 44px); min-width: 0; }
+#matchStatsBanner[data-sc-card]:not(:has(.scc-teamlogo.has-image)) .scc-stats__col { grid-template-rows: 44px repeat(6, 44px); }
+[data-sc-card] .scc-stats__col--team { background: var(--team-bg, #1f2933); color: var(--team-text, #ffffff); }
+[data-sc-card] .scc-stats__col--team > * + * { border-top: 1px solid rgba(255, 255, 255, 0.12); }
+[data-sc-card] .scc-stats__col--mid {
+  background: #1a1a1a;
+  color: #ffffff;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+[data-sc-card] .scc-stats__col--mid > * + * { border-top: 1px solid rgba(255, 255, 255, 0.08); }
+[data-sc-card] .scc-stats__team {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 4px 12px;
+  overflow: hidden;
+}
+#matchStatsBanner[data-sc-card] #matchStatsColumnA .scc-teamlogo { order: 2; }
+[data-sc-card] .scc-stats__nameslot { height: 40px; min-width: 0; max-width: 100%; display: flex; align-items: center; justify-content: center; }
+[data-sc-card] #matchStatsTeamA,
+[data-sc-card] #matchStatsTeamB {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  padding: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  text-align: center;
+  color: inherit;
+  background: none;
+}
+[data-sc-card] .scc-stats__value,
+[data-sc-card] #matchStatsScoreline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: normal;
+  color: inherit;
+}
+[data-sc-card] #matchStatsScoreline { font-size: 28px; color: #ffffff; }
+[data-sc-card] .scc-stats__label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+
+/* ══ Team rosters ══ */
+#canvas #teamRostersBanner[data-sc-card] {
+  top: 270px;
+  bottom: auto;
+  width: 1500px;
+  max-width: none;
+  transform: translateX(-50%);
+}
+#teamRostersBanner[data-sc-card] .scc-card {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(750px / 1.3);
+}
+[data-sc-card] .scc-rosters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); flex: 0 0 auto; min-height: 0; }
+[data-sc-card] .scc-rosters__col {
+  display: grid;
+  grid-template-rows: 64px auto;
+  min-height: 0;
+  background: var(--team-bg, #1f2933);
+  color: var(--team-text, #ffffff);
+}
+[data-sc-card] #teamRostersColumnB { border-left: 6px solid #111111; }
+[data-sc-card] .scc-rosters__team {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 4px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+[data-sc-card] #teamRostersTeamA,
+[data-sc-card] #teamRostersTeamB {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  text-align: center;
+  color: inherit;
+  background: none;
+}
+/* Each team splits its players over two columns, down then across
+   (--scc-rows = half the players rounded up, at most 15; 30 players at most). */
+[data-sc-card] #teamRostersListA,
+[data-sc-card] #teamRostersListB {
+  margin: 0;
+  list-style: none;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(var(--scc-rows, 15), auto);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-columns: minmax(0, 1fr);
+  column-gap: 24px;
+  row-gap: 4px;
+  align-content: start;
+  padding: 12px 18px;
+  min-height: calc(5 * 1.2em + 4 * 4px + 24px);
+  overflow: hidden;
+  font-size: 18px;
+}
+[data-sc-card] .roster-banner-item {
+  display: flex;
+  min-width: 0;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+[data-sc-card] .roster-banner-item:nth-child(n + 31) { display: none; }
+[data-sc-card] .roster-banner-item.is-empty { grid-column: 1 / -1; }
+[data-sc-card] .roster-banner-identity { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+[data-sc-card] .roster-banner-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+[data-sc-card] .roster-banner-number { flex-shrink: 0; }
+[data-sc-card] .roster-banner-tag {
+  flex-shrink: 0;
+  width: 1.3rem;
+  height: 1.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1.5px solid #ffffff;
+  background: rgba(0, 0, 0, 0.25);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+[data-sc-card] .roster-banner-tag--captain {
+  color: var(--team-bg, #111111);
+  background: var(--team-text, #ffffff);
+  border-color: var(--team-text, #ffffff);
+}

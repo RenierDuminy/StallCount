@@ -476,7 +476,7 @@ export type PlayerMatchStatRow = {
     id: string;
     start_time: string | null;
     status: string | null;
-    event: { id: string; name: string | null } | null;
+    event: { id: string; name: string | null; slug?: string | null } | null;
     division: { id: string; name: string | null } | null;
     team_a: { id: string; name: string | null; short_name: string | null } | null;
     team_b: { id: string; name: string | null; short_name: string | null } | null;
@@ -497,7 +497,7 @@ const PLAYER_MATCH_STATS_SELECT = `
     id,
     start_time,
     status,
-    event:events(id, name),
+    event:events(id, name, slug),
     division:divisions(id, name),
     team_a:teams!matches_team_a_fkey(id, name, short_name),
     team_b:teams!matches_team_b_fkey(id, name, short_name)

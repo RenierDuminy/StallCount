@@ -11,7 +11,7 @@ import {
   summariseSpiritRanking,
 } from "../utils/spirit";
 import SpiritRadarChart from "../components/SpiritRadarChart";
-import { EVENT_SECTIONS, getEventPagePath } from "./eventWorkspaces";
+import { EVENT_SECTIONS } from "./eventWorkspaces";
 import { useEventSectionRoute } from "./eventRouteHooks";
 import { usePageMeta, withSiteName } from "../utils/pageMeta";
 import { teamPath } from "../utils/links";
@@ -145,9 +145,6 @@ export default function EventSpiritPage() {
     [event, ranking],
   );
 
-  const backPath = event
-    ? getEventPagePath({ id: eventId, slug: routeEvent?.slug || event.slug, name: event.name })
-    : null;
 
   if (routeElement) return routeElement;
 
@@ -159,13 +156,6 @@ export default function EventSpiritPage() {
             title={event?.name ? `${event.name} – Spirit` : "Event spirit"}
             description={`Average WFDF spirit scores received (0–${SPIRIT_MAX_SCORE} per category, ${MAX_TOTAL} total). Final submissions only.`}
           />
-          {backPath ? (
-            <div className="flex justify-end">
-              <Link to={backPath} className="sc-button whitespace-nowrap">
-                Back to event
-              </Link>
-            </div>
-          ) : null}
           {error ? <div className="sc-alert is-error">{error}</div> : null}
         </header>
 
@@ -202,7 +192,7 @@ export default function EventSpiritPage() {
                     </div>
                     <div className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1.5 text-sm text-ink-muted">
                       <span className="flex items-center gap-2">
-                        <span className="inline-block h-0.5 w-5 bg-[#1d4ed8]" /> Average
+                        <span className="inline-block h-0.5 w-5 bg-team-a" /> Average
                       </span>
                     </div>
                   </div>

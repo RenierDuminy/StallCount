@@ -105,7 +105,7 @@ function BuildIdentityRow() {
   const stale = freshness?.stale === true;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-muted">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted">
       <span>
         Build <code className="font-mono text-ink">{BUILD_SHA}</code>
       </span>
@@ -135,17 +135,17 @@ function ErrorLogEntry({ entry }) {
           <p className="text-sm font-semibold text-rose-800">
             {entry.name}
             {entry.count > 1 && (
-              <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+              <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
                 ×{entry.count}
               </span>
             )}
           </p>
-          <p className="mt-0.5 text-[11px] text-rose-500">
+          <p className="mt-0.5 text-xs text-rose-500">
             {SOURCE_LABELS[entry.source] ?? entry.source}
             {entry.route ? ` · ${entry.route}` : ""}
           </p>
         </div>
-        <span className="shrink-0 text-[11px] text-rose-400">
+        <span className="shrink-0 text-xs text-rose-400">
           {formatTimestamp(entry.timestamp)}
         </span>
       </div>
@@ -155,7 +155,7 @@ function ErrorLogEntry({ entry }) {
           <button
             type="button"
             onClick={() => setExpanded((prev) => !prev)}
-            className="mt-2 text-[11px] font-semibold text-rose-600 underline"
+            className="mt-2 text-xs font-semibold text-rose-600 underline"
           >
             {expanded ? "Hide details" : "Show details"}
           </button>
@@ -163,20 +163,20 @@ function ErrorLogEntry({ entry }) {
             <div className="mt-2 space-y-2">
               {entry.stack && (
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-rose-400">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">
                     Component stack
                   </p>
-                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-rose-50 p-2 text-[10px] text-rose-500">
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-rose-50 p-2 text-xs text-rose-500">
                     {entry.stack.trim()}
                   </pre>
                 </div>
               )}
               {entry.errorStack && (
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-rose-400">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-400">
                     Error stack
                   </p>
-                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-rose-50 p-2 text-[10px] text-rose-500">
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-rose-50 p-2 text-xs text-rose-500">
                     {entry.errorStack.trim()}
                   </pre>
                 </div>
@@ -744,8 +744,6 @@ export default function SysAdminPage() {
       <SectionShell as="header" className="py-8">
         <Card className="space-y-5 p-6 sm:p-8 shadow-xl shadow-[rgba(8,25,21,0.08)]">
           <SectionHeader
-            eyebrow="System admin"
-            eyebrowVariant="tag"
             title="System admin"
             description="Desktop control room for reading, creating, and editing any tournament data in Supabase."
             action={
@@ -815,8 +813,6 @@ export default function SysAdminPage() {
             <div className="grid gap-6 lg:grid-cols-2">
               <Card className="space-y-5 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
               <SectionHeader
-                eyebrow="Quick create"
-                eyebrowVariant="tag"
                 title="Create a match"
                 description="Choose event, venue, teams, date, and status."
                 action={
@@ -956,8 +952,6 @@ export default function SysAdminPage() {
 
             <Card className="space-y-5 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
               <SectionHeader
-                eyebrow="Table settings"
-                eyebrowVariant="tag"
                 title={selectedTable || "Select a table"}
                 description={`Base name: ${getBaseTableName(selectedTable) || "none"}`}
               />
@@ -1131,8 +1125,6 @@ export default function SysAdminPage() {
             <div className="grid gap-6 lg:grid-cols-2">
               <Card className="space-y-4 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
                 <SectionHeader
-                  eyebrow="Create record"
-                  eyebrowVariant="tag"
                   title="Insert JSON payload"
                   description={`Target: ${getBaseTableName(selectedTable) || "none"}`}
                   action={
@@ -1155,8 +1147,6 @@ export default function SysAdminPage() {
 
               <Card className="space-y-4 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
                 <SectionHeader
-                  eyebrow="Edit selection"
-                  eyebrowVariant="tag"
                   title="Update selected row"
                   description="Row loads when you click it in the grid."
                   action={
@@ -1204,8 +1194,6 @@ export default function SysAdminPage() {
 
             <Card className="space-y-4 p-4 sm:p-6 shadow-md shadow-[rgba(8,25,21,0.06)]">
               <SectionHeader
-                eyebrow="Delete"
-                eyebrowVariant="tag"
                 title="Delete record (cascade)"
                 description="Preview related rows before deleting. Cascades follow database foreign key rules."
                 action={
@@ -1256,7 +1244,7 @@ export default function SysAdminPage() {
                   <div className="space-y-2">
                     {deleteKeyColumns.map((column) => (
                       <div key={column} className="grid grid-cols-[100px,1fr] items-center gap-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                           {column}
                         </span>
                         <input
@@ -1337,7 +1325,7 @@ export default function SysAdminPage() {
                                   {item.ref.referencesTable}.{item.ref.referencesColumns?.join(", ")}
                                 </p>
                                 {item.ref.onDelete && (
-                                  <p className="text-[11px] text-ink-muted">
+                                  <p className="text-xs text-ink-muted">
                                     On delete: {item.ref.onDelete}
                                   </p>
                                 )}
@@ -1359,7 +1347,7 @@ export default function SysAdminPage() {
                                   {previewRows.map((row, index) => (
                                     <pre
                                       key={`${item.ref.table}-row-${index}`}
-                                      className="text-[11px] text-ink"
+                                      className="text-xs text-ink"
                                     >
                                       {JSON.stringify(row, null, 2)}
                                     </pre>
@@ -1367,7 +1355,7 @@ export default function SysAdminPage() {
                                 </div>
                                 {typeof item.count === "number" &&
                                   item.count > previewRows.length && (
-                                    <p className="text-[11px] text-ink-muted">
+                                    <p className="text-xs text-ink-muted">
                                       Showing {previewRows.length} of {item.count} related rows.
                                     </p>
                                   )}

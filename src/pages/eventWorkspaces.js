@@ -73,6 +73,7 @@ export const EVENT_SECTIONS = Object.freeze({
   SPIRIT: "spirit",
   RULES: "rules",
   ROSTERS: "rosters",
+  PLAYERS: "players",
 });
 
 /**

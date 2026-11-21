@@ -44,7 +44,7 @@ export default function CaptainSpiritEditor({ opponentName, existing, saving, on
     >
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">
             {existing ? "Edit spirit score" : "Spirit score"}
           </p>
           <p className="text-sm font-semibold text-ink">{opponentName || "Opponent"}</p>
@@ -56,8 +56,8 @@ export default function CaptainSpiritEditor({ opponentName, existing, saving, on
 
       <div className="border-y border-border">
         <div className="hidden grid-cols-[1fr_20rem] items-center gap-3 border-b border-border py-1.5 sm:grid">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">Category</span>
-          <span className="grid grid-cols-5 text-center text-[10px] uppercase tracking-wide text-ink-muted">
+          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Category</span>
+          <span className="grid grid-cols-5 text-center text-xs uppercase tracking-wide text-ink-muted">
             {SPIRIT_SCALE.map(({ value, label }) => (
               <span key={value}>{label}</span>
             ))}

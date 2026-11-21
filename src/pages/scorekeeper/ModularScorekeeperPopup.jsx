@@ -289,7 +289,7 @@ export function ScorekeeperPopups({
                         void onRefreshMatches();
                       }
                     }}
-                    className="text-[11px] font-semibold text-[#0f5132] transition hover:text-[#083b24]"
+                    className="text-xs font-semibold text-[#0f5132] transition hover:text-[#083b24]"
                     disabled={!selectedEventId}
                   >
                     Refresh
@@ -867,7 +867,7 @@ export function ScorekeeperPopups({
                   )}
                 </p>
                 {remainingTimeouts.A === 0 && (
-                  <p className="mt-1 text-[11px] font-semibold text-[#991b1b]">
+                  <p className="mt-1 text-xs font-semibold text-[#991b1b]">
                     If called, +2 on the stall count
                   </p>
                 )}
@@ -897,7 +897,7 @@ export function ScorekeeperPopups({
                   )}
                 </p>
                 {remainingTimeouts.B === 0 && (
-                  <p className="mt-1 text-[11px] font-semibold text-[#991b1b]">
+                  <p className="mt-1 text-xs font-semibold text-[#991b1b]">
                     If called, +2 on the stall count
                   </p>
                 )}
@@ -939,8 +939,9 @@ export function ScorekeeperPopups({
         <ActionModal
           title={scoreModalState.mode === "edit" ? "Edit score" : "Add score"}
           onClose={onScoreClose}
+          fullHeight
         >
-          <form className="space-y-2" onSubmit={onScoreSubmit}>
+          <form className="flex min-h-0 flex-1 flex-col gap-2" onSubmit={onScoreSubmit}>
             <p className="text-xs font-semibold uppercase tracking-wide text-[#0f5132]/70">
               Team: {scoreModalState.team === "B" ? scoreDisplayTeamB : scoreDisplayTeamA}
             </p>
@@ -972,9 +973,9 @@ export function ScorekeeperPopups({
                 )}
               </div>
             )}
-            <label className="block text-base font-semibold text-[#0f5132]">
+            <label className="flex min-h-0 flex-1 flex-col text-base font-semibold text-[#0f5132]">
               Scorer:
-              <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-[#0f5132]/30 bg-white/70 p-2">
+              <div className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-[#0f5132]/30 bg-white/70 p-2">
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
@@ -1012,9 +1013,9 @@ export function ScorekeeperPopups({
                 </div>
               </div>
             </label>
-            <label className="block text-base font-semibold text-[#0f5132]">
+            <label className="flex min-h-0 flex-1 flex-col text-base font-semibold text-[#0f5132]">
               Assist:
-              <div className="mt-2 max-h-56 overflow-y-auto rounded-2xl border border-[#0f5132]/30 bg-white/70 p-2">
+              <div className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-[#0f5132]/30 bg-white/70 p-2">
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
@@ -1184,6 +1185,7 @@ function ActionModal({
   alignTop = false,
   scrollable = false,
   wide = false,
+  fullHeight = false,
 }) {
   const handleClose = () => {
     if (!disableClose && onClose) {
@@ -1194,13 +1196,13 @@ function ActionModal({
   return (
     <div
       className={`fixed inset-0 z-50 flex justify-center bg-black/50 backdrop-blur-[2px] px-4 py-3 ${
-        alignTop ? "items-start" : "items-center"
+        fullHeight ? "items-stretch" : alignTop ? "items-start" : "items-center"
       }`}
     >
       <div
         className={`w-full ${wide ? "max-w-xl" : "max-w-sm"} rounded-[32px] bg-white p-3 ${
           scrollable ? "max-h-[85vh] overflow-y-auto" : ""
-        }`}
+        } ${fullHeight ? "flex max-h-full flex-col" : ""}`}
       >
         <div className="mb-2 flex items-start justify-between">
           <h3 className="text-2xl font-semibold text-[#0f5132]">{title}</h3>
@@ -1214,7 +1216,7 @@ function ActionModal({
             X
           </button>
         </div>
-        {children}
+        {fullHeight ? <div className="flex min-h-0 flex-1 flex-col">{children}</div> : children}
       </div>
     </div>
   );

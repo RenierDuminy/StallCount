@@ -287,7 +287,7 @@ export default function BracketCanvas({
               <span className="text-xs font-semibold uppercase tracking-wide text-ink">
                 {columnHeading(column, totalRounds, columnIndex, bracket?.type)}
               </span>
-              <span className="text-[0.65rem] text-ink-muted">
+              <span className="text-xs text-ink-muted">
                 {column.nodes.length} game{column.nodes.length === 1 ? "" : "s"}
               </span>
             </div>
@@ -296,7 +296,7 @@ export default function BracketCanvas({
                 tooltip lists them all rather than the header growing. */}
             {earliest ? (
               <div
-                className="-mt-1 flex items-center gap-1 text-[0.65rem] text-sky-200"
+                className="-mt-1 flex items-center gap-1 text-xs text-sky-200"
                 title={
                   columnSchedule.length > 1
                     ? `${columnSchedule.length} release dates:\n${headerTitle}`
@@ -331,13 +331,13 @@ export default function BracketCanvas({
                       <span className="text-sm font-semibold text-ink">
                         {getNodeDisplayName(node)}
                       </span>
-                      <span className="text-[0.65rem] text-ink-muted">Pos {node.position ?? "--"}</span>
+                      <span className="text-xs text-ink-muted">Pos {node.position ?? "--"}</span>
                     </div>
 
                     {/* This game's own release date. */}
                     {nodeSchedule ? (
                       <div
-                        className="mb-0.5 flex items-center gap-1 text-[0.65rem] text-sky-200"
+                        className="mb-0.5 flex items-center gap-1 text-xs text-sky-200"
                         title={`${nodeSchedule.label ? `${nodeSchedule.label} — ` : ""}fills ${formatReleaseTime(nodeSchedule.at)}`}
                       >
                         <ClockIcon />
@@ -353,12 +353,12 @@ export default function BracketCanvas({
                       {formatSourceLabel(node.source_b, lookups)}
                     </p>
                     {getNodeNote(node) ? (
-                      <p className="mt-0.5 text-[0.7rem] font-semibold text-sky-200">{getNodeNote(node)}</p>
+                      <p className="mt-0.5 text-xs font-semibold text-sky-200">{getNodeNote(node)}</p>
                     ) : null}
                     {/* A bye slot never has a match, so "No linked match" would
                         read as a problem. */}
                     {isByeNode(node) ? null : (
-                      <p className="mt-0.5 text-[0.7rem] text-ink-muted">
+                      <p className="mt-0.5 text-xs text-ink-muted">
                         {node.match ? (
                           <>
                             {formatMatchup(node.match)} · {formatMatchStatus(node.match.status)}
@@ -407,7 +407,7 @@ export default function BracketCanvas({
         ) : null}
       </div>
 
-      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[0.7rem] text-ink-muted">
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
         <span className="inline-flex items-center gap-1">
           <span className="inline-block h-0.5 w-5 rounded bg-[rgba(52,211,153,0.7)]" />
           Winner advances

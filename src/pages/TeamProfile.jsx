@@ -402,11 +402,10 @@ export default function TeamProfilePage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
+    <div className="min-h-screen bg-light-page text-[var(--sc-surface-light-ink)]">
       <SectionShell className="space-y-3 py-3 sm:space-y-6 sm:py-8">
         <Card variant="light" className="space-y-3 p-4 shadow-xl shadow-[rgba(8,25,21,0.08)] sm:space-y-5 sm:p-8">
-          <SectionHeader
-            eyebrowVariant="tag"
+          <SectionHeader
             title={displayName}
             description={divisionSummary}
             action={
@@ -431,8 +430,7 @@ export default function TeamProfilePage() {
         ) : (
           <>
             <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)] sm:space-y-6 sm:p-6">
-              <SectionHeader
-                eyebrow="Season snapshot"
+              <SectionHeader
                 eyebrowVariant="tag"
                 title="Performance overview"
                 description="Key indicators compiled from schedule, roster, and spirit data."
@@ -485,7 +483,7 @@ export default function TeamProfilePage() {
                     onClick={() => setActiveTab(tab.id)}
                     className={`rounded-full border border-[var(--sc-surface-light-border)] px-3 py-1.5 text-sm font-semibold transition sm:px-4 sm:py-2 ${
                       activeTab === tab.id
-                        ? "border-[#0a3d29] bg-[#0a3d29] text-white shadow"
+                        ? "border-light-primary bg-light-primary text-white shadow"
                         : "text-[var(--sc-surface-light-ink)]/75 hover:bg-white/70"
                     }`}
                   >
@@ -690,7 +688,7 @@ function PlayersTable({ stats, rosterCount }) {
           isActive ? "text-[var(--sc-surface-light-ink)]" : "text-[var(--sc-surface-light-ink)]/70"
         }`}
       >
-        {label} {arrow && <span className="text-[10px]">{arrow}</span>}
+        {label} {arrow && <span className="text-xs">{arrow}</span>}
       </button>
     );
   };

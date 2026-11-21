@@ -58,4 +58,42 @@ export default defineConfig([
       'react-hooks/purity': 'warn',
     },
   },
+  {
+    // Colours live in src/theme.css. In a component use a token class
+    // (bg-light-page, text-accent-ink, bg-team-a ...) or var(--sc-*) in an SVG
+    // attribute, so a change is made once. Matches #rgb, #rgba, #rrggbb and
+    // #rrggbbaa inside a string, so a URL fragment like "#community" passes.
+    files: ['src/**/*.jsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'Literal[value=/(^|[^\\w&])#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})(?![\\w])/]',
+          message:
+            'Hard-coded hex colour. Use a token class or var(--sc-*) from src/theme.css (add a token there if none fits).',
+        },
+        {
+          selector:
+            'TemplateElement[value.raw=/(^|[^\\w&])#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})(?![\\w])/]',
+          message:
+            'Hard-coded hex colour. Use a token class or var(--sc-*) from src/theme.css (add a token there if none fits).',
+        },
+      ],
+    },
+  },
+  {
+    // Deliberate literals: the two field consoles (their own --sk-* token set is
+    // a later task), the Google logo, overlay default colours and the media
+    // colour box (user-entered colours).
+    files: [
+      'src/pages/scorekeeper/**',
+      'src/pages/scrimmage/**',
+      'src/components/SupabaseAuthForm.jsx',
+      'src/overlay/OverlayTestMatchPanel.jsx',
+      'src/pages/OverlayControlPage.jsx',
+      'src/pages/MediaAdminPage.jsx',
+    ],
+    rules: { 'no-restricted-syntax': 'off' },
+  },
 ])

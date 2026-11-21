@@ -149,7 +149,7 @@ function StatusTag({ status }) {
   const live = isInProgressStatus(status);
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+      className={`inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.12em] ${
         live ? "text-live-ink" : "text-ink-muted"
       }`}
     >
@@ -165,7 +165,7 @@ function SummaryStat({ value, label, emphasis = false }) {
       <p className={`text-2xl font-semibold tabular-nums ${emphasis && value > 0 ? "text-accent" : "text-ink"}`}>
         {value}
       </p>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-muted">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">{label}</p>
     </div>
   );
 }
@@ -214,8 +214,8 @@ function Checkpoint({ done, label, detail, alignRight = false }) {
         )}
       </span>
       <div className="min-w-0 leading-tight">
-        <p className={`text-[11px] font-semibold sm:text-xs ${done ? "text-ink" : "text-ink-muted"}`}>{label}</p>
-        {detail ? <p className="truncate text-[11px] text-ink-muted">{detail}</p> : null}
+        <p className={`text-xs font-semibold sm:text-xs ${done ? "text-ink" : "text-ink-muted"}`}>{label}</p>
+        {detail ? <p className="truncate text-xs text-ink-muted">{detail}</p> : null}
       </div>
     </div>
   );
@@ -397,7 +397,7 @@ function FixtureTable({ items }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="text-[11px] uppercase tracking-[0.12em] text-ink-muted">
+        <thead className="text-xs uppercase tracking-[0.12em] text-ink-muted">
           <tr className="border-b border-border/70">
             <th className="py-2 pr-3 text-left font-semibold">Date</th>
             <th className="px-3 py-2 text-left font-semibold">Opponent</th>

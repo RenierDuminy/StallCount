@@ -1053,7 +1053,7 @@ export default function NotificationsPage() {
                                   "Details unavailable"}
                               </p>
                             </div>
-                              <span className="rounded-full bg-[var(--sc-accent)]/90 px-2 py-0.5 text-[10px] font-semibold text-[#041311]">
+                              <span className="rounded-full bg-[var(--sc-accent)]/90 px-2 py-0.5 text-xs font-semibold text-accent-ink">
                               Select
                             </span>
                           </button>
@@ -1111,7 +1111,7 @@ export default function NotificationsPage() {
                         <span className="flex flex-col gap-0.5">
                           <span>{topic.label}</span>
                           {topic.description ? (
-                            <span className="text-[0.65rem] font-normal text-ink-muted">
+                            <span className="text-xs font-normal text-ink-muted">
                               {topic.description}
                             </span>
                           ) : null}
@@ -1282,22 +1282,22 @@ export default function NotificationsPage() {
                 const createdAt = event.created_at ? new Date(event.created_at).toLocaleString() : "";
                 return (
                   <Panel key={event.id} variant="tinted" className="flex h-full items-start gap-2 p-2">
-                    <Chip variant="tag" className="mt-0.5 px-2 py-0 text-[9px]">
+                    <Chip variant="tag" className="mt-0.5 px-2 py-0 text-xs">
                       {event.event_type.replace(/_/g, " ")}
                     </Chip>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-xs font-semibold text-ink line-clamp-1">{title}</p>
-                        <p className="whitespace-nowrap text-[9px] text-ink-muted">{createdAt}</p>
+                        <p className="whitespace-nowrap text-xs text-ink-muted">{createdAt}</p>
                       </div>
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-[11px] text-ink-muted line-clamp-1">
+                        <p className="text-xs text-ink-muted line-clamp-1">
                           {body || matchLabel || "Update"}
                         </p>
                         {event.match_id && (
                           <Link
                             to={matchPath(event.match_id)}
-                            className="sc-button is-ghost text-[10px]"
+                            className="sc-button is-ghost text-xs"
                           >
                             Open
                           </Link>

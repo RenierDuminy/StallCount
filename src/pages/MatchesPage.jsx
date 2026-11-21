@@ -27,8 +27,8 @@ import { MODULAR_SCOREKEEPER_MENU_PATH } from "./scorekeeper/scorekeeperConstant
 import { buildVenueMapsUrl } from "../utils/mapsLink";
 
 const SERIES_COLORS = {
-  teamA: "#1d4ed8",
-  teamB: "#b91c1c",
+  teamA: "var(--sc-team-a)",
+  teamB: "var(--sc-team-b)",
 };
 
 const BAND_COLORS = {
@@ -528,7 +528,7 @@ export default function MatchesPage() {
                           // The lighter optgroup fill marks the section heading; its options
                           // reset to the surface colour so only the heading row stands out.
                           // Solid colours only: native dropdowns render alpha unpredictably.
-                          <optgroup key={group.label} label={group.label} className="bg-[#24493d] text-ink-strong">
+                          <optgroup key={group.label} label={group.label} className="bg-surface-menu text-ink-strong">
                             {group.events.map((event) => (
                               <option key={event.id} value={event.id} className="bg-surface text-ink">
                                 {event.name}
@@ -955,7 +955,7 @@ function FullscreenChartToggle({ title, render }) {
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="absolute right-1 top-1 z-10 flex h-9 w-9 items-center justify-center text-[#166534]"
+              className="absolute right-1 top-1 z-10 flex h-9 w-9 items-center justify-center text-light-success"
               aria-label="Close fullscreen view"
             >
               <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1098,17 +1098,17 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
           y1={padding.top + chartHeight}
           x2={padding.left + chartWidth}
           y2={padding.top + chartHeight}
-          stroke="#cbd5f5"
+          stroke="var(--sc-chart-axis)"
           strokeWidth="1"
         />
-        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + chartHeight} stroke="#cbd5f5" strokeWidth="1" />
+        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + chartHeight} stroke="var(--sc-chart-axis)" strokeWidth="1" />
 
         {Array.from({ length: yMax + 1 }).map((_, index) => {
           const y = getY(index);
           return (
             <g key={index}>
-              <line x1={padding.left} x2={padding.left + chartWidth} y1={y} y2={y} stroke="#cbd5f5" strokeDasharray="4 6" strokeWidth="0.5" />
-              <text x={padding.left - 10} y={y + 4} fontSize="9.35" textAnchor="end" fill="#000">
+              <line x1={padding.left} x2={padding.left + chartWidth} y1={y} y2={y} stroke="var(--sc-chart-axis)" strokeDasharray="4 6" strokeWidth="0.5" />
+              <text x={padding.left - 10} y={y + 4} fontSize="9.35" textAnchor="end" fill="black">
                 {index}
               </text>
             </g>
@@ -1123,7 +1123,7 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
           const baselineY = padding.top + chartHeight;
           return (
             <g key={`${point.team}-${point.time}`}>
-              <line x1={cx} x2={cx} y1={cy} y2={baselineY} stroke="#cbd5f5" strokeWidth="0.8" />
+              <line x1={cx} x2={cx} y1={cy} y2={baselineY} stroke="var(--sc-chart-axis)" strokeWidth="0.8" />
               <circle
                 cx={cx}
                 cy={cy}
@@ -1218,7 +1218,7 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
           );
         })()}
 
-        <text x={width / 2} y={20} textAnchor="middle" fontSize="13.6" fontWeight="600" fill="#0f172a">
+        <text x={width / 2} y={20} textAnchor="middle" fontSize="13.6" fontWeight="600" fill="var(--sc-chart-ink)">
           {chartTitle}
         </text>
 
@@ -1229,7 +1229,7 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
               y={padding.top + chartHeight}
               width={chartWidth}
               height={possessionBandHeight}
-              fill="#f8fafc"
+              fill="var(--sc-chart-card)"
               rx="4"
             />
             {timeline.timeTicks.map((tick) => {
@@ -1239,7 +1239,7 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
                 <text
                   key={`possession-tick-${tick.value}`}
                   fontSize="9.35"
-                  fill="#475569"
+                  fill="var(--sc-chart-label)"
                   textAnchor="middle"
                   dominantBaseline="middle"
                   x={x}
@@ -1276,7 +1276,7 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
           </g>
         )}
 
-        <text x={width / 2} y={minutesLabelY} textAnchor="middle" fontSize="10.2" fill="#000">
+        <text x={width / 2} y={minutesLabelY} textAnchor="middle" fontSize="10.2" fill="black">
           Minutes
         </text>
         <text
@@ -1285,7 +1285,7 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
           textAnchor="middle"
           fontSize="10.2"
           transform={`rotate(-90 14 ${height / 2})`}
-          fill="#000">
+          fill="black">
           Score
         </text>
 
@@ -1341,8 +1341,8 @@ function PossessionTimeline({ timeline }) {
   const bandHeight = isMobile ? 28 : 24;
   const bandY = padding.top;
   const tickY = bandY + bandHeight + 18;
-  const unknownColor = "#e2e8f0";
-  const bandColor = "#475569";
+  const unknownColor = "var(--sc-chart-grid)";
+  const bandColor = "var(--sc-chart-label)";
 
   const getX = (time) => {
     const ratio = (time - timeline.minTime) / (timeline.maxTime - timeline.minTime || 1);
@@ -1388,7 +1388,7 @@ function PossessionTimeline({ timeline }) {
             key={`${score.team || "score"}-${score.time}-${index}`}
             d={`M${x - 3.25},${y + 5} L${x},${y} L${x + 3.25},${y + 5}`}
             fill="none"
-            stroke="#0f172a"
+            stroke="var(--sc-chart-ink)"
             strokeWidth="1.4"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -1400,15 +1400,15 @@ function PossessionTimeline({ timeline }) {
         const x = getX(tick.value);
         return (
           <g key={tick.value}>
-            <text fontSize="11" fill="#475569" textAnchor="middle" dominantBaseline="middle" x={x} y={tickY + 4}>
+            <text fontSize="11" fill="var(--sc-chart-label)" textAnchor="middle" dominantBaseline="middle" x={x} y={tickY + 4}>
               {tick.label}
             </text>
-            <line x1={x} x2={x} y1={tickY} y2={tickY + 6} stroke="#94a3b8" strokeWidth="1" />
+            <line x1={x} x2={x} y1={tickY} y2={tickY + 6} stroke="var(--sc-chart-muted)" strokeWidth="1" />
           </g>
         );
       })}
 
-      <text x={width / 2} y={height - 10} textAnchor="middle" fontSize="12" fill="#475569">
+      <text x={width / 2} y={height - 10} textAnchor="middle" fontSize="12" fill="var(--sc-chart-label)">
         Minutes
       </text>
     </svg>
@@ -1470,7 +1470,7 @@ function TeamOverviewCard({ stats }) {
               <p className="text-lg font-semibold leading-tight text-ink sm:text-xl sm:leading-normal">
                 {formatStatValue(item.value)}
               </p>
-              <p className="text-[10px] font-semibold uppercase leading-tight tracking-wide text-ink-muted sm:text-[11px] sm:leading-normal">
+              <p className="text-xs font-semibold uppercase leading-tight tracking-wide text-ink-muted sm:text-xs sm:leading-normal">
                 {item.label}
               </p>
             </div>
@@ -1674,7 +1674,7 @@ function PointLogTable({ rows }) {
     <div className="w-full overflow-x-auto px-0 sm:mx-0 sm:px-0">
       <table className="w-full table-auto text-left text-xs sm:text-sm text-black">
         <thead className="text-white">
-          <tr className="uppercase tracking-wide text-[11px]">
+          <tr className="uppercase tracking-wide text-xs">
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Time</th>
             <th className="px-1 py-0.5 text-center sm:px-2 sm:py-1.5">Event</th>
             <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Team</th>
@@ -1706,19 +1706,19 @@ function PointLogTable({ rows }) {
               key={`${row.index}-${row.timestamp}`}
               className={`border-b border-border last:border-none ${
                 row.variant === "timeout"
-                  ? "bg-[#95df88]"
+                  ? "bg-ev-timeout"
                 : row.variant === "stoppage"
-                  ? "bg-[#fd5050]"
+                  ? "bg-ev-stoppage"
                 : row.variant === "halftime"
-                  ? "bg-[#269828]"
+                  ? "bg-ev-halftime"
                 : row.variant === "callahan"
-                  ? "bg-[#facc15]"
+                  ? "bg-ev-callahan"
                 : row.variant === "goalA"
-                  ? "bg-[#3b82f6]"
+                  ? "bg-ev-goal-a"
                 : row.variant === "goalB"
-                  ? "bg-[#fb923c]"
+                  ? "bg-ev-goal-b"
                 : row.variant === "turnoverA" || row.variant === "turnoverB"
-                  ? "bg-[#eceff3]"
+                  ? "bg-ev-turnover"
                   : ""
               }`}
             >
@@ -1739,14 +1739,14 @@ function PointLogTable({ rows }) {
                   <div className={`text-center text-xs font-semibold sm:text-sm ${rowTextClass}`}>
                     {!row.variant?.startsWith("turnover") && <div>{row.description}</div>}
                     {row.metaDetails && (
-                      <p className={`text-[10px] font-normal sm:text-xs ${metaTextClass}`}>
+                      <p className={`text-xs font-normal sm:text-xs ${metaTextClass}`}>
                         {row.metaDetails}
                       </p>
                     )}
                   </div>
                 ) : (
                   <div className="grid auto-rows-min items-center gap-0.5 leading-tight sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-1.5 sm:leading-normal">
-                    <span className={`text-[11px] leading-tight sm:text-sm sm:leading-normal sm:text-right ${rowTextClass}`}>{row.assist || "-"}</span>
+                    <span className={`text-xs leading-tight sm:text-sm sm:leading-normal sm:text-right ${rowTextClass}`}>{row.assist || "-"}</span>
                     <svg
                       viewBox="0 0 24 24"
                       className={`h-4 w-4 shrink-0 justify-self-center rotate-90 sm:h-5 sm:w-5 sm:rotate-0 ${rowTextClass}`}
@@ -1763,7 +1763,7 @@ function PointLogTable({ rows }) {
                   </div>
                 )}
               </td>
-              <td className={`px-1 sm:px-2 text-right font-mono text-[11px] sm:text-xs ${rowPaddingClass} ${rowTextClass}`}>
+              <td className={`px-1 sm:px-2 text-right font-mono text-xs sm:text-xs ${rowPaddingClass} ${rowTextClass}`}>
                 {row.gap}
               </td>
             </tr>

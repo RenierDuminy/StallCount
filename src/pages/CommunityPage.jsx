@@ -1,8 +1,8 @@
-import { Fragment } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { SectionShell } from "../components/ui/primitives";
 
-// A plain reference page: headings, paragraphs, tables and underlined text
+// A plain reference page: headings, paragraphs, row lists and underlined text
 // links, laid out like a traditional article with a contents list beside it.
 // Secondary text uses text-ink/75 rather than text-ink-muted, which reads
 // poorly on the dark surfaces.
@@ -20,7 +20,7 @@ const SECTIONS = [
 const ORGANISATIONS = [
   {
     name: "World Flying Disc Federation (WFDF)",
-    desc: "The international governing body. It publishes the official Rules of Ultimate that every South African game follows, and the free online rules accreditation.",
+    desc: "The international governing body. It publishes the official Rules of Ultimate that South African games follow, and the rules accreditation.",
     links: [
       { label: "wfdf.sport", href: "https://wfdf.sport" },
       { label: "Rules of Ultimate", href: "https://rules.wfdf.sport" },
@@ -29,128 +29,100 @@ const ORGANISATIONS = [
   },
   {
     name: "All Africa Flying Disc Federation (AAFDF)",
-    desc: "The continental body recognised by WFDF. It governs flying disc sports across Africa and runs the WFDF All African Ultimate Championships.",
-    links: [
-      { label: "aafdf.wfdf.sport", href: "https://aafdf.wfdf.sport" },
-      { label: "Instagram", href: "https://www.instagram.com/aafdf_official/" },
-      { label: "Facebook", href: "https://www.facebook.com/AllAfricaFlyingDisc/" },
-    ],
+    desc: "The continental federation recognised by WFDF, made up of 25 member countries. It co-organises the WFDF All Africa Ultimate Championships with WFDF.",
+    links: [{ label: "africa.wfdf.sport", href: "https://africa.wfdf.sport/events" }],
   },
   {
     name: "South African Flying Disc Association (SAFDA)",
-    desc: "The national governing body. It develops the sport, runs Regionals and Nationals, and selects the national teams.",
+    desc: "The national governing body. It runs the national championships and the national teams (Wild Dogs, Honey Badgers, Mambas and Bafazi). Its website is not always up to date, so check the regional bodies and the social accounts below for current news.",
     links: [
       { label: "safda.org.za", href: "https://safda.org.za" },
-      { label: "Instagram", href: "https://www.instagram.com/zaultimate_/" },
       { label: "Facebook", href: "https://www.facebook.com/southafricanultimate/" },
-      { label: "YouTube", href: "https://www.youtube.com/@safda_official" },
-      { label: "Email the executive", href: "mailto:safda-exec@googlegroups.com" },
+      { label: "YouTube", href: "https://www.youtube.com/channel/UCjKzaG2IWEyJDxR3j1aWd0g" },
     ],
   },
 ];
 
+// Only clubs with 2025 or 2026 evidence on a source other than the SAFDA site.
 const REGIONS = [
   {
-    name: "Western",
+    name: "Western Cape",
     body: "CTFDA",
-    desc: "Western Cape and Northern Cape. One of the oldest and deepest scenes, centred on Cape Town and Stellenbosch.",
+    desc: "The Cape Town Flying Disc Association runs two league seasons: open and women's in the first half of the year, mixed in the second. Weekly fixtures are on Monday evenings or Saturday mornings at Stellenbosch University, UCT and the Pinelands cricket ovals.",
     clubs: [
-      ["UCT Flying Tigers / Roaring Tigers", "UCT, Cape Town"],
-      ["Chilli Ultimate", "Pinelands, Cape Town"],
-      ["Catch 22", "Cape Town"],
-      ["Ghost Ultimate Club", "Cape Town"],
-      ["Salusa 45", "Cape Town"],
-      ["Maties Ultimate", "Stellenbosch"],
+      ["Chilli Ultimate", "Pinelands, Cape Town. Mixed teams Chilli Heat and Chilli Legends, women's team Hot Sauce"],
+      ["Ghost Ultimate", "Cape Town. Mixed"],
+      ["Maties Ultimate", "Stellenbosch. Mixed (Meerkats, Mountain Leopards), open (Ma’Gents) and women's (Ma’Ladies)"],
+      ["Nomad Ultimate", "Cape Town. Mixed"],
+      ["Northern Lights Ultimate", "Northern suburbs, Cape Town. Mixed"],
+      ["UCT Ultimate", "University of Cape Town. Mixed (Flying Tigers, Roaring Tigers), open (ManCubs) and women's (BenGals)"],
+      ["Mutiny, Gradient and Zephyr", "Cape Town. Open"],
+      ["Craft", "Cape Town. Women's"],
     ],
     links: [
-      { label: "capetownultimate.co.za", href: "https://www.capetownultimate.co.za/" },
+      { label: "capetownultimate.co.za", href: "https://www.capetownultimate.co.za/league/clubs" },
       { label: "Facebook", href: "https://www.facebook.com/capetownultimate/" },
-      { label: "Pickup games in Cape Town", href: "https://pickupultimate.com/cities/cape-town" },
+      { label: "Instagram", href: "https://www.instagram.com/capetownultimate/" },
     ],
   },
   {
-    name: "Northern",
+    name: "Gauteng",
     body: "GFDA",
-    desc: "Gauteng, Free State, Mpumalanga, North West and Limpopo. The largest and busiest region, centred on Johannesburg and Pretoria.",
+    desc: "The Gauteng Flying Disc Association (also trading as Gauteng Ultimate) runs the region's tournaments, including Rocktober, and a Saturday morning pickup in Johannesburg.",
     clubs: [
-      ["Ultitude", "Greenside, Johannesburg"],
-      ["Skyveld", "Johannesburg"],
-      ["Zone Rangers / Rex", "Johannesburg and Pretoria"],
-      ["Wits Voodoo Kudus", "Wits, Johannesburg"],
-      ["Soweto Ultimate", "Soweto"],
-      ["Orange Farm", "Johannesburg"],
-      ["Disks of Hazard", "Tuks, Pretoria"],
-      ["Labradors", "Pretoria"],
-      ["Elevation", "Potchefstroom"],
+      ["Wits Ultimate", "Wits University, Johannesburg. Trains Monday and Thursday evenings on Bozzoli B field"],
+      ["Ultitude", "Johannesburg. Runs weekly pickup games"],
+      ["Vaaltimate", "Vanderbijlpark. Runs weekly pickup games"],
     ],
     links: [
-      { label: "Gauteng Ultimate on Facebook", href: "https://www.facebook.com/GautengUltimate/" },
-      { label: "Ultitude blog", href: "https://ultitudeclub.wordpress.com/" },
       { label: "Wits Ultimate", href: "https://www.wits.ac.za/sport/clubs/ultimate-frisbee/" },
-      { label: "Pickup games in Johannesburg", href: "https://pickupultimate.com/cities/johannesburg" },
+      { label: "Gauteng Ultimate on Instagram", href: "https://www.instagram.com/gauteng_ultimate/" },
+      { label: "Ultitude on Instagram", href: "https://www.instagram.com/ultitude.jhb/" },
     ],
-  },
-  {
-    name: "KwaZulu-Natal",
-    body: "KZN",
-    desc: "Durban, Pietermaritzburg and the Midlands, with several long-standing competitive clubs.",
-    clubs: [
-      ["Long Donkeys", "Pietermaritzburg"],
-      ["Bunnies", "Durban"],
-      ["4th Prime", "Howick"],
-      ["Rambs", "KwaZulu-Natal"],
-    ],
-    links: [
-      { label: "Durban Ultimate on Facebook", href: "https://www.facebook.com/DurbanUltimate/" },
-      { label: "Long Donkeys on Facebook", href: "https://www.facebook.com/LongDonkeys/" },
-    ],
-  },
-  {
-    name: "Eastern Cape",
-    body: "EC",
-    desc: "Gqeberha, East London and surrounds. A developing region with a growing set of teams.",
-    clubs: [
-      ["Gale Force", "Gqeberha"],
-      ["Hammerheads", "East London"],
-      ["Rebels", "East London"],
-    ],
-    links: [],
   },
 ];
 
 const SEASON = [
-  { name: "Swinburne Hat", when: "February", desc: "A relaxed hat weekend near Harrismith where players are drafted onto random teams. A good first tournament." },
-  { name: "Regionals", when: "Before Nationals", desc: "Northern, Western, KwaZulu-Natal and Eastern Cape qualifiers that decide who goes to Nationals." },
-  { name: "Mixed Nationals", when: "First half of the year", desc: "The flagship mixed-division championship." },
-  { name: "Open and Women's Nationals", when: "Second half of the year", desc: "The single-gender national championships." },
-  { name: "Rocktober", when: "October", desc: "Hosted in Gauteng and often the biggest tournament of the year: competitive, social, and a draw for international teams." },
-  { name: "Inter-University Tournament", when: "Varies", desc: "Student competition between university teams from across the country." },
-  { name: "U24 Inter-Regional Tournament", when: "Varies", desc: "Regional sides compete, and it feeds selection for the national under-24 team." },
-  { name: "All-Africa Club Championships", when: "Varies", desc: "The WFDF-sanctioned continental club event, which South African clubs regularly travel to." },
+  { name: "Swinburne Hat", when: "February", desc: "A casual weekend hat tournament at Swinburne, just past Harrismith, where players are put on random teams. A good first tournament." },
+  { name: "Cape Town open and women's league", when: "February to April", desc: "A draft league in February and March, then the competitive league in March and April." },
+  { name: "Regionals", when: "March and April", desc: "Open and women's regional qualifiers that lead into Nationals." },
+  { name: "Open and Women's Nationals", when: "April and May", desc: "The national championships for the open and women's divisions." },
+  { name: "Cape Town mixed league", when: "July to November", desc: "A draft league in July and August, then the mixed club league from August to November." },
+  { name: "Rocktober", when: "October", desc: "Hosted in Gauteng by Gauteng Ultimate each year, with international teams joining. One of the biggest tournaments in the country." },
+  { name: "Mixed Regionals and Mixed Nationals", when: "October and November", desc: "Mixed regional qualifiers followed by the national mixed championship. Nationals have been streamed on SAFDA’s YouTube channel." },
+  { name: "Off-season events", when: "May to December", desc: "In Cape Town: UCT May Day (May), an indoor tournament at UCT (September and October) and a Masters League (November and December)." },
+  { name: "WFDF All Africa Ultimate Championships", when: "October 2025", desc: "The continental mixed championship, played in Kampala, Uganda, with a South African team among 13 teams from nine countries." },
+  { name: "SA Invite", when: "26 April to early May 2026", desc: "South Africa’s first international ultimate festival, held in Cape Town as a mixed tournament for teams from South Africa, Africa and abroad." },
+];
+
+const PICKUPS = [
+  ["Cape Town", "Clifton 1st Beach", "Sundays, morning. Time and place confirmed weekly on WhatsApp"],
+  ["Cape Town", "Rondebosch sports fields", "Sundays, 15:00. Family friendly"],
+  ["Cape Town", "Northern suburbs (Northern Lights)", "Sundays, afternoon. Beginner friendly"],
+  ["Cape Town", "Maties Women’s Pickup", "Fridays, 17:15. Beginner friendly"],
+  ["Johannesburg", "Gauteng Ultimate, Marks Park", "Saturdays, 08:30 (09:00 in winter)"],
+  ["Johannesburg", "Ultitude, Zoo Lake", "Tuesdays in the open and women's season (January to June); Wednesday evenings in the mixed season (July to December)"],
+  ["Johannesburg", "Wits Ultimate, Bozzoli B field", "Fridays, 16:30 to 18:00"],
+  ["Vanderbijlpark", "Vaaltimate", "Mondays and Thursdays, 16:30"],
 ];
 
 const SA_ACCOUNTS = [
-  { name: "SAFDA", links: [{ label: "Instagram", href: "https://www.instagram.com/zaultimate_/" }, { label: "Facebook", href: "https://www.facebook.com/southafricanultimate/" }, { label: "YouTube", href: "https://www.youtube.com/@safda_official" }] },
+  { name: "SAFDA", links: [{ label: "Facebook", href: "https://www.facebook.com/southafricanultimate/" }, { label: "YouTube", href: "https://www.youtube.com/channel/UCjKzaG2IWEyJDxR3j1aWd0g" }] },
   { name: "RSA Wild Dogs (U24 national team)", links: [{ label: "Instagram", href: "https://www.instagram.com/rsawilddogs/" }] },
-  { name: "Cape Town Ultimate (CTFDA)", links: [{ label: "Facebook", href: "https://www.facebook.com/capetownultimate/" }, { label: "YouTube", href: "https://www.youtube.com/@ctfda" }] },
-  { name: "UCT Ultimate", links: [{ label: "Instagram", href: "https://www.instagram.com/uct_ultimate/" }, { label: "Facebook", href: "https://www.facebook.com/UCTUltimate" }, { label: "X", href: "https://x.com/uctultimate" }] },
-  { name: "Maties Ultimate", links: [{ label: "Instagram", href: "https://www.instagram.com/maties.ultimate" }, { label: "Facebook", href: "https://www.facebook.com/matiesultimateclub/" }, { label: "YouTube", href: "https://www.youtube.com/@matiesultimate" }] },
-  { name: "Kaalvoet Kaos", links: [{ label: "YouTube", href: "https://www.youtube.com/@KaalvoetKaosUltimateFrisbee" }] },
-  { name: "Chilli Ultimate", links: [{ label: "Facebook", href: "https://www.facebook.com/chilliultimate" }] },
-  { name: "Gauteng Ultimate (GFDA)", links: [{ label: "Facebook", href: "https://www.facebook.com/GautengUltimate/" }] },
-  { name: "Long Donkeys", links: [{ label: "Facebook", href: "https://www.facebook.com/LongDonkeys/" }] },
-  { name: "Durban Ultimate / Bunnies", links: [{ label: "Facebook", href: "https://www.facebook.com/DurbanUltimate/" }] },
+  { name: "Cape Town Ultimate (CTFDA)", links: [{ label: "Facebook", href: "https://www.facebook.com/capetownultimate/" }, { label: "Instagram", href: "https://www.instagram.com/capetownultimate/" }] },
+  { name: "UCT Ultimate", links: [{ label: "Instagram", href: "https://www.instagram.com/uct_ultimate/" }] },
+  { name: "Maties Ultimate", links: [{ label: "Club page", href: "https://www.capetownultimate.co.za/league/clubs/maties-ultimate" }] },
+  { name: "Chilli Ultimate", links: [{ label: "Club page", href: "https://www.capetownultimate.co.za/league/clubs/chilli-ultimate" }] },
+  { name: "Gauteng Ultimate (GFDA)", links: [{ label: "Instagram", href: "https://www.instagram.com/gauteng_ultimate/" }] },
+  { name: "Ultitude", links: [{ label: "Instagram", href: "https://www.instagram.com/ultitude.jhb/" }] },
+  { name: "Wits Ultimate", links: [{ label: "Instagram", href: "https://www.instagram.com/wits_ultimate/" }] },
 ];
 
 const STREAMING = [
-  { name: "Ultiworld", desc: "Subscription streaming of major events, free highlights and a weekly show.", links: [{ label: "ultiworld.com", href: "https://ultiworld.com" }, { label: "YouTube", href: "https://www.youtube.com/user/ultiworld" }] },
-  { name: "WatchUFA", desc: "Every professional UFA game streamed live, with one free game a week on YouTube.", links: [{ label: "watchufa.com", href: "https://watchufa.com" }, { label: "YouTube", href: "https://www.youtube.com/channel/UCzInURHrtSH7208Mf1HVqUA" }] },
-  { name: "ulti.TV", desc: "A YouTube channel with live matches and wider community coverage.", links: [{ label: "YouTube", href: "https://www.youtube.com/@ULTIdotTV" }] },
+  { name: "Ultiworld", desc: "News, results and coverage of club and national championships.", links: [{ label: "ultiworld.com", href: "https://ultiworld.com" }] },
 ];
 
 const LINK_CLASS = "font-semibold underline underline-offset-2 hover:no-underline";
-const TABLE_CELL = "border-b border-white/15 py-2 pr-4 align-top";
-const TABLE_HEAD = "border-b border-white/30 py-2 pr-4 text-left text-sm font-semibold text-ink";
 
 function ExternalLink({ href, children }) {
   const isMail = href.startsWith("mailto:");
@@ -166,26 +138,92 @@ function ExternalLink({ href, children }) {
   );
 }
 
-/** Links separated by a middle dot, like a footer link row. */
+/** A wrapping row of links with room between them, so each is easy to tap. */
 function LinkList({ links }) {
   if (!links?.length) return null;
   return (
-    <span>
-      {links.map((link, index) => (
-        <Fragment key={link.href}>
-          {index > 0 ? <span className="px-1.5 text-ink/50" aria-hidden="true">·</span> : null}
+    <span className="flex flex-wrap gap-x-5">
+      {links.map((link) => (
+        <span key={link.href} className="py-1.5">
           <ExternalLink href={link.href}>{link.label}</ExternalLink>
-        </Fragment>
+        </span>
       ))}
     </span>
   );
 }
 
-function Section({ id, title, children }) {
+/**
+ * Rows of label + detail. Stacked on a phone (label, small line, then text);
+ * label in a left column from the sm breakpoint. Replaces wide tables.
+ */
+function RowList({ rows }) {
   return (
-    <section id={id} className="scroll-mt-24 border-t border-white/20 pt-6">
-      <h2 className="text-2xl font-bold text-ink">{title}</h2>
-      <div className="mt-3 space-y-4 text-base leading-relaxed text-ink/85">{children}</div>
+    <ul className="divide-y divide-white/15 border-y border-white/15">
+      {rows.map((row) => (
+        <li key={row.key ?? row.title} className="py-3 sm:grid sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-x-4">
+          <p className="font-semibold text-ink">{row.title}</p>
+          <div className="mt-1 sm:mt-0">
+            {row.meta ? <p className="text-sm font-medium text-ink/75">{row.meta}</p> : null}
+            {row.body ? <div className={row.meta ? "mt-0.5" : ""}>{row.body}</div> : null}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const DESKTOP_QUERY = "(min-width: 1024px)";
+
+/**
+ * A collapsible section. On a phone all but the first start closed, so the page
+ * reads as a short list of headings; on desktop everything starts open. A link
+ * to #id (the contents list) opens the section it points at.
+ */
+function Section({ id, title, blurb, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(
+    () => defaultOpen || (typeof window !== "undefined" && window.matchMedia(DESKTOP_QUERY).matches),
+  );
+
+  useEffect(() => {
+    const openIfTargeted = () => {
+      if (window.location.hash === `#${id}`) setOpen(true);
+    };
+    openIfTargeted();
+    window.addEventListener("hashchange", openIfTargeted);
+    return () => window.removeEventListener("hashchange", openIfTargeted);
+  }, [id]);
+
+  return (
+    <section id={id} className="scroll-mt-20 border-t border-white/20">
+      <h2>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={`${id}-panel`}
+          onClick={() => setOpen((value) => !value)}
+          className="flex min-h-14 w-full items-center justify-between gap-4 py-4 text-left"
+        >
+          <span>
+            <span className="block text-xl font-bold text-ink sm:text-2xl">{title}</span>
+            {blurb ? <span className="mt-0.5 block text-sm font-normal text-ink/75">{blurb}</span> : null}
+          </span>
+          <svg
+            viewBox="0 0 20 20"
+            className={`h-5 w-5 shrink-0 text-ink transition-transform ${open ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M5 8l5 5 5-5" />
+          </svg>
+        </button>
+      </h2>
+      {open ? (
+        <div id={`${id}-panel`} className="space-y-4 pb-6 text-base leading-relaxed text-ink/85">
+          {children}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -206,13 +244,13 @@ export default function CommunityPage() {
           </p>
         </header>
 
-        <div className="mt-8 grid gap-8 lg:grid-cols-[13rem_minmax(0,48rem)] lg:gap-12">
-          <nav aria-label="On this page" className="lg:sticky lg:top-24 lg:self-start">
+        <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[13rem_minmax(0,48rem)] lg:gap-12">
+          <nav aria-label="On this page" className="hidden lg:sticky lg:top-24 lg:block lg:self-start">
             <h2 className="text-sm font-semibold text-ink">On this page</h2>
-            <ol className="mt-2 space-y-1.5 text-sm">
+            <ol className="mt-1 text-base lg:text-sm">
               {SECTIONS.map((section) => (
                 <li key={section.id}>
-                  <a href={`#${section.id}`} className="underline-offset-2 hover:underline">
+                  <a href={`#${section.id}`} className="block py-2 underline-offset-2 hover:underline lg:py-1">
                     {section.title}
                   </a>
                 </li>
@@ -220,8 +258,8 @@ export default function CommunityPage() {
             </ol>
           </nav>
 
-          <article className="space-y-10">
-            <Section id="governance" title="Who runs the sport">
+          <article className="min-w-0 space-y-10 break-words">
+            <Section id="governance" title="Who runs the sport" blurb="The world, continental and national bodies" defaultOpen>
               <p>
                 Ultimate in South Africa sits under three levels of governance, from the world rules body down to
                 the national association that runs Nationals and selects the national teams.
@@ -230,18 +268,17 @@ export default function CommunityPage() {
                 <div key={org.name}>
                   <SubHeading>{org.name}</SubHeading>
                   <p className="mt-1">{org.desc}</p>
-                  <p className="mt-1 text-sm">
+                  <p className="mt-1">
                     <LinkList links={org.links} />
                   </p>
                 </div>
               ))}
             </Section>
 
-            <Section id="clubs" title="Clubs and where to play">
+            <Section id="clubs" title="Clubs and where to play" blurb="Active clubs in Cape Town and Gauteng">
               <p>
-                SAFDA divides the country into four regions, each running its own tournaments that feed into
-                Nationals. Most clubs welcome beginners at pickup before you commit to a team. The full list is on{" "}
-                <ExternalLink href="https://safda.org.za/new-clubs/">SAFDA&rsquo;s clubs page</ExternalLink>.
+                These are the clubs with recent activity (2025 or 2026) confirmed outside SAFDA&rsquo;s own website,
+                whose club list is out of date. Try a pickup game before you commit to a team.
               </p>
               {REGIONS.map((region) => (
                 <div key={region.name}>
@@ -249,32 +286,24 @@ export default function CommunityPage() {
                     {region.name} <span className="font-normal text-ink/75">({region.body})</span>
                   </SubHeading>
                   <p className="mt-1">{region.desc}</p>
-                  <table className="mt-3 w-full border-collapse text-sm">
-                    <thead>
-                      <tr>
-                        <th scope="col" className={TABLE_HEAD}>Club</th>
-                        <th scope="col" className={TABLE_HEAD}>Based in</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {region.clubs.map(([club, where]) => (
-                        <tr key={club}>
-                          <td className={`${TABLE_CELL} text-ink`}>{club}</td>
-                          <td className={`${TABLE_CELL} text-ink/75`}>{where}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="mt-3">
+                    <RowList rows={region.clubs.map(([club, where]) => ({ title: club, body: where }))} />
+                  </div>
                   {region.links.length ? (
-                    <p className="mt-2 text-sm">
+                    <p className="mt-2">
                       <LinkList links={region.links} />
                     </p>
                   ) : null}
                 </div>
               ))}
+              <p>
+                Ultimate has also been played in KwaZulu-Natal, the Eastern Cape and Pretoria, but no recent activity
+                could be confirmed for those clubs, so they are not listed. If your club is active, let the
+                StallCount team know and it will be added.
+              </p>
             </Section>
 
-            <Section id="rules" title="Rules and accreditation">
+            <Section id="rules" title="Rules and accreditation" blurb="The WFDF rulebook and how to get accredited">
               <p>
                 Ultimate is self-officiated. There are no referees: players call their own fouls under the Spirit
                 of the Game, so knowing the rules is part of playing.
@@ -282,16 +311,21 @@ export default function CommunityPage() {
               <div>
                 <SubHeading>WFDF Rules of Ultimate</SubHeading>
                 <p className="mt-1">
-                  The current official rulebook (2025–2028) and its appendix, used at WFDF events. Read the latest
-                  version at <ExternalLink href="https://rules.wfdf.sport">rules.wfdf.sport</ExternalLink>.
+                  The current official rulebook (2025–2028), in force since 1 January 2025, and its appendix, which
+                  WFDF updated in July 2026. Read the latest version at{" "}
+                  <ExternalLink href="https://rules.wfdf.sport">rules.wfdf.sport</ExternalLink>.
                 </p>
               </div>
               <div>
                 <SubHeading>Rules accreditation</SubHeading>
                 <p className="mt-1">
-                  A free online test at standard and advanced level, with unlimited attempts. Many leagues require
-                  it; take the advanced level once you are past beginner.{" "}
-                  <ExternalLink href="https://rules.wfdf.sport/accreditation">Take the accreditation test</ExternalLink>.
+                  A Standard and an Advanced level that show you have read and understood the rules. Since July 2026
+                  accreditation is run on the WFDF Academy platform, and older certificates from rules.wfdf.sport
+                  stay valid.{" "}
+                  <ExternalLink href="https://wfdf.sport/2026/07/wfdf-launches-enhanced-ultimate-rules-accreditation-on-wfdf-academy-platform/">
+                    Read the announcement
+                  </ExternalLink>
+                  .
                 </p>
               </div>
               <blockquote className="border-l-2 border-white/40 pl-4">
@@ -302,38 +336,20 @@ export default function CommunityPage() {
               </blockquote>
             </Section>
 
-            <Section id="season" title="The season">
+            <Section id="season" title="The season" blurb="Leagues and tournaments through the year">
               <p>
-                The competitive year has two halves, with regional tournaments qualifying teams for Nationals. Dates
-                and venues change every year; the current calendar is on{" "}
-                <ExternalLink href="https://safda.org.za/new-safda-events/">SAFDA&rsquo;s events page</ExternalLink>.
+                The competitive year has two halves: open and women&rsquo;s in the first half, mixed in the second,
+                with regional tournaments qualifying teams for Nationals. Months below are the usual timing. Exact
+                dates are confirmed closer to the time; the Cape Town calendar is on{" "}
+                <ExternalLink href="https://www.capetownultimate.co.za/league/team-schedules">capetownultimate.co.za</ExternalLink>.
               </p>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[32rem] border-collapse text-sm">
-                  <thead>
-                    <tr>
-                      <th scope="col" className={TABLE_HEAD}>Event</th>
-                      <th scope="col" className={TABLE_HEAD}>When</th>
-                      <th scope="col" className={TABLE_HEAD}>About</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {SEASON.map((row) => (
-                      <tr key={row.name}>
-                        <td className={`${TABLE_CELL} font-semibold text-ink`}>{row.name}</td>
-                        <td className={`${TABLE_CELL} whitespace-nowrap text-ink/75`}>{row.when}</td>
-                        <td className={`${TABLE_CELL} text-ink/85`}>{row.desc}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <RowList rows={SEASON.map((row) => ({ title: row.name, meta: row.when, body: row.desc }))} />
             </Section>
 
-            <Section id="start" title="Getting started">
+            <Section id="start" title="Getting started" blurb="Weekly pickup games and how to join">
               <p>
-                You don&rsquo;t need a team or any experience. Most clubs run weekly pickup games that are free or
-                cheap and beginner-friendly.
+                You don&rsquo;t need a team or any experience. Clubs run weekly pickup games that welcome
+                beginners, usually for a small fee or for free.
               </p>
               <div>
                 <SubHeading>Find a pickup game</SubHeading>
@@ -342,60 +358,51 @@ export default function CommunityPage() {
                   games by city and day of the week, with field locations and group chat links.
                 </p>
               </div>
+              <RowList
+                rows={PICKUPS.map(([city, game, when]) => ({ key: `${city}-${game}`, title: game, meta: city, body: when }))}
+              />
+              <p className="text-ink/75">
+                Times change with the seasons, so confirm with the organiser first. The listings on{" "}
+                <ExternalLink href="https://pickupultimate.com/cities/cape-town">Cape Town</ExternalLink> and{" "}
+                <ExternalLink href="https://pickupultimate.com/cities/johannesburg">Johannesburg</ExternalLink> are
+                kept current.
+              </p>
               <div>
                 <SubHeading>Get a disc</SubHeading>
-                <p className="mt-1">
-                  Ultimate is played with a 175 g disc. Clubs usually sell them at training and at tournaments.
-                </p>
+                <p className="mt-1">Ultimate is played with a 175 g disc.</p>
               </div>
               <div>
-                <SubHeading>Register to compete</SubHeading>
+                <SubHeading>Join a club or league</SubHeading>
                 <p className="mt-1">
-                  League and tournament play needs an annual club membership, valid to 31 December. Your regional
-                  body handles registration:{" "}
-                  <ExternalLink href="https://www.capetownultimate.co.za/">Western (CTFDA)</ExternalLink> or{" "}
-                  <ExternalLink href="https://www.facebook.com/GautengUltimate/">Northern (GFDA)</ExternalLink>.
+                  In Cape Town, new teams and players can contact the CTFDA at{" "}
+                  <ExternalLink href="mailto:helloctfda@gmail.com">helloctfda@gmail.com</ExternalLink>. Wits
+                  Ultimate takes students and alumni (membership R650 for students and R750 for alumni, at the time of
+                  writing). Elsewhere, ask at a pickup game.
                 </p>
               </div>
               <div>
                 <SubHeading>Stay up to date</SubHeading>
                 <p className="mt-1">
-                  Tournament announcements and the season calendar go out on{" "}
-                  <ExternalLink href="https://www.instagram.com/zaultimate_/">SAFDA&rsquo;s Instagram</ExternalLink>{" "}
-                  and by <ExternalLink href="mailto:safda-exec@googlegroups.com">email from SAFDA</ExternalLink>.
+                  Tournament news goes out on{" "}
+                  <ExternalLink href="https://www.facebook.com/southafricanultimate/">SAFDA&rsquo;s Facebook page</ExternalLink>
+                  , and the Cape Town calendar is on{" "}
+                  <ExternalLink href="https://www.capetownultimate.co.za/league/team-schedules">capetownultimate.co.za</ExternalLink>.
                 </p>
               </div>
             </Section>
 
-            <Section id="follow" title="Follow and watch">
+            <Section id="follow" title="Follow and watch" blurb="Social accounts and news">
               <SubHeading>South African accounts</SubHeading>
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr>
-                    <th scope="col" className={TABLE_HEAD}>Organisation</th>
-                    <th scope="col" className={TABLE_HEAD}>Follow on</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {SA_ACCOUNTS.map((row) => (
-                    <tr key={row.name}>
-                      <td className={`${TABLE_CELL} text-ink`}>{row.name}</td>
-                      <td className={TABLE_CELL}>
-                        <LinkList links={row.links} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <RowList rows={SA_ACCOUNTS.map((row) => ({ title: row.name, body: <LinkList links={row.links} /> }))} />
 
-              <SubHeading>International streaming</SubHeading>
+              <SubHeading>News and coverage</SubHeading>
               <ul className="space-y-3">
                 {STREAMING.map((row) => (
                   <li key={row.name}>
                     <p>
                       <strong className="text-ink">{row.name}.</strong> {row.desc}
                     </p>
-                    <p className="text-sm">
+                    <p>
                       <LinkList links={row.links} />
                     </p>
                   </li>
@@ -403,11 +410,11 @@ export default function CommunityPage() {
               </ul>
             </Section>
 
-            <Section id="scrimmage" title="Scoring a pickup game">
+            <Section id="scrimmage" title="Scoring a pickup game" blurb="Use StallCount for your own game">
               <p>
                 StallCount&rsquo;s scrimmage console scores a game without any event setup. Enter the two rosters,
                 set the rules, and track points, timeouts and halftime. It works offline on the field and produces
-                a PDF or CSV match report at the end.
+                a PDF match report and a match data file at the end.
               </p>
               <p>
                 <Link to="/admin/scrimmage" className={LINK_CLASS}>

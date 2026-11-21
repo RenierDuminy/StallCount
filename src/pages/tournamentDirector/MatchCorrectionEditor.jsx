@@ -210,7 +210,7 @@ export default function MatchCorrectionEditor({
                     key={group.label}
                     className="rounded-lg border border-[var(--sc-surface-light-border)] p-2"
                   >
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/50">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/50">
                       {group.label}
                     </p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
@@ -222,8 +222,8 @@ export default function MatchCorrectionEditor({
                           aria-pressed={eventCode === code}
                           className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                             eventCode === code
-                              ? "border-[#0f5132] bg-[#0f5132] text-white"
-                              : "border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] hover:border-[#0f5132]/60"
+                              ? "border-light-primary bg-light-primary text-white"
+                              : "border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] hover:border-light-primary/60"
                           }`}
                         >
                           {code}
@@ -324,7 +324,7 @@ export default function MatchCorrectionEditor({
               onChange={(event) => handleTimeChange(event.target.value)}
               className={`${LIGHT_INPUT_CLASS} mt-1 w-full`}
             />
-            <p className="mt-1 text-[11px] text-[var(--sc-surface-light-ink)]/60">
+            <p className="mt-1 text-xs text-[var(--sc-surface-light-ink)]/60">
               {(() => {
                 const createdAtMs = Number.isFinite(Date.parse(createdAt)) ? Date.parse(createdAt) : null;
                 const afterPrevious =
@@ -341,7 +341,7 @@ export default function MatchCorrectionEditor({
                 return "Position in the log is set entirely by this timestamp.";
               })()}
             </p>
-            {timeError ? <p className="mt-1 text-[11px] font-semibold text-rose-600">{timeError}</p> : null}
+            {timeError ? <p className="mt-1 text-xs font-semibold text-rose-600">{timeError}</p> : null}
           </div>
 
           <div>
@@ -356,7 +356,7 @@ export default function MatchCorrectionEditor({
               placeholder="Why this entry is being changed"
               className={`${LIGHT_INPUT_CLASS} mt-1 w-full`}
             />
-            <p className="mt-1 flex justify-between text-[11px] text-[var(--sc-surface-light-ink)]/60">
+            <p className="mt-1 flex justify-between text-xs text-[var(--sc-surface-light-ink)]/60">
               <span>Stored in the audit log. Match logs keep no edit history of their own.</span>
               <span className="shrink-0 pl-2 tabular-nums">
                 {reason.length}/{REASON_MAX_LENGTH}

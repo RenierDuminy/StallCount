@@ -45,7 +45,7 @@ export default function MatchCorrectionsPage() {
   }, []);
 
   return (
-    <div className="td-page min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
+    <div className="td-page min-h-screen bg-light-page text-[var(--sc-surface-light-ink)]">
       <SectionShell as="header" className="py-4">
         <Card variant="light" className="space-y-3 p-4 shadow-xl shadow-[rgba(8,25,21,0.08)]">
           <SectionHeader

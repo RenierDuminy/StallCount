@@ -663,8 +663,7 @@ export default function AdminAccessPage() {
     <div className="min-h-screen bg-surface text-ink">
       <SectionShell as="header" className="py-6">
         <Card className="space-y-4 p-6 sm:p-8">
-          <SectionHeader
-            eyebrow="Admin"
+          <SectionHeader
             title="Access control"
             description="Review every profile and adjust StallCount access tiers in one dense grid."
             action={
@@ -729,12 +728,12 @@ export default function AdminAccessPage() {
                     <p className="text-xs text-ink-muted">{role.description || "No description"}</p>
                     <div className="mt-2 flex flex-wrap gap-1">
                       {role.permissions.length === 0 ? (
-                        <Chip variant="ghost" className="text-[11px] text-ink-muted">
+                        <Chip variant="ghost" className="text-xs text-ink-muted">
                           No permissions assigned
                         </Chip>
                       ) : (
                         role.permissions.map((permission) => (
-                          <Chip key={permission.key} variant="tag" className="text-[11px]">
+                          <Chip key={permission.key} variant="tag" className="text-xs">
                             {formatPermissionLabel(permission)}
                           </Chip>
                         ))
@@ -809,7 +808,7 @@ export default function AdminAccessPage() {
                   {selectedUser ? selectedUser.fullName || "Unnamed profile" : "No user selected"}
                 </span>
                 {selectedUser ? (
-                  <span className="text-[11px] text-ink-muted">{selectedUser.email || selectedUser.id}</span>
+                  <span className="text-xs text-ink-muted">{selectedUser.email || selectedUser.id}</span>
                 ) : null}
               </Panel>
             </div>
@@ -939,7 +938,7 @@ export default function AdminAccessPage() {
                     <p className="text-xs text-ink-muted">Admin roles are global, all other roles are event-linked.</p>
                   </div>
                   {roleManagerBusy ? (
-                    <Chip variant="ghost" className="text-[11px] text-ink-muted">
+                    <Chip variant="ghost" className="text-xs text-ink-muted">
                       Saving...
                     </Chip>
                   ) : null}
@@ -956,7 +955,7 @@ export default function AdminAccessPage() {
                         <Chip variant="tag">{assignment.roleName || "Role"}</Chip>
                         <button
                           type="button"
-                          className="text-[10px] uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="text-xs uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                           onClick={() => handleRemoveAdminRole(selectedUser.id, assignment)}
                           disabled={roleManagerBusy}
                         >
@@ -980,7 +979,7 @@ export default function AdminAccessPage() {
                           <Chip variant="tag">{assignment.roleName || "Role"}</Chip>
                           <button
                             type="button"
-                            className="text-[10px] uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="text-xs uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={() => handleRemoveAdminRole(selectedUser.id, assignment)}
                             disabled={roleManagerBusy}
                           >
@@ -1033,7 +1032,7 @@ export default function AdminAccessPage() {
                           <Chip variant="ghost">{formatEventRoleLabel(entry)}</Chip>
                           <button
                             type="button"
-                            className="text-[10px] uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="text-xs uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={() => handleRemoveEventRole(selectedUser.id, entry)}
                             disabled={roleManagerBusy || !selectedEventId}
                           >
@@ -1062,7 +1061,7 @@ export default function AdminAccessPage() {
                           <Chip variant="ghost">{formatTeamRoleLabel(entry)}</Chip>
                           <button
                             type="button"
-                            className="text-[10px] uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="text-xs uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={() => handleRemoveTeamRole(selectedUser.id, entry)}
                             disabled={roleManagerBusy}
                           >
@@ -1096,7 +1095,7 @@ export default function AdminAccessPage() {
                     {pendingRoleIsTeamScoped ? "Add team role" : "Add role"}
                   </button>
                   {roleManagerError ? (
-                    <span className="text-[11px] text-rose-200">{roleManagerError}</span>
+                    <span className="text-xs text-rose-200">{roleManagerError}</span>
                   ) : null}
                 </div>
               </div>
@@ -1104,9 +1103,7 @@ export default function AdminAccessPage() {
               <p className="text-xs text-ink-muted">Search for a user to manage their roles.</p>
             )}
           </Panel>
-          <SectionHeader
-            eyebrow="Directory"
-            eyebrowVariant="tag"
+          <SectionHeader
             title="People and access"
             description="Filter by name, role, or email to find the account you need."
           />
@@ -1179,11 +1176,11 @@ export default function AdminAccessPage() {
                       const eventRoles = Array.isArray(user.eventRoles) ? user.eventRoles : [];
                       return (
                         <tr key={user.id} className="hover:bg-surface-muted">
-                          <td className="px-3 py-2 font-mono text-[11px] text-ink-muted">{user.id}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-ink-muted">{user.id}</td>
                           <td className="px-3 py-2 text-sm font-semibold text-ink">
                             {user.fullName || "Unnamed profile"}
                           </td>
-                          <td className="px-3 py-2 text-[13px] text-ink-muted">{user.email || "-"}</td>
+                          <td className="px-3 py-2 text-sm text-ink-muted">{user.email || "-"}</td>
                           <td className="px-3 py-2">
                             {adminAssignments.length === 0 ? (
                               <span className="text-xs text-ink-muted">No admin role assigned</span>

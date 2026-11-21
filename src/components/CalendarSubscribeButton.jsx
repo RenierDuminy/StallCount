@@ -16,6 +16,9 @@ export default function CalendarSubscribeButton({
   concluded = false,
   label = "Add to calendar",
   className = "",
+  // "button" (default) or "link": a plain styled link, for link rows such as
+  // the event page's section links.
+  appearance = "button",
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -64,7 +67,7 @@ export default function CalendarSubscribeButton({
         ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
-        className={`sc-button whitespace-nowrap ${className}`}
+        className={`${appearance === "link" ? "sc-section-link" : "sc-button whitespace-nowrap"} ${className}`}
       >
         {label}
       </button>

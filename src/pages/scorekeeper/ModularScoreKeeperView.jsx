@@ -404,7 +404,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
     return (
       <span className="flex flex-col items-center text-center leading-tight">
         {jerseyText && <span className="text-sm font-extrabold">{jerseyText}</span>}
-        <span className={`${jerseyText ? "mt-0.5" : ""} w-full text-[0.7rem] font-semibold whitespace-normal break-words`}>
+        <span className={`${jerseyText ? "mt-0.5" : ""} w-full text-xs font-semibold whitespace-normal break-words`}>
           {name}
         </span>
       </span>
@@ -807,10 +807,10 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
       // .sc-shell pads 10% on wide screens; the PC layout needs the width.
       style={isDesktop ? { paddingLeft: "1rem", paddingRight: "1rem" } : undefined}
     >
-      <main className="py-2">
+      <main className="sk-console py-2">
         {consoleReady ? (
           <section className="space-y-2">
-            <div className="rounded-3xl border border-emerald-900/15 bg-white/90 p-1.5 w-full">
+            <div className="rounded-xl border border-emerald-900/15 bg-white/90 p-1.5 w-full">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <h2 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-slate-900">
@@ -865,7 +865,10 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
               )}
               <div className="space-y-2">
 
-            <div className="space-y-2 rounded-2xl border border-slate-300 bg-white p-1.5">
+            {/* One card for the live controls: timers, possession and scoring.
+                The match log is the next card. */}
+            <div className="space-y-2 rounded-xl border border-[#0f5132]/40 bg-white p-1.5">
+            <div className="space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <div
                   className={`min-w-0 rounded-xl border border-slate-200 p-1.5 text-center text-slate-800 transition-colors [container-type:inline-size] ${primaryTimerBg}`}
@@ -965,8 +968,8 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
                 mounted (halftime still flips possession internally, without
                 logging a turnover), so only the operator surface disappears. */}
             {matchStarted && capabilities.possession && (
-              <div className="rounded-3xl border border-slate-200 bg-white p-2 w-full">
-                <div className="mt-3 space-y-2">
+              <div className="w-full border-t border-slate-200 pt-2">
+                <div className="space-y-2">
                   <div
                     ref={possessionPadRef}
                     role="group"
@@ -981,9 +984,9 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
                   >
                     {currentPossessionTeam && (
                       <div
-                        className="pointer-events-none absolute inset-1 w-[calc(50%-2px)] rounded-xl bg-[#0f5132] transition-transform duration-300 ease-in-out"
+                        className="pointer-events-none absolute bottom-1 left-1 top-1 w-[calc(50%-4px)] rounded-xl bg-[#0f5132] transition-transform duration-300 ease-in-out"
                         style={{
-                          transform: currentPossessionTeam === "B" ? "translateX(calc(100% + 4px))" : "translateX(0)",
+                          transform: currentPossessionTeam === "B" ? "translateX(100%)" : "translateX(0)",
                         }}
                         aria-hidden="true"
                       />
@@ -1009,15 +1012,9 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
                       {displayTeamBShort}
                     </button>
                   </div>
-                  <div className="flex flex-col gap-1 text-slate-800 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="flex items-center gap-1 text-sm font-semibold text-slate-600">
-                      <span className="text-base font-semibold text-slate-900">Possession</span>
-                      <span>:</span>
-                      <span className="text-base text-slate-900">
-                        {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
-                      </span>
-                    </p>
-                  </div>
+                  <p className="text-center text-base font-semibold text-slate-900">
+                    {possessionLeader === "Contested" ? "Contested" : `${possessionLeader} control`}
+                  </p>
                 </div>
               </div>
             )}
@@ -1028,7 +1025,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
               </p>
             )}
 
-            <div className="space-y-2 rounded-3xl border border-[#0f5132]/40 bg-white p-1.5">
+            <div className="space-y-2 border-t border-slate-200 pt-2">
               <div className="space-y-2">
                 {!matchStarted ? (
                   <>
@@ -1063,7 +1060,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
                       >
                         Add score - {displayTeamAShort}
                       </button>
-                      <div className="px-1 text-center text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]/80">
+                      <div className="px-1 text-center text-xs font-semibold uppercase tracking-wide text-[#0f5132]/80">
                         {isRuleB ? (
                           <div
                             role="group"
@@ -1113,6 +1110,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
                 )}
               </div>
             </div>
+            </div>
             {isDesktop && (
               <PointSummaryPanel
                 points={pointSummary}
@@ -1123,11 +1121,11 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
           </div>
 
           <div className="space-y-2">
-            <div className="space-y-2 rounded-3xl border border-[#0f5132]/40 bg-white p-1.5">
+            <div className="space-y-2 rounded-xl border border-[#0f5132]/40 bg-white p-1.5">
               {matchEventsError && (
                 <p className="text-xs text-rose-600">{matchEventsError}</p>
               )}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {logsLoading ? (
                   <div className="rounded-2xl border border-dashed border-[#0f5132]/30 px-3 py-2 text-center text-xs text-slate-500">
                     Syncing logs...
@@ -1171,7 +1169,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
         </div>
 
             {!isDesktop && (
-            <details className="group rounded-3xl border border-[#0f5132]/30 bg-white p-2 text-[#0f5132]">
+            <details className="group rounded-xl border border-[#0f5132]/30 bg-white p-2 text-[#0f5132]">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-2 py-1 text-sm font-semibold marker:hidden">
                 <span>Team rosters</span>
                 <span className="text-lg leading-none transition group-open:rotate-180" aria-hidden="true">
@@ -1180,7 +1178,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
               </summary>
               <div className="mt-2 space-y-2">
                 {rostersError && (
-                  <p className="rounded-3xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                     {rostersError}
                   </p>
                 )}
@@ -1228,7 +1226,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
 
           </section>
         ) : consoleOpening ? (
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 text-center">
+          <section className="rounded-xl border border-slate-200 bg-white p-6 text-center">
             <p className="text-sm font-semibold text-[#0f5132]">Opening console...</p>
             <p className="mt-1 text-xs text-slate-500">Loading the match, rosters and log.</p>
           </section>
@@ -1236,7 +1234,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
           /* The menu is the landing page now. Reaching the console without a
              match means setup is open over this, or the operator dismissed it —
              so this is a backdrop with one way back, not a second menu. */
-          <section className="space-y-3 rounded-3xl border border-slate-200 bg-white p-6 text-center">
+          <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-6 text-center">
             <p className="text-sm font-semibold text-[#0f5132]">
               {initialising ? "Initialising..." : "No match set up yet"}
             </p>
@@ -1431,7 +1429,7 @@ function PendingSyncPanel({ pendingEntries, online }) {
         <h4 className="text-base font-semibold text-[#0f5132]">
           Pending sync ({count})
         </h4>
-        <span className="rounded-full border border-[#0f5132]/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0f5132]">
+        <span className="rounded-full border border-[#0f5132]/30 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-[#0f5132]">
           {online ? "Online" : "Offline"}
         </span>
       </div>
@@ -1441,7 +1439,7 @@ function PendingSyncPanel({ pendingEntries, online }) {
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="mt-2 text-[11px] font-semibold text-[#0f5132] underline underline-offset-2 transition hover:text-[#083b24]"
+        className="mt-2 text-xs font-semibold text-[#0f5132] underline underline-offset-2 transition hover:text-[#083b24]"
       >
         {expanded ? "Hide details" : "Show details"}
       </button>
@@ -1506,7 +1504,7 @@ function SecondaryTimerDescription({ kind, label, rules, running, elapsedSeconds
   }
 
   return (
-    <div className="w-full text-center text-[10px] font-semibold leading-tight">
+    <div className="w-full text-center text-xs font-semibold leading-tight">
       <p className="text-center text-slate-900">{title}</p>
       {activePhase && <p>{activePhase.text}</p>}
     </div>

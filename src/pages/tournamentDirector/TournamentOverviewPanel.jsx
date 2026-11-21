@@ -580,7 +580,7 @@ function ScheduleFilterMenu({
         aria-label={`Filter schedule by ${field.label.toLowerCase()}`}
         title={buttonLabel}
         className={`${LIGHT_INPUT_CLASS} flex w-full items-center justify-between gap-1.5 text-left ${
-          isFiltered ? "border-[#0a3d29] font-semibold text-[#0a3d29]" : ""
+          isFiltered ? "border-light-primary font-semibold text-light-primary" : ""
         }`}
       >
         <span className="truncate">{buttonLabel}</span>
@@ -595,21 +595,21 @@ function ScheduleFilterMenu({
           aria-label={`${field.label} values`}
         >
           <div className="flex items-center justify-between gap-2 border-b border-[var(--sc-surface-light-border)] pb-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/55">
+            <span className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/55">
               {field.label}
             </span>
             <div className="flex gap-1">
               <button
                 type="button"
                 onClick={onSelectAll}
-                className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#0a3d29] transition hover:bg-[#eef7f1]"
+                className="rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-light-primary transition hover:bg-light-tint"
               >
                 All
               </button>
               <button
                 type="button"
                 onClick={onSelectNone}
-                className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70 transition hover:bg-[#eef7f1]"
+                className="rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70 transition hover:bg-light-tint"
               >
                 None
               </button>
@@ -622,13 +622,13 @@ function ScheduleFilterMenu({
               options.map((option) => (
                 <label
                   key={`${field.key}:${option.value}`}
-                  className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs text-[var(--sc-surface-light-ink)] transition hover:bg-[#eef7f1]"
+                  className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs text-[var(--sc-surface-light-ink)] transition hover:bg-light-tint"
                 >
                   <input
                     type="checkbox"
                     checked={!excludedSet.has(option.value)}
                     onChange={() => onToggleValue(option.value)}
-                    className="h-3.5 w-3.5 shrink-0 accent-[#0a3d29]"
+                    className="h-3.5 w-3.5 shrink-0 accent-light-primary"
                   />
                   <span className="truncate" title={option.label}>
                     {option.label}
@@ -646,7 +646,7 @@ function ScheduleFilterMenu({
 function SummaryMetric({ label, value, detail }) {
   return (
     <Panel variant="light" className="min-w-0 px-2 py-2.5 shadow-sm shadow-[rgba(8,25,21,0.04)]">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">{label}</p>
       <p className="mt-1 text-xl font-bold text-[var(--sc-surface-light-ink)]">{value}</p>
       {detail ? <p className="mt-1 text-xs text-[var(--sc-surface-light-ink)]/70">{detail}</p> : null}
     </Panel>
@@ -1451,7 +1451,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
         {selectedEvent ? (
           <div className="grid grid-cols-[repeat(auto-fit,minmax(14rem,1fr))] gap-3">
             <Panel variant="light" className="p-3 shadow-sm shadow-[rgba(8,25,21,0.04)]">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Tournament</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Tournament</p>
               <p className="mt-1 text-lg font-semibold text-[var(--sc-surface-light-ink)]">{selectedEvent.name}</p>
               <p className="mt-1 text-sm text-[var(--sc-surface-light-ink)]/70">{selectedEvent.location || "Location not set"}</p>
               <p className="mt-1 text-sm text-[var(--sc-surface-light-ink)]/70">
@@ -1462,12 +1462,12 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
               </p>
             </Panel>
             <Panel variant="light" className="p-3 shadow-sm shadow-[rgba(8,25,21,0.04)]">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Dates</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Dates</p>
               <p className="mt-1 text-lg font-semibold text-[var(--sc-surface-light-ink)]">{dateRangeLabel}</p>
               <p className="mt-1 text-sm text-[var(--sc-surface-light-ink)]/70">{divisionCount} divisions, {venueCount} venues</p>
             </Panel>
             <Panel variant="light" className="p-3 shadow-sm shadow-[rgba(8,25,21,0.04)]">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Participation</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Participation</p>
               <p className="mt-1 text-lg font-semibold text-[var(--sc-surface-light-ink)]">{summary?.uniqueTeamCount || 0} teams</p>
               <p className="mt-1 text-sm text-[var(--sc-surface-light-ink)]/70">{totalMatches} matches loaded</p>
             </Panel>
@@ -1543,7 +1543,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
               <button
                 type="button"
                 onClick={openMatchCreator}
-                className="sc-button bg-[#0a3d29] text-white"
+                className="sc-button bg-light-primary text-white"
                 disabled={!selectedEventId}
               >
                 + Match
@@ -1561,7 +1561,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
           ) : (
             <div className="overflow-auto">
             <table className="min-w-full table-auto divide-y divide-[var(--sc-surface-light-border)] text-sm">
-              <thead className="sticky top-0 z-10 bg-[#eef7f1]">
+              <thead className="sticky top-0 z-10 bg-light-tint">
                 <tr>
                   {[
                     { key: "date", label: "Date", mobileLabel: "Date / Time" },
@@ -1576,7 +1576,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                   ].map((column) => (
                     <th
                       key={column.key}
-                      className={`whitespace-nowrap px-2 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/55 first:pl-4 last:pr-4 ${
+                      className={`whitespace-nowrap px-2 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/55 first:pl-4 last:pr-4 ${
                         column.align || "text-left"
                       } ${column.divider ? "border-l border-[var(--sc-surface-light-border)]/60" : ""}`}
                     >
@@ -1598,13 +1598,13 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                   return (
                     <tr
                       key={match.id}
-                      className={`cursor-pointer transition hover:bg-[#e8f4ec] ${index % 2 === 0 ? "bg-white" : "bg-[#f4faf6]"}`}
+                      className={`cursor-pointer transition hover:bg-light-tint ${index % 2 === 0 ? "bg-white" : "bg-light-zebra"}`}
                       onClick={() => navigate(matchPath(match.id))}
                     >
                       <td className="whitespace-nowrap px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
                         <div className="flex flex-col items-start gap-px sm:flex-row sm:items-baseline sm:gap-2">
                           <span className="font-semibold leading-tight">{date}</span>
-                          <span className="text-[11px] font-medium leading-tight tabular-nums text-[var(--sc-surface-light-ink)]/55">
+                          <span className="text-xs font-medium leading-tight tabular-nums text-[var(--sc-surface-light-ink)]/55">
                             {time}
                           </span>
                         </div>
@@ -1612,14 +1612,14 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                       <td className="whitespace-nowrap px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
                         <div className="flex flex-col items-start gap-px sm:flex-row sm:items-baseline sm:gap-2">
                           <span className="font-semibold leading-tight">{match.scheduleValues.division}</span>
-                          <span className="text-[11px] leading-tight text-[var(--sc-surface-light-ink)]/55">
+                          <span className="text-xs leading-tight text-[var(--sc-surface-light-ink)]/55">
                             {match.displayVenue}
                           </span>
                         </div>
                       </td>
                       <td className="whitespace-nowrap border-l border-[var(--sc-surface-light-border)]/60 px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
                         <span
-                          className={`inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${getStatusBadgeClass(match.status)}`}
+                          className={`inline-flex rounded-full border px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide ${getStatusBadgeClass(match.status)}`}
                         >
                           {match.status || "Unknown"}
                         </span>
@@ -1629,7 +1629,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                       </td>
                       <td className="whitespace-nowrap py-1.5 pl-1.5 pr-0.5 text-center">
                         <span
-                          className={`inline-flex min-w-[1.85rem] justify-center rounded-l-md border-y border-l border-[var(--sc-surface-light-border)]/70 bg-[#eaf5ee] px-1.5 py-0.5 tabular-nums ${
+                          className={`inline-flex min-w-[1.85rem] justify-center rounded-l-md border-y border-l border-[var(--sc-surface-light-border)]/70 bg-light-tint px-1.5 py-0.5 tabular-nums ${
                             (match.score_a ?? 0) >= (match.score_b ?? 0)
                               ? "font-bold text-[var(--sc-surface-light-ink)]"
                               : "font-medium text-[var(--sc-surface-light-ink)]/55"
@@ -1638,7 +1638,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                           {match.score_a ?? 0}
                         </span>
                         <span
-                          className={`inline-flex min-w-[1.85rem] justify-center rounded-r-md border-y border-r border-[var(--sc-surface-light-border)]/70 bg-[#eaf5ee] px-1.5 py-0.5 tabular-nums ${
+                          className={`inline-flex min-w-[1.85rem] justify-center rounded-r-md border-y border-r border-[var(--sc-surface-light-border)]/70 bg-light-tint px-1.5 py-0.5 tabular-nums ${
                             (match.score_b ?? 0) >= (match.score_a ?? 0)
                               ? "font-bold text-[var(--sc-surface-light-ink)]"
                               : "font-medium text-[var(--sc-surface-light-ink)]/55"
@@ -1652,20 +1652,20 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                       </td>
                       <td className="whitespace-nowrap border-l border-[var(--sc-surface-light-border)]/60 px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
                         {match.spiritScoreA !== null || match.spiritScoreB !== null ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-[#edf7f0] px-1.5 py-0.5 font-semibold tabular-nums">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-light-tint px-1.5 py-0.5 font-semibold tabular-nums">
                             <span>{match.spiritScoreA ?? "-"}</span>
-                            <span className="text-[9px] text-[var(--sc-surface-light-ink)]/45">/</span>
+                            <span className="text-xs text-[var(--sc-surface-light-ink)]/45">/</span>
                             <span>{match.spiritScoreB ?? "-"}</span>
                           </span>
                         ) : (
-                          <span className="inline-flex rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-600">
+                          <span className="inline-flex rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
                             -
                           </span>
                         )}
                       </td>
                       <td className="whitespace-nowrap px-2 py-1.5">
                         <span
-                          className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                          className={`inline-flex rounded-full px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide ${
                             getConfirmationLabel(match) === "Yes"
                               ? "bg-emerald-100 text-emerald-800"
                               : getConfirmationLabel(match) === "1/2"
@@ -1684,7 +1684,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                             event.stopPropagation();
                             openMatchEditor(match);
                           }}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] shadow-sm transition hover:bg-[#edf7f0] focus:outline-none focus:ring-2 focus:ring-[#0a3d29]/40"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] shadow-sm transition hover:bg-light-tint focus:outline-none focus:ring-2 focus:ring-light-primary/40"
                           aria-label={`Edit match ${match.displayTeamA} vs ${match.displayTeamB}`}
                           title="Edit match"
                         >
@@ -1735,7 +1735,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
             <button
               type="button"
               onClick={closeMatchCreator}
-              className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] transition hover:bg-[#eef7f1]"
+              className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] transition hover:bg-light-tint"
               disabled={createSaving}
               aria-label="Close create match"
               title="Close"
@@ -1959,7 +1959,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                   checked={createForm.captainsConfirmed}
                   onChange={(event) => handleCreateField("captainsConfirmed", event.target.checked)}
                   className="h-4 w-4"
-                  style={{ accentColor: "#0a3d29" }}
+                  style={{ accentColor: "var(--sc-light-primary)" }}
                 />
                 Both captains confirmed
               </label>
@@ -1992,7 +1992,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                   checked={createForm.hasMedia}
                   onChange={(event) => handleCreateField("hasMedia", event.target.checked)}
                   className="h-4 w-4"
-                  style={{ accentColor: "#0a3d29" }}
+                  style={{ accentColor: "var(--sc-light-primary)" }}
                 />
                 Has media
               </label>
@@ -2051,7 +2051,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
               <button type="button" onClick={closeMatchCreator} className="sc-button" disabled={createSaving}>
                 Cancel
               </button>
-              <button type="submit" className="sc-button bg-[#0a3d29] text-white" disabled={createSaving}>
+              <button type="submit" className="sc-button bg-light-primary text-white" disabled={createSaving}>
                 {createSaving ? "Creating..." : "Create match"}
               </button>
             </div>
@@ -2080,7 +2080,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
             <button
               type="button"
               onClick={closeMatchEditor}
-              className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] transition hover:bg-[#eef7f1]"
+              className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] transition hover:bg-light-tint"
               disabled={editSaving || editDeleting}
               aria-label="Close edit match"
               title="Close"
@@ -2333,7 +2333,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                       Result confirmation
                     </span>
                     <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusClass}`}
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${statusClass}`}
                     >
                       {statusLabel}
                     </span>
@@ -2359,7 +2359,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                             checked={confirmed}
                             onChange={(event) => handleEditField(`${key}Confirmed`, event.target.checked)}
                             className="h-4 w-4"
-                            style={{ accentColor: "#0a3d29" }}
+                            style={{ accentColor: "var(--sc-light-primary)" }}
                           />
                           {name} confirmed
                         </label>
@@ -2382,7 +2382,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                   checked={normalizedEditForm.hasMedia}
                   onChange={(event) => handleEditField("hasMedia", event.target.checked)}
                   className="h-4 w-4"
-                  style={{ accentColor: "#0a3d29" }}
+                  style={{ accentColor: "var(--sc-light-primary)" }}
                 />
                 Has media
               </label>
@@ -2433,15 +2433,15 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
 
             <div className="mt-3 overflow-hidden rounded-lg border border-[var(--sc-surface-light-border)] bg-white">
               <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm">
-                <thead className="bg-[#eef7f1]">
+                <thead className="bg-light-tint">
                   <tr>
-                    <th className="px-1 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/60">
+                    <th className="px-1 py-1.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/60">
                       Category
                     </th>
-                    <th className="px-1 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/60">
+                    <th className="px-1 py-1.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/60">
                       {getTeamOptionName(teamOptions, normalizedEditForm.teamAId, "Team A")}
                     </th>
-                    <th className="px-1 py-1.5 text-left text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/60">
+                    <th className="px-1 py-1.5 text-left text-xs font-semibold uppercase tracking-[0.1em] text-[var(--sc-surface-light-ink)]/60">
                       {getTeamOptionName(teamOptions, normalizedEditForm.teamBId, "Team B")}
                     </th>
                   </tr>
@@ -2469,7 +2469,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                       ))}
                     </tr>
                   ))}
-                  <tr className="bg-[#f8fcf9]">
+                  <tr className="bg-light-zebra">
                     <td className="px-1 py-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
                       Total
                     </td>
@@ -2520,7 +2520,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
               <button type="button" onClick={closeMatchEditor} className="sc-button" disabled={editSaving || editDeleting}>
                 Cancel
               </button>
-              <button type="submit" className="sc-button bg-[#0a3d29] text-white" disabled={editSaving || editDeleting}>
+              <button type="submit" className="sc-button bg-light-primary text-white" disabled={editSaving || editDeleting}>
                 {editSaving ? "Saving..." : "Save match"}
               </button>
             </div>

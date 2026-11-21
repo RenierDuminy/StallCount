@@ -826,7 +826,7 @@ export default function EventAccessPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-ink">Global roles</p>
                   {roleManagerBusy ? (
-                    <Chip variant="ghost" className="text-[11px] text-ink-muted">
+                    <Chip variant="ghost" className="text-xs text-ink-muted">
                       Saving...
                     </Chip>
                   ) : null}
@@ -839,7 +839,7 @@ export default function EventAccessPage() {
                       <Chip
                         key={assignment.assignmentId || assignment.roleId}
                         variant="tag"
-                        className="text-[11px]"
+                        className="text-xs"
                       >
                         {assignment.roleName || "Role"}
                       </Chip>
@@ -861,12 +861,12 @@ export default function EventAccessPage() {
                           key={entry.assignmentId || `${entry.eventId}-${entry.roleId}`}
                           className="flex items-center gap-1"
                         >
-                          <Chip variant="ghost" className="text-[11px]">
+                          <Chip variant="ghost" className="text-xs">
                             {formatEventRoleLabel(entry)}
                           </Chip>
                           <button
                             type="button"
-                            className="text-[10px] uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="text-xs uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={() => handleRemoveRole(selectedUser.id, entry)}
                             disabled={roleManagerBusy || !selectedEventId}
                           >
@@ -892,12 +892,12 @@ export default function EventAccessPage() {
                           key={entry.assignmentId || `${entry.teamId}-${entry.roleId}`}
                           className="flex items-center gap-1"
                         >
-                          <Chip variant="ghost" className="text-[11px]">
+                          <Chip variant="ghost" className="text-xs">
                             {formatTeamRoleLabel(entry)}
                           </Chip>
                           <button
                             type="button"
-                            className="text-[10px] uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="text-xs uppercase tracking-wide text-rose-200 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={() => handleRemoveTeamRole(selectedUser.id, entry)}
                             disabled={roleManagerBusy}
                           >
@@ -990,17 +990,17 @@ export default function EventAccessPage() {
                     {pendingRoleIsTeamScoped ? "Add team role" : "Add role"}
                   </button>
                   {roleManagerError ? (
-                    <span className="text-[11px] text-rose-200">{roleManagerError}</span>
+                    <span className="text-xs text-rose-200">{roleManagerError}</span>
                   ) : null}
                 </div>
                 {pendingRoleIsTeamScoped && !selectedTeamId ? (
-                  <p className="text-[11px] text-amber-200">
+                  <p className="text-xs text-amber-200">
                     {availableTeams.length === 0
                       ? "This user already holds that role for every team in this event."
                       : "This role is granted per team - select a team to continue."}
                   </p>
                 ) : null}
-                <p className="text-[11px] text-ink-muted">
+                <p className="text-xs text-ink-muted">
                   Admin-capable roles are excluded here. Use Admin access control for global admin assignment.
                 </p>
               </div>
@@ -1009,7 +1009,7 @@ export default function EventAccessPage() {
           <Panel className="space-y-3 p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="text-sm font-semibold text-ink">Role permissions</p>
-              <p className="text-[11px] text-ink-muted">
+              <p className="text-xs text-ink-muted">
                 Each row adds only what it grants beyond the rows above.
               </p>
             </div>
@@ -1028,10 +1028,10 @@ export default function EventAccessPage() {
                     ) : (
                       <div className="flex flex-wrap items-center gap-1">
                         {sharedCount > 0 ? (
-                          <span className="text-[11px] text-ink-muted">+{sharedCount} shared</span>
+                          <span className="text-xs text-ink-muted">+{sharedCount} shared</span>
                         ) : null}
                         {unique.length === 0 ? (
-                          <span className="text-[11px] text-ink-muted">No new permissions</span>
+                          <span className="text-xs text-ink-muted">No new permissions</span>
                         ) : (
                           unique.map((permission) => (
                             <Chip
@@ -1042,7 +1042,7 @@ export default function EventAccessPage() {
                                 formatPermissionLabel(permission)
                               }
                               variant="tag"
-                              className="text-[11px]"
+                              className="text-xs"
                             >
                               {formatPermissionLabel(permission)}
                             </Chip>
@@ -1106,7 +1106,7 @@ export default function EventAccessPage() {
               </div>
             ) : (
               <div className="max-h-[65vh] overflow-auto">
-                <table className="w-full table-fixed divide-y divide-border text-[11px] sm:text-xs">
+                <table className="w-full table-fixed divide-y divide-border text-xs sm:text-xs">
                   <thead className="bg-surface sticky top-0 z-10">
                     <tr>
                       <th className="w-[28%] px-2 py-1.5 text-left font-semibold uppercase tracking-wide text-ink-muted sm:px-3 sm:py-2">
@@ -1130,7 +1130,7 @@ export default function EventAccessPage() {
                       const teamRoles = Array.isArray(user.teamRoles) ? user.teamRoles : [];
                       return (
                         <tr key={user.id} className="hover:bg-surface-muted">
-                          <td className="break-words px-2 py-1.5 align-top text-[13px] font-semibold text-ink sm:px-3 sm:py-2 sm:text-sm">
+                          <td className="break-words px-2 py-1.5 align-top text-sm font-semibold text-ink sm:px-3 sm:py-2 sm:text-sm">
                             {displayProfileName(user)}
                           </td>
                           <td className="px-2 py-1.5 align-top sm:px-3 sm:py-2">
@@ -1142,7 +1142,7 @@ export default function EventAccessPage() {
                                   <Chip
                                     key={assignment.assignmentId || assignment.roleId}
                                     variant="tag"
-                                    className="text-[11px]"
+                                    className="text-xs"
                                   >
                                     {assignment.roleName || "Role"}
                                   </Chip>
@@ -1159,7 +1159,7 @@ export default function EventAccessPage() {
                                   <Chip
                                     key={entry.assignmentId || `${entry.eventId}-${entry.roleId}`}
                                     variant="ghost"
-                                    className="text-[11px]"
+                                    className="text-xs"
                                   >
                                     {selectedEventId
                                       ? entry.roleName || entry.roleId || "Role"
@@ -1170,7 +1170,7 @@ export default function EventAccessPage() {
                                   <Chip
                                     key={`team-${entry.assignmentId || `${entry.teamId}-${entry.roleId}`}`}
                                     variant="ghost"
-                                    className="text-[11px]"
+                                    className="text-xs"
                                     title={entry.eventName || ""}
                                   >
                                     {formatTeamRoleLabel(entry)}
@@ -1183,7 +1183,7 @@ export default function EventAccessPage() {
                             <div className="flex flex-col items-end gap-1 sm:flex-row sm:justify-end">
                               <button
                                 type="button"
-                                className="sc-button is-ghost px-2 py-1 text-[11px]"
+                                className="sc-button is-ghost px-2 py-1 text-xs"
                                 onClick={() => handleSelectFromTable(user)}
                                 disabled={selectedUserId === user.id}
                               >
@@ -1192,7 +1192,7 @@ export default function EventAccessPage() {
                               {selectedEventId ? (
                                 <button
                                   type="button"
-                                  className="sc-button is-danger px-2 py-1 text-[11px]"
+                                  className="sc-button is-danger px-2 py-1 text-xs"
                                   onClick={() => handleRemoveFromEvent(user)}
                                   disabled={Boolean(removingUserId)}
                                 >

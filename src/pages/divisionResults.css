@@ -37,7 +37,7 @@
 
 .dr-section-meta {
   text-align: right;
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   color: var(--sc-ink-muted);
 }
 
@@ -122,7 +122,7 @@
 }
 
 .dr-card-title {
-  font-size: 0.9rem;
+  font-size: var(--sc-text-small);
   font-weight: 600;
 }
 
@@ -130,7 +130,7 @@
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
   border: 1px solid rgba(232, 244, 237, 0.2);
-  font-size: 0.65rem;
+  font-size: var(--sc-text-caption);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -144,7 +144,7 @@
 }
 
 .dr-match-label {
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -237,7 +237,7 @@
 }
 
 .dr-team-row__seed {
-  font-size: 0.68rem;
+  font-size: var(--sc-text-caption);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--sc-ink-muted);
@@ -248,7 +248,7 @@
   background: rgba(198, 255, 98, 0.1);
   color: var(--sc-accent);
   padding: 0.2rem 0.6rem;
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   font-weight: 600;
 }
 
@@ -260,7 +260,7 @@
 }
 
 .dr-playoff-section__title {
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -293,7 +293,7 @@
 }
 
 .dr-final-row__place {
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -301,7 +301,7 @@
 }
 
 .dr-final-row__team {
-  font-size: 1rem;
+  font-size: var(--sc-text-body);
   font-weight: 600;
 }
 

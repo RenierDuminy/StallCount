@@ -71,14 +71,18 @@ const DESKTOP_HOME_LIMITS = {
   watch: 6,
   upcomingMatches: 10,
 };
+// Phones fetch the same rows as desktop and only show fewer. Fetching fewer
+// let past fixtures and old events fill the short list, so phones showed
+// "Nothing scheduled" while desktop listed matches; it also split the shared
+// edge cache in two.
 const MOBILE_HOME_LIMITS = {
-  events: 12,
-  recentMatches: 12,
-  openMatches: 8,
-  broadcastMatches: 3,
-  finalMatches: 8,
+  events: DESKTOP_HOME_LIMITS.events,
+  recentMatches: DESKTOP_HOME_LIMITS.recentMatches,
+  openMatches: DESKTOP_HOME_LIMITS.openMatches,
+  broadcastMatches: DESKTOP_HOME_LIMITS.broadcastMatches,
+  finalMatches: DESKTOP_HOME_LIMITS.finalMatches,
   results: 5,
-  liveEvents: 10,
+  liveEvents: DESKTOP_HOME_LIMITS.liveEvents,
   activeEvents: 5,
   timelineEvents: 4,
   streamMatches: 3,

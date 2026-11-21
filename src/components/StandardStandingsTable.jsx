@@ -46,7 +46,7 @@ export function FormDots({ form, className = "", dotClassName = "h-1.5 w-1.5" })
         entry?.separator ? (
           <span
             key={index}
-            className="inline-block w-[7px] text-center text-[10px] leading-none text-ink-muted"
+            className="inline-block w-[7px] text-center text-xs leading-none text-ink-muted"
           >
             -
           </span>
@@ -69,7 +69,7 @@ export function StandardStandingsLegend({ className = "" }) {
   return (
     <div
       className={cx(
-        "flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] uppercase tracking-wide text-ink-muted",
+        "flex flex-wrap items-center gap-x-3 gap-y-1 text-xs uppercase tracking-wide text-ink-muted",
         className,
       )}
     >

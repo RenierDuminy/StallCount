@@ -313,9 +313,7 @@ export default function PlayerMergePage() {
     <div className="min-h-screen bg-surface text-ink">
       <SectionShell as="header" className="py-8">
         <Card className="space-y-5 p-6 sm:p-8 shadow-xl shadow-[rgba(8,25,21,0.08)]">
-          <SectionHeader
-            eyebrow="System admin"
-            eyebrowVariant="tag"
+          <SectionHeader
             title="Player de-duplication"
             description="Find the variants of one person, compare them, then fold them into a single player record. Every reference is repointed before the duplicates are removed."
             action={
@@ -419,7 +417,7 @@ export default function PlayerMergePage() {
                       {row.gender_code || "—"} · #{row.jersey_number ?? "—"} ·{" "}
                       {row.has_birthday ? "DOB on file" : "no birthday"}
                     </span>
-                    <span className="ml-auto font-mono text-[11px] text-ink-muted">{row.id}</span>
+                    <span className="ml-auto font-mono text-xs text-ink-muted">{row.id}</span>
                     {loading && <span className="text-xs text-ink-muted">Loading...</span>}
                   </label>
                 );
@@ -498,7 +496,7 @@ export default function PlayerMergePage() {
                               profile.player.id === keeperId
                                 ? "bg-[var(--sc-alert-success-bg)] border-x border-[var(--sc-alert-success-border)]"
                                 : ""
-                            } ${rowDef.mono ? "font-mono text-[11px]" : ""} ${
+                            } ${rowDef.mono ? "font-mono text-xs" : ""} ${
                               rowDef.numeric ? "tabular-nums" : ""
                             }`}
                           >
@@ -568,7 +566,7 @@ export default function PlayerMergePage() {
                     : `${preflight.failures.length} check(s) failed — the merge would stall here.`}
                 </p>
                 {preflight.userId && (
-                  <p className="font-mono text-[11px] text-ink-muted">user {preflight.userId}</p>
+                  <p className="font-mono text-xs text-ink-muted">user {preflight.userId}</p>
                 )}
                 {preflight.failures.length > 0 && (
                   <ul className="space-y-1">
@@ -620,7 +618,7 @@ export default function PlayerMergePage() {
                       className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-muted px-3 py-2 text-xs"
                     >
                       <div className="min-w-0">
-                        <p className="truncate font-mono text-[11px] text-ink">
+                        <p className="truncate font-mono text-xs text-ink">
                           {entry.table}.{entry.column}
                         </p>
                         <p className="text-ink-muted">

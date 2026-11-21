@@ -559,50 +559,32 @@ export default function EventWorkspaceTemplate({
     <div className="pb-16 text-ink">
       <SectionShell as="main" className="w-full max-w-none space-y-4 py-4 sm:py-5">
         <Card className="min-w-0 space-y-3 border border-white/70 p-3 sm:p-4">
-          <SectionHeader
-            title={eventTitle}
-          />
-          <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-row sm:flex-wrap sm:justify-end">
-            <Link
-              to={sectionPath(EVENT_SECTIONS.RULES)}
-              className="sc-button w-full whitespace-nowrap sm:w-auto"
-            >
-              Event rules
-            </Link>
-            <Link
-              to={sectionPath(EVENT_SECTIONS.ROSTERS)}
-              className="sc-button w-full whitespace-nowrap sm:w-auto"
-            >
-              Team rosters
-            </Link>
-            <Link
-              to={`/players?eventId=${encodeURIComponent(eventId)}`}
-              className="sc-button w-full whitespace-nowrap sm:w-auto"
-            >
-              Player standings
-            </Link>
-            <Link
-              to={sectionPath(EVENT_SECTIONS.SPIRIT)}
-              className="sc-button w-full whitespace-nowrap sm:w-auto"
-            >
-              Spirit scores
-            </Link>
-            {/* Past events show neither. Both wait for the page data so
-                they never flash on an event that turns out to be over. */}
+          <SectionHeader title={eventTitle} />
+          {/* The event's sections as links, not buttons: lime, underlined, with
+              an arrow, so they read as clickable without the bulk of buttons.
+              Centred on phones, left aligned from 640px. The WFDF rules link
+              now lives on the Rules page. */}
+          <nav
+            aria-label="Event sections"
+            className="flex flex-wrap justify-center gap-x-5 gap-y-1 sm:justify-start"
+          >
+            {[
+              { to: sectionPath(EVENT_SECTIONS.RULES), label: "Rules" },
+              { to: sectionPath(EVENT_SECTIONS.ROSTERS), label: "Rosters" },
+              { to: sectionPath(EVENT_SECTIONS.PLAYERS), label: "Players" },
+              { to: sectionPath(EVENT_SECTIONS.SPIRIT), label: "Spirit" },
+            ].map((item) => (
+              <Link key={item.label} to={item.to} className="sc-section-link">
+                {item.label}
+                <svg aria-hidden="true" viewBox="0 0 16 16" className="sc-section-link__arrow"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </Link>
+            ))}
+            {/* Past events have no calendar. It waits for the page data so it
+                never flashes on an event that turns out to be over. */}
             {pageQuery.data && !isEventPast ? (
-              <>
-                <CalendarSubscribeButton eventId={eventId} className="w-full sm:w-auto" />
-                <a
-                  href="https://wfdf.sport/2025/01/wfdf-publishes-2025-2028-ultimate-rules/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="sc-button w-full whitespace-nowrap sm:w-auto"
-                >
-                  WFDF rules
-                </a>
-              </>
+              <CalendarSubscribeButton eventId={eventId} label="Calendar" appearance="link" />
             ) : null}
-          </div>
+          </nav>
           {error && <div className="sc-alert is-error">{error}</div>}
         </Card>
 
@@ -834,7 +816,7 @@ export default function EventWorkspaceTemplate({
             {scheduleDayKeys.length ? (
               <button
                 type="button"
-                className="sc-button whitespace-nowrap"
+                className="sc-button rounded-lg! whitespace-nowrap"
                 onClick={toggleAllScheduleDays}
               >
                 {allScheduleDaysCollapsed ? "Expand all" : "Collapse all"}

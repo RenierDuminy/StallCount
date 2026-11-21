@@ -22,6 +22,9 @@ import { EVENT_SECTIONS } from "./pages/eventWorkspaces";
 const HomePage = lazy(() => import("./pages/HomePage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const Players = lazy(() => import("./pages/PlayersPage"));
+const EventPlayersPage = lazy(() =>
+  import("./pages/PlayersPage").then((module) => ({ default: module.EventPlayersPage })),
+);
 const PlayerProfilePage = lazy(() => import("./pages/PlayerProfilePage"));
 const Teams = lazy(() => import("./pages/Teams"));
 const TeamProfilePage = lazy(() => import("./pages/TeamProfile"));
@@ -129,6 +132,7 @@ export default function AppRoutes() {
           <Route path={`/events/:slug/${EVENT_SECTIONS.SPIRIT}`} element={<Guarded name="Event spirit"><EventSpiritPageLazy /></Guarded>} />
           <Route path={`/events/:slug/${EVENT_SECTIONS.RULES}`} element={<Guarded name="Event rules"><EventRulesPageLazy /></Guarded>} />
           <Route path={`/events/:slug/${EVENT_SECTIONS.ROSTERS}`} element={<Guarded name="Event rosters"><EventRostersPageLazy /></Guarded>} />
+          <Route path={`/events/:slug/${EVENT_SECTIONS.PLAYERS}`} element={<Guarded name="Event players"><EventPlayersPage /></Guarded>} />
           {/* Moved 2026-11-13; retire after 2027-05-13 (see StandardEventPage.jsx). */}
           <Route path="/event/:slug" element={<Guarded name="Event"><LegacyStandardEventRedirect /></Guarded>} />
           <Route path="/event-spirit" element={<Guarded name="Event spirit"><LegacyEventSectionRedirect section={EVENT_SECTIONS.SPIRIT} /></Guarded>} />

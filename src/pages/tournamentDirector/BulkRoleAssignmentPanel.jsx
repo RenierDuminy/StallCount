@@ -307,7 +307,7 @@ export default function BulkRoleAssignmentPanel({ eventId, onAssigned }) {
                   <span className="text-[var(--sc-surface-light-ink)]/65">{user.email || user.id}</span>
                 </span>
                 {builderRows.some((row) => row.userId === user.id) ? (
-                  <Chip variant="ghost" className="text-[10px]">Added</Chip>
+                  <Chip variant="ghost" className="text-xs">Added</Chip>
                 ) : (
                   <span className="text-xs font-semibold text-[var(--sc-border-strong)]">Add</span>
                 )}
@@ -348,7 +348,7 @@ export default function BulkRoleAssignmentPanel({ eventId, onAssigned }) {
                   </div>
                   <button
                     type="button"
-                    className="text-[11px] uppercase tracking-wide text-rose-500 hover:text-rose-600"
+                    className="text-xs uppercase tracking-wide text-rose-500 hover:text-rose-600"
                     onClick={() => removeUserFromBuilder(row.userId)}
                     disabled={saving}
                   >
@@ -360,13 +360,13 @@ export default function BulkRoleAssignmentPanel({ eventId, onAssigned }) {
                   <div className="flex flex-wrap gap-1.5">
                     {row.roleGrants.map((grant) => (
                       <div key={grantKey(grant)} className="flex items-center gap-1">
-                        <Chip variant="tag" className="text-[11px]">
+                        <Chip variant="tag" className="text-xs">
                           {grant.roleName}
                           {grant.teamName ? ` - ${grant.teamName}` : ""}
                         </Chip>
                         <button
                           type="button"
-                          className="text-[10px] uppercase tracking-wide text-rose-500 hover:text-rose-600"
+                          className="text-xs uppercase tracking-wide text-rose-500 hover:text-rose-600"
                           onClick={() => removeRoleGrant(row.userId, grant)}
                           disabled={saving}
                         >

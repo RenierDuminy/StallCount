@@ -454,7 +454,7 @@ export default function BracketStructureView({
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-3 text-[0.7rem] text-[var(--sc-ink-muted)]">
+      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-[var(--sc-ink-muted)]">
         <span className="inline-flex items-center gap-1">
           <span className="inline-block h-1 w-5 rounded bg-[rgba(52,211,153,0.8)]" />
           Winner advances

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getEventPlayerMatchStats } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
 import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select } from "../components/ui/primitives";
 import { playerPath, teamPath } from "../utils/links";
+import { EVENT_SECTIONS, getEventSectionPath } from "./eventWorkspaces";
+import { useEventSectionRoute, useLegacyEventSectionRedirect } from "./eventRouteHooks";
 
 function getStatRowTeam(row) {
   const statTeam = row.team || null;
@@ -24,10 +26,36 @@ function getStatRowTeam(row) {
   };
 }
 
-export default function PlayersPage() {
+/**
+ * `/players`: player statistics. With no event, it asks for one. An old
+ * `/players?eventId=` link (before 2026-11-20) redirects to the event's own
+ * address, keeping `?divisionId=`; retire after 2027-05-20.
+ */
+export default function PlayersRoute() {
+  const [searchParams] = useSearchParams();
+  if (searchParams.get("eventId")) return <LegacyPlayersRedirect />;
+  return <PlayersPage eventId="" />;
+}
+
+function LegacyPlayersRedirect() {
+  return useLegacyEventSectionRedirect(EVENT_SECTIONS.PLAYERS);
+}
+
+/** `/events/<slug>/players`: one event's player statistics, found by its slug. */
+export function EventPlayersPage() {
+  const { event, element } = useEventSectionRoute(EVENT_SECTIONS.PLAYERS);
+  if (element) return element;
+  return <PlayersPage key={event.id} eventId={event.id} />;
+}
+
+function PlayersPage({ eventId }) {
+  // The event comes from the address (`/events/<slug>/players`); the division
+  // is a filter, so it stays a query parameter (`?divisionId=`). Each choice is
+  // a new history entry, so Back steps through earlier choices.
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialEventId = searchParams.get("eventId") || "";
-  const initialDivisionId = searchParams.get("divisionId") || "";
+  const eventFilter = eventId;
+  const divisionFilter = searchParams.get("divisionId") || "";
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [eventsError, setEventsError] = useState(null);
@@ -37,15 +65,6 @@ export default function PlayersPage() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("total");
   const [sortDirection, setSortDirection] = useState("desc");
-  const [eventFilter, setEventFilter] = useState(initialEventId);
-  const [divisionFilter, setDivisionFilter] = useState(initialDivisionId);
-
-  useEffect(() => {
-    const requestedEventId = searchParams.get("eventId") || "";
-    const requestedDivisionId = searchParams.get("divisionId") || "";
-    setEventFilter((current) => (current === requestedEventId ? current : requestedEventId));
-    setDivisionFilter((current) => (current === requestedDivisionId ? current : requestedDivisionId));
-  }, [searchParams]);
 
   useEffect(() => {
     let ignore = false;
@@ -129,8 +148,10 @@ export default function PlayersPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [rows]);
 
+  // A division this event does not have (an old link): drop the filter once
+  // the statistics have loaded, so it is not cleared while they load.
   useEffect(() => {
-    if (!divisionFilter) {
+    if (!divisionFilter || loading || rows.length === 0) {
       return;
     }
 
@@ -139,9 +160,9 @@ export default function PlayersPage() {
     );
 
     if (!divisionStillAvailable) {
-      setDivisionFilter("");
+      setSearchParams({}, { replace: true });
     }
-  }, [divisionFilter, divisionOptions]);
+  }, [divisionFilter, divisionOptions, loading, rows.length, setSearchParams]);
 
   const filteredRows = useMemo(() => {
     if (!divisionFilter) {
@@ -305,39 +326,19 @@ export default function PlayersPage() {
   const tableColumnCount = statHeaders.length + 3;
 
   const handleEventFilterChange = (nextFilter) => {
-    setEventFilter(nextFilter);
-    setDivisionFilter("");
-
-    if (!nextFilter) {
-      setSearchParams({}, { replace: true });
-      return;
-    }
-    setSearchParams({ eventId: nextFilter }, { replace: true });
+    const next = events.find((event) => event.id === nextFilter);
+    navigate(next ? getEventSectionPath(next, EVENT_SECTIONS.PLAYERS) : "/players");
   };
 
   const handleDivisionFilterChange = (nextFilter) => {
-    setDivisionFilter(nextFilter);
-
-    if (!eventFilter) {
-      setSearchParams({}, { replace: true });
-      return;
-    }
-
-    if (!nextFilter) {
-      setSearchParams({ eventId: eventFilter }, { replace: true });
-      return;
-    }
-
-    setSearchParams({ eventId: eventFilter, divisionId: nextFilter }, { replace: true });
+    setSearchParams(nextFilter ? { divisionId: nextFilter } : {});
   };
 
   return (
-    <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
+    <div className="min-h-screen bg-light-page text-[var(--sc-surface-light-ink)]">
       <SectionShell as="header" className="py-4 sm:py-5">
         <Card variant="light" className="space-y-3 p-4 shadow-xl shadow-[rgba(8,25,21,0.08)] sm:space-y-5 sm:p-8">
-          <SectionHeader
-            eyebrow="Players"
-            eyebrowVariant="tag"
+          <SectionHeader
             title="Player impact across recorded matches"
             description="Aggregated stats across matches, filtered by event and division."
           />
@@ -353,8 +354,7 @@ export default function PlayersPage() {
 
         <Card variant="light" className="space-y-4 p-4 shadow-md shadow-[rgba(8,25,21,0.06)] sm:p-6">
           <SectionHeader
-            eyebrow="Player stats"
-            eyebrowVariant="tag"
+            title="Player stats"
             description={
               eventFilter
                 ? `Showing ${sortedRows.length} of ${aggregatedRows.length} players for the selected event${
@@ -436,7 +436,7 @@ export default function PlayersPage() {
                         <span className="@4xl:hidden">{col.label}</span>
                         <span className="hidden @4xl:inline">{col.full}</span>
                         {sortBy === col.key && (
-                          <span className="text-[10px] leading-none">
+                          <span className="text-xs leading-none">
                             {sortDirection === "asc" ? "↑" : "↓"}
                           </span>
                         )}
@@ -467,7 +467,9 @@ export default function PlayersPage() {
                 ) : sortedRows.length === 0 ? (
                   <tr>
                     <td colSpan={tableColumnCount} className="px-3 py-4 text-center text-sm text-[var(--sc-surface-light-ink)]/60">
-                      No player stats found.
+                      {search.trim()
+                        ? "No players match your search."
+                        : "No statistics have been recorded yet."}
                     </td>
                   </tr>
                 ) : (

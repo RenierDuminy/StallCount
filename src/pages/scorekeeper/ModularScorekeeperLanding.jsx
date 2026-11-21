@@ -146,7 +146,7 @@ export default function ModularScorekeeperLanding() {
 
   return (
     <ScorekeeperShell>
-      <main className="py-2">
+      <main className="sk-console py-2">
         <section className="space-y-3 rounded-3xl border border-slate-200 bg-white p-3">
           <div className="flex items-start justify-between gap-3 px-1">
             <div>

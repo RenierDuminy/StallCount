@@ -554,7 +554,7 @@ export default function SpiritScoresPage() {
   return (
     <div className="pb-10 text-[var(--sc-surface-dark-ink)]" style={{ background: "var(--sc-surface-light-bg)" }}>
       <SectionShell as="header" className="px-8 py-3 sm:px-18 sm:py-4 lg:px-30">
-        <Card variant="light" className="space-y-2 border border-[#041311] p-4 sm:p-5">
+        <Card variant="light" className="space-y-2 border border-light-edge p-4 sm:p-5">
           <SectionHeader
             title="Spirit scores"
             action={
@@ -659,7 +659,7 @@ export default function SpiritScoresPage() {
             }
           }}
         >
-          <section className="space-y-3 rounded-2xl border border-[#041311] px-4 py-3 text-[var(--sc-surface-light-ink)] sm:px-5">
+          <section className="space-y-3 rounded-2xl border border-light-edge px-4 py-3 text-[var(--sc-surface-light-ink)] sm:px-5">
             <div className="space-y-0.5">
               <h2 className="text-xl font-semibold">Select the match to score</h2>
               <p className="text-xs text-[var(--sc-surface-light-ink)]/80 sm:text-sm">
@@ -740,7 +740,7 @@ export default function SpiritScoresPage() {
             </div>
 
             {selectedMatch ? (
-              <div className="rounded-2xl border border-[#041311]/20 bg-white/80 p-3">
+              <div className="rounded-2xl border border-light-edge/20 bg-white/80 p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-0.5">
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--sc-surface-light-ink)]/60">
@@ -753,7 +753,7 @@ export default function SpiritScoresPage() {
                       {selectedEvent?.name || selectedMatch.event?.name || "Event not assigned"}
                     </p>
                   </div>
-                  <div className="rounded-full border border-[#041311]/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">
+                  <div className="rounded-full border border-light-edge/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">
                     {selectedMatch.status || "Scheduled"}
                   </div>
                 </div>
@@ -773,11 +773,11 @@ export default function SpiritScoresPage() {
                 ) : null}
               </div>
             ) : selectedMatchId && matchDetailLoading ? (
-              <div className="rounded-2xl border border-[#041311]/20 bg-white/80 px-4 py-3 text-sm text-[var(--sc-surface-light-ink)]/75">
+              <div className="rounded-2xl border border-light-edge/20 bg-white/80 px-4 py-3 text-sm text-[var(--sc-surface-light-ink)]/75">
                 Loading selected match details...
               </div>
             ) : !rolesLoading && !roleCatalogLoading && availableEvents.length === 0 && !eventsError ? (
-              <div className="rounded-2xl border border-[#041311]/20 bg-white/80 px-4 py-3 text-sm text-[var(--sc-surface-light-ink)]/75">
+              <div className="rounded-2xl border border-light-edge/20 bg-white/80 px-4 py-3 text-sm text-[var(--sc-surface-light-ink)]/75">
                 No events are linked to your spirit score access assignments.
               </div>
             ) : null}
@@ -801,7 +801,7 @@ export default function SpiritScoresPage() {
             {["teamA", "teamB"].map((teamKey) => (
               <section
                 key={teamKey}
-                className="space-y-3 rounded-2xl border border-[#041311] px-5 py-3 text-[var(--sc-surface-light-ink)] sm:px-6"
+                className="space-y-3 rounded-2xl border border-light-edge px-5 py-3 text-[var(--sc-surface-light-ink)] sm:px-6"
               >
                 <div>
                   <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">
@@ -864,7 +864,7 @@ export default function SpiritScoresPage() {
 
 function MatchDetail({ label, value, mono = false }) {
   return (
-    <div className="space-y-1 rounded-xl border border-[#041311]/10 bg-white/70 px-3 py-2">
+    <div className="space-y-1 rounded-xl border border-light-edge/10 bg-white/70 px-3 py-2">
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/55">{label}</p>
       <p className={`text-sm text-[var(--sc-surface-light-ink)] ${mono ? "font-mono break-all" : "font-semibold"}`}>
         {value || "TBD"}

@@ -13,8 +13,19 @@
   --sc-surface-muted: #112c24;
   --sc-surface-plain: #0a1916;
   --sc-surface-lift: #f3fbf3;
-  --sc-border: #12352c;
-  --sc-border-strong: #1f4d40;
+  /* Edges: light, see-through rules, about 3:1 on a card, so a card or panel
+     edge survives glare outdoors. Row lines inside a card use the softer
+     divider. Light pages and the scorekeeper reset these to dark rules. */
+  --sc-border: rgba(207, 227, 216, 0.4);
+  --sc-border-strong: rgba(207, 227, 216, 0.55);
+  --sc-divider: rgba(207, 227, 216, 0.22);
+  /* The page: one flat colour, no gradient, so a card has the same contrast
+     wherever it sits on screen. */
+  --sc-card-tint: rgba(6, 22, 18, 0.55);
+  /* The header is the solid dark card green (--sc-surface), the same colour
+     as the phone menu under it and the dark cards. */
+  --sc-header-bg: var(--sc-surface);
+  --sc-page-bg: #1ba437; /* test, one step lighter than #179831 */
   --sc-border-glow: #52f8a9;
   --sc-ink: #e8f4ed;
   --sc-ink-muted: #9db9aa;
@@ -56,9 +67,9 @@
   --sc-transition-base: 200ms ease;
   --sc-transition-slow: 320ms ease;
 
-  --sc-page-gradient: radial-gradient(circle at 20% 20%, rgba(79, 255, 187, 0.12), transparent 55%),
-    radial-gradient(circle at 80% 10%, rgba(161, 255, 80, 0.08), transparent 50%),
-    linear-gradient(165deg, var(--sc-bg), var(--sc-bg-accent));
+  /* Flat on purpose (it was a bright-to-dark gradient, which left cards near
+     the bottom of the screen almost the same colour as the page). */
+  --sc-page-gradient: linear-gradient(var(--sc-page-bg), var(--sc-page-bg));
 
   /* Component tokens */
   --sc-card-bg: linear-gradient(160deg, rgba(20, 42, 34, 0.9), rgba(10, 25, 21, 0.95));
@@ -67,15 +78,17 @@
   --sc-card-muted-border: rgba(255, 255, 255, 0.5);
   --sc-card-muted-glow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 
-  --sc-button-bg: linear-gradient(120deg, var(--sc-accent), var(--sc-accent-strong));
+  /* About 25% less bright than the accent (#c6ff62 / #a8ff33), same hue, so it
+     does not glare; dark text on it stays above 10:1. */
+  --sc-button-bg: linear-gradient(120deg, #a8d954, #8acb2a);
   --sc-button-ink: #03140f;
   --sc-button-focus-ring: rgba(15, 107, 69, 0.35);
   --sc-button-shadow-hover: 0 20px 48px rgba(96, 255, 140, 0.28);
   --sc-button-shadow-active: 0 8px 18px rgba(96, 255, 140, 0.18);
 
   --sc-button-ghost-bg: transparent;
-  --sc-button-ghost-border: rgba(99, 255, 160, 0.2);
-  --sc-button-ghost-border-hover: rgba(99, 255, 160, 0.35);
+  --sc-button-ghost-border: var(--sc-border);
+  --sc-button-ghost-border-hover: var(--sc-border-strong);
 
   --sc-chip-bg: rgba(9, 30, 24, 0.8);
   --sc-chip-border: rgba(99, 255, 160, 0.35);
@@ -109,6 +122,79 @@
   /* Tinted band for grouping headers inside light panels. */
   --sc-surface-light-tint: #e3f5e6;
 
+  /* ---- Light pages (login, players, team profile, tournament director,
+     match corrections, spirit scores). One value per role; change it here and
+     every light page follows. Tailwind names: bg-light-page, bg-light-tint ... */
+  --sc-light-page: #f5fbf6;      /* page background */
+  --sc-light-tint: #eef7f1;      /* table heads, hovered rows, small chips */
+  --sc-light-zebra: #f4faf6;     /* alternate table rows */
+  --sc-light-selected: #d7f5e0;  /* selected row */
+  --sc-light-primary: #0a3d29;   /* primary buttons and active tabs on light pages */
+  --sc-light-edge: #041311;      /* hairlines and frames (use with /opacity) */
+  --sc-light-success: #01611b;   /* chosen state, tick marks */
+  --sc-light-ink: #0b1f19;       /* same as --sc-surface-light-ink */
+
+  /* Other one-off surfaces. */
+  --sc-surface-menu: #24493d;    /* native select option groups */
+  --sc-panel-green: #216235;     /* profile panel */
+  --sc-gold-from: #e8b533;       /* gold badge */
+  --sc-gold-to: #c8901a;
+
+  /* Team colours in charts and legends (team A / team B). */
+  --sc-team-a: #1d4ed8;
+  --sc-team-b: #b91c1c;
+
+  /* Chart neutrals (grid lines, axes, labels). */
+  --sc-chart-grid: #e2e8f0;
+  --sc-chart-axis: #cbd5f5;
+  --sc-chart-muted: #94a3b8;
+  --sc-chart-label: #475569;
+  --sc-chart-ink: #0f172a;
+  --sc-chart-card: #f8fafc;
+
+  /* Match timeline markers (match corrections and the match page). */
+  --sc-ev-timeout: #95df88;
+  --sc-ev-stoppage: #fd5050;
+  --sc-ev-halftime: #269828;
+  --sc-ev-callahan: #facc15;
+  --sc-ev-goal-a: #3b82f6;
+  --sc-ev-goal-b: #fb923c;
+  --sc-ev-turnover: #eceff3;
+
+  /* Radius scale behind Tailwind's rounded-* classes (see @theme in index.css). */
+  --sc-rounded-sm: 3px;
+  --sc-rounded: 4px;
+  --sc-rounded-md: 5px;
+  --sc-rounded-lg: 6px;
+  --sc-rounded-xl: 8px;
+  --sc-rounded-2xl: 10px;
+  --sc-rounded-3xl: 12px;
+
+  /* Type scale: nine discrete steps plus the fluid score size. Every text size
+     in the app (outside the scorekeeper and scrimmage consoles) is one of
+     these; nothing goes below 12px, and the root stays 16px on every screen.
+     Tailwind: text-caption/small/body/lead/title/h2/h1/stat-md/stat, and the
+     old names alias them (xs=caption, sm=small, base=body, lg=lead,
+     xl=title, 2xl=h2, 3xl=stat-md, 4xl=h1 at its largest). */
+  --sc-text-caption: 0.75rem;   /* 12  chips, hints, table headers, meta */
+  --sc-text-small: 0.875rem;    /* 14  secondary text, table cells, nav, buttons, labels */
+  --sc-text-body: 1rem;         /* 16  body, inputs */
+  --sc-text-lead: 1.125rem;     /* 18  card titles, team names */
+  --sc-text-title: 1.25rem;     /* 20  section titles on phones (22 from 640px) */
+  --sc-text-h2: 1.5rem;         /* 24  section titles */
+  --sc-text-h1: 1.75rem;        /* 28  page title (32 from 640px, 36 from 1024px) */
+  --sc-text-stat-md: 1.75rem;   /* 28  numbers on cards and metrics */
+  --sc-text-stat: clamp(2.25rem, 9vw, 3rem); /* 36-48 the live score */
+
+  --sc-text-xs: var(--sc-text-caption);
+  --sc-text-sm: var(--sc-text-small);
+  --sc-text-base: var(--sc-text-body);
+  --sc-text-lg: var(--sc-text-lead);
+  --sc-text-xl: var(--sc-text-title);
+  --sc-text-2xl: var(--sc-text-h2);
+  --sc-text-3xl: var(--sc-text-stat-md);
+  --sc-text-4xl: 2.25rem;
+
   --sc-tag-bg: rgba(198, 255, 98, 0.12);
   --sc-tag-border: rgba(198, 255, 98, 0.6);
 
@@ -126,10 +212,36 @@
     linear-gradient(150deg, rgba(12, 33, 27, 0.9), rgba(6, 22, 18, 0.95));
 }
 
+@media (min-width: 640px) {
+  :root {
+    --sc-text-title: 1.375rem;
+    --sc-text-h1: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --sc-text-h1: 2.25rem;
+  }
+}
+
+/* Light pages, white cards and the scorekeeper keep dark rules: a light rule
+   would vanish on white. --color-border is reset too, because Tailwind's
+   border-border reads it, and it resolved on :root. */
+.bg-light-page,
+.sc-surface-light,
+.sk-console {
+  --sc-border: #12352c;
+  --sc-border-strong: #1f4d40;
+  --sc-divider: rgba(18, 53, 44, 0.25);
+  --color-border: #12352c;
+  --color-border-strong: #1f4d40;
+}
+
 body {
   margin: 0;
   font-family: var(--sc-font-body);
-  background-color: var(--sc-bg);
+  background-color: var(--sc-page-bg);
   color: var(--sc-ink);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -251,9 +363,10 @@ a:focus-visible {
 .sc-site-header {
   position: relative;
   z-index: 30;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  background: var(--sc-bg-accent);
-  color: var(--sc-ink);
+  border-bottom: 1px solid var(--sc-border);
+  /* The dark card green, with white text. */
+  background: var(--sc-header-bg);
+  color: #fff;
 }
 
 .sc-site-header__bar {
@@ -271,11 +384,11 @@ a:focus-visible {
   align-items: center;
   gap: 0.75rem;
   height: 100%;
-  color: var(--sc-ink);
+  color: #fff;
 }
 
 .sc-site-header__brand:hover {
-  color: var(--sc-ink);
+  color: #fff;
 }
 
 .sc-site-header__logo {
@@ -285,11 +398,23 @@ a:focus-visible {
   object-fit: contain;
 }
 
+/* Phones and tablets: a slimmer bar. The logo is about 20% smaller (64px -> 52px)
+   and the bar shrinks around it (80px -> 66px). Desktop keeps the full size. */
+@media (max-width: 1023px) {
+  .sc-site-header__bar {
+    height: 4.125rem;
+  }
+
+  .sc-site-header__logo {
+    height: 3.25rem;
+  }
+}
+
 .sc-site-header__tagline {
-  font-size: 0.8125rem;
+  font-size: var(--sc-text-small);
   font-weight: 700;
   white-space: nowrap;
-  color: var(--sc-accent);
+  color: #fff;
 }
 
 /* On narrow phones the bold tagline would push the menu button off-screen,
@@ -313,10 +438,10 @@ a:focus-visible {
   align-items: center;
   padding: 3px 0.75rem 0;
   border-bottom: 3px solid transparent;
-  font-size: 0.9375rem;
+  font-size: var(--sc-text-small);
   font-weight: 600;
   white-space: nowrap;
-  color: var(--sc-ink-muted);
+  color: #fff;
   transition:
     color var(--sc-transition-fast),
     border-color var(--sc-transition-fast);
@@ -357,8 +482,8 @@ a:focus-visible {
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 6px;
   background: transparent;
-  color: var(--sc-ink);
-  font-size: 0.875rem;
+  color: #fff;
+  font-size: var(--sc-text-small);
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -413,10 +538,10 @@ a:focus-visible {
 .sc-account-link {
   padding: 0.25rem 0;
   border-bottom: 2px solid transparent;
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   font-weight: 600;
   white-space: nowrap;
-  color: var(--sc-ink-muted);
+  color: #fff;
   transition:
     color var(--sc-transition-fast),
     border-color var(--sc-transition-fast);
@@ -461,9 +586,9 @@ a:focus-visible {
   min-height: 2.75rem;
   padding: 0 0.75rem;
   border-left: 3px solid transparent;
-  font-size: 0.9375rem;
+  font-size: var(--sc-text-small);
   font-weight: 600;
-  color: var(--sc-ink-muted);
+  color: #fff;
 }
 
 .sc-menu-link:hover {
@@ -538,11 +663,11 @@ a:focus-visible {
    --------------------------------------------------------------------------- */
 
 .home-page {
-  --home-surface: rgba(6, 22, 18, 0.55);
+  --home-surface: var(--sc-card-tint);
   --home-surface-strong: rgba(8, 28, 22, 0.8);
-  --home-border: rgba(255, 255, 255, 0.28);
-  --home-border-strong: rgba(255, 255, 255, 0.45);
-  --home-divider: rgba(255, 255, 255, 0.16);
+  --home-border: var(--sc-border);
+  --home-border-strong: var(--sc-border-strong);
+  --home-divider: var(--sc-divider);
   --home-rule: rgba(255, 255, 255, 0.75);
   --home-band: rgba(255, 255, 255, 0.06);
   --home-radius: 6px;
@@ -607,7 +732,7 @@ a:focus-visible {
   align-items: center;
   gap: 0.5rem;
   margin: 0;
-  font-size: 1.35rem;
+  font-size: var(--sc-text-title);
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--sc-ink-strong);
@@ -619,15 +744,14 @@ a:focus-visible {
   border-radius: var(--home-radius-sm);
   background: var(--sc-live-bg);
   color: var(--sc-live-ink);
-  font-size: 0.8rem;
+  font-size: var(--sc-text-caption);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .home-section-desc {
   margin: 0.2rem 0 0;
-  font-size: 0.875rem;
-  font-style: italic;
+  font-size: var(--sc-text-small);
   color: var(--sc-ink-muted);
 }
 
@@ -638,7 +762,7 @@ a:focus-visible {
   gap: 0.3rem;
   min-height: 44px;
   padding: 0 0.25rem;
-  font-size: 0.875rem;
+  font-size: var(--sc-text-small);
   font-weight: 600;
   white-space: nowrap;
   color: var(--sc-accent);
@@ -676,7 +800,7 @@ a:focus-visible {
 .home-action {
   min-height: 44px;
   padding: 0.5rem 1rem;
-  font-size: 0.875rem;
+  font-size: var(--sc-text-small);
 }
 
 /* Live indicator and tags */
@@ -712,14 +836,14 @@ a:focus-visible {
   border-radius: var(--home-radius-sm);
   background: rgba(232, 244, 237, 0.06);
   color: var(--sc-ink);
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   font-weight: 700;
   white-space: nowrap;
 }
 
 .home-tag.is-compact {
   padding: 0.1rem 0.5rem;
-  font-size: 0.6875rem;
+  font-size: var(--sc-text-caption);
 }
 
 .home-tag.is-live {
@@ -750,7 +874,7 @@ a:focus-visible {
 .home-welcome__title {
   margin: 0;
   padding-right: 4.5rem;
-  font-size: 1.5rem;
+  font-size: var(--sc-text-h1);
   font-weight: 800;
   line-height: 1.2;
   letter-spacing: -0.02em;
@@ -760,7 +884,7 @@ a:focus-visible {
 .home-welcome__lead {
   max-width: 38rem;
   margin: 0.6rem 0 0;
-  font-size: 0.975rem;
+  font-size: var(--sc-text-body);
   line-height: 1.5;
   color: var(--sc-ink);
 }
@@ -781,8 +905,7 @@ a:focus-visible {
   margin: 0.9rem 0 0;
   padding-top: 0.75rem;
   border-top: 1px solid var(--home-divider);
-  font-size: 0.8125rem;
-  font-style: italic;
+  font-size: var(--sc-text-small);
   font-variant-numeric: tabular-nums;
   color: var(--sc-ink-muted);
 }
@@ -797,7 +920,7 @@ a:focus-visible {
   border-radius: var(--sc-radius-md);
   background: transparent;
   color: var(--sc-ink);
-  font-size: 0.8125rem;
+  font-size: var(--sc-text-small);
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -838,7 +961,7 @@ a:focus-visible {
   min-height: 4.25rem;
   padding: 0.6rem 0.25rem;
   color: var(--sc-ink);
-  font-size: 0.8125rem;
+  font-size: var(--sc-text-small);
   font-weight: 700;
   text-align: center;
   transition:
@@ -908,14 +1031,13 @@ a:focus-visible {
 }
 
 .home-feature__event {
-  font-size: 0.8125rem;
-  font-style: italic;
+  font-size: var(--sc-text-small);
   color: var(--sc-ink-muted);
 }
 
 .home-feature__matchup {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: var(--sc-text-lead);
   font-weight: 700;
   line-height: 1.3;
   overflow-wrap: anywhere;
@@ -927,12 +1049,11 @@ a:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  font-size: 0.8125rem;
+  font-size: var(--sc-text-small);
 }
 
 .home-feature__meta {
   min-width: 0;
-  font-style: italic;
   color: var(--sc-ink-muted);
 }
 
@@ -959,7 +1080,7 @@ a:focus-visible {
 
 .home-status-message {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--sc-text-small);
   font-weight: 600;
   color: var(--sc-accent);
 }
@@ -997,12 +1118,12 @@ a:focus-visible {
 }
 
 .home-scoreboard.is-lg .home-scoreboard__team {
-  font-size: 1.2rem;
+  font-size: var(--sc-text-title);
   line-height: 1.25;
 }
 
 .home-scoreboard.is-lg .home-scoreboard__score {
-  font-size: 1.75rem;
+  font-size: var(--sc-text-stat);
   line-height: 1;
 }
 
@@ -1025,7 +1146,7 @@ a:focus-visible {
 
 .home-card__cta-text {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--sc-text-small);
   line-height: 1.5;
   color: var(--sc-ink);
 }
@@ -1047,7 +1168,6 @@ a:focus-visible {
 
 .home-vs {
   font-size: 0.85em;
-  font-style: italic;
   font-weight: 500;
   color: var(--sc-ink-muted);
 }
@@ -1055,7 +1175,7 @@ a:focus-visible {
 .home-match-row__time {
   flex-shrink: 0;
   min-width: 3.25rem;
-  font-size: 0.95rem;
+  font-size: var(--sc-text-small);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--sc-ink-strong);
@@ -1075,7 +1195,7 @@ a:focus-visible {
   margin: 0 0 0.5rem;
   padding-bottom: 0.35rem;
   border-bottom: 1px solid var(--home-divider);
-  font-size: 0.72rem;
+  font-size: var(--sc-text-caption);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1118,7 +1238,7 @@ a:focus-visible {
 }
 
 .home-list-card__title {
-  font-size: 1rem;
+  font-size: var(--sc-text-body);
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -1139,7 +1259,7 @@ a:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 0.2rem 1rem;
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   color: var(--sc-ink-muted);
 }
 
@@ -1164,8 +1284,7 @@ a:focus-visible {
 
 .home-card-list__empty {
   margin: 0;
-  font-size: 0.875rem;
-  font-style: italic;
+  font-size: var(--sc-text-small);
   color: var(--sc-ink-muted);
 }
 
@@ -1187,7 +1306,7 @@ a:focus-visible {
 
 .home-promo-card__text {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--sc-text-small);
   line-height: 1.4;
   color: var(--sc-ink);
 }
@@ -1250,7 +1369,7 @@ a:focus-visible {
   border: 1px solid var(--home-border);
   border-radius: var(--home-radius);
   background: var(--home-surface);
-  font-size: 0.875rem;
+  font-size: var(--sc-text-small);
   color: var(--sc-ink);
 }
 
@@ -1285,7 +1404,7 @@ a:focus-visible {
   }
 
   .home-section-title {
-    font-size: 1.6rem;
+    font-size: var(--sc-text-h2);
   }
 
   .home-welcome {
@@ -1294,11 +1413,11 @@ a:focus-visible {
 
   .home-welcome__title {
     padding-right: 5rem;
-    font-size: 2rem;
+    font-size: var(--sc-text-h1);
   }
 
   .home-welcome__lead {
-    font-size: 1.05rem;
+    font-size: var(--sc-text-body);
   }
 
   .home-welcome__actions .sc-button {
@@ -1309,7 +1428,7 @@ a:focus-visible {
     flex-direction: row;
     gap: 0.6rem;
     min-height: 3.25rem;
-    font-size: 0.9375rem;
+    font-size: var(--sc-text-small);
   }
 
   .home-feature__link {
@@ -1330,18 +1449,18 @@ a:focus-visible {
 
   .home-scoreboard.is-lg .home-scoreboard__team,
   .home-feature__matchup {
-    font-size: 1.35rem;
+    font-size: var(--sc-text-title);
   }
 
   .home-scoreboard.is-lg .home-scoreboard__score {
-    font-size: 2rem;
+    font-size: var(--sc-text-stat);
   }
 }
 
 @media (min-width: 1024px) {
   .home-welcome__title {
     max-width: 40rem;
-    font-size: 2.25rem;
+    font-size: var(--sc-text-h1);
   }
 }
 
@@ -1532,7 +1651,7 @@ a:focus-visible {
   border: 1px solid var(--sc-chip-border);
   background: var(--sc-chip-bg);
   color: var(--sc-ink);
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1602,7 +1721,7 @@ a:focus-visible {
   border: 1px solid var(--sc-pill-border);
   background: var(--sc-pill-bg);
   color: var(--sc-accent);
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1646,7 +1765,7 @@ a:focus-visible {
   color: var(--sc-ink);
   border: 1px solid var(--sc-tag-border);
   font-weight: 700;
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
 }
 
 .sc-surface-light .sc-tag {
@@ -1669,7 +1788,7 @@ a:focus-visible {
 }
 
 .sc-metric strong {
-  font-size: 1.6rem;
+  font-size: var(--sc-text-stat-md);
   color: var(--sc-accent);
 }
 
@@ -1689,7 +1808,7 @@ a:focus-visible {
 }
 
 .sc-metric--stacked strong {
-  font-size: 1.35rem;
+  font-size: var(--sc-text-stat-md);
 }
 
 @media (min-width: 640px) {
@@ -1697,7 +1816,7 @@ a:focus-visible {
     padding: 0.85rem 1.1rem;
   }
   .sc-metric--stacked strong {
-    font-size: 1.55rem;
+    font-size: var(--sc-text-stat-md);
   }
 }
 
@@ -1814,7 +1933,7 @@ a:focus-visible {
 
 @media (max-width: 640px) {
   .sc-match-card-team-name {
-    font-size: 1.0625rem;
+    font-size: var(--sc-text-body);
   }
 }
 
@@ -1841,13 +1960,13 @@ a:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  font-size: 0.9rem;
+  font-size: var(--sc-text-small);
   font-weight: 500;
   color: var(--sc-ink);
 }
 
 .sc-field-label {
-  font-size: 0.8rem;
+  font-size: var(--sc-text-small);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1855,7 +1974,7 @@ a:focus-visible {
 }
 
 .sc-field-hint {
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   color: var(--sc-ink-muted);
 }
 
@@ -1866,7 +1985,7 @@ a:focus-visible {
   background: var(--sc-field-bg);
   color: var(--sc-ink);
   padding: 0.65rem 1rem;
-  font-size: 0.95rem;
+  font-size: var(--sc-text-small);
   font-family: var(--sc-font-body);
   transition:
     border var(--sc-transition-fast),
@@ -1893,7 +2012,7 @@ a:focus-visible {
 
 .sc-input.is-compact {
   padding: 0.45rem 0.75rem;
-  font-size: 0.85rem;
+  font-size: var(--sc-text-small);
   border-radius: var(--sc-radius-sm);
 }
 
@@ -1916,7 +2035,7 @@ textarea.sc-input {
   border-radius: var(--sc-radius-md);
   padding: 0.85rem 1rem;
   border: 1px solid var(--sc-border);
-  font-size: 0.9rem;
+  font-size: var(--sc-text-small);
   font-weight: 600;
 }
 
@@ -1998,7 +2117,7 @@ textarea.sc-input {
   border: 1px solid var(--td-border);
   background: var(--td-chip-bg);
   color: var(--td-ink-muted);
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2080,7 +2199,7 @@ textarea.sc-input {
   border: 1px solid var(--sk-border);
   background: var(--sk-chip-bg);
   color: var(--sk-ink-muted);
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -2097,7 +2216,7 @@ textarea.sc-input {
   background: var(--sc-accent);
   color: #fff;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--sc-text-small);
   transition: transform var(--sc-transition-fast), box-shadow var(--sc-transition-fast);
   box-shadow: var(--sk-button-shadow);
 }
@@ -2143,7 +2262,7 @@ textarea.sc-input {
   background: var(--sc-accent);
   color: #fff;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--sc-text-small);
   transition: transform var(--sc-transition-fast), box-shadow var(--sc-transition-fast);
   box-shadow: var(--sk-compact-button-shadow);
 }
@@ -2174,11 +2293,7 @@ textarea.sc-input {
   padding-bottom: 10px !important;
 }
 
-@media (max-width: 640px) {
-  :root {
-    font-size: 15px;
-  }
-}
+/* The root stays 16px on phones too (it was 15px, which shrank every rem size). */
 
 /* Event setup wizard */
 .wizard-page {
@@ -2351,22 +2466,22 @@ textarea.sc-input {
 }
 
 .wizard-text {
-  font-size: 0.9rem;
+  font-size: var(--sc-text-small);
   color: var(--sc-ink);
 }
 
 .wizard-text-muted {
-  font-size: 0.9rem;
+  font-size: var(--sc-text-small);
   color: var(--sc-ink-muted);
 }
 
 .wizard-text-muted-xs {
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   color: var(--sc-ink-muted);
 }
 
 .wizard-text-xs {
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   color: var(--sc-ink);
 }
 
@@ -2376,7 +2491,7 @@ textarea.sc-input {
 }
 
 .wizard-metric-value {
-  font-size: 2rem;
+  font-size: var(--sc-text-stat-md);
   font-weight: 600;
   color: var(--sc-ink);
 }
@@ -2386,7 +2501,7 @@ textarea.sc-input {
 }
 
 .wizard-kicker-strong {
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -2407,7 +2522,7 @@ details > summary.wizard-cursor-pointer::before {
   content: "▸";
   display: inline-block;
   margin-right: 0.5rem;
-  font-size: 1.15rem;
+  font-size: var(--sc-text-lead);
   line-height: 1;
   vertical-align: -0.1em;
   color: var(--sc-accent);
@@ -2424,7 +2539,7 @@ details[open] > summary.wizard-cursor-pointer::before {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.75rem;
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--sc-ink-muted);
@@ -2432,7 +2547,7 @@ details[open] > summary.wizard-cursor-pointer::before {
 }
 
 .wizard-tag {
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--sc-ink-muted);
@@ -2447,7 +2562,7 @@ details[open] > summary.wizard-cursor-pointer::before {
   border: 1px solid var(--sc-border);
   border-radius: var(--sc-radius-md);
   padding: 0.75rem;
-  font-size: 0.9rem;
+  font-size: var(--sc-text-small);
   transition: border var(--sc-transition-fast), background var(--sc-transition-fast);
 }
 
@@ -2613,7 +2728,7 @@ details[open] > summary.wizard-cursor-pointer::before {
   align-items: center;
   gap: 0.5rem;
   margin: 0 0 0.5rem -1.75rem;
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -2628,12 +2743,12 @@ details[open] > summary.wizard-cursor-pointer::before {
   height: 1rem;
   border: 1px solid rgba(198, 255, 98, 0.55);
   border-radius: 999px;
-  font-size: 0.6rem;
+  font-size: var(--sc-text-caption);
   color: var(--sc-accent);
 }
 
 .wizard-cap-note {
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   color: var(--sc-ink-muted);
 }
 
@@ -2647,13 +2762,13 @@ details[open] > summary.wizard-cursor-pointer::before {
   border-left: 2px solid rgba(198, 255, 98, 0.35);
   background: rgba(255, 255, 255, 0.03);
   border-radius: 0 0.5rem 0.5rem 0;
-  font-size: 0.8rem;
+  font-size: var(--sc-text-caption);
   color: var(--sc-ink-muted);
 }
 
 .wizard-cap-examples-title {
   margin: 0 0 0.4rem;
-  font-size: 0.65rem;
+  font-size: var(--sc-text-caption);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -2697,7 +2812,7 @@ details[open] > summary.wizard-cursor-pointer::before {
   border-radius: var(--sc-radius-md);
   background: rgba(255, 255, 255, 0.03);
   padding: 0.75rem;
-  font-size: 0.9rem;
+  font-size: var(--sc-text-small);
 }
 
 .wizard-box-compact {
@@ -2705,7 +2820,7 @@ details[open] > summary.wizard-cursor-pointer::before {
   border-radius: var(--sc-radius-md);
   background: rgba(255, 255, 255, 0.03);
   padding: 0.5rem 0.75rem;
-  font-size: 0.9rem;
+  font-size: var(--sc-text-small);
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -2719,7 +2834,7 @@ details[open] > summary.wizard-cursor-pointer::before {
 
 .wizard-box-xs {
   padding: 0.5rem;
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
 }
 
 .wizard-box-dashed {
@@ -2731,7 +2846,7 @@ details[open] > summary.wizard-cursor-pointer::before {
   gap: 0.25rem;
   padding-left: 0.75rem;
   border-left: 2px solid var(--sc-border);
-  font-size: 0.85rem;
+  font-size: var(--sc-text-small);
 }
 
 .wizard-review-divisions {
@@ -2819,14 +2934,14 @@ details[open] > summary.wizard-cursor-pointer::before {
 }
 
 .wizard-stepper__mode-detail {
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   color: var(--sc-ink-muted);
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .wizard-stepper__compact-count {
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -2884,7 +2999,7 @@ details[open] > summary.wizard-cursor-pointer::before {
   padding: 0.4rem 0.75rem;
   color: var(--sc-ink-muted);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--sc-text-caption);
   font-weight: 600;
 }
 
@@ -2905,7 +3020,7 @@ details[open] > summary.wizard-cursor-pointer::before {
   width: 1.4rem;
   height: 1.4rem;
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: var(--sc-text-caption);
   font-weight: 700;
   border: 2px solid var(--sc-border);
   background: var(--sc-surface);
@@ -3005,7 +3120,7 @@ details[open] > summary.wizard-cursor-pointer::before {
     width: 1.8rem;
     height: 1.8rem;
     border-radius: 999px;
-    font-size: 0.8rem;
+    font-size: var(--sc-text-caption);
     font-weight: 700;
     border: 2px solid var(--sc-border);
     background: var(--sc-surface);
@@ -3025,7 +3140,7 @@ details[open] > summary.wizard-cursor-pointer::before {
   }
 
   .wizard-stepper__label {
-    font-size: 0.75rem;
+    font-size: var(--sc-text-caption);
     font-weight: 600;
     line-height: 1.2;
   }
@@ -3043,7 +3158,7 @@ details[open] > summary.wizard-cursor-pointer::before {
   gap: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--sc-border);
-  font-size: 0.7rem;
+  font-size: var(--sc-text-caption);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--sc-ink-muted);
@@ -3157,7 +3272,7 @@ details[open] > summary.wizard-cursor-pointer::before {
 .wizard-definition-list {
   display: grid;
   gap: 0.75rem;
-  font-size: 0.9rem;
+  font-size: var(--sc-text-small);
 }
 
 @media (min-width: 640px) {
@@ -3196,22 +3311,26 @@ details[open] > summary.wizard-cursor-pointer::before {
   }
 }
 
-.sc-bracket-scroll::-webkit-scrollbar {
+.sc-bracket-scroll::-webkit-scrollbar,
+.sc-edge-scroll::-webkit-scrollbar {
   height: 0.75rem;
 }
 
-.sc-bracket-scroll::-webkit-scrollbar-track {
+.sc-bracket-scroll::-webkit-scrollbar-track,
+.sc-edge-scroll::-webkit-scrollbar-track {
   background: var(--sc-surface-plain);
   border-radius: 999px;
 }
 
-.sc-bracket-scroll::-webkit-scrollbar-thumb {
+.sc-bracket-scroll::-webkit-scrollbar-thumb,
+.sc-edge-scroll::-webkit-scrollbar-thumb {
   background: var(--sc-border-strong);
   border-radius: 999px;
   border: 3px solid var(--sc-surface-plain);
 }
 
-.sc-bracket-scroll::-webkit-scrollbar-thumb:hover {
+.sc-bracket-scroll::-webkit-scrollbar-thumb:hover,
+.sc-edge-scroll::-webkit-scrollbar-thumb:hover {
   background: var(--sc-accent-alt);
 }
 
@@ -3289,10 +3408,53 @@ details[open] > summary.wizard-cursor-pointer::before {
   --sc-ink-muted: #cfe3d8;
   --color-ink-muted: #cfe3d8;
 
-  /* The stock separators (#12352c / #1f4d40) are dark green on a dark green
-     page and all but vanish. Use light, translucent rules instead. */
-  --sc-border: rgba(207, 227, 216, 0.22);
-  --sc-border-strong: rgba(207, 227, 216, 0.38);
-  --color-border: rgba(207, 227, 216, 0.22);
   --color-border-strong: rgba(207, 227, 216, 0.38);
+}
+
+/* Section links (event page): text links that still look clickable. Lime,
+   bold, a solid underline and an arrow; a 44px tall target. Defined here, not
+   as Tailwind classes, because the global `a { color }` rule beats them. */
+.sc-section-link,
+a.sc-section-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--sc-text-small);
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--sc-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: color-mix(in srgb, var(--sc-accent) 45%, transparent);
+  text-underline-offset: 5px;
+  cursor: pointer;
+  transition: text-decoration-color var(--sc-transition-fast), color var(--sc-transition-fast);
+}
+
+.sc-section-link:hover,
+a.sc-section-link:hover {
+  color: var(--sc-accent);
+  text-decoration-color: var(--sc-accent);
+}
+
+.sc-section-link:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.sc-section-link__arrow {
+  width: 0.9em;
+  height: 0.9em;
+  flex-shrink: 0;
+  transition: transform var(--sc-transition-fast);
+}
+
+.sc-section-link:hover .sc-section-link__arrow {
+  transform: translateX(2px);
 }

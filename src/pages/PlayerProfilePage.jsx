@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { getPlayerMatchStats } from "../services/teamService";
 import { Card, Panel, SectionShell, Field, Select } from "../components/ui/primitives";
 import { matchPath } from "../utils/links";
+import { EVENT_SECTIONS, getEventSectionPath } from "./eventWorkspaces";
 import { usePageMeta, withSiteName } from "../utils/pageMeta";
 
 export default function PlayerProfilePage() {
@@ -62,7 +63,7 @@ export default function PlayerProfilePage() {
       const startTime = row.match?.start_time || null;
       const existing = map.get(event.id);
       if (!existing) {
-        map.set(event.id, { id: event.id, name: event.name || "Event", startTime });
+        map.set(event.id, { id: event.id, name: event.name || "Event", slug: event.slug || null, startTime });
       } else if (startTime && (!existing.startTime || startTime > existing.startTime)) {
         existing.startTime = startTime;
       }
@@ -141,7 +142,12 @@ export default function PlayerProfilePage() {
   }, [eventFilter, searchParams, setSearchParams]);
 
   const backToPlayersHref =
-    eventFilter !== "all" ? `/players?eventId=${encodeURIComponent(eventFilter)}` : "/players";
+    (eventFilter !== "all" &&
+      getEventSectionPath(
+        eventOptions.find((option) => option.id === eventFilter),
+        EVENT_SECTIONS.PLAYERS,
+      )) ||
+    "/players";
 
   const displayName = `${profile?.name || identity.name}${
     (profile?.jersey ?? identity.jersey) != null ? ` (#${profile?.jersey ?? identity.jersey})` : ""
@@ -167,7 +173,7 @@ export default function PlayerProfilePage() {
   // one column throughout, summary above the match table; the summary tiles
   // and the table columns adapt to the width (one row of tiles when wide).
   return (
-    <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
+    <div className="min-h-screen bg-light-page text-[var(--sc-surface-light-ink)]">
       <SectionShell className="space-y-3 py-3 sm:space-y-5 sm:py-6">
         <Card
           variant="light"
@@ -269,6 +275,7 @@ export default function PlayerProfilePage() {
                     <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
                       <tr>
                         <th className="px-3 py-2">Match</th>
+                        <StatHeader full="Total" short="Tot" />
                         <StatHeader full="Goals" short="G" />
                         <StatHeader full="Assists" short="A" />
                         <StatHeader full="Blocks" short="B" />
@@ -303,7 +310,9 @@ export default function PlayerProfilePage() {
                                 </span>
                               ) : null}
                             </td>
-                            <StatCell value={row.goals} strong />
+                            {/* Total: goals + assists + Callahans, as in the summary. */}
+                            <StatCell value={(row.goals || 0) + (row.assists || 0) + (row.callahans || 0)} strong />
+                            <StatCell value={row.goals} />
                             <StatCell value={row.assists} />
                             <StatCell value={row.blocks} />
                             <StatCell value={row.turnovers} />
@@ -356,7 +365,7 @@ function StatCell({ value, strong = false, circled = false }) {
   const shown = value ?? 0;
   return (
     <td
-      className={`whitespace-nowrap px-2 py-2 text-center tabular-nums sm:px-3 ${strong ? "font-semibold" : ""}`}
+      className={`whitespace-nowrap px-2 py-2 text-center tabular-nums text-[var(--sc-surface-light-ink)] sm:px-3 ${strong ? "font-semibold" : ""}`}
     >
       {circled && shown ? (
         <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-current px-1 leading-none">

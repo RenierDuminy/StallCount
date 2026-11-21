@@ -73,15 +73,15 @@ function describeMatch(match) {
 // Row tints copied from PointLogTable in MatchesPage. `turnoverA`/`turnoverB`
 // share the same neutral fill there, so both map to one class here.
 const VARIANT_ROW_CLASS = {
-  timeout: "bg-[#95df88]",
-  stoppage: "bg-[#fd5050]",
-  halftime: "bg-[#269828]",
-  callahan: "bg-[#facc15]",
-  goalA: "bg-[#3b82f6]",
-  goalB: "bg-[#fb923c]",
-  turnoverA: "bg-[#eceff3]",
-  turnoverB: "bg-[#eceff3]",
-  turnover: "bg-[#eceff3]",
+  timeout: "bg-ev-timeout",
+  stoppage: "bg-ev-stoppage",
+  halftime: "bg-ev-halftime",
+  callahan: "bg-ev-callahan",
+  goalA: "bg-ev-goal-a",
+  goalB: "bg-ev-goal-b",
+  turnoverA: "bg-ev-turnover",
+  turnoverB: "bg-ev-turnover",
+  turnover: "bg-ev-turnover",
 };
 
 // Mirrors getEventSymbol in MatchesPage, which decides from the row's
@@ -181,7 +181,7 @@ function DeleteIcon() {
 }
 
 const ICON_BUTTON_CLASS =
-  "inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] shadow-sm transition hover:bg-[#edf7f0] focus:outline-none focus:ring-2 focus:ring-[#0a3d29]/40 disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--sc-surface-light-border)] bg-white text-[var(--sc-surface-light-ink)] shadow-sm transition hover:bg-light-tint focus:outline-none focus:ring-2 focus:ring-light-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 const DELETE_ICON_BUTTON_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-700 bg-red-600 text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-40";
 
@@ -853,7 +853,7 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
             <div className="hidden w-full overflow-x-auto lg:block">
               <table className="w-full table-auto text-left text-xs text-black sm:text-sm">
                 <thead>
-                  <tr className="text-[11px] uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
+                  <tr className="text-xs uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
                     <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">#</th>
                     <th className="px-1 py-0.5 sm:px-2 sm:py-1.5">Time</th>
                     <th className="px-1 py-0.5 text-center sm:px-2 sm:py-1.5">Event</th>
@@ -905,17 +905,17 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                             <div className="text-center text-xs font-semibold text-black sm:text-sm">
                               <div>{row.description}</div>
                               {row.metaDetails ? (
-                                <p className="text-[10px] font-normal text-black/70 sm:text-xs">
+                                <p className="text-xs font-normal text-black/70 sm:text-xs">
                                   {row.metaDetails}
                                 </p>
                               ) : null}
                             </div>
                           ) : (
                             <div className="grid auto-rows-min items-center gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-1.5">
-                              <span className="text-[11px] text-black sm:text-right sm:text-sm">
+                              <span className="text-xs text-black sm:text-right sm:text-sm">
                                 {row.assist || "-"}
                               </span>
-                              <span className="text-center text-[10px] font-semibold text-black sm:text-xs">
+                              <span className="text-center text-xs font-semibold text-black sm:text-xs">
                                 →
                               </span>
                               <span className="font-semibold text-black sm:text-left">
@@ -924,10 +924,10 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                             </div>
                           )}
                         </td>
-                        <td className="px-1 py-0.5 text-center font-mono text-[11px] text-black sm:px-2 sm:py-1.5 sm:text-xs">
+                        <td className="px-1 py-0.5 text-center font-mono text-xs text-black sm:px-2 sm:py-1.5 sm:text-xs">
                           {row.isScore ? `${row.totalA}-${row.totalB}` : "-"}
                         </td>
-                        <td className="px-1 py-0.5 text-right font-mono text-[11px] text-black sm:px-2 sm:py-1.5 sm:text-xs">
+                        <td className="px-1 py-0.5 text-right font-mono text-xs text-black sm:px-2 sm:py-1.5 sm:text-xs">
                           {row.gap}
                         </td>
                         <td className="px-1 py-0.5 sm:px-2 sm:py-1.5">
@@ -1000,7 +1000,7 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                             {row.label !== "·" ? `${row.label} · ` : ""}
                             {row.description}
                           </p>
-                          <p className="text-[11px] text-black/70">
+                          <p className="text-xs text-black/70">
                             {formatClock(row.timestamp)}
                             {row.teamLabel && row.teamLabel !== "-" ? ` · ${row.teamLabel}` : ""}
                             {row.gap !== "-" ? ` · +${row.gap}` : ""}
@@ -1021,7 +1021,7 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                         <span className="font-semibold">{row.scorer || "-"}</span>
                       </p>
                     ) : row.metaDetails ? (
-                      <p className="mt-2 text-[11px] text-black/70">{row.metaDetails}</p>
+                      <p className="mt-2 text-xs text-black/70">{row.metaDetails}</p>
                     ) : null}
 
                     <div className="mt-3 flex flex-wrap gap-3">

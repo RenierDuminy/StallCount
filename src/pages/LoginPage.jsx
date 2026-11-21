@@ -23,7 +23,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
+    <div className="min-h-screen bg-light-page text-[var(--sc-surface-light-ink)]">
       <SectionShell className="flex min-h-screen items-center justify-center py-12">
         <div className="w-full max-w-xl">
           <Card variant="light" className="space-y-6 p-8 shadow-xl shadow-[rgba(15,31,25,0.08)]">

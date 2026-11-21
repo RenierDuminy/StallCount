@@ -18,7 +18,7 @@ const INDEXABLE_PATH_PATTERNS = [
   /^\/players\/[^/]+$/,
   /^\/community$/,
   /^\/events\/[^/]+$/,
-  /^\/events\/[^/]+\/(spirit|rules|rosters)$/,
+  /^\/events\/[^/]+\/(spirit|rules|rosters|players)$/,
 ];
 
 const ROUTE_META = [
@@ -82,6 +82,11 @@ const ROUTE_META = [
     pattern: /^\/events\/[^/]+\/rosters$/,
     title: "Event Rosters | StallCount",
     description: "Review event roster information by team and division.",
+  },
+  {
+    pattern: /^\/events\/[^/]+\/players$/,
+    title: "Player Standings | StallCount",
+    description: "Goals, assists, blocks and turnovers for every player at this event.",
   },
   {
     pattern: /^\/events\/[^/]+\/spirit$/,

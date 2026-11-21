@@ -351,7 +351,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
             <div className="flex items-center gap-3">
               <div>
                 <p className="text-right text-lg font-bold leading-none text-[var(--sc-surface-light-ink)]">{group.personCount}</p>
-                <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/55">linked</p>
+                <p className="text-xs uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/55">linked</p>
               </div>
             </div>
           </Panel>
@@ -389,7 +389,7 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
                     return (
                       <div key={`${group.key}-${entry.rowKey}`}>
                         {showTeamHeading ? (
-                          <p className="border-b border-[var(--sc-surface-light-border)]/30 bg-[var(--sc-surface-light-tint)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/80">
+                          <p className="border-b border-[var(--sc-surface-light-border)]/30 bg-[var(--sc-surface-light-tint)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/80">
                             {entry.teamName || "Event-wide"}
                           </p>
                         ) : null}

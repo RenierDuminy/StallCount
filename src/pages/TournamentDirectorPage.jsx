@@ -343,7 +343,7 @@ export default function TournamentDirectorPage() {
   };
 
   return (
-    <div className="td-page min-h-screen bg-[#f5fbf6] text-[var(--sc-surface-light-ink)]">
+    <div className="td-page min-h-screen bg-light-page text-[var(--sc-surface-light-ink)]">
       <SectionShell as="header" className="py-4">
         <Card variant="light" className="space-y-3 p-4 shadow-xl shadow-[rgba(8,25,21,0.08)]">
           <SectionHeader
@@ -353,28 +353,28 @@ export default function TournamentDirectorPage() {
                 <button
                   type="button"
                   onClick={() => setWorkspace("overview")}
-                  className={`sc-button ${workspace === "overview" ? "bg-[#0a3d29] text-white" : ""}`}
+                  className={`sc-button ${workspace === "overview" ? "bg-light-primary text-white" : ""}`}
                 >
                   Tournament overview
                 </button>
                 <button
                   type="button"
                   onClick={() => setWorkspace("data")}
-                  className={`sc-button ${workspace === "data" ? "bg-[#0a3d29] text-white" : ""}`}
+                  className={`sc-button ${workspace === "data" ? "bg-light-primary text-white" : ""}`}
                 >
                   Data studio
                 </button>
                 <button
                   type="button"
                   onClick={() => setWorkspace("users")}
-                  className={`sc-button ${workspace === "users" ? "bg-[#0a3d29] text-white" : ""}`}
+                  className={`sc-button ${workspace === "users" ? "bg-light-primary text-white" : ""}`}
                 >
                   Linked users
                 </button>
                 <button
                   type="button"
                   onClick={() => setWorkspace("corrections")}
-                  className={`sc-button ${workspace === "corrections" ? "bg-[#0a3d29] text-white" : ""}`}
+                  className={`sc-button ${workspace === "corrections" ? "bg-light-primary text-white" : ""}`}
                 >
                   Match corrections
                 </button>
@@ -428,11 +428,11 @@ export default function TournamentDirectorPage() {
             </div>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2">
               <Panel variant="light" className="p-2.5 shadow-sm shadow-[rgba(8,25,21,0.04)]">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Active</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Active</p>
                 <p className="truncate text-base font-semibold">{selectedTable || "None"}</p>
               </Panel>
               <Panel variant="light" className="p-2.5 text-center shadow-sm shadow-[rgba(8,25,21,0.04)]">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Columns</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">Columns</p>
                 <p className="text-xl font-bold">{columns.length}</p>
               </Panel>
             </div>
@@ -447,13 +447,13 @@ export default function TournamentDirectorPage() {
                     type="button"
                     onClick={() => setSelectedTable(table)}
                     className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-xs font-semibold transition ${
-                      isActive ? "bg-[#0a3d29] text-white shadow" : "text-[var(--sc-surface-light-ink)] hover:bg-white"
+                      isActive ? "bg-light-primary text-white shadow" : "text-[var(--sc-surface-light-ink)] hover:bg-white"
                     }`}
                   >
                     <span className="truncate">{table}</span>
                     <span
-                      className={`ml-2 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide ${
-                        isActive ? "bg-white/20" : "bg-[#e7f6ed] text-[var(--sc-surface-light-ink)]/70"
+                      className={`ml-2 rounded-full px-2 py-0.5 text-xs uppercase tracking-wide ${
+                        isActive ? "bg-white/20" : "bg-light-tint text-[var(--sc-surface-light-ink)]/70"
                       }`}
                     >
                       {editable ? "Edit" : "View"} • {cols.length} cols
@@ -760,7 +760,7 @@ export default function TournamentDirectorPage() {
                         return (
                           <tr
                             key={row.id ?? idx}
-                            className={`cursor-pointer transition hover:bg-[#ebf6ef] ${isActive ? "bg-[#d7f5e0]" : ""}`}
+                            className={`cursor-pointer transition hover:bg-light-tint ${isActive ? "bg-light-selected" : ""}`}
                             onClick={() => {
                               setSelectedRow(row);
                               setEditPayload(JSON.stringify(row, null, 2));

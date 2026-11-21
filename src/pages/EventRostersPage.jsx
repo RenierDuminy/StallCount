@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Card, Field, Panel, SectionHeader, SectionShell, Select } from "../components/ui/primitives";
+import { Field, SectionHeader, SectionShell, Select } from "../components/ui/primitives";
+import ScrollEdgeFades from "../components/ScrollEdgeFades";
 import { getEventRosterDivisions, getEventsList } from "../services/leagueService";
 import { getEventRosters } from "../services/playerService";
-import { EVENTS_BASE_PATH, EVENT_SECTIONS, getEventPagePath, getEventSectionPath } from "./eventWorkspaces";
+import { EVENT_SECTIONS, getEventSectionPath } from "./eventWorkspaces";
 import { useEventSectionRoute } from "./eventRouteHooks";
 import { usePageMeta, withSiteName } from "../utils/pageMeta";
 import { playerPath, teamPath } from "../utils/links";
@@ -197,93 +198,80 @@ export default function EventRostersPage() {
   const selectedEvent =
     events.find((evt) => evt.id === selectedEventId) ||
     (routeEvent?.id === selectedEventId ? routeEvent : null);
-  const selectedEventPath = selectedEventId
-    ? getEventPagePath(selectedEvent) || EVENTS_BASE_PATH
-    : "";
-
   if (routeElement) return routeElement;
 
   return (
     <div className="pb-16 text-ink">
-      <SectionShell as="header" className="py-4 sm:py-6">
-        <Card className="space-y-4 p-5 sm:p-7">
-          <SectionHeader
-            eyebrow="Event rosters"
-            title="Team rosters by event"
-            description="View the full set of registered players grouped by their teams."
-            action={
-              <>
-                {selectedEventPath && (
-                  <Link to={selectedEventPath} className="sc-button">
-                    Back to event
-                  </Link>
+      {/* Header and body straight on the page, no cards (as on the event
+          spirit page): a header, then sections divided by a rule. */}
+      <SectionShell as="main" className="w-full max-w-none space-y-6 py-4 sm:py-5">
+        {/* Compact header: title and one details line, then the two pickers
+            side by side from 640px. No back button: the phone's own back
+            gesture or button does that. */}
+        <header className="min-w-0 space-y-3">
+          <div className="space-y-1">
+            <h1 className="text-h2 font-semibold text-ink">
+              {selectedEvent?.name ? `${selectedEvent.name} – Rosters` : "Team rosters"}
+            </h1>
+            {selectedEvent ? (
+              <p className="text-sm text-ink-muted">
+                {[
+                  selectedEvent.location,
+                  `${selectedEvent.start_date ? new Date(selectedEvent.start_date).toLocaleDateString("en-GB") : "Start TBD"} to ${
+                    selectedEvent.end_date ? new Date(selectedEvent.end_date).toLocaleDateString("en-GB") : "End TBD"
+                  }`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            ) : null}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,16rem)_minmax(0,14rem)] sm:items-end">
+            <Field label="Event" htmlFor="event-roster-filter">
+              <Select
+                id="event-roster-filter"
+                value={selectedEventId}
+                onChange={(event) => {
+                  const next = events.find((evt) => evt.id === event.target.value);
+                  const path = next ? getEventSectionPath(next, EVENT_SECTIONS.ROSTERS) : null;
+                  setSelectedDivisionId("");
+                  if (path) navigate(path, { replace: true });
+                }}
+                disabled={loadingEvents || events.length === 0}
+              >
+                {events.length === 0 ? (
+                  <option value="">No events available</option>
+                ) : (
+                  events.map((event) => (
+                    <option key={event.id} value={event.id}>
+                      {event.name}
+                    </option>
+                  ))
                 )}
-                <Field className="w-full min-w-[13rem] max-w-xs" label="Select event" htmlFor="event-roster-filter">
-                  <Select
-                    id="event-roster-filter"
-                    value={selectedEventId}
-                    onChange={(event) => {
-                      const next = events.find((evt) => evt.id === event.target.value);
-                      const path = next ? getEventSectionPath(next, EVENT_SECTIONS.ROSTERS) : null;
-                      setSelectedDivisionId("");
-                      if (path) navigate(path, { replace: true });
-                    }}
-                    disabled={loadingEvents || events.length === 0}
-                  >
-                    {events.length === 0 ? (
-                      <option value="">No events available</option>
-                    ) : (
-                      events.map((event) => (
-                        <option key={event.id} value={event.id}>
-                          {event.name}
-                        </option>
-                      ))
-                    )}
-                  </Select>
-                </Field>
-                <Field className="w-full min-w-[12rem] max-w-xs" label="Select division" htmlFor="event-division-filter">
-                  <Select
-                    id="event-division-filter"
-                    value={selectedDivisionId}
-                    onChange={(event) => setSelectedDivisionId(event.target.value)}
-                    disabled={!selectedEventId || loadingDivisions || divisions.length === 0}
-                  >
-                    <option value="">All divisions</option>
-                    {divisions.map((division) => (
-                      <option key={division.id} value={division.id}>
-                        {division.level ? `${division.name} - ${division.level}` : division.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              </>
-            }
-          />
-          {selectedEvent && (
-            <div className="text-sm text-ink-muted">
-              {selectedEvent.location ? `${selectedEvent.location} - ` : ""}
-              {selectedEvent.start_date
-                ? new Date(selectedEvent.start_date).toLocaleDateString()
-                : "Start TBD"}
-              {" to "}
-              {selectedEvent.end_date
-                ? new Date(selectedEvent.end_date).toLocaleDateString()
-                : "End TBD"}
-            </div>
-          )}
-        </Card>
-      </SectionShell>
+              </Select>
+            </Field>
+            <Field label="Division" htmlFor="event-division-filter">
+              <Select
+                id="event-division-filter"
+                value={selectedDivisionId}
+                onChange={(event) => setSelectedDivisionId(event.target.value)}
+                disabled={!selectedEventId || loadingDivisions || divisions.length === 0}
+              >
+                <option value="">All divisions</option>
+                {divisions.map((division) => (
+                  <option key={division.id} value={division.id}>
+                    {division.level ? `${division.name} - ${division.level}` : division.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          {error ? <div className="sc-alert is-error">{error}</div> : null}
+        </header>
 
-      <SectionShell as="main" className="space-y-4 sm:space-y-6">
-        {error && (
-          <Card variant="muted" className="border border-rose-300/30 p-4 text-sm text-rose-700">
-            {error}
-          </Card>
-        )}
-
-        <Card className="space-y-4 p-4 sm:p-6">
+        <section className="min-w-0 space-y-4 border-t border-border pt-6">
           <SectionHeader
-            eyebrow="Rosters"
+            title="Rosters"
             description={
               selectedEventId
                 ? `Showing ${groupedTeams.length} teams - ${visibleRosterAssignmentCount} player assignments${
@@ -294,21 +282,21 @@ export default function EventRostersPage() {
           />
 
           {loadingRosters ? (
-            <Panel variant="muted" className="p-5 text-center text-sm text-ink-muted">
+            <p className="py-6 text-center text-sm text-ink-muted">
               Loading rosters...
-            </Panel>
+            </p>
           ) : !selectedEventId ? (
-            <Panel variant="muted" className="p-5 text-center text-sm text-ink-muted">
+            <p className="py-6 text-center text-sm text-ink-muted">
               Choose an event to see its rosters.
-            </Panel>
+            </p>
           ) : groupedTeams.length === 0 ? (
-            <Panel variant="muted" className="p-5 text-center text-sm text-ink-muted">
+            <p className="py-6 text-center text-sm text-ink-muted">
               {selectedDivisionId
                 ? "No roster entries were found for this division."
                 : "No roster entries were found for this event."}
-            </Panel>
+            </p>
           ) : (
-            <div className="overflow-x-auto">
+            <ScrollEdgeFades>
               <table className="table-auto border border-border text-left text-sm text-ink">
                 <thead>
                   <tr className="bg-surface-muted text-xs font-semibold uppercase tracking-wide text-ink-muted">
@@ -320,11 +308,11 @@ export default function EventRostersPage() {
                           </Link>
                         </div>
                         {team.shortName && (
-                          <div className="text-[11px] uppercase tracking-wide text-ink-muted">
+                          <div className="text-xs uppercase tracking-wide text-ink-muted">
                             {team.shortName}
                           </div>
                         )}
-                        <div className="text-[11px] font-normal normal-case tracking-normal text-ink-muted">
+                        <div className="text-xs font-normal normal-case tracking-normal text-ink-muted">
                           {team.players.length} {team.players.length === 1 ? "player" : "players"}
                         </div>
                       </th>
@@ -353,9 +341,9 @@ export default function EventRostersPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollEdgeFades>
           )}
-        </Card>
+        </section>
       </SectionShell>
     </div>
   );
@@ -368,7 +356,9 @@ function RosterPlayerCard({ player, eventId }) {
       ? playerPath(player.playerId, { eventId })
       : playerPath(player.playerId)
     : null;
-  const genderLabel = player.gender ? player.gender : "--";
+  // The database stores "M" / "W"; shown as M / F until the gender codes move
+  // to the ultimate terms (MMP / FMP), TODO §20.
+  const genderLabel = player.gender === "W" ? "F" : player.gender || "--";
   const tags = [];
   if (player.isCaptain) {
     tags.push({ label: "C", title: "Captain" });
@@ -384,7 +374,7 @@ function RosterPlayerCard({ player, eventId }) {
             <span
               key={tag.label}
               title={tag.title}
-              className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
+              className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide"
               style={{
                 background: "var(--sc-accent)",
                 color: "var(--sc-button-ink)",

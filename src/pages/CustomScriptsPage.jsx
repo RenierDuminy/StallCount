@@ -184,8 +184,7 @@ export default function CustomScriptsPage() {
     <div className="pb-16 text-ink">
       <SectionShell as="header" className="py-6">
         <Card className="space-y-4 p-6 sm:p-8">
-          <SectionHeader
-            eyebrow="Admin"
+          <SectionHeader
             title="Custom scripts"
             description="Bundled JS scripts with editable local overrides and an in-app runner."
             action={
@@ -204,7 +203,7 @@ export default function CustomScriptsPage() {
       <SectionShell as="main" className="space-y-6 py-6">
         <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
           <Card className="space-y-4 p-5 sm:p-6">
-            <SectionHeader eyebrow="Catalogue" title="Available scripts" />
+            <SectionHeader title="Available scripts" />
             <div className="space-y-3">
               {scripts.map((script) => {
                 const isSelected = script.slug === selectedSlug;
@@ -237,8 +236,7 @@ export default function CustomScriptsPage() {
 
           <div className="space-y-6">
             <Card className="space-y-4 p-5 sm:p-6">
-              <SectionHeader
-                eyebrow="Editor"
+              <SectionHeader
                 title={selectedScript?.name || "Custom script"}
                 action={
                   <div className="flex flex-wrap items-center gap-2">
@@ -333,7 +331,7 @@ export default function CustomScriptsPage() {
             </Card>
 
             <Card className="space-y-4 p-5 sm:p-6">
-              <SectionHeader eyebrow="Runner" title="Latest output" />
+              <SectionHeader title="Latest output" />
               {!runState.output ? (
                 <Panel variant="muted" className="p-4 text-sm text-ink-muted">
                   Run a script to inspect its logs and returned payload.

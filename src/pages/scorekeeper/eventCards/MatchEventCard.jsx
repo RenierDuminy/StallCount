@@ -118,8 +118,8 @@ function getGenericEventStyles(flags, variantOverrides) {
 
 function getEditPositionClass(editLocation) {
   return editLocation === "middle-right"
-    ? "right-3 top-1/2 -translate-y-1/2"
-    : "right-3 bottom-3";
+    ? "right-2 top-1/2 -translate-y-1/2"
+    : "right-2 bottom-3";
 }
 
 function EditButton({
@@ -200,7 +200,7 @@ function CornerBadges({ descriptor, isBreak }) {
   const circle =
     "flex h-8 min-w-8 items-center justify-center rounded-full px-1.5 text-sm font-extrabold text-white shadow-sm";
   return (
-    <div className="absolute left-3 top-3 flex items-center gap-1.5">
+    <div className="absolute left-2 top-1.5 flex items-center gap-1.5">
       {label ? (
         <span className={`${circle} bg-[#16a34a]`} title={text} aria-label={`Line ${label}`}>
           {label}
@@ -233,7 +233,7 @@ function OptimisticBadge({ isOptimistic, timestamp }) {
 
   return (
     <span
-      className={`absolute left-3 top-3 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+      className={`absolute left-2 top-1.5 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${
         isFailed
           ? "border-rose-300 bg-rose-50 text-rose-700"
           : "border-slate-200 bg-white/90 text-slate-700"
@@ -298,7 +298,7 @@ export const MatchEventCard = memo(function MatchEventCard({
     ? log.scorerName || (log.scorerId ? "Unknown player" : "N/A")
     : null;
   const matchStartLayoutClass = flags.isMatchStartLog ? "flex flex-col justify-center" : "";
-  const detailSpacingClass = flags.isMatchStartLog ? "mt-2" : "mt-3";
+  const detailSpacingClass = flags.isMatchStartLog ? "mt-1" : "mt-1.5";
   const editHandler = flags.isScoringDisplay
     ? () => openScoreModal(log.team, "edit", resolvedLogRef)
     : flags.isPossessionLog
@@ -320,7 +320,7 @@ export const MatchEventCard = memo(function MatchEventCard({
 
   return (
     <article
-      className={`relative rounded-2xl border px-4 py-3 transition ${eventStyles.bg} ${eventStyles.border} ${eventStyles.label} ${alignClass} ${matchStartLayoutClass} ${editSpacingClass}`}
+      className={`relative rounded-2xl border px-3 py-1.5 transition ${eventStyles.bg} ${eventStyles.border} ${eventStyles.label} ${alignClass} ${matchStartLayoutClass} ${editSpacingClass}`}
     >
       <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <CornerBadges descriptor={abbaDescriptor} isBreak={isBreak} />
@@ -340,7 +340,7 @@ export const MatchEventCard = memo(function MatchEventCard({
       </div>
 
       {flags.isScoringDisplay ? (
-        <div className={`${detailSpacingClass} grid items-center gap-3 md:grid-cols-[1fr_auto_1fr]`}>
+        <div className={`${detailSpacingClass} grid items-center gap-2 md:grid-cols-[1fr_auto_1fr]`}>
           {log.team === "A" ? (
             <div className={`text-left ${TEXT_SIZES.m} ${eventStyles.label}`}>
               <ScorerLine log={log} className={`font-semibold ${eventStyles.label}`} />
@@ -429,7 +429,7 @@ export const ScoreEventCard = memo(function ScoreEventCard({
   const eventTime = formatEventTime(log.timestamp);
 
   return (
-    <article className={`relative rounded-2xl border border-[#16a34a]/70 bg-[#e5ffe8] px-4 py-3 text-black ${readOnly ? "" : "pr-12"}`}>
+    <article className={`relative rounded-2xl border border-[#16a34a]/70 bg-[#e5ffe8] px-3 py-1.5 text-black ${readOnly ? "" : "pr-12"}`}>
       <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <CornerBadges descriptor={abbaDescriptor} isBreak={isBreak} />
       <div className="text-center">
@@ -437,7 +437,7 @@ export const ScoreEventCard = memo(function ScoreEventCard({
         <p className={`${TEXT_SIZES.s}`}>{eventTime}</p>
       </div>
 
-      <div className="mt-3 grid items-center gap-3 grid-cols-[1fr_auto_1fr]">
+      <div className="mt-1.5 grid items-center gap-2 grid-cols-[1fr_auto_1fr]">
           {log.team === "A" ? (
             <div className={`text-left ${TEXT_SIZES.m} text-black`}>
               <ScorerLine log={log} className="font-semibold text-black" />
@@ -462,7 +462,7 @@ export const ScoreEventCard = memo(function ScoreEventCard({
       {readOnly ? null : (
         <EditButton
           onClick={() => openScoreModal(log.team, "edit", resolvedLogRef)}
-          positionClass="right-3 top-1/2 -translate-y-1/2"
+          positionClass="right-2 top-1/2 -translate-y-1/2"
           textClass="text-[#0f5132]"
           borderClass="border-border"
           hoverBorderClass="hover:border-[#0f5132]"
@@ -499,7 +499,7 @@ export const CalahanEventCard = memo(function CalahanEventCard({
   const eventTime = formatEventTime(log.timestamp);
 
   return (
-    <article className={`relative rounded-2xl border-4 border-[#facc15] bg-[#e5ffe8] px-4 py-3 text-[#b45309] ${readOnly ? "" : "pr-12"}`}>
+    <article className={`relative rounded-2xl border-4 border-[#facc15] bg-[#e5ffe8] px-3 py-1.5 text-[#b45309] ${readOnly ? "" : "pr-12"}`}>
       <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <CornerBadges descriptor={abbaDescriptor} isBreak={isBreak} />
       <div className="text-center">
@@ -507,7 +507,7 @@ export const CalahanEventCard = memo(function CalahanEventCard({
         <p className={`${TEXT_SIZES.s} text-[#b45309]`}>{eventTime}</p>
       </div>
 
-      <div className="mt-3 grid items-center gap-3 grid-cols-[1fr_auto_1fr]">
+      <div className="mt-1.5 grid items-center gap-2 grid-cols-[1fr_auto_1fr]">
           {log.team === "A" ? (
             <div className={`text-left ${TEXT_SIZES.m} text-[#b45309]`}>
               <ScorerLine log={log} className="font-semibold text-[#b45309]" />
@@ -532,7 +532,7 @@ export const CalahanEventCard = memo(function CalahanEventCard({
       {readOnly ? null : (
         <EditButton
           onClick={() => openScoreModal(log.team, "edit", resolvedLogRef)}
-          positionClass="right-3 top-1/2 -translate-y-1/2"
+          positionClass="right-2 top-1/2 -translate-y-1/2"
           textClass="text-[#b45309]"
           borderClass="border-[#facc15]"
           hoverBorderClass="hover:border-[#facc15]"
@@ -568,14 +568,14 @@ export const BlockEventCard = memo(function BlockEventCard({
   const creditedPlayerLabel = log.scorerName || (log.scorerId ? "Unknown player" : "N/A");
 
   return (
-    <article className="relative rounded-2xl border border-[#06b6d4]/60 bg-[#cffafe] px-4 py-3 text-black">
+    <article className="relative rounded-2xl border border-[#06b6d4]/60 bg-[#cffafe] px-3 py-1.5 text-black">
       <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <div className="text-center">
         <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide`}>Block</p>
         <p className={`${TEXT_SIZES.s}`}>{eventTime}</p>
       </div>
 
-      <div className={`mt-3 flex flex-col gap-1 ${alignClass} ${TEXT_SIZES.m}`}>
+      <div className={`mt-1.5 flex flex-col gap-1 ${alignClass} ${TEXT_SIZES.m}`}>
         <p>{`${resolvedTeamLabel} now has the disc`}</p>
         <p className={`${TEXT_SIZES.s} font-semibold text-black/70`}>Credited: {creditedPlayerLabel}</p>
       </div>
@@ -583,7 +583,7 @@ export const BlockEventCard = memo(function BlockEventCard({
       {readOnly ? null : (
         <EditButton
           onClick={() => openPossessionEditModal(log, resolvedLogRef)}
-          positionClass="right-3 top-3"
+          positionClass="right-2 top-1.5"
           textClass="text-[#0f5132]"
           borderClass="border-border"
           hoverBorderClass="hover:border-[#0f5132]"
@@ -619,14 +619,14 @@ export const TurnoverEventCard = memo(function TurnoverEventCard({
   const creditedPlayerLabel = log.scorerName || (log.scorerId ? "Unknown player" : "N/A");
 
   return (
-    <article className="relative rounded-2xl border border-[#06b6d4]/60 bg-[#cffafe] px-4 py-3 text-black">
+    <article className="relative rounded-2xl border border-[#06b6d4]/60 bg-[#cffafe] px-3 py-1.5 text-black">
       <OptimisticBadge isOptimistic={log?.isOptimistic} timestamp={log?.timestamp} />
       <div className="flex flex-col items-center text-center">
         <p className={`${TEXT_SIZES.m} font-semibold uppercase tracking-wide`}>Turnover</p>
         <p className={`${TEXT_SIZES.s}`}>{eventTime}</p>
       </div>
 
-      <div className={`mt-3 flex flex-col gap-1 ${alignClass} ${TEXT_SIZES.m}`}>
+      <div className={`mt-1.5 flex flex-col gap-1 ${alignClass} ${TEXT_SIZES.m}`}>
         <p>{resolvedTeamLabel}</p>
         <p className={`${TEXT_SIZES.s} font-semibold text-black/70`}>Credited: {creditedPlayerLabel}</p>
       </div>
@@ -634,7 +634,7 @@ export const TurnoverEventCard = memo(function TurnoverEventCard({
       {readOnly ? null : (
         <EditButton
           onClick={() => openPossessionEditModal(log, resolvedLogRef)}
-          positionClass="right-3 top-3"
+          positionClass="right-2 top-1.5"
           textClass="text-[#0f5132]"
           borderClass="border-border"
           hoverBorderClass="hover:border-[#0f5132]"

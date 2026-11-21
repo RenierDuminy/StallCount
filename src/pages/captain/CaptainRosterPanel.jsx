@@ -891,7 +891,7 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
               onSubmit={handleAddToRoster}
             >
               <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
                   Selected players
                 </p>
                 {selectedAssignPlayers.length > 0 ? (
@@ -905,7 +905,7 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
                         <button
                           type="button"
                           onClick={() => toggleAssignPlayer(player.id)}
-                          className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted hover:text-ink"
+                          className="text-xs font-semibold uppercase tracking-wide text-ink-muted hover:text-ink"
                         >
                           Remove
                         </button>
@@ -975,7 +975,7 @@ export default function CaptainRosterPanel({ selectedEventId, selectedTeamId, ca
                                   <span
                                     key={`${entry.id}-${tag.label}`}
                                     title={tag.title}
-                                    className="inline-flex items-center rounded-full border px-1.5 text-[10px] font-semibold uppercase leading-[1.35] tracking-wide"
+                                    className="inline-flex items-center rounded-full border px-1.5 text-xs font-semibold uppercase leading-[1.35] tracking-wide"
                                     style={{
                                       background: "var(--sc-accent)",
                                       color: "var(--sc-button-ink)",
