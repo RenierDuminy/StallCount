@@ -101,27 +101,29 @@
       /* Past the time cap: counting up, in red */
       .ce-tab--clock.is-overtime { color: #dc2626; }
 
-      /* ── Add-on popups: gender line left of the clock, point duration right ──
-         Same white tab and type as the clock, sliding out of it the way the call
-         strips slide out of the score box: the width grows from 0 with the text
-         pinned to the outer edge, so it appears from behind the clock. */
+      /* ── Add-on popups (gender line, point duration): as on SAFDA standard ──
+         They slide out of the clock tab to the right, in a flex row: the gender
+         line sits first and pushes point duration along when both show. Chips
+         slide by growing from zero width, so they appear from behind the clock.
+         Same white tab and type as the clock. */
       .ce-addons {
         position: absolute;
-        inset: 0;
+        top: 0;
+        left: calc(100% + 4px);
+        height: 100%;
+        display: flex;
         pointer-events: none;
       }
 
       .ce-addons .overlay-addon-chip {
-        position: absolute;
-        top: 0;
-        bottom: 0;
+        position: static;
         display: flex;
-        align-items: flex-start;
-        justify-content: flex-start;
-        gap: 0;
+        align-items: center;
+        gap: 10px;
+        height: 100%;
         max-width: 0;
-        overflow: hidden;
         padding: 0;
+        overflow: hidden;
         border: 0;
         border-radius: 0;
         background: #ffffff;
@@ -129,54 +131,35 @@
         box-shadow: none;
         opacity: 1;
         transform: none;
-        transition: max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        white-space: nowrap;
+        transition: max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+          padding 0.35s cubic-bezier(0.4, 0, 0.2, 1);
       }
 
       .ce-addons .overlay-addon-chip.is-visible {
-        max-width: 420px;
-        transform: none;
+        max-width: 480px;
+        padding: 2px 22px 0;
+        /* Trailing gap, so it only ever shows between two visible chips. */
+        margin-right: 4px;
       }
 
-      /* Divider where an add-on tab meets the clock */
-      .ce-addons .overlay-addon-chip--genderLine {
-        right: 100%;
-        border-right: 2px solid #000000;
-      }
+      .ce-addons .overlay-addon-chip--genderLine { order: -1; }
 
-      .ce-addons .overlay-addon-chip--pointDuration {
-        left: 100%;
-        justify-content: flex-end;
-        border-left: 2px solid #000000;
-      }
-
-      /* Collapsed (max-width 0) the divider would still draw a 2px sliver */
-      .ce-addons .overlay-addon-chip:not(.is-visible) { border-color: transparent; }
-
-      .ce-addons .overlay-addon-chip > span {
-        flex-shrink: 0;
-        padding-top: 2px;
+      /* Same type and size as the match clock (extra class beats the shared
+         gender-line rule in overlayOutput.css). */
+      .ce-addons .overlay-addon-chip .overlay-addon-chip__label,
+      .ce-addons .overlay-addon-chip .overlay-addon-chip__value {
+        padding: 0;
         color: #000000;
         font-family: "Bebas Neue", sans-serif;
         font-size: 38px;
         font-weight: 400;
         letter-spacing: 0.04em;
         line-height: 1;
-        white-space: nowrap;
-        text-transform: uppercase;
         font-variant-numeric: tabular-nums;
+        text-transform: uppercase;
       }
 
-      .ce-addons .overlay-addon-chip__label { padding-left: 14px; padding-right: 8px; }
-
-      /* Descriptive text ("Point duration:") smaller than the time, centred vertically on it */
-      .ce-addons .overlay-addon-chip--pointDuration { align-items: center; }
-      .ce-addons .overlay-addon-chip--pointDuration .overlay-addon-chip__label {
-        font-size: 20px;
-        letter-spacing: 0.06em;
-      }
-      .ce-addons .overlay-addon-chip--pointDuration .overlay-addon-chip__value { padding-right: 14px; }
-      .ce-addons .overlay-addon-chip__value { padding-right: 22px; }
-      .ce-addons .overlay-addon-chip__label.is-hidden + .overlay-addon-chip__value { padding-left: 22px; }
       .ce-addons .overlay-addon-chip__tag { display: none; }
 
       .ce-main {
@@ -727,7 +710,7 @@
       #matchStatusBanner .matchstatus-event { font-size: 1.9rem; }
 
       /* ── Flat cards: no shading and no outlines. The only lines are the
-         dividers between sections (strip | strip, clock | add-on tab). ── */
+         dividers between sections (strip | strip). ── */
       .ce-tab,
       .ce-main,
       #overlayBanner,
