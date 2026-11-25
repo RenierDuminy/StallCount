@@ -15,6 +15,9 @@ import { getEventPagePath } from "./eventWorkspaces";
 import { getMatchMediaDetails } from "../utils/matchMedia";
 import { matchPath, playerPath, teamPath } from "../utils/links";
 import { usePageMeta, withSiteName } from "../utils/pageMeta";
+import { getForfeitWinnerSide, isForfeitMatch } from "../utils/standings";
+import { MATCH_STATUS, isInProgressStatus, isPendingStatus } from "../constants/statusCodes";
+import { useFullHeadingsIfTheyFit } from "../hooks/useFullHeadingsIfTheyFit";
 
 const TABS = [
   { id: "games", label: "Games" },
@@ -405,7 +408,7 @@ export default function TeamProfilePage() {
     <div className="min-h-screen bg-light-page text-[var(--sc-surface-light-ink)]">
       <SectionShell className="space-y-3 py-3 sm:space-y-6 sm:py-8">
         <Card variant="light" className="space-y-3 p-4 shadow-xl shadow-[rgba(8,25,21,0.08)] sm:space-y-5 sm:p-8">
-          <SectionHeader
+          <SectionHeader
             title={displayName}
             description={divisionSummary}
             action={
@@ -430,7 +433,7 @@ export default function TeamProfilePage() {
         ) : (
           <>
             <Card variant="light" className="space-y-3 p-4 shadow-md shadow-[rgba(8,25,21,0.06)] sm:space-y-6 sm:p-6">
-              <SectionHeader
+              <SectionHeader
                 eyebrowVariant="tag"
                 title="Performance overview"
                 description="Key indicators compiled from schedule, roster, and spirit data."
@@ -503,7 +506,7 @@ export default function TeamProfilePage() {
                 ) : (
                   <>
                     {activeTab === "games" && (
-                      <GamesTable matches={filteredMatches} teamId={state.team?.id} />
+                      <GamesTable matches={filteredMatches} teamId={state.team?.id} showEvent={eventFilter === "all"} />
                     )}
                     {activeTab === "players" && (
                       <PlayersTable
@@ -516,6 +519,7 @@ export default function TeamProfilePage() {
                         received={spiritBreakdown.received}
                         given={spiritBreakdown.given}
                         teamId={state.team?.id}
+                        matchesById={matchesById}
                       />
                     )}
                   </>
@@ -529,10 +533,80 @@ export default function TeamProfilePage() {
   );
 }
 
-function GamesTable({ matches, teamId }) {
+const MUTED_SCORE_CLASS = "text-[var(--sc-surface-light-ink)]/60";
+
+const WIN_CLASS = "text-emerald-600";
+const LOSS_CLASS = "text-rose-600";
+
+// What the Score column shows for one match, seen from `ourSide` ("a" / "b").
+// Three levels: a bold score, a quiet word, a dash. Colour only ever means a
+// result. A forfeit has no score (WFDF A7.3.5), so its word carries the result
+// colour; cancelled and postponed are grey; a live match gets a small dot.
+function describeScoreCell(match, ourSide, ourScore, theirScore) {
+  const status = `${match?.status ?? ""}`.toLowerCase();
+  const hasScore = Number.isFinite(ourScore) && Number.isFinite(theirScore);
+  const scoreText = hasScore ? `${ourScore} – ${theirScore}` : "–";
+
+  if (isForfeitMatch(match)) {
+    const winner = getForfeitWinnerSide(match);
+    if (!winner) return { text: "Forfeit", isWord: true, className: MUTED_SCORE_CLASS };
+    return winner === ourSide
+      ? { text: "Forfeit", isWord: true, title: "Won by forfeit", className: WIN_CLASS }
+      : { text: "Forfeit", isWord: true, title: "Lost by forfeit", className: LOSS_CLASS };
+  }
+  if (status === MATCH_STATUS.CANCELED) {
+    return { text: "Cancelled", isWord: true, className: MUTED_SCORE_CLASS };
+  }
+  if (status === MATCH_STATUS.POSTPONED) {
+    return { text: "Postponed", isWord: true, className: MUTED_SCORE_CLASS };
+  }
+  if (isInProgressStatus(status)) {
+    return {
+      text: scoreText,
+      live: true,
+      title: status === MATCH_STATUS.HALFTIME ? "Halftime" : "Live",
+      className: "text-[var(--sc-surface-light-ink)]",
+    };
+  }
+  if (isPendingStatus(status) || !hasScore) {
+    return { text: "–", isWord: true, className: MUTED_SCORE_CLASS };
+  }
+  return {
+    text: scoreText,
+    className:
+      ourScore > theirScore
+        ? WIN_CLASS
+        : ourScore < theirScore
+          ? LOSS_CLASS
+          : "text-[var(--sc-surface-light-ink)]/70",
+  };
+}
+
+// Most recent first; matches with no start time go last.
+function sortNewestFirst(matches) {
+  const time = (match) => {
+    const ms = Date.parse(match?.start_time);
+    return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+  };
+  return [...matches].sort((a, b) => time(b) - time(a));
+}
+
+function GamesTable({ matches, teamId, showEvent = true }) {
   if (!matches?.length) {
     return <EmptyState message="No games available for this team yet." />;
   }
+
+  // Team | Score | Opposition reads as one scoreline: the team sits against the
+  // score and the opposition starts after it. From 640px the two share a width, so the score is the centre line; on a
+  // phone they take only what their names need, so no gap opens after the date.
+  const sideWidth = showEvent ? "sm:w-[25%]" : "sm:w-[40%]";
+  const teamCell = `py-2 pl-2 pr-2 text-right sm:min-w-[7rem] sm:py-3 sm:pl-4 sm:pr-3 ${sideWidth}`;
+  const scoreCellBase = "w-24 whitespace-nowrap px-1 text-center sm:w-28";
+  // A row with a media icon under its score keeps the height of the others: the
+  // score moves up into the cell's padding and the icon takes a 20px box.
+  const scorePadding = "py-2 sm:py-3";
+  const scorePaddingWithMedia = "py-0 sm:py-1";
+  const oppositionCell = `py-2 pl-2 pr-3 text-left sm:min-w-[7rem] sm:py-3 sm:pl-3 sm:pr-4 ${sideWidth}`;
 
   return (
     <Panel variant="light" className="overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)]">
@@ -540,51 +614,38 @@ function GamesTable({ matches, teamId }) {
         <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
           <tr>
             <th className="px-3 py-2 sm:px-4 sm:py-3">Date &amp; time</th>
-            <th className="px-3 py-2 sm:px-4 sm:py-3">Team 1</th>
-            <th className="px-3 py-2 text-center sm:px-4 sm:py-3">Score</th>
-            <th className="px-3 py-2 sm:px-4 sm:py-3">Team 2</th>
-            <th className="px-3 py-2 sm:px-4 sm:py-3">Pool</th>
-            <th className="px-3 py-2 sm:px-4 sm:py-3">Event</th>
+            <th className={teamCell}>Team</th>
+            <th className={`${scoreCellBase} ${scorePadding}`}>Score</th>
+            <th className={oppositionCell}>Opposition</th>
+            {showEvent ? <th className="whitespace-nowrap px-3 py-2 sm:px-4 sm:py-3">Event</th> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
-          {matches.map((match) => {
+          {sortNewestFirst(matches).map((match) => {
             const isTeamA = Boolean(teamId && match.team_a?.id === teamId);
             const isTeamB = Boolean(teamId && match.team_b?.id === teamId);
             const leftTeam = isTeamA ? match.team_a : isTeamB ? match.team_b : match.team_a;
             const rightTeam = isTeamA ? match.team_b : isTeamB ? match.team_a : match.team_b;
             const leftScore = isTeamA ? match.score_a : isTeamB ? match.score_b : match.score_a;
             const rightScore = isTeamA ? match.score_b : isTeamB ? match.score_a : match.score_b;
-            const goalsFor = Number.isFinite(leftScore) ? leftScore : 0;
-            const goalsAgainst = Number.isFinite(rightScore) ? rightScore : 0;
             const mediaDetails = getMatchMediaDetails(match);
-      const scoreClass =
-        goalsFor > goalsAgainst
-          ? "text-emerald-600"
-          : goalsFor < goalsAgainst
-            ? "text-rose-600"
-            : "text-[var(--sc-surface-light-ink)]/70";
+            const scoreCell = describeScoreCell(match, isTeamB ? "b" : "a", leftScore, rightScore);
 
             return (
               <tr key={match.id} className="align-top">
                 <td className="whitespace-nowrap px-3 py-2 text-[var(--sc-surface-light-ink)]/70 sm:px-4 sm:py-3">
-                  <div className="flex items-center gap-2">
-                    {match.id ? (
-                      <Link
-                        to={matchPath(match.id)}
-                        className="text-inherit! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]!"
-                      >
-                        {formatMatchTime(match.start_time)}
-                      </Link>
-                    ) : (
-                      <span>{formatMatchTime(match.start_time)}</span>
-                    )}
-                    {mediaDetails ? (
-                      <MatchMediaButton media={mediaDetails} />
-                    ) : null}
-                  </div>
+                  {match.id ? (
+                    <Link
+                      to={matchPath(match.id)}
+                      className="text-inherit! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]!"
+                    >
+                      {formatMatchTime(match.start_time)}
+                    </Link>
+                  ) : (
+                    <span>{formatMatchTime(match.start_time)}</span>
+                  )}
                 </td>
-                <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)] sm:px-4 sm:py-3">
+                <td className={`${teamCell} font-semibold text-[var(--sc-surface-light-ink)]`}>
                   {!leftTeam ? (
                     "TBD"
                   ) : leftTeam.id === teamId ? (
@@ -598,12 +659,28 @@ function GamesTable({ matches, teamId }) {
                     </Link>
                   )}
                 </td>
-                <td className={`px-3 py-2 text-center text-base font-semibold sm:px-4 sm:py-3 ${scoreClass}`}>
-                  {Number.isFinite(leftScore) && Number.isFinite(rightScore)
-                    ? `${leftScore} - ${rightScore}`
-                    : "TBD"}
+                <td
+                  className={`${scoreCellBase} ${mediaDetails ? scorePaddingWithMedia : scorePadding} ${
+                    scoreCell.isWord ? "text-sm font-normal" : "text-base font-semibold"
+                  } ${scoreCell.className}`}
+                >
+                  <div title={scoreCell.title} className={mediaDetails ? "leading-5" : undefined}>
+                    {scoreCell.live ? (
+                      <span
+                        aria-hidden="true"
+                        className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-rose-600 align-middle"
+                      />
+                    ) : null}
+                    {scoreCell.text}
+                    {scoreCell.title ? <span className="sr-only"> ({scoreCell.title})</span> : null}
+                  </div>
+                  {mediaDetails ? (
+                    <div className="flex justify-center">
+                      <MatchMediaButton media={mediaDetails} className="h-5! w-5!" />
+                    </div>
+                  ) : null}
                 </td>
-                <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)] sm:px-4 sm:py-3">
+                <td className={`${oppositionCell} font-semibold text-[var(--sc-surface-light-ink)]`}>
                   {!rightTeam ? (
                     "TBD"
                   ) : rightTeam.id === teamId ? (
@@ -617,10 +694,8 @@ function GamesTable({ matches, teamId }) {
                     </Link>
                   )}
                 </td>
-                <td className="px-3 py-2 text-[var(--sc-surface-light-ink)]/70 sm:px-4 sm:py-3">
-                  {match.pool?.name || match.division?.name || "—"}
-                </td>
-                <td className="px-3 py-2 text-[var(--sc-surface-light-ink)]/70 sm:px-4 sm:py-3">
+                {showEvent ? (
+                <td className="whitespace-nowrap px-3 py-2 text-[var(--sc-surface-light-ink)]/70 sm:px-4 sm:py-3">
                   {match.event?.id ? (
                     <Link
                       to={getEventPagePath(match.event)}
@@ -632,6 +707,7 @@ function GamesTable({ matches, teamId }) {
                     "—"
                   )}
                 </td>
+                ) : null}
               </tr>
             );
           })}
@@ -641,59 +717,64 @@ function GamesTable({ matches, teamId }) {
   );
 }
 
+// The same table as the event's Player statistics page (PlayersPage.jsx):
+// headings, sorting, tie-breaks, centred cells and the Callahans column, less
+// the Team column, which on a team's own page would repeat one name.
 function PlayersTable({ stats, rosterCount }) {
-  const [sortConfig, setSortConfig] = useState({ key: "total", direction: "desc" });
+  const [sortBy, setSortBy] = useState("total");
+  const [sortDirection, setSortDirection] = useState("desc");
 
-  const sortedStats = useMemo(() => {
-    if (!stats?.length) return [];
-    const data = [...stats];
-    const compare = (a, b) => {
-      const dir = sortConfig.direction === "asc" ? 1 : -1;
-      const getValue = (row) => {
-        if (sortConfig.key === "total") return row.goals + row.assists + (row.callahans ?? 0);
-        if (sortConfig.key === "playerName") return row.playerName?.toLowerCase() ?? "";
-        if (sortConfig.key === "jerseyNumber") return row.jerseyNumber ?? Number.NEGATIVE_INFINITY;
-        return row[sortConfig.key] ?? 0;
-      };
-      const aVal = getValue(a);
-      const bVal = getValue(b);
-      if (aVal === bVal) {
-        return a.playerName.localeCompare(b.playerName) * dir;
-      }
-      if (typeof aVal === "string" || typeof bVal === "string") {
-        return (aVal > bVal ? 1 : -1) * dir;
-      }
-      return (Number(aVal) > Number(bVal) ? 1 : -1) * dir;
-    };
-    return data.sort(compare);
-  }, [stats, sortConfig]);
+  const rows = useMemo(
+    () =>
+      (stats || []).map((row) => ({
+        ...row,
+        total: (row.goals || 0) + (row.assists || 0) + (row.callahans || 0),
+      })),
+    [stats],
+  );
 
-  const requestSort = (key) => {
-    setSortConfig((prev) => {
-      if (prev.key === key) {
-        return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
+  const sortedRows = useMemo(() => {
+    const list = [...rows];
+    list.sort((a, b) => {
+      const aVal = a[sortBy] ?? 0;
+      const bVal = b[sortBy] ?? 0;
+      if (aVal !== bVal) {
+        return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
       }
-      return { key, direction: "desc" };
+      // Ties always fall back to the same descending total/goals/name order
+      // so the row order stays stable when only the direction changes.
+      if (a.total !== b.total) return b.total - a.total;
+      if ((a.goals || 0) !== (b.goals || 0)) return (b.goals || 0) - (a.goals || 0);
+      return (a.playerName || "").localeCompare(b.playerName || "");
     });
+    return list;
+  }, [rows, sortBy, sortDirection]);
+
+  const toggleSort = (column) => {
+    if (sortBy === column) {
+      setSortDirection((dir) => (dir === "desc" ? "asc" : "desc"));
+      return;
+    }
+    setSortBy(column);
+    setSortDirection("desc");
   };
 
-  const renderSortLabel = (label, key) => {
-    const isActive = sortConfig.key === key;
-    const arrow = isActive ? (sortConfig.direction === "asc" ? "↑" : "↓") : "";
-    return (
-      <button
-        type="button"
-        onClick={() => requestSort(key)}
-        className={`inline-flex items-center gap-1 text-left ${
-          isActive ? "text-[var(--sc-surface-light-ink)]" : "text-[var(--sc-surface-light-ink)]/70"
-        }`}
-      >
-        {label} {arrow && <span className="text-xs">{arrow}</span>}
-      </button>
-    );
-  };
+  // The Callahans column only appears when someone in the list has one.
+  const showCallahans = sortedRows.some((row) => (row.callahans || 0) > 0);
+  const statHeaders = [
+    { key: "total", label: "Tot", full: "Total" },
+    { key: "goals", label: "G", full: "Goals" },
+    { key: "assists", label: "A", full: "Assists" },
+    { key: "blocks", label: "B", full: "Blocks" },
+    { key: "turnovers", label: "TO", full: "Turnovers" },
+    { key: "games", label: "GP", full: "Games" },
+    ...(showCallahans ? [{ key: "callahans", label: "Cal", full: "Callahans" }] : []),
+  ];
+  const [tablePanelRef, showFullHeadings] = useFullHeadingsIfTheyFit(
+    `${sortedRows.length}|${showCallahans}`,
+  );
 
-  if (!stats?.length) {
+  if (!sortedRows.length) {
     return (
       <div className="space-y-3 sm:space-y-4">
         <EmptyState message="No players on the roster or with stats for this team yet." />
@@ -706,55 +787,63 @@ function PlayersTable({ stats, rosterCount }) {
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      <Panel variant="light" className="overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)]">
+      <Panel ref={tablePanelRef} variant="light" className="overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)]">
         <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
           <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
             <tr>
-              <th className="px-3 py-1.5 text-center" aria-label="Rank">#</th>
-              <th className="px-3 py-1.5">{renderSortLabel("Player", "playerName")}</th>
-              <th className="px-3 py-1.5 text-right">{renderSortLabel("Tot", "total")}</th>
-              <th className="px-3 py-1.5 text-right">{renderSortLabel("G", "goals")}</th>
-              <th className="px-3 py-1.5 text-right">{renderSortLabel("A", "assists")}</th>
-              <th className="px-3 py-1.5 text-right">{renderSortLabel("B", "blocks")}</th>
-              <th className="px-3 py-1.5 text-right">{renderSortLabel("TO", "turnovers")}</th>
-              <th className="px-3 py-1.5 text-right">{renderSortLabel("GP", "games")}</th>
-              <th className="px-3 py-1.5 text-right">{renderSortLabel("Cal", "callahans")}</th>
+              <th className="py-1.5 pl-3 pr-1.5 text-center" aria-label="Rank">#</th>
+              <th className="py-1.5 pl-1.5 pr-3">Player</th>
+              {statHeaders.map((col) => (
+                <th key={col.key} className="whitespace-nowrap px-2 py-1.5 text-center sm:px-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort(col.key)}
+                    title={col.full}
+                    className={`inline-flex items-center justify-center gap-px text-xs font-semibold uppercase transition ${
+                      sortBy === col.key
+                        ? "text-[var(--sc-surface-light-ink)]"
+                        : "text-[var(--sc-surface-light-ink)]/60 hover:text-[var(--sc-surface-light-ink)]"
+                    }`}
+                  >
+                    <span>{showFullHeadings ? col.full : col.label}</span>
+                    {sortBy === col.key && (
+                      <span className="text-xs leading-none">{sortDirection === "asc" ? "↑" : "↓"}</span>
+                    )}
+                  </button>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
-            {sortedStats.map((stat, index) => {
-              const total = stat.goals + stat.assists + (stat.callahans ?? 0);
-              return (
-                <tr key={stat.playerId}>
-                  <td className="px-3 py-1.5 text-center text-xs font-semibold text-[var(--sc-surface-light-ink)]/50">
-                    {index + 1}
-                  </td>
-                  <td className="px-3 py-1.5">
-                    {/* Jersey after the name, as on Player standings. */}
-                    <div className="flex items-center gap-2">
-                      <Link
-                        to={playerPath(stat.playerId)}
-                        className="font-semibold text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
-                      >
-                        {stat.playerName}
-                      </Link>
-                      {stat.jerseyNumber != null && (
-                        <span className="shrink-0 text-xs font-semibold text-(--sc-surface-light-ink)/40">
-                          #{stat.jerseyNumber}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-1.5 text-right font-semibold text-[var(--sc-surface-light-ink)]">{total}</td>
-                  <td className="px-3 py-1.5 text-right">{stat.goals}</td>
-                  <td className="px-3 py-1.5 text-right">{stat.assists}</td>
-                  <td className="px-3 py-1.5 text-right">{stat.blocks}</td>
-                  <td className="px-3 py-1.5 text-right">{stat.turnovers}</td>
-                  <td className="px-3 py-1.5 text-right">{stat.games || 0}</td>
-                  <td className="px-3 py-1.5 text-right">{stat.callahans ?? 0}</td>
-                </tr>
-              );
-            })}
+            {sortedRows.map((row, index) => (
+              <tr key={row.playerId} className="transition-colors hover:bg-(--sc-surface-light-ink)/5">
+                <td className="py-1.5 pl-3 pr-1.5 text-center text-xs font-semibold text-[var(--sc-surface-light-ink)]/50">
+                  {index + 1}
+                </td>
+                <td className="py-1.5 pl-1.5 pr-3">
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to={playerPath(row.playerId)}
+                      className="font-semibold text-(--sc-surface-light-ink)! underline decoration-dotted decoration-(--sc-surface-light-border) underline-offset-4 transition hover:text-(--sc-surface-light-ink)/70!"
+                    >
+                      {row.playerName}
+                    </Link>
+                    {row.jerseyNumber != null && (
+                      <span className="shrink-0 text-xs font-semibold text-(--sc-surface-light-ink)/40">
+                        #{row.jerseyNumber}
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <PlayerStatCell value={row.total} strong />
+                <PlayerStatCell value={row.goals} />
+                <PlayerStatCell value={row.assists} />
+                <PlayerStatCell value={row.blocks} />
+                <PlayerStatCell value={row.turnovers} />
+                <PlayerStatCell value={row.games} />
+                {showCallahans ? <PlayerStatCell value={row.callahans} circled /> : null}
+              </tr>
+            ))}
           </tbody>
         </table>
       </Panel>
@@ -765,11 +854,36 @@ function PlayersTable({ stats, rosterCount }) {
   );
 }
 
-function SpiritTab({ received, given, teamId }) {
+// StatCell from PlayersPage.jsx: centred under its heading; `circled` rings a
+// non-zero Callahan count.
+function PlayerStatCell({ value, strong = false, circled = false }) {
+  const shown = value ?? 0;
   return (
-    <div className="overflow-x-auto">
-      <div className="flex min-w-full flex-col gap-3 sm:gap-6 lg:flex-row lg:items-start">
-        <div className="w-full lg:min-w-[700px] lg:flex-1">
+    <td
+      className={`whitespace-nowrap px-2 py-1.5 text-center tabular-nums sm:px-3 ${
+        strong ? "font-semibold text-[var(--sc-surface-light-ink)]" : "text-[var(--sc-surface-light-ink)]/85"
+      }`}
+    >
+      {circled && shown ? (
+        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-current px-1 leading-none">
+          {shown}
+        </span>
+      ) : circled ? (
+        <span className="text-[var(--sc-surface-light-ink)]/40">–</span>
+      ) : (
+        shown
+      )}
+    </td>
+  );
+}
+
+function SpiritTab({ received, given, teamId, matchesById }) {
+  return (
+    // Side by side only when both 720px tables fit in full (container query on
+    // the tab, so a split-screen window counts too); otherwise one above the other.
+    <div className="@container">
+      <div className="flex flex-col gap-3 sm:gap-6 @min-[92rem]:flex-row @min-[92rem]:items-start">
+        <div className="w-full min-w-0 @min-[92rem]:flex-1">
           <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">Spirit received</h3>
           <p className="text-sm text-[var(--sc-surface-light-ink)]/70">
             Scores from opponents about this team&apos;s spirit performance.
@@ -779,9 +893,10 @@ function SpiritTab({ received, given, teamId }) {
             entries={received}
             emptyLabel="No spirit scores received."
             teamId={teamId}
+            matchesById={matchesById}
           />
         </div>
-        <div className="w-full lg:min-w-[700px] lg:flex-1">
+        <div className="w-full min-w-0 @min-[92rem]:flex-1">
           <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">Spirit given</h3>
           <p className="text-sm text-[var(--sc-surface-light-ink)]/70">
             Scores this team submitted for their opponents.
@@ -791,6 +906,7 @@ function SpiritTab({ received, given, teamId }) {
             entries={given}
             emptyLabel="No submitted spirit scores."
             teamId={teamId}
+            matchesById={matchesById}
           />
         </div>
       </div>
@@ -798,76 +914,108 @@ function SpiritTab({ received, given, teamId }) {
   );
 }
 
-function SpiritTable({ entries, emptyLabel, teamId, variant = "received" }) {
+// Same order as the games table: most recent match first.
+function sortByMatchNewestFirst(entries) {
+  const time = (entry) => {
+    const ms = Date.parse(entry?.match?.start_time);
+    return Number.isFinite(ms) ? ms : Number.NEGATIVE_INFINITY;
+  };
+  return [...entries].sort((a, b) => time(b) - time(a));
+}
+
+const SPIRIT_COLUMNS = [
+  { key: "rules_knowledge", label: "Rules" },
+  { key: "fouls_contact", label: "Contact" },
+  { key: "self_control", label: "Fair" },
+  { key: "positive_attitude", label: "Attitude" },
+  { key: "communication", label: "Communication" },
+];
+
+// Styled like the games table: the same panel, header, row rules and score
+// cell, so the two tabs read as one page.
+function SpiritTable({ entries, emptyLabel, teamId, matchesById, variant = "received" }) {
   if (!entries?.length) {
     return <EmptyState message={emptyLabel} />;
   }
 
+  const headCell = "whitespace-nowrap px-3 py-2 sm:px-4 sm:py-3";
+  const numberCell = "whitespace-nowrap px-2 py-2 text-center sm:px-3 sm:py-3";
+
   return (
-    <Panel
-      variant="light"
-      className="mt-2 overflow-hidden rounded-lg border border-[var(--sc-surface-light-border)]/70 shadow-sm shadow-[rgba(8,25,21,0.04)] sm:mt-3"
-    >
-      <div className="overflow-x-auto bg-white/90">
-        <table className="min-w-[720px] text-sm text-[var(--sc-surface-light-ink)]/85">
-          <thead className="bg-[var(--sc-surface-light-bg)]">
-            <tr className="text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
-              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-3 py-2">Score</th>
-              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-3 py-2">
-                {variant === "received" ? "Given by" : "Given to"}
+    <Panel variant="light" className="mt-2 overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)] sm:mt-3">
+      <table className="w-full min-w-[720px] divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
+        <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
+          <tr>
+            <th className={headCell}>Date &amp; time</th>
+            <th className={headCell}>{variant === "received" ? "Given by" : "Given to"}</th>
+            <th className={`${numberCell} text-center`}>Score</th>
+            <th className={numberCell}>Total</th>
+            {SPIRIT_COLUMNS.map((col) => (
+              <th key={col.key} className={numberCell}>
+                {col.label}
               </th>
-              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Total</th>
-              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Rules</th>
-              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Contact</th>
-              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Fair</th>
-              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Attitude</th>
-              <th className="border-b border-[var(--sc-surface-light-border)]/70 px-2 py-2 text-center">Communication</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white">
-            {entries.map((entry) => {
-              const isTeamA = teamId && entry.match?.team_a?.id === teamId;
-              const goalsFor = isTeamA ? entry.match?.score_a ?? 0 : entry.match?.score_b ?? 0;
-              const goalsAgainst = isTeamA ? entry.match?.score_b ?? 0 : entry.match?.score_a ?? 0;
-              const opponent =
-                variant === "received"
-                  ? resolveOpponent(entry.match, teamId)
-                  : resolveRatedTeam(entry);
-              return (
-                <tr key={entry.id} className="border-t border-[var(--sc-surface-light-border)]/60">
-                  <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)]">
-                    {Number.isFinite(goalsFor) && Number.isFinite(goalsAgainst)
-                      ? `${goalsFor} - ${goalsAgainst}`
-                      : "TBD"}
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
+          {sortByMatchNewestFirst(entries).map((entry) => {
+            // The spirit read carries no match status, so take the full match
+            // from the games list for the score cell (forfeits, cancellations).
+            const match = matchesById?.get(entry.match?.id) || entry.match;
+            const isTeamB = Boolean(teamId && match?.team_b?.id === teamId);
+            const ourScore = isTeamB ? match?.score_b : match?.score_a;
+            const theirScore = isTeamB ? match?.score_a : match?.score_b;
+            const scoreCell = describeScoreCell(match, isTeamB ? "b" : "a", ourScore, theirScore);
+            const opponent =
+              variant === "received" ? resolveOpponent(match, teamId) : resolveRatedTeam(entry);
+            return (
+              <tr key={entry.id}>
+                <td className="whitespace-nowrap px-3 py-2 text-[var(--sc-surface-light-ink)]/70 sm:px-4 sm:py-3">
+                  {match?.id ? (
+                    <Link
+                      to={matchPath(match.id)}
+                      className="text-inherit! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]!"
+                    >
+                      {formatMatchTime(match.start_time)}
+                    </Link>
+                  ) : (
+                    formatMatchTime(match?.start_time)
+                  )}
+                </td>
+                <td className="px-3 py-2 font-semibold text-[var(--sc-surface-light-ink)] sm:px-4 sm:py-3">
+                  {!opponent ? (
+                    "TBD"
+                  ) : opponent.id === teamId ? (
+                    <span>{opponent.name}</span>
+                  ) : (
+                    <Link
+                      to={teamPath(opponent.id, { eventId: match?.event?.id })}
+                      className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
+                    >
+                      {opponent.name}
+                    </Link>
+                  )}
+                </td>
+                <td
+                  title={scoreCell.title}
+                  className={`${numberCell} ${scoreCell.isWord ? "font-normal" : "font-semibold"} ${scoreCell.className}`}
+                >
+                  {scoreCell.text}
+                  {scoreCell.title ? <span className="sr-only"> ({scoreCell.title})</span> : null}
+                </td>
+                <td className={`${numberCell} font-semibold text-[var(--sc-surface-light-ink)]`}>
+                  {entry.total ?? "—"}
+                </td>
+                {SPIRIT_COLUMNS.map((col) => (
+                  <td key={col.key} className={numberCell}>
+                    {entry[col.key] ?? "—"}
                   </td>
-                  <td className="px-3 py-2 text-[var(--sc-surface-light-ink)]/80">
-                    {!opponent ? (
-                      "TBD"
-                    ) : opponent.id === teamId ? (
-                      <span>{opponent.name}</span>
-                    ) : (
-                      <Link
-                        to={teamPath(opponent.id, { eventId: entry.match?.event?.id })}
-                        className="text-[var(--sc-surface-light-ink)]! underline decoration-dotted decoration-[var(--sc-surface-light-border)] underline-offset-4 transition hover:text-[var(--sc-surface-light-ink)]/70!"
-                      >
-                        {opponent.name}
-                      </Link>
-                    )}
-                  </td>
-                  <td className="px-2 py-2 text-center font-semibold text-[var(--sc-surface-light-ink)]">
-                    {entry.total ?? "—"}
-                  </td>
-                  <td className="px-2 py-2 text-center">{entry.rules_knowledge ?? "—"}</td>
-                  <td className="px-2 py-2 text-center">{entry.fouls_contact ?? "—"}</td>
-                  <td className="px-2 py-2 text-center">{entry.self_control ?? "—"}</td>
-                  <td className="px-2 py-2 text-center">{entry.positive_attitude ?? "—"}</td>
-                  <td className="px-2 py-2 text-center">{entry.communication ?? "—"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </Panel>
   );
 }

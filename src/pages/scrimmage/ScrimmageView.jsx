@@ -798,8 +798,9 @@ const handleStartDiscussionTimer = () => {
         teamBName: displayTeamB,
         startingTeamKey: matchStartingTeamKey,
         startTime: setupForm.startTime,
+        timeCapMinutes: matchDurationMinutes,
       }),
-    [logs, displayTeamA, displayTeamB, matchStartingTeamKey, setupForm.startTime]
+    [logs, displayTeamA, displayTeamB, matchStartingTeamKey, setupForm.startTime, matchDurationMinutes]
   );
   const handleDownloadPdf = () => {
     downloadScrimmageReportPdf({

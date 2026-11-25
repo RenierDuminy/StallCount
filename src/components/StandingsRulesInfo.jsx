@@ -190,9 +190,11 @@ export default function StandingsRulesInfo({ className = "" }) {
 
             <RulesSection title="Forfeits">
               <p>
-                When a team is recorded as forfeiting, the other team is given the win,
-                5&ndash;0 if no score was entered. The forfeit counts against the
-                forfeiting team in the &ldquo;fewest games forfeited&rdquo; step.
+                When a team forfeits, the other team is given the win. As in the WFDF
+                rules, no score is recorded, so a forfeit does not change +/- or any
+                step that counts points. It counts against the forfeiting team in the
+                &ldquo;fewest games forfeited&rdquo; step, and in a Swiss draw it is
+                scored like a bye: a win with no points.
               </p>
             </RulesSection>
 

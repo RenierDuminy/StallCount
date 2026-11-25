@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { MATCHES_PATH, matchPath } from "../utils/links";
 import { usePageMeta, withSiteName } from "../utils/pageMeta";
@@ -13,11 +13,12 @@ import {
   CLOSED_STATUSES,
   MATCH_STATUS,
   OPEN_MATCH_STATUSES,
-  getDisplayStatus,
   isConcludedStatus,
   isForfeitStatus,
   isInProgressStatus,
+  toDisplayStatusWord,
 } from "../constants/statusCodes";
+import { getForfeitWinnerSide } from "../utils/standings";
 import { SPIRIT_DIMENSIONS, SPIRIT_MAX_SCORE } from "../utils/spirit";
 import SpiritRadarChart from "../components/SpiritRadarChart";
 import { useAuth } from "../context/AuthContext";
@@ -71,21 +72,56 @@ const groupCurrentEvents = (events) =>
 const MATCH_PLACEHOLDER_COPY = {
   [MATCH_STATUS.SCHEDULED]: {
     heading: "Match not yet started",
-    body: "This match is still scheduled. Please check back closer to the start time.",
+    body: "Please check back closer to the start time.",
   },
   [MATCH_STATUS.INITIALIZED]: {
     heading: "Match initialised",
-    body: "This match has been initialised and will begin shortly.",
+    body: "Play will begin shortly.",
   },
   [MATCH_STATUS.POSTPONED]: {
     heading: "Match postponed",
-    body: "This match has been postponed. A new date and time will be announced soon.",
+    body: "A new date and time will be announced soon.",
   },
   [MATCH_STATUS.CANCELED]: {
     heading: "Match cancelled",
-    body: "This match was cancelled. No match data is available.",
   },
 };
+
+// Which team forfeited and which won. `forfeit_teamA` / `forfeit_teamB` name the
+// team that forfeited; a legacy plain `forfeit` names nobody, so its leading
+// score decides (getForfeitWinnerSide). null when neither tells.
+function getForfeitTeams(match) {
+  const winnerSide = getForfeitWinnerSide(match);
+  if (!winnerSide) return null;
+  return winnerSide === "a"
+    ? { winner: match.team_a, forfeiter: match.team_b }
+    : { winner: match.team_b, forfeiter: match.team_a };
+}
+
+// The card shown instead of the match data for a match with nothing to show.
+function getMatchPlaceholderCopy(match) {
+  if (!match) return null;
+  if (isForfeitStatus(match.status)) {
+    const forfeiter = getForfeitTeams(match)?.forfeiter?.name;
+    return {
+      heading: "Match forfeited",
+      body: forfeiter ? `${forfeiter} forfeited this match.` : null,
+    };
+  }
+  return MATCH_PLACEHOLDER_COPY[(match.status || "").toLowerCase()] || null;
+}
+
+// A status in words for display: "Forfeit by <team>" for a forfeit, otherwise
+// the same labels the match picker uses. Never the raw database code.
+function formatMatchStatusLabel(match) {
+  const status = (match?.status || "").toLowerCase();
+  if (!status) return "Unknown";
+  if (isForfeitStatus(status)) {
+    const forfeiter = getForfeitTeams(match)?.forfeiter?.name;
+    return forfeiter ? `Forfeit by ${forfeiter}` : "Forfeit";
+  }
+  return MATCH_OPTION_STATUS_LABELS[status] || toDisplayStatusWord(status);
+}
 
 const hasRecordedScore = (match) =>
   Number.isFinite(match?.score_a) && Number.isFinite(match?.score_b) && (match.score_a > 0 || match.score_b > 0);
@@ -399,11 +435,7 @@ export default function MatchesPage() {
     () => buildSpiritReport(spiritScores, selectedMatch),
     [spiritScores, selectedMatch],
   );
-  // Forfeits (forfeit / forfeit_teamA / forfeit_teamB) render as a canceled
-  // match card for now — see getDisplayStatus.
-  const matchPlaceholder = selectedMatch
-    ? MATCH_PLACEHOLDER_COPY[getDisplayStatus(selectedMatch.status)]
-    : null;
+  const matchPlaceholder = getMatchPlaceholderCopy(selectedMatch);
   const currentEventGroups = useMemo(() => groupCurrentEvents(currentEvents), [currentEvents]);
   const visibleEventCount = eventView === "past" ? pastEvents.length : currentEvents.length;
   // The console lists only live events the user is linked to, so the button is
@@ -449,7 +481,7 @@ export default function MatchesPage() {
     hasRecordedScore(selectedMatch);
   return (
     <div className="pb-16 text-ink">
-      <header className="sc-shell py-4 sm:py-6">
+      <header className="sc-shell matches-header-shell py-4 sm:py-6">
         <div className="sc-card-base space-y-3 p-5 sm:p-7">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
@@ -596,17 +628,25 @@ export default function MatchesPage() {
             </label>
             {selectedMatch && (
               <div className="sc-card-muted p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
+                {/* The media link stays on the right, centred on the card, at
+                    every width; from 640px it is twice its phone size. */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs uppercase tracking-wide text-ink-muted">Current selection</p>
                     <p className="font-semibold text-ink">
                       {selectedMatch.team_a?.name} vs {selectedMatch.team_b?.name}
                     </p>
                     <p className="text-xs text-ink-muted">
-                      {formatKickoff(selectedMatch.start_time)} | Status {selectedMatch.status}
+                      {formatKickoff(selectedMatch.start_time)} | {formatMatchStatusLabel(selectedMatch)}
                     </p>
                   </div>
-                  {matchMediaDetails ? <MatchMediaButton media={matchMediaDetails} /> : null}
+                  {matchMediaDetails ? (
+                    <MatchMediaButton
+                      media={matchMediaDetails}
+                      className="shrink-0 sm:h-14 sm:w-14"
+                      iconClassName="h-[1.1rem] w-[1.1rem] sm:h-[2.2rem] sm:w-[2.2rem]"
+                    />
+                  ) : null}
                 </div>
               </div>
             )}
@@ -773,7 +813,7 @@ function MatchStatusPlaceholder({ match, copy, showScoreButton = false }) {
         {teamA} vs. {teamB}
       </p>
       <h2 className="text-xl font-semibold text-ink">{copy.heading}</h2>
-      <p className="text-sm text-ink-muted">{copy.body}</p>
+      {copy.body ? <p className="text-sm text-ink-muted">{copy.body}</p> : null}
       <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
         {formatKickoff(match?.start_time)} &middot; {resolveMatchVenueName(match)}
       </p>
@@ -858,7 +898,7 @@ function UnloggedMatchCard({ match }) {
         </div>
         <div className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Status</p>
-          <p className="text-sm font-semibold text-ink">{match?.status || "Unknown"}</p>
+          <p className="text-sm font-semibold text-ink">{formatMatchStatusLabel(match)}</p>
         </div>
       </div>
     </section>
@@ -970,19 +1010,77 @@ function FullscreenChartToggle({ title, render }) {
   );
 }
 
-function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false }) {
-  const [isMobile, setIsMobile] = useState(false);
+// Same breakpoint as Tailwind's `sm:` (min-width 640px), so the compact chart
+// and the fullscreen button (`sm:hidden`) switch at the same width.
+const CHART_COMPACT_QUERY = "(max-width: 639.98px)";
 
+function readCompactViewport() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia(CHART_COMPACT_QUERY).matches;
+}
+
+// Read synchronously on the first render, so a phone never draws the
+// computer proportions first and then jumps to the taller layout.
+function useCompactViewport() {
+  const [isCompact, setIsCompact] = useState(readCompactViewport);
   useEffect(() => {
-    const handleResize = () => {
-      if (typeof window === "undefined") return;
-      const small = window.innerWidth <= 640;
-      setIsMobile(small);
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const query = window.matchMedia(CHART_COMPACT_QUERY);
+    const update = () => setIsCompact(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
   }, []);
+  return isCompact;
+}
+
+// Possession strip. The break and unknown fills were see-through (0.9); these
+// are the same colours already blended over the strip's background, so they
+// look the same now the group carries the transparency.
+const POSSESSION_SEAM_OVERLAP = 0.5;
+const POSSESSION_BREAK_FILL = "rgb(158, 172, 191)";
+const POSSESSION_UNKNOWN_FILL = "rgb(228, 234, 241)";
+
+// Score dots. The ring is as wide as the white ring the dots first had.
+const SCORE_DOT_RADIUS = 3.25;
+const SCORE_DOT_RING_WIDTH = 1.5;
+
+// Minute tick marks under the possession strip, in chart units. The label's
+// top sits about 3 units below the mark's end.
+const TIME_TICK_LENGTH = 4;
+
+// One legend row, in chart units.
+const LEGEND_ROW_HEIGHT = 20;
+
+// White outline behind a label, so a line passing under it cannot strike
+// through the number.
+const LABEL_HALO_PROPS = {
+  stroke: "white",
+  strokeWidth: 3,
+  strokeLinejoin: "round",
+  paintOrder: "stroke",
+};
+
+function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false }) {
+  const isMobile = useCompactViewport();
+  const legendRef = useRef(null);
+  const [legendHeight, setLegendHeight] = useState(LEGEND_ROW_HEIGHT);
+
+  // The legend wraps onto a second row with long team names, so the chart
+  // grows to fit whatever height it actually takes.
+  useLayoutEffect(() => {
+    const node = legendRef.current;
+    if (!node) return undefined;
+    const measure = () => {
+      const next = Math.ceil(node.offsetHeight || 0);
+      if (next > 0) setLegendHeight(next);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [match, timeline]);
 
   if (!match || !timeline) {
     return (
@@ -999,14 +1097,21 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
   const baseHeight = 300;
   const possessionSegments = possessionTimeline?.segments || [];
   const possessionBandHeight = possessionSegments.length ? (useCompactLayout ? 18 : 14) : 0;
-  const possessionBandGap = possessionSegments.length ? 24 : 0;
+  // Room for the minute labels, which show with or without the strip.
+  const tickAreaHeight = 24;
   const chartCanvasHeight = useCompactLayout ? baseHeight * 1.35 : baseHeight;
-  const height = chartCanvasHeight + possessionBandHeight + possessionBandGap;
   const padding = { top: 26, right: 44, bottom: 52, left: 50 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = chartCanvasHeight - padding.top - padding.bottom;
+  const plotLeft = padding.left;
+  const plotRight = padding.left + chartWidth;
+  const plotCentreX = padding.left + chartWidth / 2;
+  const plotCentreY = padding.top + chartHeight / 2;
+  const baselineY = padding.top + chartHeight;
   const yMax = Math.max(10, timeline.maxScore);
-  const legendY = height - 35;
+  const legendY = chartCanvasHeight + possessionBandHeight + tickAreaHeight - 35;
+  const legendBoxHeight = Math.max(LEGEND_ROW_HEIGHT, legendHeight);
+  const height = legendY + legendBoxHeight + 15;
   const minutesLabelY = legendY - 8;
 
   const getX = (time) => {
@@ -1015,6 +1120,20 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
   };
 
   const getY = (score) => padding.top + (1 - score / (yMax || 1)) * chartHeight;
+
+  // A span drawn at least 2 units wide, but never past the plot's right edge.
+  const getSpan = (start, end) => {
+    const x = Math.min(getX(start), plotRight);
+    const spanWidth = Math.min(Math.max(2, getX(end) - x), plotRight - x);
+    return { x, width: Math.max(0, spanWidth) };
+  };
+
+  // A label placed below its line must stay above the plot's bottom edge, or
+  // the possession strip covers it (a team on 0); it then goes above instead.
+  const labelOffset = (cy, wantAbove, aboveOffset, belowOffset) => {
+    if (wantAbove) return aboveOffset;
+    return cy + belowOffset > baselineY - 2 ? aboveOffset : belowOffset;
+  };
 
   // Score is a step function over time: the value at `time` is whatever the
   // last snapshot at or before it held. Used to sit a marker on a team's line.
@@ -1047,23 +1166,168 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
     timeline.series?.teamB?.[timeline.series.teamB.length - 1]?.score ?? match?.score_b ?? 0;
   const chartTitle = `${teamAName} ${finalScoreA} - ${finalScoreB} ${teamBName}`;
 
+  // Drawing order, bottom to top: break bands, axes and grid, drop lines,
+  // white rings, score lines, possession strip, score dots, then every
+  // label, so the score lines run under the dots and the numbers.
   return (
-    <div className={`${graphClassName} relative`}>
-      <svg viewBox={`0 0 ${width} ${height}`} className="block h-auto w-full" preserveAspectRatio="xMidYMid meet">
-        <rect x="0" y="0" width={width} height={height} fill="white" rx="18" />
-
+    <div className={`${graphClassName} relative overflow-hidden rounded-3xl bg-white`}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="block h-auto w-full"
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label={`Score progression: ${chartTitle}`}
+      >
         {timeline.bands.map((band) => {
-          const bandX = getX(band.start);
-          const bandWidth = Math.max(2, getX(band.end) - getX(band.start));
+          const span = getSpan(band.start, band.end);
           return (
             <rect
               key={`${band.type}-${band.start}`}
-              x={bandX}
+              x={span.x}
               y={padding.top}
-              width={bandWidth}
+              width={span.width}
               height={chartHeight}
               fill={BAND_COLORS[band.type] || "rgba(125,125,125,0.15)"}
             />
+          );
+        })}
+
+        <line
+          x1={plotLeft}
+          y1={baselineY}
+          x2={plotRight}
+          y2={baselineY}
+          stroke="var(--sc-chart-axis)"
+          strokeWidth="1"
+        />
+        <line x1={plotLeft} y1={padding.top} x2={plotLeft} y2={baselineY} stroke="var(--sc-chart-axis)" strokeWidth="1" />
+
+        {Array.from({ length: yMax + 1 }).map((_, index) => {
+          const y = getY(index);
+          return (
+            <g key={index}>
+              <line x1={plotLeft} x2={plotRight} y1={y} y2={y} stroke="var(--sc-chart-axis)" strokeDasharray="4 6" strokeWidth="0.5" />
+              <text x={plotLeft - 10} y={y} fontSize="9.35" textAnchor="end" dominantBaseline="middle" fill="black">
+                {index}
+              </text>
+            </g>
+          );
+        })}
+
+        {timeline.scoringPoints.map((point) => {
+          const cx = getX(point.time);
+          const cy = getY(point.score);
+          return (
+            <line
+              key={`drop-${point.team}-${point.time}`}
+              x1={cx}
+              x2={cx}
+              y1={cy}
+              y2={baselineY}
+              stroke="var(--sc-chart-axis)"
+              strokeWidth="0.8"
+            />
+          );
+        })}
+
+        {/* White ring behind each score dot, under the score lines: it clears
+            the drop line, grid and break shading around the dot, while the
+            score lines run straight into it. */}
+        {timeline.scoringPoints.map((point) => (
+          <circle
+            key={`ring-${point.team}-${point.time}`}
+            cx={getX(point.time)}
+            cy={getY(point.score)}
+            r={SCORE_DOT_RADIUS + SCORE_DOT_RING_WIDTH}
+            fill="white"
+          />
+        ))}
+
+        {renderLinePath(timeline.series.teamA, SERIES_COLORS.teamA)}
+        {renderLinePath(timeline.series.teamB, SERIES_COLORS.teamB)}
+
+        {possessionSegments.length > 0 && (
+          <g>
+            <rect
+              x={plotLeft}
+              y={baselineY}
+              width={chartWidth}
+              height={possessionBandHeight}
+              fill="var(--sc-chart-card)"
+            />
+            {/* Every segment is drawn at its true width, with no minimum, so
+                the strip is an exact record of possession over the match.
+                Each one reaches POSSESSION_SEAM_OVERLAP units under the next,
+                which is drawn on top from its true start, so edges falling
+                between pixels leave no pale seams. The see-through look is
+                set once on the group (solid fills inside it), so the hidden
+                overlaps never show as darker patches. */}
+            <g opacity="0.9">
+              {possessionSegments.map((segment, index) => {
+                const x = Math.min(Math.max(getX(segment.start), plotLeft), plotRight);
+                const end = Math.min(Math.max(getX(segment.end), plotLeft), plotRight);
+                const isLast = index === possessionSegments.length - 1;
+                const segWidth = isLast ? end - x : Math.min(end - x + POSSESSION_SEAM_OVERLAP, plotRight - x);
+                if (!(segWidth > 0)) return null;
+                const fill =
+                  segment.team === "teamA"
+                    ? SERIES_COLORS.teamA
+                    : segment.team === "teamB"
+                      ? SERIES_COLORS.teamB
+                      : segment.team === "band"
+                        ? POSSESSION_BREAK_FILL
+                        : POSSESSION_UNKNOWN_FILL;
+                return (
+                  <rect
+                    key={`${segment.team || "unknown"}-${segment.start}-${index}`}
+                    x={x}
+                    y={baselineY}
+                    width={segWidth}
+                    height={possessionBandHeight}
+                    fill={fill}
+                  />
+                );
+              })}
+            </g>
+          </g>
+        )}
+
+        {timeline.scoringPoints.map((point) => (
+          <circle
+            key={`dot-${point.team}-${point.time}`}
+            cx={getX(point.time)}
+            cy={getY(point.score)}
+            r={SCORE_DOT_RADIUS}
+            fill={SERIES_COLORS[point.team]}
+          />
+        ))}
+
+        {/* A short tick mark hangs under the possession strip at every minute
+            label, with the label below it. */}
+        {timeline.timeTicks.map((tick) => {
+          const x = getX(tick.value);
+          const stripBottom = baselineY + possessionBandHeight;
+          return (
+            <g key={`tick-${tick.value}`}>
+              <line
+                x1={x}
+                x2={x}
+                y1={stripBottom}
+                y2={stripBottom + TIME_TICK_LENGTH}
+                stroke="var(--sc-chart-muted)"
+                strokeWidth="0.8"
+              />
+              <text
+                fontSize="9.35"
+                fill="var(--sc-chart-label)"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                x={x}
+                y={stripBottom + 12}
+              >
+                {tick.label}
+              </text>
+            </g>
           );
         })}
 
@@ -1077,7 +1341,7 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
             const otherCy = getY(getScoreAtTime(timeline.series[otherTeam], midTime));
             // Place the label on the side away from the other team's line at
             // this moment, so a close or crossed pair doesn't overlap it.
-            const yOffset = cy <= otherCy ? -8 : 14;
+            const yOffset = labelOffset(cy, cy <= otherCy, -8, 14);
             return (
               <text
                 key={`timeout-marker-${band.start}`}
@@ -1087,57 +1351,12 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
                 fontSize="9"
                 fontWeight="700"
                 fill={SERIES_COLORS[band.team]}
+                {...LABEL_HALO_PROPS}
               >
                 TO
               </text>
             );
           })}
-
-        <line
-          x1={padding.left}
-          y1={padding.top + chartHeight}
-          x2={padding.left + chartWidth}
-          y2={padding.top + chartHeight}
-          stroke="var(--sc-chart-axis)"
-          strokeWidth="1"
-        />
-        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + chartHeight} stroke="var(--sc-chart-axis)" strokeWidth="1" />
-
-        {Array.from({ length: yMax + 1 }).map((_, index) => {
-          const y = getY(index);
-          return (
-            <g key={index}>
-              <line x1={padding.left} x2={padding.left + chartWidth} y1={y} y2={y} stroke="var(--sc-chart-axis)" strokeDasharray="4 6" strokeWidth="0.5" />
-              <text x={padding.left - 10} y={y + 4} fontSize="9.35" textAnchor="end" fill="black">
-                {index}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* X-axis labels removed to make room for unified timeline labels */}
-
-        {timeline.scoringPoints.map((point) => {
-          const cx = getX(point.time);
-          const cy = getY(point.score);
-          const baselineY = padding.top + chartHeight;
-          return (
-            <g key={`${point.team}-${point.time}`}>
-              <line x1={cx} x2={cx} y1={cy} y2={baselineY} stroke="var(--sc-chart-axis)" strokeWidth="0.8" />
-              <circle
-                cx={cx}
-                cy={cy}
-                r={4}
-                fill={SERIES_COLORS[point.team]}
-                stroke="white"
-                strokeWidth="1.5"
-              />
-            </g>
-          );
-        })}
-
-        {renderLinePath(timeline.series.teamA, SERIES_COLORS.teamA)}
-        {renderLinePath(timeline.series.teamB, SERIES_COLORS.teamB)}
 
         {timeline.halftimeScore && (() => {
           const { time, scoreA, scoreB } = timeline.halftimeScore;
@@ -1151,8 +1370,8 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
           // so they land on the outside of the pair no matter how close the
           // lines are. A dead tie falls back to a horizontal split.
           const isTie = scoreA === scoreB;
-          const yOffsetA = isTie ? -8 : cyA <= cyB ? -8 : 14;
-          const yOffsetB = isTie ? -8 : cyB <= cyA ? -8 : 14;
+          const yOffsetA = labelOffset(cyA, isTie || cyA <= cyB, -8, 14);
+          const yOffsetB = labelOffset(cyB, isTie || cyB <= cyA, -8, 14);
           const xOffsetA = isTie ? -9 : 0;
           const xOffsetB = isTie ? 9 : 0;
           return (
@@ -1164,6 +1383,7 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
                 fontSize="10"
                 fontWeight="700"
                 fill={SERIES_COLORS.teamA}
+                {...LABEL_HALO_PROPS}
               >
                 {scoreA}
               </text>
@@ -1174,6 +1394,7 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
                 fontSize="10"
                 fontWeight="700"
                 fill={SERIES_COLORS.teamB}
+                {...LABEL_HALO_PROPS}
               >
                 {scoreB}
               </text>
@@ -1201,6 +1422,7 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
                 fontSize="11"
                 fontWeight="700"
                 fill={SERIES_COLORS.teamA}
+                {...LABEL_HALO_PROPS}
               >
                 {scoreA}
               </text>
@@ -1211,6 +1433,7 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
                 fontSize="11"
                 fontWeight="700"
                 fill={SERIES_COLORS.teamB}
+                {...LABEL_HALO_PROPS}
               >
                 {scoreB}
               </text>
@@ -1218,79 +1441,26 @@ function TimelineChart({ match, timeline, possessionTimeline, fullscreen = false
           );
         })()}
 
-        <text x={width / 2} y={20} textAnchor="middle" fontSize="13.6" fontWeight="600" fill="var(--sc-chart-ink)">
+        <text x={plotCentreX} y={20} textAnchor="middle" fontSize="13.6" fontWeight="600" fill="var(--sc-chart-ink)">
           {chartTitle}
         </text>
 
-        {possessionSegments.length > 0 && (
-          <g>
-            <rect
-              x={padding.left}
-              y={padding.top + chartHeight}
-              width={chartWidth}
-              height={possessionBandHeight}
-              fill="var(--sc-chart-card)"
-              rx="4"
-            />
-            {timeline.timeTicks.map((tick) => {
-              const x = getX(tick.value);
-              const labelY = padding.top + chartHeight + possessionBandHeight + 12;
-              return (
-                <text
-                  key={`possession-tick-${tick.value}`}
-                  fontSize="9.35"
-                  fill="var(--sc-chart-label)"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  x={x}
-                  y={labelY}
-                >
-                  {tick.label}
-                </text>
-              );
-            })}
-            {possessionSegments.map((segment, index) => {
-              const xStart = getX(segment.start);
-              const xEnd = getX(segment.end);
-              const segWidth = Math.max(2, xEnd - xStart);
-              const fill =
-                segment.team === "teamA"
-                  ? SERIES_COLORS.teamA
-                  : segment.team === "teamB"
-                    ? SERIES_COLORS.teamB
-                    : segment.team === "band"
-                      ? "rgba(148, 163, 184, 0.9)"
-                      : "rgba(226, 232, 240, 0.9)";
-              return (
-                <rect
-                  key={`${segment.team || "unknown"}-${segment.start}-${index}`}
-                  x={xStart}
-                  y={padding.top + chartHeight}
-                  width={segWidth}
-                  height={possessionBandHeight}
-                  fill={fill}
-                  opacity="0.9"
-                />
-              );
-            })}
-          </g>
-        )}
-
-        <text x={width / 2} y={minutesLabelY} textAnchor="middle" fontSize="10.2" fill="black">
+        <text x={plotCentreX} y={minutesLabelY} textAnchor="middle" fontSize="10.2" fill="black">
           Minutes
         </text>
         <text
           x="14"
-          y={height / 2}
+          y={plotCentreY}
           textAnchor="middle"
           fontSize="10.2"
-          transform={`rotate(-90 14 ${height / 2})`}
+          transform={`rotate(-90 14 ${plotCentreY})`}
           fill="black">
           Score
         </text>
 
-        <foreignObject x={width * 0.15} y={legendY} width={width * 0.7} height="40">
+        <foreignObject x={plotCentreX - width * 0.35} y={legendY} width={width * 0.7} height={legendBoxHeight}>
           <div
+            ref={legendRef}
             xmlns="http://www.w3.org/1999/xhtml"
             className="flex flex-wrap items-center justify-center gap-4 text-xs"
           >
@@ -1885,10 +2055,9 @@ function deriveMatchInsights(match, logs) {
     snapshots.push({ time, scoreA, scoreB });
   };
 
-  if (Number.isFinite(timelineStart)) {
-    snapshots.push({ time: timelineStart, scoreA: 0, scoreB: 0 });
-    timestamps.push(timelineStart);
-  }
+  // The scheduled start time is not added as a 0-0 point: a match started
+  // early, with a score before its scheduled time, then dipped back to 0 at
+  // that time. The axis start below adds the one 0-0 point the line needs.
 
   for (const log of logs) {
     const code = log.event?.code;
@@ -2050,17 +2219,20 @@ function deriveMatchInsights(match, logs) {
       const isBlockEvent = eventCodeLower === "block" || normalizedLabel.includes("block");
       const reportedTeamKey = toTeamKey(log.team_id);
       const previouslyHoldingTeam = currentPossession;
-      let gainingTeamKey = reportedTeamKey;
-      if (previouslyHoldingTeam && reportedTeamKey && reportedTeamKey === previouslyHoldingTeam && !isBlockEvent) {
-        gainingTeamKey = getOppositeTeam(reportedTeamKey);
+      // The log row is the record: a turnover is stamped with the thrower's
+      // team, a block with the defender's. Show and count exactly that, never a
+      // team re-worked from the possession story (an entry left out by
+      // accident would make the story wrong). Possession is only a fallback
+      // for a row with no team.
+      let gainingTeamKey;
+      let losingTeamKey;
+      if (reportedTeamKey) {
+        gainingTeamKey = isBlockEvent ? reportedTeamKey : getOppositeTeam(reportedTeamKey);
+        losingTeamKey = isBlockEvent ? getOppositeTeam(reportedTeamKey) : reportedTeamKey;
+      } else {
+        losingTeamKey = previouslyHoldingTeam || null;
+        gainingTeamKey = losingTeamKey ? getOppositeTeam(losingTeamKey) : null;
       }
-      if (!gainingTeamKey && previouslyHoldingTeam) {
-        gainingTeamKey = getOppositeTeam(previouslyHoldingTeam);
-      }
-
-      const losingTeamKey =
-        previouslyHoldingTeam ||
-        (gainingTeamKey ? getOppositeTeam(gainingTeamKey) : null);
       if (losingTeamKey) {
         teamProduction[losingTeamKey].totalTurnovers += 1;
       }
@@ -2196,6 +2368,11 @@ function deriveMatchInsights(match, logs) {
       continue;
     }
     if (code === MATCH_LOG_EVENT_CODES.HALFTIME_START) {
+      // Possession resets at halftime: the pull flips, so the team that pulled
+      // to open the match receives to open the second half (as the console's
+      // derivePossession). Without this the first second-half turnover was
+      // credited to the wrong team.
+      resetPointState(getOppositeTeam(fallbackOffense));
       pendingBands.halftime = timestamp;
       const halftimeReason = scoringPoints.some((point) => point.time === timestamp)
         ? "point"
@@ -2227,6 +2404,9 @@ function deriveMatchInsights(match, logs) {
     }
   }
 
+  // A break still running has no end yet, so it is drawn at half its
+  // standard length; once it ends it takes its real length.
+  const standardBreakMs = getStandardBreakMs(match?.event?.rules);
   Object.entries(pendingBands).forEach(([type, pending]) => {
     if (!pending) return;
     const start = type === "timeout" ? pending.start : pending;
@@ -2235,15 +2415,19 @@ function deriveMatchInsights(match, logs) {
     bands.push({
       type,
       start,
-      end: timestamps[timestamps.length - 1] || start + 60_000,
+      end: start + standardBreakMs[type] / 2,
+      active: true,
       ...(team ? { team } : {}),
     });
   });
 
+  const earliestLogged = timestamps.length > 0 ? Math.min(...timestamps) : null;
   const defaultStart = Number.isFinite(timelineStart)
-    ? timelineStart
-    : timestamps.length > 0
-      ? Math.min(...timestamps)
+    ? Number.isFinite(earliestLogged)
+      ? Math.min(timelineStart, earliestLogged)
+      : timelineStart
+    : Number.isFinite(earliestLogged)
+      ? earliestLogged
       : toClockMs(new Date().toISOString());
 
   let defaultEnd = Number.isFinite(timelineEnd)
@@ -2262,6 +2446,12 @@ function deriveMatchInsights(match, logs) {
     : Number.isFinite(matchEndEventTime)
       ? matchEndEventTime
       : defaultEnd;
+  if (!Number.isFinite(matchEndEventTime)) {
+    // Extend a live match's axis to cover a break that is still running.
+    bands.forEach((band) => {
+      if (band.active && band.end > axisEnd) axisEnd = band.end;
+    });
+  }
   if (axisEnd <= axisStart) {
     axisEnd = axisStart + 5 * 60_000;
   }
@@ -2315,7 +2505,7 @@ function deriveMatchInsights(match, logs) {
     },
     scoringPoints: boundedScoringPoints,
     bands: boundedBands,
-    timeTicks: buildTimeTicks(axisStart, axisEnd),
+    timeTicks: buildTimeTicks(axisStart, axisEnd, getTimeCapTick(match?.event?.rules, axisStart, boundedBands)),
     halftimeScore: halftimeScoreSnapshot
       ? { time: halftimeBand.start, scoreA: halftimeScoreSnapshot.scoreA, scoreB: halftimeScoreSnapshot.scoreB }
       : null,
@@ -2442,6 +2632,9 @@ function buildPossessionTimeline({
     currentTeam = turnover.team || null;
     cursor = turnover.time;
   }
+  // Carry the last possession to the end of the axis, or the strip stopped at
+  // the last score or turnover.
+  pushSegment(axisEnd, currentTeam);
 
   const interruptionBands = (bands || []).filter(
     (band) => band.type === "timeout" || band.type === "stoppage" || band.type === "halftime",
@@ -2497,28 +2690,101 @@ function buildPossessionTimeline({
   };
 }
 
-function buildTimeTicks(start, end) {
+// Minute labels every 5 minutes. Past the time cap they count overtime from
+// the cap instead (+5, +10 ...), with the cap itself labelled in minutes.
+// `cap` is { time, minutes }: the cap moment on this wall-clock axis.
+function buildTimeTicks(start, end, cap = null) {
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     return [];
   }
   const intervalMs = 5 * 60000;
   const durationMs = end - start;
+  const minGapMs = durationMs * TICK_MIN_GAP_RATIO;
+  const hasCap = cap && Number.isFinite(cap.time) && cap.time > start && cap.time < end;
+  const regularEnd = hasCap ? cap.time : end;
   const ticks = [];
-  let offset = 0;
 
-  while (offset <= durationMs) {
-    const minutes = Math.round(offset / 60000);
-    ticks.push({ value: start + offset, label: `${minutes}'` });
-    offset += intervalMs;
+  for (let offset = 0; start + offset <= regularEnd; offset += intervalMs) {
+    ticks.push({ value: start + offset, label: `${Math.round(offset / 60000)}'` });
   }
 
-  const lastTick = ticks[ticks.length - 1];
-  if (!lastTick || lastTick.value !== end) {
-    const minutes = Math.round(durationMs / 60000);
-    ticks.push({ value: end, label: `${minutes}'` });
+  // A tick too close to the next fixed label (e.g. 90' beside 91', or 95'
+  // just before a cap at 96) would overlap it, so the fixed label replaces it.
+  const pushFixed = (value, label) => {
+    const lastTick = ticks[ticks.length - 1];
+    if (lastTick && lastTick.value === value) {
+      ticks[ticks.length - 1] = { value, label, fixed: true };
+      return;
+    }
+    if (lastTick && !lastTick.fixed && ticks.length > 1 && value - lastTick.value < minGapMs) {
+      ticks.pop();
+    }
+    const previous = ticks[ticks.length - 1];
+    // The cap label outranks the end label when the two are too close.
+    if (previous?.fixed && value - previous.value < minGapMs) return;
+    ticks.push({ value, label, fixed: true });
+  };
+
+  if (hasCap) {
+    pushFixed(cap.time, `${cap.minutes}'`);
+    for (let offset = intervalMs; cap.time + offset <= end; offset += intervalMs) {
+      const value = cap.time + offset;
+      const lastTick = ticks[ticks.length - 1];
+      if (lastTick && value - lastTick.value < minGapMs) continue;
+      ticks.push({ value, label: `+${Math.round(offset / 60000)}` });
+    }
+    pushFixed(end, `+${Math.round((end - cap.time) / 60000)}`);
+  } else {
+    pushFixed(end, `${Math.round(durationMs / 60000)}'`);
   }
 
-  return ticks;
+  return ticks.map(({ value, label }) => ({ value, label }));
+}
+
+// About 24 chart units at the chart's 806-unit plot width.
+const TICK_MIN_GAP_RATIO = 0.03;
+
+// The rules hold no stoppage length, so a running stoppage is drawn as
+// 2 minutes: half of this 4-minute standard (user's choice, 2026-11-25).
+const FALLBACK_STOPPAGE_MS = 4 * 60_000;
+
+function parseEventRules(rawRules) {
+  if (typeof rawRules !== "string") return rawRules || null;
+  try {
+    return JSON.parse(rawRules);
+  } catch {
+    return null;
+  }
+}
+
+function getStandardBreakMs(rawRules) {
+  const rules = parseEventRules(rawRules);
+  const timeoutSeconds = Number(rules?.timeouts?.durationSeconds);
+  const halftimeMinutes = Number(rules?.half?.halftimeBreakMinutes ?? rules?.half?.breakMinutes);
+  return {
+    timeout: (timeoutSeconds > 0 ? timeoutSeconds : 75) * 1000,
+    halftime: (halftimeMinutes > 0 ? halftimeMinutes : 7) * 60_000,
+    // The rules hold no standard stoppage length.
+    stoppage: FALLBACK_STOPPAGE_MS,
+  };
+}
+
+// The time cap runs on game time, which stoppages pause, so on this
+// wall-clock axis it falls later by every stoppage that began before it.
+// `game.hardCapMinutes` holds the time cap on old events.
+function getTimeCapTick(rawRules, axisStart, bands) {
+  const rules = parseEventRules(rawRules);
+  const minutes = Number(rules?.game?.timeCapMinutes ?? rules?.game?.hardCapMinutes);
+  if (!(minutes > 0) || !Number.isFinite(axisStart)) return null;
+  let time = axisStart + minutes * 60_000;
+  const stoppages = (bands || [])
+    .filter((band) => band.type === "stoppage")
+    .sort((a, b) => a.start - b.start);
+  for (const band of stoppages) {
+    if (band.start >= time) break;
+    time += band.end - band.start;
+  }
+  return { time, minutes };
 }
 
 const MATCH_OPTION_STATUS_LABELS = {

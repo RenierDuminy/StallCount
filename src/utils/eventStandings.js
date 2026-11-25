@@ -51,9 +51,11 @@ import {
   FORM_OUTCOME_LABELS,
   buildPoolGroupStandings,
   buildPoolGroupTeams,
+  getForfeitWinnerSide,
   getTeamMatchOutcome,
   isFinishedMatch,
   isForfeitMatch,
+  isForfeitStatus,
   rankByWfdf,
   resolveMatchScores,
 } from "./standings";
@@ -137,13 +139,21 @@ export const getFinalStandingsModes = ({
 const getWinnerAndLoser = (match) => {
   if (!match) return null;
   if (!isFinishedMatch(match.status) && !isForfeitMatch(match)) return null;
+  const teamA = match.team_a?.id;
+  const teamB = match.team_b?.id;
+  if (!teamA || !teamB) return null;
+  // A forfeit has no score; its status names the winner (WFDF A7.3.5).
+  if (isForfeitMatch(match)) {
+    const side = getForfeitWinnerSide(match);
+    if (!side) return null;
+    return side === "a"
+      ? { winnerId: teamA, loserId: teamB }
+      : { winnerId: teamB, loserId: teamA };
+  }
   const { scoreA, scoreB } = resolveMatchScores(match);
   if (typeof scoreA !== "number" || typeof scoreB !== "number" || scoreA === scoreB) {
     return null;
   }
-  const teamA = match.team_a?.id;
-  const teamB = match.team_b?.id;
-  if (!teamA || !teamB) return null;
   return scoreA > scoreB
     ? { winnerId: teamA, loserId: teamB }
     : { winnerId: teamB, loserId: teamA };
@@ -151,12 +161,14 @@ const getWinnerAndLoser = (match) => {
 
 const isSwissBracket = (bracket) => String(bracket?.type || "").trim().toLowerCase() === "swiss";
 
-// Same status rules the resolver passes the engine.
+// Same status rules the resolver passes the engine. A forfeit is a result:
+// the engine gives the win to the team that did not forfeit, with no points.
 const SWISS_STARTED_STATUSES = new Set(["initialized", "live", "halftime"]);
+const hasSwissResult = (status) => isFinishedMatch(status) || isForfeitStatus(status);
 const swissHelpers = {
-  isFinished: (status) => isFinishedMatch(status),
+  isFinished: hasSwissResult,
   isStarted: (status) =>
-    isFinishedMatch(status) || SWISS_STARTED_STATUSES.has(String(status || "").trim().toLowerCase()),
+    hasSwissResult(status) || SWISS_STARTED_STATUSES.has(String(status || "").trim().toLowerCase()),
   // Only a chosen team can seed a round 1 bye on this page; a bye seeded from
   // pool standings or another draw is left to the server, and the table then
   // falls back to the bracket layout for that draw.
@@ -193,7 +205,7 @@ const getSwissDraws = (brackets, matchById) =>
       state.rounds.every((round) =>
         round.games
           .filter((game) => !game.notNeeded)
-          .every((game) => game.node?.match && isFinishedMatch(game.node.match.status)),
+          .every((game) => game.node?.match && hasSwissResult(game.node.match.status)),
       );
     return [{ bracket, divisionId, state, finished, totalRounds }];
   });
@@ -286,7 +298,7 @@ export const buildSwissPoolStandings = ({ eventData, matches, brackets }) => {
     const roundsPlayed = (state.rounds || []).filter((round) =>
       round.games
         .filter((game) => !game.notNeeded)
-        .every((game) => game.node?.match && isFinishedMatch(game.node.match.status)),
+        .every((game) => game.node?.match && hasSwissResult(game.node.match.status)),
     ).length;
 
     (division?.pools || []).forEach((pool) => {

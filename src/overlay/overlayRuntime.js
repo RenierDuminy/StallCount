@@ -1445,13 +1445,17 @@ function showMatchStatusBanner(payload) {
   if (!autoFade) elements.matchStatusBanner.classList.add("is-persistent");
 }
 
-function showTimeoutBanner(team, payload = null) {
+function showTimeoutBanner(team, payload = null, { fromLog = false } = {}) {
   const target = team === "A" ? elements.timeoutA : team === "B" ? elements.timeoutB : null;
   if (!target) return;
   const payloadKey = getOverlayPayloadKey(payload || { type: "timeout", team });
   const autoFade = isAutoFadeEnabled(payload);
 
-  if (!autoFade && activeTimeoutKey === payloadKey && target.classList.contains("is-active")) {
+  // A press of the control-room button while that team's logged timeout is
+  // running changes nothing: the log owns the banner until timeout_end.
+  if (!fromLog && getActiveTimeoutTeam() === team) return;
+
+  if (!fromLog && !autoFade && activeTimeoutKey === payloadKey && target.classList.contains("is-active")) {
     timeoutBannerHandle?.cancel();
     activeTimeoutKey = null;
     return;
@@ -1542,12 +1546,16 @@ function isStoppagePayload(payload) {
   return rawCode === MATCH_LOG_EVENT_CODES.STOPPAGE_START || rawDescription.includes("stoppage");
 }
 
-function showMatchEventBanner(payload) {
+function showMatchEventBanner(payload, { fromLog = false } = {}) {
   if (!elements.matchEventBanner || !elements.matchEventBannerLabel) return;
   const payloadKey = getOverlayPayloadKey(payload);
   const autoFade = isAutoFadeEnabled(payload);
 
-  if (!autoFade && activeMatchEventKey === payloadKey && elements.matchEventBanner.classList.contains("is-active")) {
+  // While a logged halftime or stoppage is running it owns this card until its
+  // end is logged; a control-room match event button changes nothing.
+  if (!fromLog && (isHalftimeActive() || isStoppageActive())) return;
+
+  if (!fromLog && !autoFade && activeMatchEventKey === payloadKey && elements.matchEventBanner.classList.contains("is-active")) {
     matchEventBannerHandle?.cancel();
     elements.matchEventBanner.classList.remove("is-stoppage");
     activeMatchEventKey = null;
@@ -1579,14 +1587,26 @@ function hideMatchEventBanner() {
   matchEventBannerHandle = null;
 }
 
+// Idempotent, like syncTimeoutBanner: a re-sync leaves a running card alone.
+function _logEventCardShowing(code) {
+  return (
+    activeMatchEventKey === `matchEvent:${code}:` &&
+    elements.matchEventBanner?.classList.contains("is-active") &&
+    elements.matchEventBanner.classList.contains("is-persistent")
+  );
+}
+
 function syncStoppageBanner() {
-  if (isStoppageActive()) {
+  // Halftime and a stoppage share the card; halftime wins if both are open, so
+  // the two re-syncs cannot keep swapping it.
+  if (isStoppageActive() && !isHalftimeActive()) {
+    if (_logEventCardShowing(MATCH_LOG_EVENT_CODES.STOPPAGE_START)) return;
     showMatchEventBanner({
       type: "matchEvent",
       eventCode: MATCH_LOG_EVENT_CODES.STOPPAGE_START,
       eventDescription: "Stoppage",
       autoFade: false,
-    });
+    }, { fromLog: true });
     return;
   }
   if (activeMatchEventKey === `matchEvent:${MATCH_LOG_EVENT_CODES.STOPPAGE_START}:`) {
@@ -1595,10 +1615,20 @@ function syncStoppageBanner() {
 }
 
 // Shows the timeout banner for the whole timeout_start → timeout_end window.
+// Idempotent: re-syncing (every incoming row, a reconnect, the 3-minute check)
+// leaves a running banner alone instead of toggling it, and never fades it.
 function syncTimeoutBanner() {
   const team = getActiveTimeoutTeam();
   if (team === "A" || team === "B") {
-    showTimeoutBanner(team, { type: "timeout", team, autoFade: false });
+    const target = team === "A" ? elements.timeoutA : elements.timeoutB;
+    const alreadyShowing =
+      activeTimeoutKey === `timeout:${team}` &&
+      target?.classList.contains("is-active") &&
+      target.classList.contains("is-persistent");
+    if (alreadyShowing) return;
+    const other = team === "A" ? elements.timeoutB : elements.timeoutA;
+    other?.classList.remove("is-active", "is-persistent");
+    showTimeoutBanner(team, { type: "timeout", team, autoFade: false }, { fromLog: true });
     return;
   }
   // No active timeout — clear any persistent timeout banner.
@@ -1612,12 +1642,13 @@ function syncTimeoutBanner() {
 // Shows the halftime banner for the whole halftime_start → halftime_end window.
 function syncHalftimeBanner() {
   if (isHalftimeActive()) {
+    if (_logEventCardShowing(MATCH_LOG_EVENT_CODES.HALFTIME_START)) return;
     showMatchEventBanner({
       type: "matchEvent",
       eventCode: MATCH_LOG_EVENT_CODES.HALFTIME_START,
       eventDescription: "Halftime",
       autoFade: false,
-    });
+    }, { fromLog: true });
     return;
   }
   if (activeMatchEventKey === `matchEvent:${MATCH_LOG_EVENT_CODES.HALFTIME_START}:`) {

@@ -55,7 +55,7 @@ export const LEAGUE_POINTS_SCORING = Object.freeze({
   forfeitLossPoints: 0,
 });
 
-/** Default forfeit line (5-0) for events that award no league points. */
+/** The 5-0 line that marks a legacy forfeit recorded as a cancellation (detection only; never counted). */
 const DEFAULT_FORFEIT_SCORE = 5;
 
 const getForfeitScore = (scoring) => scoring?.forfeitScore ?? DEFAULT_FORFEIT_SCORE;
@@ -159,27 +159,37 @@ const getForfeitGuiltyTeamId = (match) => {
 };
 
 /**
- * The score line a forfeit should be counted and displayed with.
+ * Which side won a forfeit: "a", "b", or null when nobody can be given it.
  *
- * An attributed forfeit stands on its status alone, so when the recorded score
- * is missing or level the configured forfeit line is substituted to give the
- * result a direction — a TD who sets `forfeit_teamB` without touching the
- * score still awards the win. An unattributed forfeit has no direction to
- * infer, and any other match keeps its real score.
+ * WFDF A7.3.5: the team that forfeits records a loss, the opposition a win, and
+ * no score is recorded. So `forfeit_teamA` / `forfeit_teamB` decide the result
+ * on their own, whatever score the row carries.
+ *
+ * Legacy rows (a plain `forfeit`, or a cancellation with a 5-0 line) name no
+ * team; their leading stored score still says who won, for the result only.
+ * The plain status is being deprecated (docs/TODO.md §22).
  */
-export const resolveMatchScores = (match, scoring) => {
+export const getForfeitWinnerSide = (match, scoring) => {
+  if (!isForfeitMatch(match, scoring)) return null;
+  const status = normaliseStatus(match?.status);
+  if (status === "forfeit_teama") return "b";
+  if (status === "forfeit_teamb") return "a";
   const scoreA = match?.score_a;
   const scoreB = match?.score_b;
-  if (!isForfeitMatch(match, scoring)) return { scoreA, scoreB };
-  const guiltyTeamId = getForfeitGuiltyTeamId(match);
-  if (!guiltyTeamId) return { scoreA, scoreB };
-  if (scoreA > scoreB || scoreB > scoreA) return { scoreA, scoreB };
-  const forfeitScore = getForfeitScore(scoring);
-  const guiltyIsA = guiltyTeamId === match?.team_a?.id;
-  return {
-    scoreA: guiltyIsA ? 0 : forfeitScore,
-    scoreB: guiltyIsA ? forfeitScore : 0,
-  };
+  if (typeof scoreA !== "number" || typeof scoreB !== "number" || scoreA === scoreB) {
+    return null;
+  }
+  return scoreA > scoreB ? "a" : "b";
+};
+
+/**
+ * The score line a match is counted and displayed with. A forfeit has none
+ * (WFDF A7.3.5), so both are null; use `getForfeitWinnerSide` for its result.
+ * Any other match keeps its real score.
+ */
+export const resolveMatchScores = (match, scoring) => {
+  if (isForfeitMatch(match, scoring)) return { scoreA: null, scoreB: null };
+  return { scoreA: match?.score_a, scoreB: match?.score_b };
 };
 
 export const getTeamMatchOutcome = (match, teamId, teamScore, oppScore, scoring) => {
@@ -318,6 +328,10 @@ const sumBy = (list, fn) => list.reduce((total, item) => total + fn(item), 0);
 const resultsAgainst = (standing, opponentIds) =>
   (standing.results || []).filter((result) => opponentIds.has(result.opponentId));
 
+/** The same, without forfeits: a forfeit has no score (WFDF A7.3.5). */
+const scoredResultsAgainst = (standing, opponentIds) =>
+  resultsAgainst(standing, opponentIds).filter((result) => !result.forfeit);
+
 /** Opponents every team in the group has played at least once. */
 const getCommonOpponents = (group) => {
   const groupIds = new Set(group.map((team) => team.id));
@@ -339,7 +353,7 @@ const winsAgainst = (group, opponentIds) =>
   new Map(
     group.map((team) => [
       team.id,
-      sumBy(resultsAgainst(team, opponentIds), (r) => (r.scoreFor > r.scoreAgainst ? 1 : 0)),
+      sumBy(resultsAgainst(team, opponentIds), (r) => (r.won ? 1 : 0)),
     ]),
   );
 
@@ -347,14 +361,14 @@ const goalDiffAgainst = (group, opponentIds) =>
   new Map(
     group.map((team) => [
       team.id,
-      sumBy(resultsAgainst(team, opponentIds), (r) => r.scoreFor - r.scoreAgainst),
+      sumBy(scoredResultsAgainst(team, opponentIds), (r) => r.scoreFor - r.scoreAgainst),
     ]),
   );
 
 const goalsPerGameAgainst = (group, opponentIds) =>
   new Map(
     group.map((team) => {
-      const results = resultsAgainst(team, opponentIds);
+      const results = scoredResultsAgainst(team, opponentIds);
       if (!results.length) return [team.id, null];
       return [team.id, sumBy(results, (r) => r.scoreFor) / results.length];
     }),
@@ -564,6 +578,32 @@ export const buildPoolGroupStandings = (pools, matches, options = {}) => {
     // `forfeit`, or a 5-0 cancellation) counts against neither team.
     const guiltyTeamId = forfeit ? getForfeitGuiltyTeamId(match) : null;
 
+    // A forfeit is a win and a loss with no score (WFDF A7.3.5): it adds
+    // nothing to goal difference or goals scored, and the goal-based
+    // tie-breakers skip it (`result.forfeit`).
+    if (forfeit) {
+      const winnerSide = getForfeitWinnerSide(match, scoring);
+      if (!winnerSide) return;
+      const applyForfeit = (standing, opponentId, won) => {
+        if (!standing) return;
+        standing.played += 1;
+        if (guiltyTeamId && standing.id === guiltyTeamId) {
+          standing.forfeited += 1;
+        }
+        standing.results.push({ opponentId, scoreFor: null, scoreAgainst: null, won, forfeit });
+        if (won) {
+          standing.wins += 1;
+          if (scoring) standing.points += scoring.forfeitWinPoints;
+        } else {
+          standing.losses += 1;
+          if (scoring) standing.points += scoring.forfeitLossPoints;
+        }
+      };
+      applyForfeit(teamAStanding, teamBId, winnerSide === "a");
+      applyForfeit(teamBStanding, teamAId, winnerSide === "b");
+      return;
+    }
+
     const { scoreA, scoreB } = resolveMatchScores(match, scoring);
     if (typeof scoreA !== "number" || typeof scoreB !== "number") return;
 
@@ -571,22 +611,19 @@ export const buildPoolGroupStandings = (pools, matches, options = {}) => {
       if (!standing) return;
       standing.played += 1;
       standing.scoreDiff += scoreFor - scoreAgainst;
-      if (guiltyTeamId && standing.id === guiltyTeamId) {
-        standing.forfeited += 1;
-      }
-      standing.results.push({ opponentId, scoreFor, scoreAgainst, forfeit });
+      standing.results.push({
+        opponentId,
+        scoreFor,
+        scoreAgainst,
+        won: scoreFor > scoreAgainst,
+        forfeit,
+      });
       if (scoreFor > scoreAgainst) {
         standing.wins += 1;
-        if (scoring) {
-          standing.points += forfeit ? scoring.forfeitWinPoints : scoring.winPoints;
-        }
+        if (scoring) standing.points += scoring.winPoints;
       } else if (scoreFor < scoreAgainst) {
         standing.losses += 1;
-        if (scoring) {
-          standing.points += forfeit
-            ? scoring.forfeitLossPoints
-            : getLossPoints(scoring, scoreFor, scoreAgainst);
-        }
+        if (scoring) standing.points += getLossPoints(scoring, scoreFor, scoreAgainst);
       }
     };
 

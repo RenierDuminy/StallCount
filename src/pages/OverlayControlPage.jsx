@@ -379,16 +379,19 @@ function computeMatchStats(matchDetails, sortedMatchLogs, resolvedEventCodeCache
     if (isTurnoverEvent || isBlockEvent) {
       const reportedTeamKey = teamKey;
       const previouslyHoldingTeam = currentPossession;
-      let gainingTeamKey = reportedTeamKey;
-      if (previouslyHoldingTeam && reportedTeamKey && reportedTeamKey === previouslyHoldingTeam && !isBlockEvent) {
-        gainingTeamKey = getOppositeTeam(reportedTeamKey);
+      // The log row is the record: a turnover carries the thrower's team, a
+      // block the defender's. Count exactly that, never a team re-worked from
+      // the possession story. Possession is only a fallback for a row with no
+      // team.
+      let gainingTeamKey;
+      let losingTeamKey;
+      if (reportedTeamKey) {
+        gainingTeamKey = isBlockEvent ? reportedTeamKey : getOppositeTeam(reportedTeamKey);
+        losingTeamKey = isBlockEvent ? getOppositeTeam(reportedTeamKey) : reportedTeamKey;
+      } else {
+        losingTeamKey = previouslyHoldingTeam || null;
+        gainingTeamKey = losingTeamKey ? getOppositeTeam(losingTeamKey) : null;
       }
-      if (!gainingTeamKey && previouslyHoldingTeam) {
-        gainingTeamKey = getOppositeTeam(previouslyHoldingTeam);
-      }
-
-      const losingTeamKey =
-        previouslyHoldingTeam || (gainingTeamKey ? getOppositeTeam(gainingTeamKey) : null);
       if (losingTeamKey && totals[losingTeamKey]) {
         totals[losingTeamKey].turnovers += 1;
       }

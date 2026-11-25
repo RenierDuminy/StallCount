@@ -571,7 +571,7 @@ export default function EventWorkspaceTemplate({
             {[
               { to: sectionPath(EVENT_SECTIONS.RULES), label: "Rules" },
               { to: sectionPath(EVENT_SECTIONS.ROSTERS), label: "Rosters" },
-              { to: sectionPath(EVENT_SECTIONS.PLAYERS), label: "Players" },
+              { to: sectionPath(EVENT_SECTIONS.PLAYERS), label: "Statistics" },
               { to: sectionPath(EVENT_SECTIONS.SPIRIT), label: "Spirit" },
             ].map((item) => (
               <Link key={item.label} to={item.to} className="sc-section-link">

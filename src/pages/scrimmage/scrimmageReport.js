@@ -130,29 +130,75 @@ function buildPossessionMetrics({
   };
 }
 
-function buildTimeTicks(start, end) {
+// The minute labels and time cap follow the Matches page's score progression
+// chart (buildTimeTicks / getTimeCapTick in MatchesPage.jsx); keep them in step.
+
+// A tick closer than this share of the axis to the next fixed label is
+// dropped, so labels never overlap.
+const TICK_MIN_GAP_RATIO = 0.03;
+
+// Minute labels every 5 minutes. Past the time cap they count overtime from
+// the cap instead (+5, +10 ...), with the cap itself labelled in minutes.
+// `cap` is { time, minutes }: the cap moment on this wall-clock axis.
+function buildTimeTicks(start, end, cap = null) {
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     return [];
   }
-
   const intervalMs = 5 * 60_000;
   const durationMs = end - start;
+  const minGapMs = durationMs * TICK_MIN_GAP_RATIO;
+  const hasCap = cap && Number.isFinite(cap.time) && cap.time > start && cap.time < end;
+  const regularEnd = hasCap ? cap.time : end;
   const ticks = [];
-  let offset = 0;
 
-  while (offset <= durationMs) {
-    const minutes = Math.round(offset / 60_000);
-    ticks.push({ value: start + offset, label: `${minutes}'` });
-    offset += intervalMs;
+  for (let offset = 0; start + offset <= regularEnd; offset += intervalMs) {
+    ticks.push({ value: start + offset, label: `${Math.round(offset / 60_000)}'` });
   }
 
-  const lastTick = ticks[ticks.length - 1];
-  if (!lastTick || lastTick.value !== end) {
-    const minutes = Math.round(durationMs / 60_000);
-    ticks.push({ value: end, label: `${minutes}'` });
+  const pushFixed = (value, label) => {
+    const lastTick = ticks[ticks.length - 1];
+    if (lastTick && lastTick.value === value) {
+      ticks[ticks.length - 1] = { value, label, fixed: true };
+      return;
+    }
+    if (lastTick && !lastTick.fixed && ticks.length > 1 && value - lastTick.value < minGapMs) {
+      ticks.pop();
+    }
+    const previous = ticks[ticks.length - 1];
+    // The cap label outranks the end label when the two are too close.
+    if (previous?.fixed && value - previous.value < minGapMs) return;
+    ticks.push({ value, label, fixed: true });
+  };
+
+  if (hasCap) {
+    pushFixed(cap.time, `${cap.minutes}'`);
+    for (let offset = intervalMs; cap.time + offset <= end; offset += intervalMs) {
+      const value = cap.time + offset;
+      const lastTick = ticks[ticks.length - 1];
+      if (lastTick && value - lastTick.value < minGapMs) continue;
+      ticks.push({ value, label: `+${Math.round(offset / 60_000)}` });
+    }
+    pushFixed(end, `+${Math.round((end - cap.time) / 60_000)}`);
+  } else {
+    pushFixed(end, `${Math.round(durationMs / 60_000)}'`);
   }
 
-  return ticks;
+  return ticks.map(({ value, label }) => ({ value, label }));
+}
+
+// The time cap runs on game time, which stoppages pause, so on this
+// wall-clock axis it falls later by every stoppage that began before it.
+function getTimeCapTick(minutes, axisStart, bands) {
+  if (!(Number(minutes) > 0) || !Number.isFinite(axisStart)) return null;
+  let time = axisStart + Number(minutes) * 60_000;
+  const stoppages = (bands || [])
+    .filter((band) => band.type === "stoppage")
+    .sort((a, b) => a.start - b.start);
+  for (const band of stoppages) {
+    if (band.start >= time) break;
+    time += band.end - band.start;
+  }
+  return { time, minutes: Number(minutes) };
 }
 
 function buildPossessionTimeline({
@@ -275,6 +321,7 @@ export function deriveScrimmageReport({
   teamBName,
   startingTeamKey,
   startTime,
+  timeCapMinutes = null,
 }) {
   const sortedLogs = [...(logs || [])]
     .map((entry) => ({
@@ -376,10 +423,9 @@ export function deriveScrimmageReport({
     snapshots.push({ time, scoreA, scoreB });
   };
 
-  if (Number.isFinite(timelineStart)) {
-    snapshots.push({ time: timelineStart, scoreA: 0, scoreB: 0 });
-    timestamps.push(timelineStart);
-  }
+  // The set-up start time is not added as a 0-0 point: a match started early,
+  // with a score before that time, then dipped back to 0 at it. The axis start
+  // below adds the one 0-0 point the line needs (as on the Matches page).
 
   sortedLogs.forEach((log) => {
     const code = log.eventCode;
@@ -456,12 +502,29 @@ export function deriveScrimmageReport({
       return;
     }
 
-    if (code === MATCH_LOG_EVENT_CODES.TURNOVER) {
-      const gainingTeamKey = toTeamKey(log.team);
-      const losingTeamKey = currentPossession || (gainingTeamKey ? getOppositeTeam(gainingTeamKey) : null);
+    if (code === MATCH_LOG_EVENT_CODES.TURNOVER || code === MATCH_LOG_EVENT_CODES.BLOCK) {
+      // The log row is the record. The scrimmage console stamps a turnover
+      // with the thrower's team and a block with the defender's (ScrimmageView,
+      // eventTeamKey), as the live console does. This used to read the row's
+      // team as the side gaining the disc, which inverted every turnover, and
+      // skipped blocks. Possession is only a fallback for a row with no team.
+      const isBlock = code === MATCH_LOG_EVENT_CODES.BLOCK;
+      const reportedTeamKey = toTeamKey(log.team);
+      let gainingTeamKey;
+      let losingTeamKey;
+      if (reportedTeamKey) {
+        gainingTeamKey = isBlock ? reportedTeamKey : getOppositeTeam(reportedTeamKey);
+        losingTeamKey = isBlock ? getOppositeTeam(reportedTeamKey) : reportedTeamKey;
+      } else {
+        losingTeamKey = currentPossession || null;
+        gainingTeamKey = losingTeamKey ? getOppositeTeam(losingTeamKey) : null;
+      }
       if (losingTeamKey) {
         teamProduction[losingTeamKey].totalTurnovers += 1;
-        incrementCount(teamStats[losingTeamKey].turnoverCounts, log.actorName || log.actorId || "");
+        // The actor on a block is the defender, not a thrower.
+        if (!isBlock) {
+          incrementCount(teamStats[losingTeamKey].turnoverCounts, log.actorName || log.actorId || "");
+        }
       }
       pointTurnovers += 1;
       if (pointStartingDefense && gainingTeamKey === pointStartingDefense) {
@@ -505,13 +568,19 @@ export function deriveScrimmageReport({
   });
 
   const fallbackStartTime = startTime ? new Date(startTime).getTime() : null;
-  const defaultStart = Number.isFinite(timelineStart)
+  const earliestLogged = timestamps.length > 0 ? Math.min(...timestamps) : null;
+  const setStart = Number.isFinite(timelineStart)
     ? timelineStart
     : Number.isFinite(fallbackStartTime)
       ? fallbackStartTime
-      : timestamps.length > 0
-        ? Math.min(...timestamps)
-        : Date.now();
+      : null;
+  const defaultStart = Number.isFinite(setStart)
+    ? Number.isFinite(earliestLogged)
+      ? Math.min(setStart, earliestLogged)
+      : setStart
+    : Number.isFinite(earliestLogged)
+      ? earliestLogged
+      : Date.now();
 
   let defaultEnd = Number.isFinite(timelineEnd)
     ? timelineEnd
@@ -563,8 +632,12 @@ export function deriveScrimmageReport({
     })
     .filter(Boolean);
 
-  const timeTicks = buildTimeTicks(axisStart, axisEnd);
+  const timeCapTick = getTimeCapTick(timeCapMinutes, axisStart, boundedBands);
+  const timeTicks = buildTimeTicks(axisStart, axisEnd, timeCapTick);
   const timeline = {
+    // The time cap line, only when the match reached the cap.
+    timeCap:
+      timeCapTick && timeCapTick.time > axisStart && timeCapTick.time <= axisEnd ? timeCapTick : null,
     minTime: axisStart,
     maxTime: axisEnd,
     maxScore: Math.max(scoreA, scoreB),

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { sortPlayersByName, formatPlayerLabel } from "../../utils/playerList";
 import { Card, Panel } from "../../components/ui/primitives";
 import { parseMatchExport } from "../../services/matchExportFormat";
 import {
@@ -59,8 +60,7 @@ const toLocalInput = (iso) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
-const personLabel = (person) =>
-  `${person.name || "Unnamed"}${Number.isFinite(person.jersey_number) ? ` #${person.jersey_number}` : ""}`;
+const personLabel = (person) => formatPlayerLabel(person);
 
 export default function MatchImportPanel({
   eventId,
@@ -558,12 +558,9 @@ export default function MatchImportPanel({
                                       }
                                     >
                                       <option value="">No player</option>
-                                      {rostersBySide[side].map((player) => (
+                                      {sortPlayersByName(rostersBySide[side]).map((player) => (
                                         <option key={player.id} value={player.id}>
-                                          {player.name}
-                                          {Number.isFinite(Number(player.jersey_number)) && player.jersey_number !== null
-                                            ? ` #${player.jersey_number}`
-                                            : ""}
+                                          {formatPlayerLabel(player)}
                                         </option>
                                       ))}
                                     </select>

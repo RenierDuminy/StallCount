@@ -483,16 +483,25 @@ function resolveMatchOutcomeSource(source, nodeLookup = new Map(), outcome = "wi
     return { resolved: false, reason: `${getNodeDisplayName(targetNode)} not finished` };
   }
 
-  if (typeof match.score_a !== "number" || typeof match.score_b !== "number") {
-    return { resolved: false, reason: "source match score missing" };
+  // A forfeit has no score (WFDF A7.3.5): forfeit_teamA / forfeit_teamB name
+  // the team that forfeited, and the other team goes through whatever score
+  // the row carries.
+  const status = normalizeText(match.status);
+  let aWon;
+  if (status === "forfeit_teama" || status === "forfeit_teamb") {
+    aWon = status === "forfeit_teamb";
+  } else {
+    if (typeof match.score_a !== "number" || typeof match.score_b !== "number") {
+      return { resolved: false, reason: "source match score missing" };
+    }
+    if (match.score_a === match.score_b) {
+      return { resolved: false, reason: `${getNodeDisplayName(targetNode)} is tied` };
+    }
+    aWon = match.score_a > match.score_b;
   }
 
-  if (match.score_a === match.score_b) {
-    return { resolved: false, reason: `${getNodeDisplayName(targetNode)} is tied` };
-  }
-
-  const winner = match.score_a > match.score_b ? match.team_a : match.team_b;
-  const loser = match.score_a > match.score_b ? match.team_b : match.team_a;
+  const winner = aWon ? match.team_a : match.team_b;
+  const loser = aWon ? match.team_b : match.team_a;
   const team = outcome === "winner" ? winner : loser;
 
   if (!team?.id) {

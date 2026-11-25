@@ -1,4 +1,4 @@
-export function MatchMediaButton({ media, className }) {
+export function MatchMediaButton({ media, className, iconClassName = "h-[1.1rem] w-[1.1rem]" }) {
   if (!media?.url) {
     return null;
   }
@@ -33,7 +33,7 @@ export function MatchMediaButton({ media, className }) {
       title={`Watch on ${label}`}
       aria-label={`Watch on ${label}`}
     >
-      <img src="/youtube.png" alt="" className="h-[1.1rem] w-[1.1rem]" aria-hidden="true" />
+      <img src="/youtube.png" alt="" className={iconClassName} aria-hidden="true" />
     </span>
   );
 }

@@ -58,16 +58,11 @@ function SpiritRankingTable({ rows, eventId = null }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ team, spirit, rank }, index) => (
-            <tr
-              key={team.id}
-              style={{
-                background: index % 2 === 0 ? "var(--sc-surface)" : "var(--sc-surface-muted)",
-              }}
-            >
-              <td className="px-0.5 py-1 text-center tabular-nums text-ink-muted">{rank ?? "–"}</td>
+          {rows.map(({ team, spirit, rank }) => (
+            <tr key={team.id} className="transition-colors odd:bg-surface even:bg-surface-muted sc-theme-row">
+              <td className="px-0.5 py-1 text-center tabular-nums text-ink">{rank ?? "–"}</td>
               <td className="px-1 py-1">
-                <Link to={teamPath(team.id, { eventId })} className="block truncate text-inherit! hover:underline">
+                <Link to={teamPath(team.id, { eventId })} className="block truncate sc-theme-link">
                   {team.name}
                 </Link>
               </td>
@@ -149,16 +144,20 @@ export default function EventSpiritPage() {
   if (routeElement) return routeElement;
 
   return (
-    <div className="pb-16 text-ink">
-      <SectionShell as="main" className="w-full max-w-none space-y-6 py-4 sm:py-5">
-        <header className="min-w-0 space-y-3">
+    <div className="min-h-screen pb-16 text-ink">
+      {/* The title band, then the content straight on the page. Written
+          with the sc-theme-* classes, so it follows the theme. */}
+      <div className="sc-theme-band">
+        <SectionShell as="header" className="w-full max-w-none space-y-3 py-4 sm:py-5">
           <SectionHeader
             title={event?.name ? `${event.name} – Spirit` : "Event spirit"}
             description={`Average WFDF spirit scores received (0–${SPIRIT_MAX_SCORE} per category, ${MAX_TOTAL} total). Final submissions only.`}
           />
           {error ? <div className="sc-alert is-error">{error}</div> : null}
-        </header>
+        </SectionShell>
+      </div>
 
+      <SectionShell as="main" className="w-full max-w-none space-y-8 py-4 sm:py-6">
         {!eventId ? (
           <p className="py-6 text-center text-sm text-ink-muted">
             Choose an event from its page to see spirit rankings.
@@ -174,14 +173,15 @@ export default function EventSpiritPage() {
         ) : (
           <>
             {summary ? (
-              <section className="min-w-0 space-y-4 border-t border-border pt-6">
+              <section className="min-w-0 space-y-4">
                 <SectionHeader
+                  className="sc-theme-rule pb-3"
                   title="Event spirit profile"
                   description={`Average of all ${summary.teams} rated teams.`}
                 />
                 <div className="grid gap-5 md:grid-cols-2 md:items-center">
                   <div>
-                    <div className="mx-auto w-full max-w-md rounded-2xl bg-white">
+                    <div className="mx-auto w-full max-w-md rounded-2xl border border-border bg-white">
                       <SpiritRadarChart
                         large
                         values={summary.average}
@@ -221,8 +221,8 @@ export default function EventSpiritPage() {
               </section>
             ) : null}
             {divisions.map((division) => (
-            <section key={division.id} className="min-w-0 space-y-3 border-t border-border pt-6">
-              <SectionHeader title={divisions.length > 1 ? `Team ranking – ${division.name}` : "Team ranking"} />
+            <section key={division.id} className="min-w-0 space-y-3">
+              <SectionHeader className="sc-theme-rule pb-3" title={divisions.length > 1 ? `Team ranking – ${division.name}` : "Team ranking"} />
               <div className="min-w-0 space-y-2">
                 {scoreRows.length ? null : (
                   <p className="text-xs text-ink-muted">No spirit scores have been submitted yet.</p>

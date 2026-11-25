@@ -21,6 +21,7 @@ import {
   summariseFindings,
   buildChecklist,
   SEVERITY,
+  getGameTimeCapMinutes,
 } from "../../services/matchCorrectionChecks";
 import {
   applyLogInsert,
@@ -37,6 +38,10 @@ import {
 } from "./persistenceKeys";
 import MatchCorrectionEditor from "./MatchCorrectionEditor";
 import MatchImportPanel from "./MatchImportPanel";
+import { isPastEvent } from "../../utils/eventStandings";
+import { describeMatchOption, RECENT_EVENT_WINDOW_DAYS } from "../../utils/staffPickers";
+import { buildGameTimeline, toTimedEntries } from "../scorekeeper/gameClock";
+import { derivePossession } from "../scorekeeper/matchLogReplay";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
@@ -63,12 +68,36 @@ function formatClock(timestamp) {
   });
 }
 
-function describeMatch(match) {
-  const teamA = match.team_a?.short_name || match.team_a?.name || "TBC";
-  const teamB = match.team_b?.short_name || match.team_b?.name || "TBC";
-  const status = match.status || "unknown";
-  return `${status} · ${teamA} ${match.score_a ?? 0} – ${match.score_b ?? 0} ${teamB}`;
+// Game clock at a moment, as the console and overlays showed it: a countdown
+// from the event's time cap, paused by stoppages (the console's own
+// buildGameTimeline). Past the time cap it counts the overtime up, shown in bold
+// red. With no time cap in the rules it counts up from the start. Rows before
+// match_start show nothing.
+function formatGameClock(seconds) {
+  const total = Math.abs(seconds);
+  const minutes = Math.floor(total / 60);
+  const secs = String(total % 60).padStart(2, "0");
+  return `${minutes}:${secs}`;
 }
+
+function GameClockNote({ clockAt, timestamp, dark = false }) {
+  const value = clockAt ? clockAt(timestamp) : null;
+  if (!value) return null;
+  if (value.overtime) {
+    return (
+      <span
+        className={`font-bold ${dark ? "text-red-200" : "text-red-600"}`}
+        title="Past the time cap: overtime"
+      >
+        {" "}({formatGameClock(value.seconds)})
+      </span>
+    );
+  }
+  return <span> ({formatGameClock(value.seconds)})</span>;
+}
+
+// The picker's option text is shared with Media control (staffPickers.js).
+const describeMatch = describeMatchOption;
 
 // Row tints copied from PointLogTable in MatchesPage. `turnoverA`/`turnoverB`
 // share the same neutral fill there, so both map to one class here.
@@ -185,6 +214,38 @@ const ICON_BUTTON_CLASS =
 const DELETE_ICON_BUTTON_CLASS =
   "inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-700 bg-red-600 text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-40";
 
+// Corrections are for events under way or recently over: live events, and
+// events that ended within the past CORRECTION_WINDOW_DAYS days. Upcoming
+// events have nothing to correct yet.
+const CORRECTION_WINDOW_DAYS = RECENT_EVENT_WINDOW_DAYS; // shared with Media control
+
+const dateKey = (value) =>
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : "";
+
+const localDateKey = (date) => {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+function isCorrectableEvent(event) {
+  if (!event) return false;
+  const status = String(event.status || "").toLowerCase();
+  const today = localDateKey(new Date());
+  const start = dateKey(event.start_date);
+  const end = dateKey(event.end_date) || start;
+  if (isPastEvent({ status: event.status, endDate: event.end_date })) {
+    // A concluded event with no dates at all cannot be placed in the window.
+    if (!end) return false;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - CORRECTION_WINDOW_DAYS);
+    return end >= localDateKey(cutoff);
+  }
+  if (status === "live") return true;
+  // Status lags until advance_event_statuses() runs: an event whose dates
+  // include today is live.
+  return Boolean(start) && start <= today && (!end || end >= today);
+}
+
 export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = true }) {
   // Match-write permissions, not the broad TD bundle: this panel is reachable by
   // field assistants through /admin/match-corrections, and scoping them by the TD
@@ -203,6 +264,11 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
 
   const [matches, setMatches] = useState([]);
   const [matchesLoading, setMatchesLoading] = useState(false);
+  // The event the current `matches` list belongs to. Until a list has loaded
+  // for the selected event, the remembered match must not be judged against
+  // it: on a refresh the list starts empty, and the check below used to clear
+  // the remembered match before the real list arrived.
+  const [matchesLoadedFor, setMatchesLoadedFor] = useState(null);
   const [logRows, setLogRows] = useState([]);
   const [rosters, setRosters] = useState({ teamA: [], teamB: [] });
   const [eventDefinitions, setEventDefinitions] = useState([]);
@@ -216,7 +282,10 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
   // same rows from here would fight it. Opt in explicitly instead.
   const [allowLiveEdit, setAllowLiveEdit] = useState(false);
 
-  const accessibleEvents = useMemo(() => filterEvents(eventsList), [filterEvents, eventsList]);
+  const accessibleEvents = useMemo(
+    () => filterEvents(eventsList).filter(isCorrectableEvent),
+    [filterEvents, eventsList],
+  );
   const eventOptionsReady = eventsReady && accessReady;
 
   useEffect(() => {
@@ -280,10 +349,12 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
         });
         if (!active) return;
         setMatches(Array.isArray(rows) ? rows : []);
+        setMatchesLoadedFor(selectedEventId);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : "Unable to load matches.");
         setMatches([]);
+        setMatchesLoadedFor(selectedEventId);
       } finally {
         if (active) setMatchesLoading(false);
       }
@@ -295,9 +366,10 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
     };
   }, [eventOptionsReady, selectedEvent, selectedEventId]);
 
-  // Keep the persisted match valid for the chosen event.
+  // Keep the persisted match valid for the chosen event, once that event's
+  // matches have actually loaded.
   useEffect(() => {
-    if (matchesLoading) return;
+    if (matchesLoading || matchesLoadedFor !== selectedEventId) return;
     if (!matches.length) {
       if (selectedMatchId) setSelectedMatchId("");
       return;
@@ -305,7 +377,7 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
     if (!selectedMatchId || !matches.some((match) => match.id === selectedMatchId)) {
       setSelectedMatchId(matches[0].id);
     }
-  }, [matches, matchesLoading, selectedMatchId, setSelectedMatchId]);
+  }, [matches, matchesLoadedFor, matchesLoading, selectedEventId, selectedMatchId, setSelectedMatchId]);
 
   const selectedMatch = useMemo(
     () => matches.find((match) => match.id === selectedMatchId) || null,
@@ -388,6 +460,27 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
     () => deriveMatchLogs(logRows, { teamAId, teamBId, nameLookup, eventCodeById }),
     [logRows, teamAId, teamBId, nameLookup, eventCodeById],
   );
+
+  // Game clock for each row (see GameClockNote).
+  const gameClockAt = useMemo(() => {
+    const logs = derived.logs || [];
+    const timeline = buildGameTimeline(logs);
+    if (!timeline.started) return null;
+    const start = toTimedEntries(logs).find(
+      (entry) => entry.code === MATCH_LOG_EVENT_CODES.MATCH_START,
+    );
+    if (!start) return null;
+    const capMinutes = Number(getGameTimeCapMinutes(selectedEvent?.rules ?? null));
+    const capSeconds = Number.isFinite(capMinutes) && capMinutes > 0 ? Math.round(capMinutes * 60) : null;
+    return (timestamp) => {
+      const at = Date.parse(timestamp);
+      if (!Number.isFinite(at) || at < start.at) return null;
+      const elapsed = timeline.elapsedSecondsAt(at);
+      if (capSeconds == null) return { seconds: elapsed, overtime: false };
+      const remaining = capSeconds - elapsed;
+      return remaining < 0 ? { seconds: -remaining, overtime: true } : { seconds: remaining, overtime: false };
+    };
+  }, [derived.logs, selectedEvent]);
 
   const findings = useMemo(() => {
     if (!selectedMatch) return [];
@@ -529,9 +622,23 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
       next?.timestamp ?? null,
       ordered.map((log) => log.timestamp),
     );
+    // Who holds the disc at the insert point, replayed from the entries up to
+    // the anchor with the console's own rules (derivePossession). The editor
+    // uses it to pick the team for a turnover (the holder) or a block (the
+    // other side).
+    const pullingTeamKey =
+      selectedMatch?.starting_team_id && selectedMatch.starting_team_id === selectedMatch?.team_b?.id
+        ? "B"
+        : selectedMatch?.starting_team_id && selectedMatch.starting_team_id === selectedMatch?.team_a?.id
+          ? "A"
+          : null;
+    const holderKey = anchorIndex >= 0 ? derivePossession(ordered.slice(0, anchorIndex + 1), { pullingTeamKey }) : null;
+    const possessionTeamId =
+      holderKey === "A" ? selectedMatch?.team_a?.id ?? null : holderKey === "B" ? selectedMatch?.team_b?.id ?? null : null;
     setEditorState({
       mode: "insert",
       createdAt,
+      possessionTeamId,
       // The time input must not let the operator drag the new entry past its
       // neighbours — that would silently reorder the log it is meant to slot into.
       minTime: anchorLog?.timestamp ?? null,
@@ -551,10 +658,12 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
       mode: "edit",
       log,
       createdAt: log.timestamp,
-      // Bounded by this entry's own neighbours so an edit can't jump it out of
-      // its slot in the timeline — the log's order has no other record of it.
-      minTime: previous?.timestamp ?? null,
-      maxTime: next?.timestamp ?? null,
+      // Not bounded by its neighbours: an entry logged in the wrong place (a
+      // turnover before a timeout's end) must be movable. The editor shows
+      // where a new time places it, so a move is never silent.
+      otherLogs: ordered.filter((entry) => entry.id !== log.id),
+      originalPreviousId: previous?.id ?? null,
+      originalNextId: next?.id ?? null,
     });
   };
 
@@ -632,7 +741,7 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
             >
               {!eventOptionsReady ? <option value="">Loading access...</option> : null}
               {eventOptionsReady && accessibleEvents.length === 0 ? (
-                <option value="">No accessible events</option>
+                <option value="">No live or recent events</option>
               ) : null}
               {accessibleEvents.map((event) => (
                 <option key={event.id} value={event.id}>
@@ -748,7 +857,7 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
           {/* Desktop puts the checklist beside the log so a director can read an
               issue and act on the offending row without scrolling between them.
               Below xl they stack, checklist first. */}
-          <div className="grid gap-4 xl:grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)] xl:items-start">
+          <div className="grid gap-4 xl:grid-cols-[minmax(15rem,19rem)_minmax(0,1fr)] xl:items-start">
             <Card
               variant="light"
               className="space-y-2 p-4 shadow-md shadow-[rgba(8,25,21,0.06)] xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto"
@@ -872,6 +981,14 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                     // still reads as "what kind of event"; the issue is marked with
                     // red side borders instead of overriding the fill.
                     const rowTint = VARIANT_ROW_CLASS[row.variant] || "";
+                    // As on the matches page: stoppage and halftime fills are dark
+                    // and take white text; the Halftime divider row gets double
+                    // padding.
+                    const isDarkRow = row.variant === "stoppage" || row.variant === "halftime";
+                    const isTurnoverRow = row.variant?.startsWith("turnover");
+                    const rowText = isDarkRow ? "text-white" : "text-black";
+                    const metaText = isDarkRow ? "text-white/80" : "text-black";
+                    const pad = row.description === "Halftime" ? "py-1 sm:py-3" : "py-0.5 sm:py-1.5";
                     const flagBorder = highlighted
                       ? "border-l-8 border-r-8 border-l-red-600 border-r-red-600 ring-2 ring-inset ring-amber-500"
                       : flagged
@@ -884,50 +1001,59 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                           row.isBandEnd ? "opacity-60" : ""
                         }`}
                       >
-                        <td className="px-1 py-0.5 text-black/70 sm:px-2 sm:py-1.5">{row.label}</td>
-                        <td className="whitespace-nowrap px-1 py-0.5 text-black sm:px-2 sm:py-1.5">
+                        <td className={`px-1 sm:px-2 ${pad} ${isDarkRow ? "text-white/80" : "text-black/70"}`}>{row.label}</td>
+                        <td className={`whitespace-nowrap px-1 sm:px-2 ${pad} ${rowText}`}>
                           {formatClock(row.timestamp)}
+                          <GameClockNote clockAt={gameClockAt} timestamp={row.timestamp} dark={isDarkRow} />
                         </td>
-                        <td className="px-1 py-0.5 text-center text-base sm:px-2 sm:py-1.5">
+                        <td className={`px-1 text-center text-base sm:px-2 ${pad}`}>
                           <span aria-label={row.description || "Event"} title={row.description || "Event"}>
                             {eventSymbol(row)}
                           </span>
                         </td>
-                        <td className="px-1 py-0.5 font-semibold text-black sm:px-2 sm:py-1.5">
+                        <td className={`px-1 font-semibold sm:px-2 ${pad} ${rowText}`}>
                           {row.teamLabel === "Unassigned" ? (
-                            <span className="text-rose-700">Unassigned</span>
+                            <span className={isDarkRow ? "text-white underline" : "text-rose-700"}>Unassigned</span>
                           ) : (
                             row.teamLabel
                           )}
                         </td>
-                        <td className="px-1 py-0.5 text-center sm:px-2 sm:py-1.5">
+                        <td className={`px-1 text-center sm:px-2 ${pad}`}>
                           {rendersAsLabel(row) ? (
-                            <div className="text-center text-xs font-semibold text-black sm:text-sm">
-                              <div>{row.description}</div>
+                            <div className={`text-center text-xs font-semibold sm:text-sm ${rowText}`}>
+                              {/* Turnover rows show only their line, as on the matches page. */}
+                              {!isTurnoverRow ? <div>{row.description}</div> : null}
                               {row.metaDetails ? (
-                                <p className="text-xs font-normal text-black/70 sm:text-xs">
-                                  {row.metaDetails}
-                                </p>
+                                <p className={`text-xs font-normal ${metaText}`}>{row.metaDetails}</p>
                               ) : null}
                             </div>
                           ) : (
-                            <div className="grid auto-rows-min items-center gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-1.5">
-                              <span className="text-xs text-black sm:text-right sm:text-sm">
+                            <div className="grid auto-rows-min items-center gap-0.5 leading-tight sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-1.5 sm:leading-normal">
+                              <span className={`text-xs leading-tight sm:text-right sm:text-sm sm:leading-normal ${rowText}`}>
                                 {row.assist || "-"}
                               </span>
-                              <span className="text-center text-xs font-semibold text-black sm:text-xs">
-                                →
-                              </span>
-                              <span className="font-semibold text-black sm:text-left">
+                              <svg
+                                viewBox="0 0 24 24"
+                                className={`h-4 w-4 shrink-0 justify-self-center rotate-90 sm:h-5 sm:w-5 sm:rotate-0 ${rowText}`}
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                                strokeLinecap="square"
+                                strokeLinejoin="miter"
+                                aria-hidden="true"
+                              >
+                                <path d="M4 12h14M13 6l6 6-6 6" />
+                              </svg>
+                              <span className={`font-semibold leading-tight sm:text-left sm:leading-normal ${rowText}`}>
                                 {row.scorer || "-"}
                               </span>
                             </div>
                           )}
                         </td>
-                        <td className="px-1 py-0.5 text-center font-mono text-xs text-black sm:px-2 sm:py-1.5 sm:text-xs">
+                        <td className={`px-1 text-center font-mono text-xs sm:px-2 ${pad} ${rowText}`}>
                           {row.isScore ? `${row.totalA}-${row.totalB}` : "-"}
                         </td>
-                        <td className="px-1 py-0.5 text-right font-mono text-xs text-black sm:px-2 sm:py-1.5 sm:text-xs">
+                        <td className={`px-1 text-right font-mono text-xs sm:px-2 ${pad} ${rowText}`}>
                           {row.gap}
                         </td>
                         <td className="px-1 py-0.5 sm:px-2 sm:py-1.5">
@@ -986,7 +1112,9 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                 return (
                   <li
                     key={row.id}
-                    className={`rounded-lg p-3 text-black ${tint} ${flagBorder} ${
+                    className={`rounded-lg p-3 ${
+                      row.variant === "stoppage" || row.variant === "halftime" ? "text-white" : "text-black"
+                    } ${tint} ${flagBorder} ${
                       row.isBandEnd ? "opacity-60" : ""
                     }`}
                   >
@@ -1000,8 +1128,9 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                             {row.label !== "·" ? `${row.label} · ` : ""}
                             {row.description}
                           </p>
-                          <p className="text-xs text-black/70">
+                          <p className="text-xs opacity-80">
                             {formatClock(row.timestamp)}
+                            <GameClockNote clockAt={gameClockAt} timestamp={row.timestamp} />
                             {row.teamLabel && row.teamLabel !== "-" ? ` · ${row.teamLabel}` : ""}
                             {row.gap !== "-" ? ` · +${row.gap}` : ""}
                           </p>
@@ -1021,7 +1150,7 @@ export default function MatchCorrectionsPanel({ eventsList = [], eventsReady = t
                         <span className="font-semibold">{row.scorer || "-"}</span>
                       </p>
                     ) : row.metaDetails ? (
-                      <p className="mt-2 text-xs text-black/70">{row.metaDetails}</p>
+                      <p className="mt-2 text-xs opacity-80">{row.metaDetails}</p>
                     ) : null}
 
                     <div className="mt-3 flex flex-wrap gap-3">

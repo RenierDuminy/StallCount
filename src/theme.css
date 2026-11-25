@@ -238,6 +238,254 @@
   --color-border-strong: #1f4d40;
 }
 
+/* ---- Light theme for a whole page. Saved for a later light/dark switch: no
+   page uses it yet (the dark theme is the default; it was trialled on the
+   event's Player statistics, Rules, Rosters and Spirit pages, which are
+   written with the sc-theme-* classes below so they work in both). Put
+   `sc-theme-light` on the page's outer element. Unlike .bg-light-page, which only changes the background and the
+   rules, this redefines the shared tokens, so everything written against them
+   (text-ink, border-border, bg-surface-muted, cards, panels, sc-input selects
+   and their option lists, alerts, scrollbars, edge fades) turns light
+   together, and nothing ends up light on light or dark on dark.
+   The --color-* names are repeated because Tailwind resolves them on :root:
+   without them, text-ink and friends would keep the dark-theme values. */
+.sc-theme-light {
+  color-scheme: light;
+  background: var(--sc-light-page);
+  color: var(--sc-light-ink);
+
+  --sc-ink: #0b1f19;
+  /* About 9:1 on the page, so secondary text survives bright light. Only two
+     text colours on light pages: this and --sc-ink, never opacity greys. */
+  --sc-ink-muted: #33493f;
+  --sc-ink-strong: #041311;
+  --sc-surface: #ffffff;
+  --sc-surface-muted: var(--sc-light-tint);
+  --sc-surface-plain: var(--sc-light-page);
+  --sc-border: rgba(18, 53, 44, 0.28);
+  --sc-border-strong: rgba(18, 53, 44, 0.45);
+  --sc-divider: rgba(18, 53, 44, 0.14);
+  --sc-border-glow: var(--sc-light-primary);
+
+  --sc-card-bg: #ffffff;
+  --sc-card-border: rgba(18, 53, 44, 0.18);
+  --sc-card-muted-bg: var(--sc-light-zebra);
+  --sc-card-muted-border: rgba(18, 53, 44, 0.16);
+  --sc-card-muted-glow: none;
+  --sc-shadow-card: 0 1px 2px rgba(8, 25, 21, 0.06);
+  --sc-panel-bg: #ffffff;
+  --sc-panel-bg-alt: var(--sc-light-zebra);
+  --sc-panel-border: rgba(18, 53, 44, 0.18);
+  --sc-panel-border-strong: rgba(18, 53, 44, 0.28);
+  --sc-frosted-bg: #ffffff;
+  --sc-frosted-border: rgba(18, 53, 44, 0.18);
+  --sc-chip-bg: var(--sc-light-tint);
+  --sc-chip-border: rgba(18, 53, 44, 0.25);
+  --sc-button-ghost-border: var(--sc-border);
+  --sc-button-ghost-border-hover: var(--sc-border-strong);
+
+  --sc-field-bg: #ffffff;
+  --sc-field-border: rgba(18, 53, 44, 0.3);
+  --sc-field-border-strong: var(--sc-light-primary);
+  --sc-field-placeholder: rgba(11, 31, 25, 0.5);
+  --sc-field-focus-ring: rgba(10, 61, 41, 0.18);
+  --sc-field-disabled: rgba(11, 31, 25, 0.45);
+
+  --sc-alert-success-bg: #e6f6ea;
+  --sc-alert-success-border: rgba(1, 97, 27, 0.35);
+  --sc-alert-error-bg: #fdecec;
+  --sc-alert-error-border: rgba(185, 28, 28, 0.35);
+  --sc-warning-ink: #7a4b00;
+  --sc-warning-bg: #fff6dd;
+  --sc-warning-border: rgba(180, 120, 0, 0.4);
+  --sc-live-ink: #9f1239;
+  --sc-live-bg: #ffe4e6;
+
+  --color-ink: var(--sc-ink);
+  --color-ink-muted: var(--sc-ink-muted);
+  --color-ink-strong: var(--sc-ink-strong);
+  --color-surface: var(--sc-surface);
+  --color-surface-muted: var(--sc-surface-muted);
+  --color-surface-plain: var(--sc-surface-plain);
+  --color-border: var(--sc-border);
+  --color-border-strong: var(--sc-border-strong);
+  --color-border-glow: var(--sc-border-glow);
+  --color-divider: var(--sc-divider);
+  --color-warning-ink: var(--sc-warning-ink);
+  --color-warning-bg: var(--sc-warning-bg);
+  --color-warning-border: var(--sc-warning-border);
+  --color-live-ink: var(--sc-live-ink);
+  --color-live-bg: var(--sc-live-bg);
+}
+
+/* Links: the app's lime link colour is unreadable on white. Buttons styled
+   as links keep their own colours, and Tailwind's important text-* classes
+   still win. */
+.sc-theme-light a:not(.sc-button) {
+  color: var(--sc-light-primary);
+}
+
+.sc-theme-light a:not(.sc-button):hover {
+  color: var(--sc-light-success);
+}
+
+.sc-theme-light a:focus-visible {
+  outline-color: var(--sc-light-primary);
+}
+
+/* Inputs and dropdowns: the dark theme hard-codes a dark focus fill and a
+   lime arrow; both swap here. The option list is set explicitly because some
+   browsers draw it from the select's own colours, others from color-scheme. */
+.sc-theme-light .sc-input:focus-visible {
+  background: #ffffff;
+}
+
+.sc-theme-light select.sc-input {
+  background-image: linear-gradient(45deg, transparent 50%, var(--sc-light-primary) 50%),
+    linear-gradient(135deg, var(--sc-light-primary) 50%, transparent 50%);
+}
+
+.sc-theme-light select.sc-input option,
+.sc-theme-light select.sc-input optgroup {
+  background: #ffffff;
+  color: var(--sc-light-ink);
+}
+
+.sc-theme-light .sc-alert.is-error {
+  color: #991b1b;
+}
+
+/* Table headers: the dark green of the light theme with white text. The ink
+   tokens are flipped inside the header, so anything written as text-ink /
+   text-ink-muted there turns white rather than dark on dark. */
+.sc-theme-light thead {
+  color: #ffffff;
+  --sc-ink: #ffffff;
+  --sc-ink-muted: rgba(255, 255, 255, 0.85);
+  --color-ink: var(--sc-ink);
+  --color-ink-muted: var(--sc-ink-muted);
+  --sc-border: rgba(255, 255, 255, 0.25);
+  --color-border: var(--sc-border);
+}
+
+.sc-theme-light thead th {
+  background: var(--sc-light-primary);
+}
+
+/* The title band: the app's dark theme, full width, at the top of a light
+   page, so the page reads as the light side of the dark green app. Inside it
+   every token is the dark theme's again (values as on :root). */
+.sc-theme-light .sc-theme-band {
+  color-scheme: dark;
+  background: var(--sc-light-primary);
+  color: #e8f4ed;
+
+  --sc-ink: #e8f4ed;
+  --sc-ink-muted: #cfe3d8;
+  --sc-ink-strong: #f9fff4;
+  --sc-surface: #0f251f;
+  --sc-surface-muted: #112c24;
+  --sc-surface-plain: #0a1916;
+  --sc-border: rgba(207, 227, 216, 0.4);
+  --sc-border-strong: rgba(207, 227, 216, 0.55);
+  --sc-divider: rgba(207, 227, 216, 0.22);
+  --sc-border-glow: #52f8a9;
+  --sc-field-bg: rgba(6, 22, 18, 0.75);
+  --sc-field-border: rgba(99, 255, 160, 0.28);
+  --sc-field-border-strong: rgba(99, 255, 160, 0.55);
+  --sc-field-placeholder: rgba(232, 244, 237, 0.65);
+  --sc-field-focus-ring: rgba(198, 255, 98, 0.25);
+  --sc-field-disabled: rgba(232, 244, 237, 0.35);
+  --sc-alert-error-bg: rgba(55, 18, 18, 0.8);
+  --sc-alert-error-border: rgba(255, 123, 123, 0.5);
+
+  --color-ink: var(--sc-ink);
+  --color-ink-muted: var(--sc-ink-muted);
+  --color-ink-strong: var(--sc-ink-strong);
+  --color-surface: var(--sc-surface);
+  --color-surface-muted: var(--sc-surface-muted);
+  --color-surface-plain: var(--sc-surface-plain);
+  --color-border: var(--sc-border);
+  --color-border-strong: var(--sc-border-strong);
+  --color-divider: var(--sc-divider);
+}
+
+.sc-theme-light .sc-theme-band a:not(.sc-button) {
+  color: var(--sc-accent-strong);
+}
+
+.sc-theme-light .sc-theme-band a:not(.sc-button):hover {
+  color: var(--sc-accent);
+}
+
+.sc-theme-light .sc-theme-band .sc-input:focus-visible {
+  background: rgba(10, 29, 23, 0.95);
+}
+
+.sc-theme-light .sc-theme-band select.sc-input {
+  background-image: linear-gradient(45deg, transparent 50%, var(--sc-accent) 50%),
+    linear-gradient(135deg, var(--sc-accent) 50%, transparent 50%);
+}
+
+.sc-theme-light .sc-theme-band select.sc-input option,
+.sc-theme-light .sc-theme-band select.sc-input optgroup {
+  background: var(--sc-surface-menu);
+  color: #e8f4ed;
+}
+
+.sc-theme-light .sc-theme-band .sc-alert.is-error {
+  color: #ffd5d5;
+}
+
+/* ---- Theme-neutral classes. Pages written for both themes use these instead
+   of a light-* or dark-only colour, so the same markup is right in either.
+   The plain rule is the dark theme (the default, as on the Matches page);
+   the .sc-theme-light rule is the light theme, kept for when the app gets a
+   light/dark switch. Used on the event's Player statistics, Rules, Rosters
+   and Spirit pages.
+   - sc-theme-band: the page's title band (no fill in the dark theme)
+   - sc-theme-rule: the rule under a section heading
+   - sc-theme-link: a name that links to its page (team, player)
+   - sc-theme-row: a table row that highlights on hover
+   - sc-theme-cell-active: the column a table is sorted by */
+.sc-theme-rule {
+  border-bottom: 1px solid var(--sc-border);
+}
+
+.sc-theme-light .sc-theme-rule {
+  border-bottom: 2px solid var(--sc-light-primary);
+}
+
+a.sc-theme-link {
+  color: inherit;
+}
+
+a.sc-theme-link:hover {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.sc-theme-light a.sc-theme-link,
+.sc-theme-light a.sc-theme-link:hover {
+  color: var(--sc-light-primary);
+}
+
+.sc-theme-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sc-theme-light .sc-theme-row:hover {
+  background: var(--sc-light-selected);
+}
+
+.sc-theme-cell-active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sc-theme-light .sc-theme-cell-active {
+  background: var(--sc-light-tint);
+}
+
 body {
   margin: 0;
   font-family: var(--sc-font-body);
@@ -352,6 +600,29 @@ a:focus-visible {
   }
 }
 
+/* The Matches page's event and match picker card: the same side padding as
+   the page's cards below it (.matches-compact-shell), so it is as wide as
+   they are, instead of .sc-shell's 4–10% on wide screens. Only the sides:
+   the header keeps .sc-shell's top and bottom padding. */
+.matches-header-shell {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .matches-header-shell {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .matches-header-shell {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Site header
    Colours live here rather than in Tailwind utilities on purpose: the global
@@ -391,16 +662,22 @@ a:focus-visible {
   color: #fff;
 }
 
+/* A fixed size, not a share of the bar, so the logo is the same on every
+   desktop window (full screen or split screen) and on tablets. */
 .sc-site-header__logo {
   flex-shrink: 0;
   width: auto;
-  height: 80%;
+  height: 4rem;
+  /* Tailwind's preflight caps images at max-width: 100%. The brand link may
+     shrink (min-width: 0), so once the nav and actions took their space in a
+     narrower window the cap squeezed the logo. The tagline gives way instead. */
+  max-width: none;
   object-fit: contain;
 }
 
-/* Phones and tablets: a slimmer bar. The logo is about 20% smaller (64px -> 52px)
-   and the bar shrinks around it (80px -> 66px). Desktop keeps the full size. */
-@media (max-width: 1023px) {
+/* Phones only: a slimmer bar. The logo is about 20% smaller (64px -> 52px)
+   and the bar shrinks around it (80px -> 66px). */
+@media (max-width: 639px) {
   .sc-site-header__bar {
     height: 4.125rem;
   }
@@ -411,6 +688,9 @@ a:focus-visible {
 }
 
 .sc-site-header__tagline {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: var(--sc-text-small);
   font-weight: 700;
   white-space: nowrap;

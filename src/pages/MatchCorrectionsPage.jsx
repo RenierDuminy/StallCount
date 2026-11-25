@@ -46,7 +46,7 @@ export default function MatchCorrectionsPage() {
 
   return (
     <div className="td-page min-h-screen bg-light-page text-[var(--sc-surface-light-ink)]">
-      <SectionShell as="header" className="py-4">
+      <SectionShell as="header" className="py-4 lg:px-6!">
         <Card variant="light" className="space-y-3 p-4 shadow-xl shadow-[rgba(8,25,21,0.08)]">
           <SectionHeader
             title="Match corrections"
@@ -62,7 +62,7 @@ export default function MatchCorrectionsPage() {
         </Card>
       </SectionShell>
 
-      <SectionShell as="main" className="pb-8">
+      <SectionShell as="main" className="pb-8 lg:px-6!">
         <MatchCorrectionsPanel eventsList={eventsList} eventsReady={eventsReady} />
       </SectionShell>
     </div>

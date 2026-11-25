@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import { Card, Panel } from "../../components/ui/primitives";
 import { MATCH_LOG_EVENT_CODES } from "../../services/matchLogService";
-import { sortRoster } from "../scorekeeper/scorekeeperUtils";
+import { sortPlayersByName, formatPlayerLabel } from "../../utils/playerList";
 
 const LIGHT_INPUT_CLASS =
   "rounded-lg border border-[var(--sc-surface-light-border)] bg-white px-3 py-1.5 text-sm text-[var(--sc-surface-light-ink)] shadow-sm focus:border-[var(--sc-border-strong)] focus:outline-none";
 
 const SCORING_CODES = new Set([MATCH_LOG_EVENT_CODES.SCORE, MATCH_LOG_EVENT_CODES.CALAHAN]);
+
+const POSSESSION_CODES = new Set([MATCH_LOG_EVENT_CODES.TURNOVER, MATCH_LOG_EVENT_CODES.BLOCK]);
 
 const REASON_MAX_LENGTH = 100;
 
@@ -15,7 +17,7 @@ const REASON_MAX_LENGTH = 100;
 // director reaching for "Timeout" scans one row instead of the whole vocabulary.
 const EVENT_TYPE_GROUPS = [
   { label: "Score", codes: [MATCH_LOG_EVENT_CODES.SCORE, MATCH_LOG_EVENT_CODES.CALAHAN] },
-  { label: "Possession", codes: [MATCH_LOG_EVENT_CODES.TURNOVER] },
+  { label: "Possession", codes: [MATCH_LOG_EVENT_CODES.TURNOVER, MATCH_LOG_EVENT_CODES.BLOCK] },
   {
     label: "Timeout",
     codes: [MATCH_LOG_EVENT_CODES.TIMEOUT_START, MATCH_LOG_EVENT_CODES.TIMEOUT_END],
@@ -102,12 +104,67 @@ export default function MatchCorrectionEditor({
   const teamAId = match?.team_a?.id ?? null;
   const teamBId = match?.team_b?.id ?? null;
 
+  // Adding a turnover or block: the team follows possession at the insert
+  // point (`state.possessionTeamId`, the side holding the disc). A turnover is
+  // logged on the team that had the disc, a block on the defending side. The
+  // team can still be changed by hand.
+  const handleEventCodeChange = (code) => {
+    setEventCode(code);
+    if (isEdit || !state.possessionTeamId) return;
+    let nextTeamId = null;
+    if (code === MATCH_LOG_EVENT_CODES.TURNOVER) {
+      nextTeamId = state.possessionTeamId;
+    } else if (code === MATCH_LOG_EVENT_CODES.BLOCK) {
+      nextTeamId = state.possessionTeamId === teamAId ? teamBId ?? "" : teamAId ?? "";
+    }
+    if (nextTeamId !== null && nextTeamId !== teamId) {
+      setTeamId(nextTeamId);
+      // As when the team is changed by hand: the old side's players no longer fit.
+      setScorerId("");
+      setAssistId("");
+    }
+  };
+
   // Bounds come from this entry's neighbours in the timeline (see openInsertEditor /
   // openEditEditor in the panel) — there is no point-number column, so created_at is
   // the only thing that fixes an entry's position, and letting the picker drift past
   // a neighbour would silently reorder the log.
-  const minBoundMs = Number.isFinite(Date.parse(state.minTime)) ? Date.parse(state.minTime) : null;
-  const maxBoundMs = Number.isFinite(Date.parse(state.maxTime)) ? Date.parse(state.maxTime) : null;
+  // Editing is not bounded: the entry may move anywhere in the log, and
+  // `placement` says where the chosen time puts it (`state.otherLogs`, every
+  // other entry). Inserting stays bounded to its slot (minTime / maxTime).
+  const otherTimes = useMemo(
+    () =>
+      (state.otherLogs ?? [])
+        .map((entry) => ({ entry, at: Date.parse(entry.timestamp) }))
+        .filter((item) => Number.isFinite(item.at))
+        .sort((a, b) => a.at - b.at),
+    [state.otherLogs],
+  );
+  const placement = useMemo(() => {
+    if (!state.otherLogs) return null;
+    const ms = Date.parse(createdAt);
+    if (!Number.isFinite(ms)) return null;
+    let previous = null;
+    let next = null;
+    otherTimes.forEach((item) => {
+      if (item.at < ms) previous = item;
+      else if (item.at > ms && !next) next = item;
+    });
+    return {
+      previous,
+      next,
+      clash: otherTimes.some((item) => item.at === ms),
+      moved:
+        (previous?.entry.id ?? null) !== (state.originalPreviousId ?? null) ||
+        (next?.entry.id ?? null) !== (state.originalNextId ?? null),
+    };
+  }, [createdAt, otherTimes, state.otherLogs, state.originalPreviousId, state.originalNextId]);
+  const minBoundMs = placement
+    ? placement.previous?.at ?? null
+    : Number.isFinite(Date.parse(state.minTime)) ? Date.parse(state.minTime) : null;
+  const maxBoundMs = placement
+    ? placement.next?.at ?? null
+    : Number.isFinite(Date.parse(state.maxTime)) ? Date.parse(state.maxTime) : null;
 
   const knownCodes = useMemo(
     () => new Set((eventDefinitions ?? []).map((definition) => definition.code)),
@@ -120,11 +177,15 @@ export default function MatchCorrectionEditor({
     [...base, ...(rosters.strays ?? [])].forEach((player) => {
       if (player?.id) merged.set(player.id, player);
     });
-    return sortRoster(Array.from(merged.values()));
+    return sortPlayersByName(Array.from(merged.values()));
   }, [rosters, teamId, teamAId, teamBId]);
 
   const isScoring = SCORING_CODES.has(eventCode);
   const isCallahan = eventCode === MATCH_LOG_EVENT_CODES.CALAHAN;
+  // Turnovers and blocks name one player (actor_id), as the console logs them:
+  // the thrower for a turnover, the defender for a block, from the entry's team.
+  const isPossession = POSSESSION_CODES.has(eventCode);
+  const actorId = isScoring || isPossession ? scorerId || null : null;
 
   const handleTimeChange = (value) => {
     const iso = fromDateTimeLocalValue(value);
@@ -134,7 +195,12 @@ export default function MatchCorrectionEditor({
       return;
     }
     const ms = Date.parse(iso);
-    if (minBoundMs != null && ms <= minBoundMs) {
+    if (state.otherLogs) {
+      // Free move: only an exact clash with another entry is refused (two
+      // entries at one time would have no order).
+      const clash = otherTimes.some((item) => item.at === ms);
+      setTimeError(clash ? "Another entry has this exact time. Choose a different second." : "");
+    } else if (minBoundMs != null && ms <= minBoundMs) {
       setTimeError(`Must be after ${formatDateTime(state.minTime)}.`);
     } else if (maxBoundMs != null && ms >= maxBoundMs) {
       setTimeError(`Must be before ${formatDateTime(state.maxTime)}.`);
@@ -154,7 +220,7 @@ export default function MatchCorrectionEditor({
       const updates = {
         eventTypeCode: eventCode,
         teamId: teamId || null,
-        actorId: isScoring ? scorerId || null : null,
+        actorId,
         secondaryActorId: isScoring && !isCallahan ? assistId || null : null,
         createdAt: createdAt !== log?.timestamp ? createdAt : undefined,
       };
@@ -168,7 +234,7 @@ export default function MatchCorrectionEditor({
         matchId: match.id,
         eventTypeCode: eventCode,
         teamId: teamId || null,
-        actorId: isScoring ? scorerId || null : null,
+        actorId,
         secondaryActorId: isScoring && !isCallahan ? assistId || null : null,
         createdAt,
       },
@@ -218,7 +284,7 @@ export default function MatchCorrectionEditor({
                         <button
                           key={code}
                           type="button"
-                          onClick={() => setEventCode(code)}
+                          onClick={() => handleEventCodeChange(code)}
                           aria-pressed={eventCode === code}
                           className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                             eventCode === code
@@ -271,8 +337,7 @@ export default function MatchCorrectionEditor({
                   <option value="">No scorer recorded</option>
                   {playerOptions.map((player) => (
                     <option key={player.id} value={player.id}>
-                      {player.jersey_number != null ? `#${player.jersey_number} ` : ""}
-                      {player.name}
+                      {formatPlayerLabel(player)}
                     </option>
                   ))}
                 </select>
@@ -293,8 +358,7 @@ export default function MatchCorrectionEditor({
                       .filter((player) => player.id !== scorerId)
                       .map((player) => (
                         <option key={player.id} value={player.id}>
-                          {player.jersey_number != null ? `#${player.jersey_number} ` : ""}
-                          {player.name}
+                          {formatPlayerLabel(player)}
                         </option>
                       ))}
                   </select>
@@ -309,6 +373,26 @@ export default function MatchCorrectionEditor({
                 </Panel>
               )}
             </>
+          ) : null}
+
+          {isPossession ? (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">
+                Player
+              </p>
+              <select
+                value={scorerId}
+                onChange={(event) => setScorerId(event.target.value)}
+                className={`${LIGHT_INPUT_CLASS} mt-1 w-full appearance-none`}
+              >
+                <option value="">No player recorded</option>
+                {playerOptions.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {formatPlayerLabel(player)}
+                  </option>
+                ))}
+              </select>
+            </div>
           ) : null}
 
           <div>
@@ -341,6 +425,13 @@ export default function MatchCorrectionEditor({
                 return "Position in the log is set entirely by this timestamp.";
               })()}
             </p>
+            {placement?.moved && !timeError ? (
+              <p className="mt-1 text-xs font-semibold text-[var(--sc-surface-light-ink)]">
+                {placement.previous
+                  ? `Moves this entry after ${placement.previous.entry.eventDescription} (${formatDateTime(placement.previous.entry.timestamp)}).`
+                  : `Moves this entry to the start of the log.`}
+              </p>
+            ) : null}
             {timeError ? <p className="mt-1 text-xs font-semibold text-rose-600">{timeError}</p> : null}
           </div>
 

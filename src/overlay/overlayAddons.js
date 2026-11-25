@@ -180,6 +180,9 @@ export function derivePointTimeline(chronologicalLogs, { startingPuller = null, 
       if (open) turnovers += 1;
     } else if (code === "timeout_start") {
       if (Number.isFinite(startMs) && ts < startMs) prePullTimeout = true;
+      // No gender line during a timeout: a cue still pending (the inter-point
+      // timer running out) is dropped, and the timeout's end cues it instead.
+      genderCueMs = null;
     } else if (code === "timeout_end") {
       if (prePullTimeout) {
         startMs = Math.max(startMs, ts);

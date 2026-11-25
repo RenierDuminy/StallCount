@@ -201,14 +201,14 @@ export default function EventRostersPage() {
   if (routeElement) return routeElement;
 
   return (
-    <div className="pb-16 text-ink">
-      {/* Header and body straight on the page, no cards (as on the event
-          spirit page): a header, then sections divided by a rule. */}
-      <SectionShell as="main" className="w-full max-w-none space-y-6 py-4 sm:py-5">
+    <div className="min-h-screen pb-16 text-ink">
+      {/* No cards: the title band, then the content straight on the page.
+          Written with the sc-theme-* classes, so it follows the theme. */}
+      <div className="sc-theme-band">
         {/* Compact header: title and one details line, then the two pickers
             side by side from 640px. No back button: the phone's own back
             gesture or button does that. */}
-        <header className="min-w-0 space-y-3">
+        <SectionShell as="header" className="w-full max-w-none space-y-3 py-4 sm:py-5">
           <div className="space-y-1">
             <h1 className="text-h2 font-semibold text-ink">
               {selectedEvent?.name ? `${selectedEvent.name} – Rosters` : "Team rosters"}
@@ -267,10 +267,13 @@ export default function EventRostersPage() {
             </Field>
           </div>
           {error ? <div className="sc-alert is-error">{error}</div> : null}
-        </header>
+        </SectionShell>
+      </div>
 
-        <section className="min-w-0 space-y-4 border-t border-border pt-6">
+      <SectionShell as="main" className="w-full max-w-none space-y-6 py-4 sm:py-6">
+        <section className="min-w-0 space-y-4">
           <SectionHeader
+            className="sc-theme-rule pb-3"
             title="Rosters"
             description={
               selectedEventId
@@ -387,15 +390,15 @@ function RosterPlayerCard({ player, eventId }) {
         </div>
       )}
       {profilePath ? (
-        <Link to={profilePath} className="text-inherit! hover:text-inherit!">
+        <Link to={profilePath} className="sc-theme-link">
           {player.name}
         </Link>
       ) : (
         <span>{player.name}</span>
       )}
-      <span className="text-xs text-ink-muted">({genderLabel})</span>
+      <span className="text-xs font-normal text-ink">({genderLabel})</span>
       {jerseyLabel && (
-        <span className="text-xs text-ink-muted">{jerseyLabel}</span>
+        <span className="text-xs font-normal text-ink">{jerseyLabel}</span>
       )}
     </div>
   );

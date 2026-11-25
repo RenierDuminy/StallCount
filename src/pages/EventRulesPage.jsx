@@ -208,9 +208,11 @@ export default function EventRulesPage() {
   if (routeElement) return routeElement;
 
   return (
-    <div className="pb-16 text-ink">
-      <SectionShell as="header" className="py-4 sm:py-6">
-        <Card className="space-y-4 p-5 sm:p-7">
+    <div className="min-h-screen pb-16 text-ink">
+      {/* The title band; the rules sit below it in cards. Written with the
+          sc-theme-* classes, so it follows the theme. */}
+      <div className="sc-theme-band">
+        <SectionShell as="header" className="space-y-4 py-4 sm:py-6">
           <SectionHeader
             title="Full ruleset by event"
             description="Inspect the exact rules payload configured on each event."
@@ -241,10 +243,10 @@ export default function EventRulesPage() {
               {formatDate(selectedEvent.start_date)} to {formatDate(selectedEvent.end_date)}
             </div>
           )}
-        </Card>
-      </SectionShell>
+        </SectionShell>
+      </div>
 
-      <SectionShell as="main" className="space-y-4 sm:space-y-6">
+      <SectionShell as="main" className="space-y-4 py-4 sm:space-y-6 sm:py-6">
         {/* The rules of play themselves. Moved here from the event page header;
             left out for past events, which may have played under older rules. */}
         {selectedEvent && !isPastEvent({ status: selectedEvent.status, endDate: selectedEvent.end_date }) ? (
@@ -274,6 +276,7 @@ export default function EventRulesPage() {
 
         <Card className="space-y-4 p-4 sm:p-6">
           <SectionHeader
+            className="sc-theme-rule pb-3"
             title="Ruleset"
             description={
               selectedEventId

@@ -184,6 +184,10 @@ export function buildPointLogRows(derivedLogs, match) {
         : TEAM_A;
 
   let currentPossession = fallbackOffense;
+  // The team that received to open the match. At halftime possession resets
+  // rather than continuing: the pull flips, so the team that pulled first
+  // receives to open the second half (as the console's derivePossession).
+  let firstHalfReceiver = fallbackOffense;
   let previousTime = null;
   let pointIndex = 1;
 
@@ -210,18 +214,23 @@ export function buildPointLogRows(derivedLogs, match) {
 
     switch (log.eventCode) {
       case MATCH_LOG_EVENT_CODES.MATCH_START: {
+        // As on the matches page: pulling gives the disc away, so the row names
+        // the receiving team, who has the disc once play begins.
         const pullingTeamId = match?.starting_team_id || log.teamId || null;
-        const pullingKey = keyOfTeamId(pullingTeamId);
+        const receivingKey = opposite(keyOfTeamId(pullingTeamId));
+        if (receivingKey) {
+          firstHalfReceiver = receivingKey;
+          currentPossession = receivingKey;
+        }
         advance();
         return {
           ...base,
           label: "Start",
           description: "Match start",
-          teamLabel: pullingKey ? shortOf(pullingKey) : "Unassigned",
+          teamLabel: receivingKey ? shortOf(receivingKey) : "Unassigned",
           scorer: "-",
           assist: "-",
-          // The matches page surfaces who pulled; keep that context here.
-          metaDetails: `Pulling team: ${pullingKey ? nameOf(pullingKey) : "Unassigned"}`,
+          metaDetails: receivingKey ? `${nameOf(receivingKey)} receives` : null,
           variant: "halftime",
           gap: "-",
         };
@@ -250,7 +259,7 @@ export function buildPointLogRows(derivedLogs, match) {
           description: isCallahan ? "Callahan goal" : "Scored",
           teamLabel: teamKey ? shortOf(teamKey) : "Unassigned",
           scorer: log.scorerName || "N/A",
-          assist: isCallahan ? "Callahan" : log.assistName || "",
+          assist: log.assistName || "",
           variant: isCallahan ? "callahan" : teamKey === TEAM_B ? "goalB" : "goalA",
           isScore: true,
           totalA: log.totalA,
@@ -263,37 +272,51 @@ export function buildPointLogRows(derivedLogs, match) {
         return row;
       }
 
-      case MATCH_LOG_EVENT_CODES.TURNOVER: {
+      case MATCH_LOG_EVENT_CODES.TURNOVER:
+      case MATCH_LOG_EVENT_CODES.BLOCK: {
+        // Same attribution and wording as deriveMatchInsights in MatchesPage.
         const label = (log.eventDescription || "").trim();
-        const isBlock = label.toLowerCase().includes("block");
+        const isBlock =
+          log.eventCode === MATCH_LOG_EVENT_CODES.BLOCK || label.toLowerCase().includes("block");
         const reportedKey = log.team === "A" ? TEAM_A : log.team === "B" ? TEAM_B : null;
         const holding = currentPossession;
 
-        // A turnover logged against the team that already had the disc means the
-        // *other* side gained it; a block is credited to the team making it.
-        let gainingKey = reportedKey;
-        if (holding && reportedKey && reportedKey === holding && !isBlock) {
-          gainingKey = opposite(reportedKey);
+        // The log row is the record: a turnover is stamped with the thrower's
+        // team, a block with the defender's. Show exactly that, never a team
+        // re-worked from the possession story (an entry left out by accident
+        // would make the story wrong). Possession is only a fallback for a row
+        // with no team.
+        let gainingKey;
+        let losingKey;
+        if (reportedKey) {
+          gainingKey = isBlock ? reportedKey : opposite(reportedKey);
+          losingKey = isBlock ? opposite(reportedKey) : reportedKey;
+        } else {
+          losingKey = holding || null;
+          gainingKey = losingKey ? opposite(losingKey) : null;
         }
-        if (!gainingKey && holding) {
-          gainingKey = opposite(holding);
-        }
-        const losingKey = holding || (gainingKey ? opposite(gainingKey) : null);
         if (gainingKey) currentPossession = gainingKey;
 
+        // The Team column and the line name the side that caused it: the
+        // blocking team on a block, the team that gave the disc away on a
+        // turnover. The colour still follows who gains the disc.
+        const causingKey = isBlock ? gainingKey : losingKey;
+        const causingName = causingKey ? nameOf(causingKey) : "Team";
         const actorName = log.scorerName || "";
         const metaDetails = actorName
           ? isBlock
-            ? `${actorName} denied ${losingKey ? nameOf(losingKey) : "opposition"}`
-            : `${actorName} credited`
-          : `${gainingKey ? nameOf(gainingKey) : "Team"} gains possession`;
+            ? `Blocked by ${actorName}`
+            : `Turnover by ${actorName}`
+          : isBlock
+            ? `Block by ${causingName}`
+            : `${causingName} caused a turnover`;
 
         advance();
         return {
           ...base,
           label: "TO",
-          description: label || (isBlock ? "Block" : "Turnover"),
-          teamLabel: gainingKey ? shortOf(gainingKey) : "-",
+          description: isBlock ? "Block" : "Turnover",
+          teamLabel: causingKey ? shortOf(causingKey) : "-",
           scorer: "-",
           assist: "-",
           metaDetails,
@@ -330,6 +353,7 @@ export function buildPointLogRows(derivedLogs, match) {
         };
 
       case MATCH_LOG_EVENT_CODES.HALFTIME_START:
+        currentPossession = opposite(firstHalfReceiver) || currentPossession;
         advance();
         return {
           ...base,

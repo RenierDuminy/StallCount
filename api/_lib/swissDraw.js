@@ -132,6 +132,16 @@ function compareRowsFor(settings) {
     String(left.id).localeCompare(String(right.id));
 }
 
+// A forfeit has no score (WFDF A7.3.5): `forfeit_teamA` / `forfeit_teamB` name
+// the team that forfeited and the other team wins, whatever score the row
+// carries. Scored like a bye: a win with no points. Mirrors
+// getForfeitWinnerSide in standings.js.
+const FORFEIT_LOSER_SIDE = { forfeit_teama: "a", forfeit_teamb: "b" };
+
+function forfeitLoserSide(match) {
+  return FORFEIT_LOSER_SIDE[String(match?.status || "").trim().toLowerCase()] || null;
+}
+
 /**
  * Is this game's result usable? Returns "" when it is, else why not.
  * Used for readiness: a round can only be paired from final results.
@@ -142,6 +152,7 @@ function gameBlocker(game, helpers) {
   const { match } = node;
   if (!hasBothTeams(match)) return `${nodeName(node)} has no teams yet`;
   if (!helpers.isFinished(match.status)) return "unfinished";
+  if (forfeitLoserSide(match)) return "";
   if (typeof match.score_a !== "number" || typeof match.score_b !== "number") {
     return `${nodeName(node)} has no score`;
   }
@@ -197,9 +208,8 @@ function buildRows(teams, rounds, settings, helpers) {
       const rowA = rows.get(match.team_a.id);
       const rowB = rows.get(match.team_b.id);
       if (!rowA || !rowB) return;
-      const aWon = match.score_a > match.score_b;
-      const margin = Math.abs(match.score_a - match.score_b);
-      const counted = settings.marginCap ? Math.min(margin, settings.marginCap) : margin;
+      const loserSide = forfeitLoserSide(match);
+      const aWon = loserSide ? loserSide === "b" : match.score_a > match.score_b;
 
       rowA.played += 1;
       rowB.played += 1;
@@ -207,14 +217,18 @@ function buildRows(teams, rounds, settings, helpers) {
       rowA.losses += aWon ? 0 : 1;
       rowB.wins += aWon ? 0 : 1;
       rowB.losses += aWon ? 1 : 0;
+      rowA.opponents.push(rowB.id);
+      rowB.opponents.push(rowA.id);
+      if (loserSide) return;
+
+      const margin = Math.abs(match.score_a - match.score_b);
+      const counted = settings.marginCap ? Math.min(margin, settings.marginCap) : margin;
       rowA.pointsFor += match.score_a;
       rowA.pointsAgainst += match.score_b;
       rowB.pointsFor += match.score_b;
       rowB.pointsAgainst += match.score_a;
       rowA.diff += aWon ? counted : -counted;
       rowB.diff += aWon ? -counted : counted;
-      rowA.opponents.push(rowB.id);
-      rowB.opponents.push(rowA.id);
     });
   });
 

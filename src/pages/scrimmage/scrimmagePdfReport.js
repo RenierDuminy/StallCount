@@ -12,6 +12,14 @@ const PDF_BAND_COLORS = {
   halftime: "rgba(16, 185, 129, 0.16)",
 };
 
+// Score progression chart, at twice the Matches page chart's scale.
+const PDF_DOT_RADIUS = 6.5;
+const PDF_DOT_RING_WIDTH = 3;
+const PDF_SEAM_OVERLAP = 1;
+const PDF_TIME_TICK_LENGTH = 8;
+const PDF_TIME_CAP_LINE = "rgb(16, 185, 129)";
+const PDF_TIME_CAP_INK = "rgb(4, 120, 87)";
+
 const PDF_THEME = {
   pageBg: [7, 24, 19],
   pageTop: [10, 34, 27],
@@ -481,15 +489,28 @@ function drawReportTimelineImage({ report, teamAName, teamBName, scoreA, scoreB 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(chartLeft, chartTop, chartWidth, chartHeight);
 
+  // This chart follows the Matches page's score progression chart
+  // (TimelineChart in MatchesPage.jsx) at twice its scale; keep them in step.
+  // Drawing order, bottom to top: break bands, grid, axes, time cap line,
+  // drop lines, white rings, score lines, score dots, possession strip, minute
+  // ticks, then the time cap label.
+
+  // A span at least 2 px wide, but never past the plot's right edge.
+  const getSpan = (start, end) => {
+    const x = Math.min(getX(start), chartRight);
+    const spanWidth = Math.min(Math.max(2, getX(end) - x), chartRight - x);
+    return { x, width: Math.max(0, spanWidth) };
+  };
+
   bands.forEach((band) => {
     ctx.fillStyle = PDF_BAND_COLORS[band.type] || "rgba(148, 163, 184, 0.14)";
-    const startX = getX(band.start);
-    const endX = getX(band.end);
-    ctx.fillRect(startX, chartTop, Math.max(2, endX - startX), chartHeight);
+    const span = getSpan(band.start, band.end);
+    ctx.fillRect(span.x, chartTop, span.width, chartHeight);
   });
 
   ctx.strokeStyle = "#d9e2ec";
   ctx.lineWidth = 1;
+  ctx.textBaseline = "middle";
   for (let scoreIndex = 0; scoreIndex <= yMax; scoreIndex += 1) {
     const y = getY(scoreIndex);
     ctx.beginPath();
@@ -499,8 +520,9 @@ function drawReportTimelineImage({ report, teamAName, teamBName, scoreA, scoreB 
 
     ctx.fillStyle = "#6b7e74";
     ctx.font = "18px Helvetica";
-    ctx.fillText(String(scoreIndex), chartLeft - 34, y + 5);
+    ctx.fillText(String(scoreIndex), chartLeft - 34, y);
   }
+  ctx.textBaseline = "alphabetic";
 
   ticks.forEach((tick) => {
     const x = getX(tick.value);
@@ -519,11 +541,44 @@ function drawReportTimelineImage({ report, teamAName, teamBName, scoreA, scoreB 
   ctx.lineTo(chartRight, chartBottom);
   ctx.stroke();
 
+  const timeCap = timeline.timeCap;
+  const timeCapX = timeCap ? getX(timeCap.time) : null;
+  if (timeCap) {
+    ctx.strokeStyle = PDF_TIME_CAP_LINE;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(timeCapX, chartTop);
+    ctx.lineTo(timeCapX, chartBottom);
+    ctx.stroke();
+  }
+
+  scoringPoints.forEach((point) => {
+    const x = getX(point.time);
+    const y = getY(point.score);
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, chartBottom);
+    ctx.stroke();
+  });
+
+  // White ring behind each score dot, under the score lines: it clears the
+  // drop line, grid and break shading around the dot, while the score lines
+  // run straight into it.
+  ctx.fillStyle = "#ffffff";
+  scoringPoints.forEach((point) => {
+    ctx.beginPath();
+    ctx.arc(getX(point.time), getY(point.score), PDF_DOT_RADIUS + PDF_DOT_RING_WIDTH, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
   const drawLine = (points, color) => {
     if (!points.length) return;
     const sorted = [...points].sort((a, b) => a.time - b.time);
     ctx.strokeStyle = color;
     ctx.lineWidth = 5;
+    ctx.lineJoin = "round";
     ctx.beginPath();
     ctx.moveTo(getX(sorted[0].time), getY(sorted[0].score));
     for (let index = 1; index < sorted.length; index += 1) {
@@ -536,30 +591,25 @@ function drawReportTimelineImage({ report, teamAName, teamBName, scoreA, scoreB 
   drawLine(seriesB, PDF_SERIES_COLORS.teamB);
 
   scoringPoints.forEach((point) => {
-    const x = getX(point.time);
-    const y = getY(point.score);
-    ctx.strokeStyle = "#cbd5e1";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x, chartBottom);
-    ctx.stroke();
-
     ctx.fillStyle = PDF_SERIES_COLORS[point.team] || "#64748b";
     ctx.beginPath();
-    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.arc(getX(point.time), getY(point.score), PDF_DOT_RADIUS, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.stroke();
   });
 
   if (possessionSegments.length) {
     ctx.fillStyle = "#f8fafc";
     ctx.fillRect(chartLeft, possessionBandTop, chartWidth, possessionBandHeight);
-    possessionSegments.forEach((segment) => {
-      const startX = getX(segment.start);
-      const endX = getX(segment.end);
+    // Every segment at its true width, with no minimum, so the strip is an
+    // exact record of possession. Each reaches PDF_SEAM_OVERLAP px under the
+    // next, which is drawn on top from its true start, so edges falling
+    // between pixels leave no pale seams.
+    possessionSegments.forEach((segment, index) => {
+      const x = Math.min(Math.max(getX(segment.start), chartLeft), chartRight);
+      const end = Math.min(Math.max(getX(segment.end), chartLeft), chartRight);
+      const isLast = index === possessionSegments.length - 1;
+      const segWidth = isLast ? end - x : Math.min(end - x + PDF_SEAM_OVERLAP, chartRight - x);
+      if (!(segWidth > 0)) return;
       ctx.fillStyle =
         segment.team === "teamA"
           ? PDF_SERIES_COLORS.teamA
@@ -568,12 +618,21 @@ function drawReportTimelineImage({ report, teamAName, teamBName, scoreA, scoreB 
             : segment.team === "band"
               ? "#94a3b8"
               : "#e2e8f0";
-      ctx.fillRect(startX, possessionBandTop, Math.max(2, endX - startX), possessionBandHeight);
+      ctx.fillRect(x, possessionBandTop, segWidth, possessionBandHeight);
     });
   }
 
+  // A short tick mark under the possession strip at every minute label, with
+  // the label below it.
   ticks.forEach((tick) => {
     const x = getX(tick.value);
+    ctx.strokeStyle = "#8ea49a";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x, possessionBandBottom);
+    ctx.lineTo(x, possessionBandBottom + PDF_TIME_TICK_LENGTH);
+    ctx.stroke();
+
     ctx.fillStyle = "#8ea49a";
     ctx.font = "18px Helvetica";
     ctx.textAlign = "center";
@@ -581,10 +640,68 @@ function drawReportTimelineImage({ report, teamAName, teamBName, scoreA, scoreB 
   });
   ctx.textAlign = "left";
 
+  // The time cap label sits at the top of its line, or halfway down when the
+  // top is crowded by a score line or a score dot.
+  if (timeCap) {
+    const text = "Time cap";
+    ctx.font = "bold 18px Helvetica";
+    const halfWidth = ctx.measureText(text).width / 2;
+    const halfHeight = 9;
+    const lineYAt = (series, time) => {
+      if (!series.length) return getY(0);
+      let previous = series[0];
+      if (time <= previous.time) return getY(previous.score);
+      for (const point of series) {
+        if (point.time >= time) {
+          const span = point.time - previous.time;
+          const ratio = span > 0 ? (time - previous.time) / span : 1;
+          return getY(previous.score + (point.score - previous.score) * ratio);
+        }
+        previous = point;
+      }
+      return getY(previous.score);
+    };
+    const sortedA = [...seriesA].sort((a, b) => a.time - b.time);
+    const sortedB = [...seriesB].sort((a, b) => a.time - b.time);
+    const fitsAt = (centreY) => {
+      const top = centreY - halfHeight - 4;
+      const bottom = centreY + halfHeight + 4;
+      const left = timeCapX - halfWidth - 4;
+      const right = timeCapX + halfWidth + 4;
+      for (let px = left; px <= right; px += 4) {
+        const time = minTime + ((px - chartLeft) / chartWidth) * timeRange;
+        for (const series of [sortedA, sortedB]) {
+          const y = lineYAt(series, time);
+          if (y >= top - 2.5 && y <= bottom + 2.5) return false;
+        }
+      }
+      const reach = PDF_DOT_RADIUS + PDF_DOT_RING_WIDTH;
+      return !scoringPoints.some((point) => {
+        const cx = getX(point.time);
+        const cy = getY(point.score);
+        return cx + reach >= left && cx - reach <= right && cy + reach >= top && cy - reach <= bottom;
+      });
+    };
+    const topY = chartTop + halfHeight + 6;
+    const labelY = fitsAt(topY) ? topY : chartTop + chartHeight / 2;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 6;
+    ctx.strokeText(text, timeCapX, labelY);
+    ctx.fillStyle = PDF_TIME_CAP_INK;
+    ctx.fillText(text, timeCapX, labelY);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+  }
+
   ctx.fillStyle = "#e7f6ed";
   ctx.font = "bold 18px Helvetica";
   ctx.fillText("Score", 28, chartTop + 6);
-  ctx.fillText("Minutes", width / 2 - 30, height - 56);
+  ctx.textAlign = "center";
+  ctx.fillText("Minutes", chartLeft + chartWidth / 2, height - 56);
+  ctx.textAlign = "left";
 
   const legendItems = [
     { label: labelA, color: PDF_SERIES_COLORS.teamA },

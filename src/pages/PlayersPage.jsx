@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getEventPlayerMatchStats } from "../services/teamService";
 import { getEventsList } from "../services/leagueService";
-import { Card, Panel, SectionHeader, SectionShell, Field, Input, Select } from "../components/ui/primitives";
+import { Panel, SectionShell, Field, Input, Select } from "../components/ui/primitives";
 import { playerPath, teamPath } from "../utils/links";
 import { EVENT_SECTIONS, getEventSectionPath } from "./eventWorkspaces";
 import { useEventSectionRoute, useLegacyEventSectionRedirect } from "./eventRouteHooks";
+import { useFullHeadingsIfTheyFit } from "../hooks/useFullHeadingsIfTheyFit";
 
 function getStatRowTeam(row) {
   const statTeam = row.team || null;
@@ -312,8 +313,8 @@ function PlayersPage({ eventId }) {
 
   // The Callahans column only appears when someone in the list has one.
   const showCallahans = sortedRows.some((row) => (row.callahans || 0) > 0);
-  // `full` once the table is wide enough (container query on the table's
-  // panel, so it follows a split-screen window too), else `label`.
+  // `full` when the table fits with full words (useFullHeadingsIfTheyFit),
+  // else `label`.
   const statHeaders = [
     { key: "total", label: "Tot", full: "Total" },
     { key: "goals", label: "G", full: "Goals" },
@@ -323,7 +324,9 @@ function PlayersPage({ eventId }) {
     { key: "games", label: "GP", full: "Games" },
     ...(showCallahans ? [{ key: "callahans", label: "Cal", full: "Callahans" }] : []),
   ];
-  const tableColumnCount = statHeaders.length + 3;
+  const [tablePanelRef, showFullHeadings] = useFullHeadingsIfTheyFit(
+    `${eventFilter}|${sortedRows.length}|${showCallahans}`,
+  );
 
   const handleEventFilterChange = (nextFilter) => {
     const next = events.find((event) => event.id === nextFilter);
@@ -334,151 +337,145 @@ function PlayersPage({ eventId }) {
     setSearchParams(nextFilter ? { divisionId: nextFilter } : {});
   };
 
+  const selectedEvent = events.find((event) => event.id === eventFilter) || null;
+  const emptyMessage = eventsError
+    ? eventsError
+    : !eventFilter
+      ? "Select an event to load player stats."
+      : loading
+        ? "Loading player stats..."
+        : sortedRows.length === 0
+          ? search.trim()
+            ? "No players match your search."
+            : "No statistics have been recorded yet."
+          : null;
+
   return (
-    <div className="min-h-screen bg-light-page text-[var(--sc-surface-light-ink)]">
-      <SectionShell as="header" className="py-4 sm:py-5">
-        <Card variant="light" className="space-y-3 p-4 shadow-xl shadow-[rgba(8,25,21,0.08)] sm:space-y-5 sm:p-8">
-          <SectionHeader
-            title="Player impact across recorded matches"
-            description="Aggregated stats across matches, filtered by event and division."
-          />
-        </Card>
-      </SectionShell>
+    <div className="min-h-screen pb-16 text-ink">
+      {/* Laid out like the event's Rosters page (no cards; a header, then a
+          section below a rule). Written with the sc-theme-* classes, so it
+          follows the theme (dark by default; see theme.css). */}
+      <div className="sc-theme-band">
+        <SectionShell as="header" className="w-full max-w-none space-y-3 py-4 sm:py-5">
+          <div className="space-y-1">
+            <h1 className="text-h2 font-semibold text-ink">
+              {selectedEvent?.name ? `${selectedEvent.name} – Player statistics` : "Player statistics"}
+            </h1>
+            {selectedEvent ? (
+              <p className="text-sm text-ink-muted">
+                {[
+                  selectedEvent.location,
+                  `${selectedEvent.start_date ? new Date(selectedEvent.start_date).toLocaleDateString("en-GB") : "Start TBD"} to ${
+                    selectedEvent.end_date ? new Date(selectedEvent.end_date).toLocaleDateString("en-GB") : "End TBD"
+                  }`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            ) : null}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,16rem)_minmax(0,14rem)_minmax(0,16rem)] sm:items-end">
+            <Field label="Event" htmlFor="player-event-filter">
+              <Select
+                id="player-event-filter"
+                value={eventFilter}
+                onChange={(e) => handleEventFilterChange(e.target.value)}
+                disabled={eventsLoading || events.length === 0}
+              >
+                <option value="">
+                  {eventsLoading
+                    ? "Loading events..."
+                    : events.length
+                      ? "Select an event..."
+                      : "No events available"}
+                </option>
+                {events.map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Division" htmlFor="player-division-filter">
+              <Select
+                id="player-division-filter"
+                value={divisionFilter}
+                onChange={(e) => handleDivisionFilterChange(e.target.value)}
+                disabled={divisionOptions.length === 0}
+              >
+                <option value="">All divisions</option>
+                {divisionOptions.map((division) => (
+                  <option key={division.id} value={division.id}>
+                    {division.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Search player" htmlFor="player-search">
+              <Input
+                id="player-search"
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Name or jersey"
+              />
+            </Field>
+          </div>
+          {error ? <div className="sc-alert is-error">{error}</div> : null}
+        </SectionShell>
+      </div>
 
-      <SectionShell as="main" className="space-y-4 sm:space-y-6">
-        {error && (
-          <Card variant="light" className="border border-rose-400/40 bg-rose-950/10 p-4 text-sm font-semibold text-rose-700 shadow-md shadow-[rgba(8,25,21,0.06)]">
-            {error}
-          </Card>
-        )}
-
-        <Card variant="light" className="space-y-4 p-4 shadow-md shadow-[rgba(8,25,21,0.06)] sm:p-6">
-          <SectionHeader
-            title="Player stats"
-            description={
-              eventFilter
-                ? `Showing ${sortedRows.length} of ${aggregatedRows.length} players for the selected event${
-                    divisionFilter ? " and division." : "."
+      <SectionShell as="main" className="w-full max-w-none space-y-6 py-4 sm:py-6">
+        <section className="min-w-0 space-y-4">
+          <div className="space-y-1 sc-theme-rule pb-3">
+            <h2 className="text-2xl font-semibold text-ink">Player stats</h2>
+            <p className="text-sm text-ink-muted">
+              {eventFilter
+                ? `Showing ${sortedRows.length} of ${aggregatedRows.length} players${
+                    divisionFilter ? " in the selected division" : ""
                   }`
-                : "Select an event to load player stats."
-            }
-            action={
-              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end sm:justify-end">
-                <Field className="w-full max-w-sm" label="Search player" htmlFor="player-search">
-                  <Input
-                    id="player-search"
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Name or jersey"
-                  />
-                </Field>
-                <Field className="w-full max-w-xs" label="Event" htmlFor="player-event-filter">
-                  <Select
-                    id="player-event-filter"
-                    value={eventFilter}
-                    onChange={(e) => handleEventFilterChange(e.target.value)}
-                    disabled={eventsLoading || events.length === 0}
-                  >
-                    <option value="">
-                      {eventsLoading
-                        ? "Loading events..."
-                        : events.length
-                          ? "Select an event..."
-                          : "No events available"}
-                    </option>
-                    {events.map((event) => (
-                      <option key={event.id} value={event.id}>
-                        {event.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                {divisionOptions.length > 0 ? (
-                  <Field className="w-full max-w-xs" label="Division" htmlFor="player-division-filter">
-                    <Select
-                      id="player-division-filter"
-                      value={divisionFilter}
-                      onChange={(e) => handleDivisionFilterChange(e.target.value)}
-                    >
-                      <option value="">All divisions</option>
-                      {divisionOptions.map((division) => (
-                        <option key={division.id} value={division.id}>
-                          {division.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                ) : null}
-              </div>
-            }
-          />
+                : "Select an event to load player stats"}
+            </p>
+          </div>
 
-          <Panel variant="light" className="@container overflow-x-auto p-0 shadow-sm shadow-[rgba(8,25,21,0.04)]">
-            <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm text-[var(--sc-surface-light-ink)]/85">
-              <thead className="bg-white/80 text-left text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/60">
-                <tr>
-                  <th className="px-3 py-1.5 text-center" aria-label="Rank">#</th>
-                  <th className="px-3 py-1.5">Player</th>
-                  <th className="px-3 py-1.5">Team</th>
-                  {statHeaders.map((col) => (
-                    <th key={col.key} className="whitespace-nowrap px-2 py-1.5 text-center sm:px-3">
-                      <button
-                        type="button"
-                        onClick={() => toggleSort(col.key)}
-                        title={col.full}
-                        className={`inline-flex items-center justify-center gap-px text-xs font-semibold uppercase transition ${
-                          sortBy === col.key
-                            ? "text-[var(--sc-surface-light-ink)]"
-                            : "text-[var(--sc-surface-light-ink)]/60 hover:text-[var(--sc-surface-light-ink)]"
-                        }`}
-                      >
-                        <span className="@4xl:hidden">{col.label}</span>
-                        <span className="hidden @4xl:inline">{col.full}</span>
-                        {sortBy === col.key && (
-                          <span className="text-xs leading-none">
-                            {sortDirection === "asc" ? "↑" : "↓"}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--sc-surface-light-border)]/70">
-                {eventsError ? (
+          {emptyMessage ? (
+            <p className="py-6 text-center text-sm text-ink-muted">{emptyMessage}</p>
+          ) : (
+            <Panel ref={tablePanelRef} className="overflow-x-auto p-0">
+              <table className="min-w-full divide-y divide-border text-left text-sm text-ink">
+                <thead className="text-xs font-semibold uppercase tracking-wide">
                   <tr>
-                    <td colSpan={tableColumnCount} className="px-3 py-4 text-center text-sm text-[var(--sc-surface-light-ink)]/60">
-                      {eventsError}
-                    </td>
+                    <th className="py-2 pl-3 pr-1.5 text-center" aria-label="Rank">#</th>
+                    <th className="py-2 pl-1.5 pr-3">Player</th>
+                    <th className="px-3 py-2">Team</th>
+                    {statHeaders.map((col) => (
+                      <th key={col.key} className="whitespace-nowrap px-2 py-2 text-center sm:px-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleSort(col.key)}
+                          title={col.full}
+                          className={`inline-flex items-center justify-center gap-px text-xs font-semibold uppercase transition ${
+                            sortBy === col.key ? "text-ink underline underline-offset-4" : "text-ink-muted hover:text-ink"
+                          }`}
+                        >
+                          <span>{showFullHeadings ? col.full : col.label}</span>
+                          {sortBy === col.key && (
+                            <span className="text-xs leading-none">
+                              {sortDirection === "asc" ? "↑" : "↓"}
+                            </span>
+                          )}
+                        </button>
+                      </th>
+                    ))}
                   </tr>
-                ) : !eventFilter ? (
-                  <tr>
-                    <td colSpan={tableColumnCount} className="px-3 py-4 text-center text-sm text-[var(--sc-surface-light-ink)]/60">
-                      Select an event to load player stats.
-                    </td>
-                  </tr>
-                ) : loading ? (
-                  <tr>
-                    <td colSpan={tableColumnCount} className="px-3 py-4 text-center text-sm text-[var(--sc-surface-light-ink)]/60">
-                      Loading player stats...
-                    </td>
-                  </tr>
-                ) : sortedRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={tableColumnCount} className="px-3 py-4 text-center text-sm text-[var(--sc-surface-light-ink)]/60">
-                      {search.trim()
-                        ? "No players match your search."
-                        : "No statistics have been recorded yet."}
-                    </td>
-                  </tr>
-                ) : (
-                  sortedRows.map((row, index) => (
-                    <tr key={row.playerId} className="hover:bg-white/60">
-                      <td className="px-3 py-1.5 text-center text-xs font-semibold text-[var(--sc-surface-light-ink)]/50">
+                </thead>
+                <tbody className="divide-y divide-divider">
+                  {sortedRows.map((row, index) => (
+                    <tr key={row.playerId} className="transition-colors sc-theme-row">
+                      <td className="py-1.5 pl-3 pr-1.5 text-center text-xs font-semibold text-ink">
                         {index + 1}
                       </td>
-                      <td className="px-3 py-1.5">
+                      <td className="py-1.5 pl-1.5 pr-3">
                         <div className="flex items-center gap-2">
                           <Link
                             to={
@@ -486,14 +483,12 @@ function PlayersPage({ eventId }) {
                                 ? playerPath(row.playerId, { eventId: eventFilter })
                                 : playerPath(row.playerId)
                             }
-                            className="font-semibold text-(--sc-surface-light-ink)! underline decoration-dotted decoration-(--sc-surface-light-border) underline-offset-4 transition hover:text-(--sc-surface-light-ink)/70!"
+                            className="font-semibold sc-theme-link"
                           >
                             {row.playerName}
                           </Link>
                           {row.jerseyNumber != null && (
-                            <span className="shrink-0 text-xs font-semibold text-(--sc-surface-light-ink)/40">
-                              #{row.jerseyNumber}
-                            </span>
+                            <span className="shrink-0 text-xs text-ink">#{row.jerseyNumber}</span>
                           )}
                         </div>
                       </td>
@@ -502,52 +497,55 @@ function PlayersPage({ eventId }) {
                           row.teamId ? (
                             <Link
                               to={teamPath(row.teamId, { eventId: eventFilter || null })}
-                              className="text-(--sc-surface-light-ink)/70! underline decoration-dotted decoration-(--sc-surface-light-border) underline-offset-4 transition hover:text-(--sc-surface-light-ink)!"
+                              className="sc-theme-link"
                             >
                               {row.teamName}
                             </Link>
                           ) : (
-                            <span className="text-[var(--sc-surface-light-ink)]/70">{row.teamName}</span>
+                            <span className="text-ink">{row.teamName}</span>
                           )
                         ) : (
-                          <span className="text-[var(--sc-surface-light-ink)]/40">—</span>
+                          <span className="text-ink-muted">—</span>
                         )}
                       </td>
-                      <StatCell value={row.total} strong />
-                      <StatCell value={row.goals} />
-                      <StatCell value={row.assists} />
-                      <StatCell value={row.blocks} />
-                      <StatCell value={row.turnovers} />
-                      <StatCell value={row.games} />
-                      {showCallahans ? <StatCell value={row.callahans} circled /> : null}
+                      <StatCell value={row.total} strong active={sortBy === "total"} />
+                      <StatCell value={row.goals} active={sortBy === "goals"} />
+                      <StatCell value={row.assists} active={sortBy === "assists"} />
+                      <StatCell value={row.blocks} active={sortBy === "blocks"} />
+                      <StatCell value={row.turnovers} active={sortBy === "turnovers"} />
+                      <StatCell value={row.games} active={sortBy === "games"} />
+                      {showCallahans ? (
+                        <StatCell value={row.callahans} circled active={sortBy === "callahans"} />
+                      ) : null}
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </Panel>
-        </Card>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+          )}
+        </section>
       </SectionShell>
     </div>
   );
 }
 
 // Centred under its heading. `circled`: a non-zero value gets a circle
-// outline (the Callahans column, as on the player page).
-function StatCell({ value, strong = false, circled = false }) {
+// outline (the Callahans column, as on the player page). `active`: the column
+// the table is sorted by, tinted.
+function StatCell({ value, strong = false, circled = false, active = false }) {
   const shown = value ?? 0;
   return (
     <td
-      className={`whitespace-nowrap px-2 py-1.5 text-center tabular-nums sm:px-3 ${
-        strong ? "font-semibold text-[var(--sc-surface-light-ink)]" : "text-[var(--sc-surface-light-ink)]/85"
-      }`}
+      className={`whitespace-nowrap px-2 py-1.5 text-center tabular-nums text-ink sm:px-3 ${
+        strong ? "font-semibold" : ""
+      } ${active ? "sc-theme-cell-active" : ""}`}
     >
       {circled && shown ? (
         <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-current px-1 leading-none">
           {shown}
         </span>
       ) : circled ? (
-        <span className="text-[var(--sc-surface-light-ink)]/40">–</span>
+        <span className="text-ink-muted">–</span>
       ) : (
         shown
       )}

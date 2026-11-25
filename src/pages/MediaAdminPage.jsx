@@ -8,6 +8,7 @@ import { getTeamsLinkedToEvent, updateTeamAttributes } from "../services/teamSer
 import { Card, SectionHeader, SectionShell, Field, Input, Select, Textarea } from "../components/ui/primitives";
 import usePersistentState from "../hooks/usePersistentState";
 import { userHasAnyPermission } from "../utils/accessControl";
+import { describeMatchOption, isLongPastEvent } from "../utils/staffPickers";
 
 const MEDIA_SELECTED_EVENT_KEY = "stallcount:media-admin:selected-event:v1";
 const MEDIA_FORM_KEY = "stallcount:media-admin:form:v1";
@@ -137,11 +138,14 @@ export default function MediaAdminPage() {
     return scopedEventIds;
   }, [roleCatalog, roles, session?.user]);
 
+  // Events over for more than 30 days are not offered (the same window as
+  // Match corrections, staffPickers.js); live and upcoming events always are.
   const availableEvents = useMemo(() => {
+    const recent = events.filter((event) => !isLongPastEvent(event));
     if (allowedEventIds === null) {
-      return events;
+      return recent;
     }
-    return events.filter((event) => allowedEventIds.has(String(event.id)));
+    return recent.filter((event) => allowedEventIds.has(String(event.id)));
   }, [allowedEventIds, events]);
 
   const selectedEvent = useMemo(
@@ -304,16 +308,10 @@ export default function MediaAdminPage() {
 
   const handleSelectMatch = (matchId) => {
     const match = matches.find((m) => m.id === matchId) || null;
-    setForm(() => {
-      const baseForm = createEmptyForm();
-      if (!match) {
-        return { ...baseForm, matchId };
-      }
-      return {
-        ...baseForm,
-        matchId: match.id,
-      };
-    });
+    // Load the match's saved stream and replays into the form, so choosing a
+    // match (or the wrong one by accident) shows what is already there instead
+    // of an empty form that would overwrite it on save.
+    setForm(() => (match ? syncFormWithMatch(createEmptyForm(), match) : { ...createEmptyForm(), matchId }));
     setResultMessage("");
     setResultError("");
   };
@@ -456,7 +454,7 @@ export default function MediaAdminPage() {
 
   return (
     <div className="pb-16 text-ink">
-      <SectionShell as="header" className="py-4">
+      <SectionShell as="header" className="w-full max-w-none py-4">
         <Card className="space-y-4 overflow-hidden p-5 sm:p-6">
           <SectionHeader
             title="Match media control"
@@ -490,7 +488,7 @@ export default function MediaAdminPage() {
         </Card>
       </SectionShell>
 
-      <SectionShell as="main" className="space-y-4 py-4">
+      <SectionShell as="main" className="w-full max-w-none space-y-4 py-4">
         <div className="grid gap-4 xl:grid-cols-12">
           <Card
             as="section"
@@ -542,7 +540,7 @@ export default function MediaAdminPage() {
                   <option value="">{matchesLoading ? "Loading matches..." : "Choose a match"}</option>
                   {matches.map((match) => (
                     <option key={match.id} value={match.id}>
-                      {formatMatchLabel(match)}
+                      {describeMatchOption(match)}
                     </option>
                   ))}
                 </Select>
