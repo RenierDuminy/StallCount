@@ -359,13 +359,6 @@ export default function TournamentDirectorPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setWorkspace("data")}
-                  className={`sc-button ${workspace === "data" ? "bg-light-primary text-white" : ""}`}
-                >
-                  Data studio
-                </button>
-                <button
-                  type="button"
                   onClick={() => setWorkspace("users")}
                   className={`sc-button ${workspace === "users" ? "bg-light-primary text-white" : ""}`}
                 >
@@ -386,15 +379,18 @@ export default function TournamentDirectorPage() {
                     Refresh data
                   </button>
                 ) : null}
+                {/* Raw table access, rarely needed: greyed and last so it does not
+                    read as an everyday director tool. */}
+                <button
+                  type="button"
+                  onClick={() => setWorkspace("data")}
+                  className={`sc-button ${workspace === "data" ? "bg-light-primary text-white" : "opacity-60 grayscale hover:opacity-90"}`}
+                >
+                  Data studio
+                </button>
               </div>
             }
           />
-          <div className="flex flex-wrap gap-2">
-            <Chip variant="tag">Schema synced</Chip>
-            <Chip variant="ghost" className="text-[var(--sc-surface-light-ink)]">
-              Live Supabase access
-            </Chip>
-          </div>
         </Card>
       </SectionShell>
 

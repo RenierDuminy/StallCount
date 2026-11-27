@@ -1,1 +1,1 @@
-export { default } from "./scrimmage/ScrimmageView";
+export { default } from "./scrimmage/ScrimmageConsolePage";

@@ -2,6 +2,7 @@ import { supabase } from "./supabaseClient";
 import { getCachedQuery, invalidateCachedQueries } from "../utils/queryCache";
 import { selectAllRows, selectAllRowsForIds } from "./fetchAllRows";
 import { CONCLUDED_STATUSES, IN_PROGRESS_STATUSES } from "../constants/statusCodes";
+import { SPIRIT_DIMENSIONS, spiritRowTotal } from "../utils/spirit";
 
 const TOURNAMENT_OVERVIEW_CACHE_TTL_MS = 30 * 1000;
 
@@ -38,32 +39,17 @@ function getDisplayTeamName(team) {
   return team.short_name || team.name || "TBD";
 }
 
-function coerceNumber(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
+// Form values keyed by the spirit_scores column, as the match edit form reads
+// them (see SPIRIT_DIMENSIONS for which column holds which WFDF category).
 function getSpiritCategoryValues(row) {
   if (!row) return null;
-
-  return {
-    rulesKnowledge: row.rules_knowledge ?? "",
-    foulsContact: row.fouls_contact ?? "",
-    positiveAttitude: row.positive_attitude ?? "",
-    communication: row.communication ?? "",
-    selfControl: row.self_control ?? "",
-  };
+  return Object.fromEntries(SPIRIT_DIMENSIONS.map(({ key }) => [key, row[key] ?? ""]));
 }
 
+// The WFDF total (each category clamped to 0-4), the same sum every other
+// page shows.
 function getSpiritRowTotal(row) {
-  if (!row) return null;
-
-  return (
-    coerceNumber(row.rules_knowledge) +
-    coerceNumber(row.fouls_contact) +
-    coerceNumber(row.positive_attitude) +
-    coerceNumber(row.communication) +
-    coerceNumber(row.self_control)
-  );
+  return spiritRowTotal(row);
 }
 
 function buildSpiritLookup(rows) {

@@ -18,6 +18,7 @@ import { usePageMeta, withSiteName } from "../utils/pageMeta";
 import { getForfeitWinnerSide, isForfeitMatch } from "../utils/standings";
 import { MATCH_STATUS, isInProgressStatus, isPendingStatus } from "../constants/statusCodes";
 import { useFullHeadingsIfTheyFit } from "../hooks/useFullHeadingsIfTheyFit";
+import { SPIRIT_DIMENSIONS } from "../utils/spirit";
 
 const TABS = [
   { id: "games", label: "Games" },
@@ -886,7 +887,7 @@ function SpiritTab({ received, given, teamId, matchesById }) {
         <div className="w-full min-w-0 @min-[92rem]:flex-1">
           <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">Spirit received</h3>
           <p className="text-sm text-[var(--sc-surface-light-ink)]/70">
-            Scores from opponents about this team&apos;s spirit performance.
+            Spirit scores this team received from its opponents, 0 to 4 per category.
           </p>
           <SpiritTable
             variant="received"
@@ -899,7 +900,7 @@ function SpiritTab({ received, given, teamId, matchesById }) {
         <div className="w-full min-w-0 @min-[92rem]:flex-1">
           <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">Spirit given</h3>
           <p className="text-sm text-[var(--sc-surface-light-ink)]/70">
-            Scores this team submitted for their opponents.
+            Spirit scores this team gave its opponents.
           </p>
           <SpiritTable
             variant="given"
@@ -923,13 +924,9 @@ function sortByMatchNewestFirst(entries) {
   return [...entries].sort((a, b) => time(b) - time(a));
 }
 
-const SPIRIT_COLUMNS = [
-  { key: "rules_knowledge", label: "Rules" },
-  { key: "fouls_contact", label: "Contact" },
-  { key: "self_control", label: "Fair" },
-  { key: "positive_attitude", label: "Attitude" },
-  { key: "communication", label: "Communication" },
-];
+// The shared WFDF categories: same order and headings as the event spirit page,
+// with the full category name on hover.
+const SPIRIT_COLUMNS = SPIRIT_DIMENSIONS;
 
 // Styled like the games table: the same panel, header, row rules and score
 // cell, so the two tabs read as one page.
@@ -951,8 +948,8 @@ function SpiritTable({ entries, emptyLabel, teamId, matchesById, variant = "rece
             <th className={`${numberCell} text-center`}>Score</th>
             <th className={numberCell}>Total</th>
             {SPIRIT_COLUMNS.map((col) => (
-              <th key={col.key} className={numberCell}>
-                {col.label}
+              <th key={col.key} className={numberCell} title={col.label}>
+                {col.short}
               </th>
             ))}
           </tr>

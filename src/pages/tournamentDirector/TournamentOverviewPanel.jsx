@@ -7,6 +7,7 @@ import { getEventHierarchy } from "../../services/leagueService";
 import { getTournamentOverview, invalidateTournamentOverview } from "../../services/tournamentDirectorService";
 import { createMatch, deleteMatch, updateMatch } from "../../services/matchService";
 import { saveTournamentDirectorSpiritScores } from "../../services/spiritScoreService";
+import { SPIRIT_DIMENSIONS, SPIRIT_MAX_SCORE } from "../../utils/spirit";
 import { getEventLinkedUsers } from "../../services/userService";
 import { TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS } from "../../utils/accessControl";
 import {
@@ -23,29 +24,17 @@ const LIGHT_INPUT_CLASS =
 // "Initialized" row was capitalised in the DB; it has since been renamed to
 // lowercase "initialized" to match every other code.)
 const MATCH_STATUS_OPTIONS = ALL_STATUS_CODES;
-const SPIRIT_CATEGORIES = [
-  { key: "rulesKnowledge", label: "Rules knowledge" },
-  { key: "foulsContact", label: "Fouls and contact" },
-  { key: "positiveAttitude", label: "Positive attitude" },
-  { key: "communication", label: "Communication" },
-  { key: "selfControl", label: "Self-control" },
-];
+// Keyed by the spirit_scores column, in WFDF order, with the shared wording.
+// This editor used to call `self_control` "Self-control" and list it last, so
+// a director changing "self-control" was changing the Fair-mindedness score
+// every other page shows. Never relabel a category from its column name.
+const SPIRIT_CATEGORIES = SPIRIT_DIMENSIONS;
+
+const emptySpiritScores = () => Object.fromEntries(SPIRIT_CATEGORIES.map(({ key }) => [key, ""]));
 
 const EMPTY_SPIRIT_SCORES = {
-  teamA: {
-    rulesKnowledge: "",
-    foulsContact: "",
-    positiveAttitude: "",
-    communication: "",
-    selfControl: "",
-  },
-  teamB: {
-    rulesKnowledge: "",
-    foulsContact: "",
-    positiveAttitude: "",
-    communication: "",
-    selfControl: "",
-  },
+  teamA: emptySpiritScores(),
+  teamB: emptySpiritScores(),
 };
 
 const EMPTY_MATCH_EDIT_FORM = {
@@ -419,8 +408,8 @@ function normalizeSpiritCategoryScores(scores, teamLabel) {
     }
 
     const score = Number(value);
-    if (!Number.isFinite(score) || score < 0 || score > 5) {
-      throw new Error(`${teamLabel} ${category.label.toLowerCase()} must be a number from 0 to 5.`);
+    if (!Number.isFinite(score) || score < 0 || score > SPIRIT_MAX_SCORE) {
+      throw new Error(`${teamLabel}: ${category.label} must be a number from 0 to ${SPIRIT_MAX_SCORE}.`);
     }
 
     return { ...acc, [category.key]: Math.round(score) };
@@ -1420,7 +1409,7 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
             </button>
           }
         />
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr),auto]">
+        <div className="grid gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">Event</p>
             <select
@@ -1438,14 +1427,6 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                 </option>
               ))}
             </select>
-          </div>
-          <div className="flex flex-wrap items-end gap-2">
-            <Chip variant="ghost" className="text-xs text-[var(--sc-surface-light-ink)]/80">
-              {selectedEvent?.type || "Event"}
-            </Chip>
-            <Chip variant="ghost" className="text-xs text-[var(--sc-surface-light-ink)]/80">
-              {selectedEvent?.status || "Status unknown"}
-            </Chip>
           </div>
         </div>
         {selectedEvent ? (
@@ -1652,7 +1633,10 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                       </td>
                       <td className="whitespace-nowrap border-l border-[var(--sc-surface-light-border)]/60 px-2 py-1.5 text-[var(--sc-surface-light-ink)]">
                         {match.spiritScoreA !== null || match.spiritScoreB !== null ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-light-tint px-1.5 py-0.5 font-semibold tabular-nums">
+                          <span
+                            title={`Spirit received: ${match.displayTeamA} ${match.spiritScoreA ?? "-"}, ${match.displayTeamB} ${match.spiritScoreB ?? "-"}`}
+                            className="inline-flex items-center gap-1 rounded-full bg-light-tint px-1.5 py-0.5 font-semibold tabular-nums"
+                          >
                             <span>{match.spiritScoreA ?? "-"}</span>
                             <span className="text-xs text-[var(--sc-surface-light-ink)]/45">/</span>
                             <span>{match.spiritScoreB ?? "-"}</span>
@@ -2431,7 +2415,10 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
               </label>
             </div>
 
-            <div className="mt-3 overflow-hidden rounded-lg border border-[var(--sc-surface-light-border)] bg-white">
+            <p className="mt-3 text-sm text-[var(--sc-surface-light-ink)]/75">
+              Spirit scores each team received from its opponent, 0 to {SPIRIT_MAX_SCORE} per category.
+            </p>
+            <div className="mt-1 overflow-hidden rounded-lg border border-[var(--sc-surface-light-border)] bg-white">
               <table className="min-w-full divide-y divide-[var(--sc-surface-light-border)] text-sm">
                 <thead className="bg-light-tint">
                   <tr>
@@ -2457,12 +2444,12 @@ export default function TournamentOverviewPanel({ eventsList = [], eventsReady =
                           <input
                             type="number"
                             min="0"
-                            max="5"
+                            max={SPIRIT_MAX_SCORE}
                             step="1"
                             value={normalizedEditForm.spiritScores[teamKey][category.key]}
                             onChange={(event) => handleSpiritField(teamKey, category.key, event.target.value)}
                             className={`${LIGHT_INPUT_CLASS} w-16 px-2`}
-                            placeholder="0-5"
+                            placeholder={`0–${SPIRIT_MAX_SCORE}`}
                             aria-label={`${category.label} ${teamKey === "teamA" ? "Team A" : "Team B"}`}
                           />
                         </td>

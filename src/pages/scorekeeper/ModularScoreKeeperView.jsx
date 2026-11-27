@@ -30,7 +30,13 @@ import {
   MODULAR_SCOREKEEPER_MENU_PATH,
 } from "./scorekeeperConstants";
 
-export default function ModularScoreKeeperView({ format: formatKey }) {
+/**
+ * `scrimmage` (optional) runs this same console as the scrimmage console:
+ * `{ backend, afterMatchEnd, exitPath, renderSetupFields({ rules, setRules }),
+ * beforeSetupSubmit(), onOpenReport() }`. Its data stays on this device
+ * (src/pages/scrimmage/scrimmageBackend.js); everything else is shared.
+ */
+export default function ModularScoreKeeperView({ format: formatKey, scrimmage = null }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   // `?setup=1` (how the landing page links in) opens match setup immediately, so
@@ -41,7 +47,10 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
   // never mounts a second hook pair for the format it is not running — which is
   // what let the legacy consoles clobber each other's session and fetch
   // everything twice.
-  const data = useScoreKeeperData(formatKey);
+  const data = useScoreKeeperData(
+    formatKey,
+    scrimmage ? { backend: scrimmage.backend, afterMatchEnd: scrimmage.afterMatchEnd } : undefined,
+  );
   const actions = useScoreKeeperActions(data);
   const { format, capabilities } = data;
   const autoResumeRef = useRef(null);
@@ -154,6 +163,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
     loadMatches,
     handleResumeSession,
     handleDiscardResume,
+    setActiveMatch,
   } = data;
 
   const safeTeamAName = displayTeamA || "Team A";
@@ -335,6 +345,25 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
     setSearchParams,
     setSetupModalOpen,
   ]);
+
+  // Scrimmage: one event and one match, picked without asking, and the setup
+  // page opens on every visit (over a restored scrimmage, prefilled with its
+  // details), so they are seen and confirmed before play.
+  useEffect(() => {
+    if (!scrimmage) return;
+    if (!selectedEventId && events.length > 0) setSelectedEventId(events[0].id);
+  }, [scrimmage, selectedEventId, events, setSelectedEventId]);
+  useEffect(() => {
+    if (!scrimmage) return;
+    if (!selectedMatchId && matches.length > 0) setSelectedMatchId(matches[0].id);
+  }, [scrimmage, selectedMatchId, matches, setSelectedMatchId]);
+  const scrimmageSetupShownRef = useRef(false);
+  useEffect(() => {
+    if (!scrimmage || scrimmageSetupShownRef.current) return;
+    if (resumeBusy || (resumeCandidate && !resumeHandled)) return;
+    scrimmageSetupShownRef.current = true;
+    setSetupModalOpen(true);
+  }, [scrimmage, resumeBusy, resumeCandidate, resumeHandled, setSetupModalOpen]);
 
   const dedupedLogs = useMemo(() => {
     const seen = new Set();
@@ -822,6 +851,15 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
                     {kickoffLabel} - {venueName || "Venue TBD"} - {statusLabel}
                   </p>
                 </div>
+                <div className="flex items-center gap-2">
+                {scrimmage && (
+                  <Link
+                    to={scrimmage.exitPath || "/"}
+                    className="inline-flex h-9 items-center justify-center rounded-full border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
+                  >
+                    Exit
+                  </Link>
+                )}
                 <button
                   type="button"
                   onClick={() => setSetupModalOpen(true)}
@@ -844,6 +882,7 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
                     <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.03.03a2.16 2.16 0 0 1-3.05 3.05l-.03-.03a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.09 1.65V21a2.16 2.16 0 0 1-4.32 0v-.05a1.8 1.8 0 0 0-1.09-1.65 1.8 1.8 0 0 0-1.98.36l-.03.03a2.16 2.16 0 1 1-3.05-3.05l.03-.03A1.8 1.8 0 0 0 3.6 15a1.8 1.8 0 0 0-1.65-1.09H1.9a2.16 2.16 0 0 1 0-4.32h.05A1.8 1.8 0 0 0 3.6 8.5a1.8 1.8 0 0 0-.36-1.98l-.03-.03a2.16 2.16 0 1 1 3.05-3.05l.03.03a1.8 1.8 0 0 0 1.98.36h.01a1.8 1.8 0 0 0 1.08-1.65V2.16a2.16 2.16 0 0 1 4.32 0v.05a1.8 1.8 0 0 0 1.09 1.65 1.8 1.8 0 0 0 1.98-.36l.03-.03a2.16 2.16 0 1 1 3.05 3.05l-.03.03a1.8 1.8 0 0 0-.36 1.98v.01a1.8 1.8 0 0 0 1.65 1.08h.05a2.16 2.16 0 0 1 0 4.32h-.05A1.8 1.8 0 0 0 19.4 15Z" />
                   </svg>
                 </button>
+                </div>
               </div>
             </div>
 
@@ -1147,9 +1186,11 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
                   disabled={!canEndMatch}
                   className="sc-button-danger block w-full rounded-full px-4 py-3 text-center text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {capabilities.spiritScores
-                    ? "End match and proceed to spirit scores"
-                    : "End match"}
+                  {scrimmage
+                    ? "End scrimmage"
+                    : capabilities.spiritScores
+                      ? "End match and proceed to spirit scores"
+                      : "End match"}
                 </button>
                 {pendingEntries.length > 0 && (
                   <PendingSyncPanel pendingEntries={pendingEntries} online={online} />
@@ -1254,10 +1295,10 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
               Match setup
             </button>
             <Link
-              to={MODULAR_SCOREKEEPER_MENU_PATH}
+              to={scrimmage ? scrimmage.exitPath || "/" : MODULAR_SCOREKEEPER_MENU_PATH}
               className="inline-flex h-12 w-full items-center justify-center rounded-full border border-[#0f5132]/40 px-4 text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
             >
-              Back to score keeper menu
+              {scrimmage ? "Exit" : "Back to score keeper menu"}
             </Link>
       </section>
       )}
@@ -1274,23 +1315,43 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
         }}
         setup={{
           open: setupModalOpen,
-          title: format.setupModalTitle,
+          title: scrimmage ? "Scrimmage setup" : format.setupModalTitle,
           format: format.key,
           onClose: () => setSetupModalOpen(false),
           // The menu is the landing page now, so "back" is a navigation, not a
           // search-param flip onto a second in-page menu.
-          onBack: () => {
-            setSetupModalOpen(false);
-            navigate(MODULAR_SCOREKEEPER_MENU_PATH);
-          },
+          onBack: scrimmage
+            ? null
+            : () => {
+                setSetupModalOpen(false);
+                navigate(MODULAR_SCOREKEEPER_MENU_PATH);
+              },
+          scrimmageFields: scrimmage?.renderSetupFields
+            ? scrimmage.renderSetupFields({ rules, setRules: actions.setRulesWithCouplings })
+            : null,
+          submitLabel: scrimmage ? (consoleReady ? "Confirm and continue" : "Confirm setup") : null,
+          showAdminLink: !scrimmage,
           onSubmit: async (event) => {
+            if (scrimmage) {
+              scrimmage.beforeSetupSubmit?.();
+              if (consoleReady) {
+                // A scrimmage already under way: keep its log, take the new
+                // details (rules, teams, rosters) and carry on.
+                event?.preventDefault?.();
+                if (actions.handleSaveSettings()) setSettingsSavedAt(Date.now());
+                const fresh = await scrimmage.backend.getMatchById(activeMatch?.id);
+                if (fresh) setActiveMatch(fresh);
+                setSetupModalOpen(false);
+                return;
+              }
+            }
             // Persist the rules for this match first so initialise runs against saved settings.
             if (actions.handleSaveSettings()) {
               setSettingsSavedAt(Date.now());
             }
             await handleInitialiseMatch(event);
             // Setup succeeded -> normalise the URL so the console shows.
-            goToConsole();
+            if (!scrimmage) goToConsole();
           },
           onResetSettings: () => {
             actions.handleResetSettings();
@@ -1356,6 +1417,12 @@ export default function ModularScoreKeeperView({ format: formatKey }) {
           onClose: () => setEndMatchModalOpen(false),
           onConfirm: confirmEndMatch,
           spiritScores: capabilities.spiritScores,
+          onOpenReport: scrimmage
+            ? () => {
+                setEndMatchModalOpen(false);
+                scrimmage.onOpenReport?.();
+              }
+            : null,
         }}
         time={{
           open: timeModalOpen,

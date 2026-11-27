@@ -1,19 +1,11 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { OPEN_MATCH_STATUSES, toDisplayStatusWord } from "../../constants/statusCodes";
-import { getEventsList } from "../../services/leagueService";
-import { getMatchesByEvent, getMatchById } from "../../services/matchService";
-import { getPlayersByTeam } from "../../services/playerService";
-import { getRoleCatalog } from "../../services/userService";
 import {
   MATCH_LOG_EVENT_CODES,
-  getMatchLogs,
-  getMatchEventDefinitions,
-  createMatchLogEntry,
   createMatchLogOptimisticId,
 } from "../../services/matchLogService";
-import { supabase } from "../../services/supabaseClient";
-import { hydrateVenueLookup } from "../../services/venueService";
+import { SUPABASE_SCOREKEEPER_BACKEND } from "./scorekeeperBackend";
 import {
   loadScorekeeperSession,
   saveScorekeeperSession,
@@ -26,15 +18,7 @@ import {
   saveMatchRules,
 } from "../../services/matchRulesStore";
 import { describeError, describeQueuedWrite } from "../../utils/errorMessages";
-import {
-  createQueueId,
-  enqueueMatchLogEntry,
-  listOfflineQueue,
-  markOfflineQueueFailure,
-  processOfflineQueue,
-  removeOfflineQueueItem,
-  upsertScoreUpdate,
-} from "../../services/offlineQueue";
+import { createQueueId } from "../../services/offlineQueue";
 import {
   deriveShortName,
   formatClock,
@@ -66,7 +50,6 @@ import {
   getFlashRateMs,
   getSecondaryTimerTone,
 } from "./secondaryTimerPhases";
-import { getAccessibleScorekeeperEventIds } from "../../utils/accessControl";
 import { deriveGameClockFromLogs } from "./gameClock";
 import { CAP_PHASES, deriveMatchCaps } from "./matchCaps";
 import {
@@ -627,7 +610,7 @@ function computeRemainingSeconds(anchor, isRunning, fallback = 0, options = {}) 
   return raw;
 }
 
-export function useScoreKeeperData(formatKey = DEFAULT_SCOREKEEPER_FORMAT) {
+export function useScoreKeeperData(formatKey = DEFAULT_SCOREKEEPER_FORMAT, options = {}) {
   // The format is fixed for the life of the console session: it shapes the
   // rules, the log and the session key, so it is resolved once from the URL and
   // never re-derived mid-match. Memoised on the key alone so the identity is
@@ -635,8 +618,13 @@ export function useScoreKeeperData(formatKey = DEFAULT_SCOREKEEPER_FORMAT) {
   const format = useMemo(() => resolveScorekeeperFormat(formatKey), [formatKey]);
   const capabilities = format.capabilities;
 
+  // Where reads and writes go (scorekeeperBackend.js). Fixed for the life of
+  // the console, so it is held in a ref and never needed in dependency lists.
+  const backendRef = useRef(options.backend || SUPABASE_SCOREKEEPER_BACKEND);
+  const sessionRuleset = backendRef.current.sessionRuleset || format.sessionRuleset;
+
   const { session, roles } = useAuth();
-  const userId = session?.user?.id ?? null;
+  const userId = session?.user?.id ?? backendRef.current.guestUserId ?? null;
 
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -728,13 +716,14 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
   useEffect(() => {
     let ignore = false;
     const loadAbbaLines = async () => {
-      const { data, error } = await supabase.from("abba_line").select("line");
-      if (error) {
-        console.error("[ScoreKeeper] Failed to load ABBA lines:", error.message);
+      let data;
+      try {
+        data = await backendRef.current.loadAbbaLines();
+      } catch (error) {
+        console.error("[ScoreKeeper] Failed to load ABBA lines:", error?.message);
         return;
       }
       const fetched = (data || [])
-        .map((row) => row.line)
         .filter((value) => typeof value === "string" && value.trim().length > 0);
       const nextLines = Array.from(new Set([...DEFAULT_ABBA_LINES, ...fetched]));
       if (!ignore) {
@@ -749,8 +738,8 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
 
   const fetchRostersForTeams = useCallback(async (teamAId, teamBId, eventId) => {
     const [teamAPlayers, teamBPlayers] = await Promise.all([
-      teamAId ? getPlayersByTeam(teamAId, eventId) : [],
-      teamBId ? getPlayersByTeam(teamBId, eventId) : [],
+      teamAId ? backendRef.current.getPlayersByTeam(teamAId, eventId) : [],
+      teamBId ? backendRef.current.getPlayersByTeam(teamBId, eventId) : [],
     ]);
     return {
       teamA: teamAPlayers,
@@ -760,7 +749,7 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
 
   const loadMatchEventDefinitions = useCallback(async () => {
     try {
-      const data = await getMatchEventDefinitions();
+      const data = await backendRef.current.getMatchEventDefinitions();
       setMatchEventOptions(data ?? []);
       setMatchEventsError(null);
       return data ?? [];
@@ -787,20 +776,14 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
     setEventsLoading(true);
     setEventsError(null);
     try {
-      if (!Array.isArray(roles)) {
+      // Roles still loading: no events yet, and the selection is left alone
+      // (a restored session may already have set it). A local backend
+      // (scrimmage) does not depend on roles.
+      if (!backendRef.current.local && !Array.isArray(roles)) {
         setEvents([]);
         return;
       }
-
-      const [data, roleCatalog] = await Promise.all([
-        getEventsList(12, { status: "live" }),
-        getRoleCatalog(),
-      ]);
-      const accessibleEventIds = getAccessibleScorekeeperEventIds(roles, roleCatalog);
-      const filteredEvents =
-        accessibleEventIds === null
-          ? data
-          : data.filter((event) => accessibleEventIds.has(event.id));
+      const filteredEvents = await backendRef.current.listEvents(roles);
       setEvents(filteredEvents);
       setSelectedEventId((previous) =>
         previous && filteredEvents.some((event) => event.id === previous) ? previous : null,
@@ -826,7 +809,7 @@ const [halftimeBreakActive, setHalftimeBreakActive] = useState(false);
       setMatchesLoading(true);
       setMatchesError(null);
       try {
-        const data = await getMatchesByEvent(targetEventId, null, {
+        const data = await backendRef.current.getMatchesByEvent(targetEventId, null, {
           includeFinished: false,
         });
         const setupMatches = (data || []).filter(isSetupMatchStatus);
@@ -914,7 +897,7 @@ useEffect(() => {
   if (candidateIds.length === 0) return;
 
   let ignore = false;
-  hydrateVenueLookup(candidateIds)
+  backendRef.current.hydrateVenueLookup(candidateIds)
     .then((lookup) => {
       if (!ignore) {
         setVenueLookup((prev) => ({ ...prev, ...lookup }));
@@ -1003,7 +986,7 @@ const resetMatchRules = useCallback(
 
 const refreshPendingEntries = useCallback(async () => {
   try {
-    const items = await listOfflineQueue();
+    const items = await backendRef.current.listOfflineQueue();
     setPendingEntries(items);
   } catch (err) {
     console.error("[ScoreKeeper] Failed to load offline queue:", err);
@@ -1014,7 +997,7 @@ const queueScoreUpdate = useCallback(
   async (matchId, nextScore) => {
     if (!matchId || !nextScore) return;
     try {
-      await upsertScoreUpdate({
+      await backendRef.current.upsertScoreUpdate({
         matchId,
         scoreA: nextScore.a ?? 0,
         scoreB: nextScore.b ?? 0,
@@ -1075,7 +1058,7 @@ const clearLocalMatchState = useCallback(() => {
     setTrackedSecondaryEvent(null);
     matchIdRef.current = null;
     if (userId) {
-      clearScorekeeperSession(userId, format.sessionRuleset);
+      clearScorekeeperSession(userId, sessionRuleset);
     }
   }, [
     userId,
@@ -1119,7 +1102,7 @@ useEffect(() => {
       setResumeBusy(false);
       return;
     }
-    const stored = loadScorekeeperSession(userId, format.sessionRuleset);
+    const stored = loadScorekeeperSession(userId, sessionRuleset);
     // A snapshot written before formats were namespaced carries no ruleset;
     // treat it as the default format's ruleset, which is what the only console
     // that wrote it produced. Compare like with like — `ruleset` holds the
@@ -1128,7 +1111,7 @@ useEffect(() => {
     const storedRuleset =
       stored?.data?.ruleset ||
       SCOREKEEPER_FORMATS[DEFAULT_SCOREKEEPER_FORMAT].sessionRuleset;
-    if (storedRuleset === format.sessionRuleset && stored?.data?.matchId) {
+    if (storedRuleset === sessionRuleset && stored?.data?.matchId) {
       setResumeCandidate(stored.data);
       setResumeHandled(false);
       setResumeError(null);
@@ -1687,7 +1670,7 @@ useEffect(() => {
     const primarySeconds = getPrimaryRemainingSeconds();
     const secondarySecondsSnapshot = getSecondaryRemainingSeconds();
     const snapshot = {
-      ruleset: format.sessionRuleset,
+      ruleset: sessionRuleset,
       matchId,
       selectedMatchId,
       eventId: selectedEventId,
@@ -1764,7 +1747,7 @@ useEffect(() => {
     if (!resumeHandled || !userId) return;
     const snapshot = buildSessionSnapshot();
     if (snapshot) {
-      saveScorekeeperSession(userId, snapshot, format.sessionRuleset);
+      saveScorekeeperSession(userId, snapshot, sessionRuleset);
     }
   }, [buildSessionSnapshot, resumeHandled, userId]);
 
@@ -1773,7 +1756,7 @@ useEffect(() => {
     const snapshot = buildSessionSnapshot();
     if (!snapshot) return undefined;
     const handle = setTimeout(() => {
-      saveScorekeeperSession(userId, snapshot, format.sessionRuleset);
+      saveScorekeeperSession(userId, snapshot, sessionRuleset);
     }, SESSION_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(handle);
   }, [buildSessionSnapshot, resumeHandled, userId]);
@@ -1787,7 +1770,7 @@ useEffect(() => {
     const persistNow = () => {
       const snapshot = buildSessionSnapshot();
       if (snapshot) {
-        saveScorekeeperSession(userId, snapshot, format.sessionRuleset);
+        saveScorekeeperSession(userId, snapshot, sessionRuleset);
       }
     };
 
@@ -1907,7 +1890,7 @@ const recordPendingEntry = useCallback(
     void (async () => {
       const queueForRetry = async () => {
         try {
-          await enqueueMatchLogEntry(dbPayload, { id: queueId });
+          await backendRef.current.enqueueMatchLogEntry(dbPayload, { id: queueId });
           await refreshPendingEntries();
         } catch (err) {
           console.error("[ScoreKeeper] Failed to queue match log entry:", err);
@@ -1923,14 +1906,14 @@ const recordPendingEntry = useCallback(
         return;
       }
 
-      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      if (!backendRef.current.local && typeof navigator !== "undefined" && navigator.onLine === false) {
         await queueForRetry();
         setConsoleError((prev) => prev || describeQueuedWrite(eventLabel));
         return;
       }
 
       try {
-        const created = await createMatchLogEntry(dbPayload);
+        const created = await backendRef.current.createMatchLogEntry(dbPayload);
         // Keep the optimistic entry until a refresh brings the server row in:
         // `refreshMatchLogs` drops it then, matched on optimistic_id. Removing it
         // here left the log without the entry until that refresh landed, and for
@@ -1941,7 +1924,7 @@ const recordPendingEntry = useCallback(
         if (!created?.optimistic_id) {
           cleanupOptimisticLog(optimisticId);
         }
-        await removeOfflineQueueItem(queueId);
+        await backendRef.current.removeOfflineQueueItem(queueId);
         await refreshPendingEntries();
         const refresh = refreshMatchLogsRef.current;
         if (refresh) {
@@ -1950,7 +1933,7 @@ const recordPendingEntry = useCallback(
       } catch (err) {
         console.error("[ScoreKeeper] Failed to persist match log entry:", err);
         await queueForRetry();
-        await markOfflineQueueFailure(queueId);
+        await backendRef.current.markOfflineQueueFailure(queueId);
         setConsoleError((prev) =>
           prev ||
           describeError(err, {
@@ -2902,7 +2885,7 @@ const replaceSecondaryTimer = useCallback(
 
   const processQueueAndRefresh = useCallback(async () => {
     let shouldRefreshLogs = false;
-    const result = await processOfflineQueue({
+    const result = await backendRef.current.processOfflineQueue({
       onItemSuccess: (item) => {
         if (item.kind === "match_log" && item.payload.matchId === matchLogMatchId) {
           shouldRefreshLogs = true;
@@ -3015,7 +2998,7 @@ const replaceSecondaryTimer = useCallback(
       }
       setLogsLoading(true);
       try {
-        const rows = await getMatchLogs(targetMatchId);
+        const rows = await backendRef.current.getMatchLogs(targetMatchId);
         const derived = deriveLogsFromRows(rows);
         const serverOptimisticIds = new Set(
           derived.logs
@@ -3222,7 +3205,7 @@ const replaceSecondaryTimer = useCallback(
         null;
 
       if (!targetMatch) {
-        targetMatch = await getMatchById(resumeMatchId);
+        targetMatch = await backendRef.current.getMatchById(resumeMatchId);
       }
 
       if (!targetMatch) {
@@ -3304,7 +3287,7 @@ const replaceSecondaryTimer = useCallback(
 
   const handleDiscardResume = useCallback(() => {
     if (userId) {
-      clearScorekeeperSession(userId, format.sessionRuleset);
+      clearScorekeeperSession(userId, sessionRuleset);
     }
     setResumeCandidate(null);
     setResumeHandled(true);
@@ -3389,6 +3372,11 @@ const replaceSecondaryTimer = useCallback(
     // format never means adding a branch.
     format,
     capabilities,
+    // The data source, for the action hook (scorekeeperBackend.js).
+    backend: backendRef.current,
+    // Called once a match end is saved, instead of moving on to spirit scores
+    // or the menu (the scrimmage console shows its report).
+    afterMatchEnd: options.afterMatchEnd || null,
     scoreModalState,
     setScoreModalState,
     scoreForm,

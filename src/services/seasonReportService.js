@@ -182,7 +182,7 @@ export const SEASON_REPORT_FILES = [
     label: "Spirit scores",
     file: "seasonReport_spirit_scores.csv",
     summary:
-      "WFDF spirit scores across the five categories plus total and comments. rated_team_id is the team being rated; the other team in the match is the rater. Excludes the submitter's user id.",
+      "WFDF spirit scores across the five categories plus total and comments. rated_team_id is the team being rated; the other team in the match is the rater. Each category is 0-4 (total 0-20). Column self_control holds Fair-mindedness and positive_attitude holds Positive attitude & self-control. Excludes the submitter's user id.",
   },
   {
     key: "team_roster",

@@ -118,6 +118,11 @@ export function ScorekeeperPopups({
     selectedMatch,
     isStartMatchReady,
     error: setupError,
+    // The scrimmage console: its own fields (teams, rosters) replace the event
+    // and match pickers, and the submit button carries its own label.
+    scrimmageFields = null,
+    submitLabel = null,
+    showAdminLink = true,
   } = setup;
   // The format arrives as an explicit prop. The legacy popup inferred it by
   // testing whether the modal *title* contained "5v5", so renaming a title
@@ -172,6 +177,8 @@ export function ScorekeeperPopups({
     // Formats without spirit scoring return to the menu instead, so the prompt
     // must not promise a step that will not happen.
     spiritScores: endMatchSpiritScores = true,
+    // Scrimmage: the match report first, then the confirmation.
+    onOpenReport: onEndMatchOpenReport = null,
   } = endMatch;
   const {
     open: timeOpen,
@@ -237,6 +244,7 @@ export function ScorekeeperPopups({
       {setupOpen && (
         <ActionModal title={setupTitle} onClose={onSetupClose} alignTop scrollable wide>
           <form className="space-y-2" onSubmit={onSetupSubmit}>
+            {scrimmageFields ? scrimmageFields : (
             <div className="space-y-1.5">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -330,6 +338,7 @@ export function ScorekeeperPopups({
                 )}
               </div>
             </div>
+            )}
 
             <div className="grid gap-x-2 gap-y-1.5 md:grid-cols-2">
               <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-[#0f5132]">
@@ -565,7 +574,7 @@ export function ScorekeeperPopups({
               disabled={initialising || !selectedMatch || !isStartMatchReady}
               className="w-full rounded-full bg-[#0f5132] px-5 py-1.5 text-sm font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {initialising ? "Saving & initialising..." : "Save settings & initialise"}
+              {initialising ? "Saving & initialising..." : submitLabel || "Save settings & initialise"}
             </button>
             {setupError && (
               <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -597,12 +606,14 @@ export function ScorekeeperPopups({
                 Back to score keeper menu
               </button>
             )}
-            <Link
-              to="/admin"
-              className="block w-full rounded-full border border-[#0f5132]/30 px-5 py-1.5 text-center text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
-            >
-              Back to admin hub
-            </Link>
+            {showAdminLink && (
+              <Link
+                to="/admin"
+                className="block w-full rounded-full border border-[#0f5132]/30 px-5 py-1.5 text-center text-sm font-semibold text-[#0f5132] transition hover:bg-[#ecfdf3]"
+              >
+                Back to admin hub
+              </Link>
+            )}
           </form>
         </ActionModal>
       )}
@@ -756,7 +767,9 @@ export function ScorekeeperPopups({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px] px-4 py-3">
           <div className="w-full max-w-sm rounded-[32px] border-4 border-[#b91c1c] bg-[#fee2e2] p-4">
             <div className="mb-3 flex items-start justify-between">
-              <h3 className="text-2xl font-semibold text-[#7f1d1d]">End match?</h3>
+              <h3 className="text-2xl font-semibold text-[#7f1d1d]">
+                {onEndMatchOpenReport ? "End scrimmage?" : "End match?"}
+              </h3>
               <button
                 type="button"
                 onClick={onEndMatchClose}
@@ -767,6 +780,27 @@ export function ScorekeeperPopups({
                 X
               </button>
             </div>
+            {onEndMatchOpenReport ? (
+              <div className="mt-4 grid gap-3">
+                <button
+                  type="button"
+                  onClick={onEndMatchOpenReport}
+                  disabled={endMatchBusy}
+                  className="inline-flex items-center justify-center rounded-full bg-[#0f5132] px-4 py-2 font-semibold text-white transition hover:bg-[#0a3b24] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Match report
+                </button>
+                <button
+                  type="button"
+                  onClick={onEndMatchConfirm}
+                  disabled={endMatchBusy}
+                  className="inline-flex items-center justify-center rounded-full bg-[#b91c1c] px-4 py-2 font-semibold text-white transition hover:bg-[#991b1b] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {endMatchBusy ? "Ending..." : "Confirm end scrimmage"}
+                </button>
+              </div>
+            ) : (
+            <>
             <p className="text-sm text-[#7f1d1d]">
               End this match and clear local data?{" "}
               {endMatchSpiritScores
@@ -791,6 +825,8 @@ export function ScorekeeperPopups({
                 {endMatchBusy ? "Ending..." : "End match"}
               </button>
             </div>
+            </>
+            )}
           </div>
         </div>
       )}

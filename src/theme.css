@@ -3738,3 +3738,23 @@ a.sc-section-link:hover {
 .sc-section-link:hover .sc-section-link__arrow {
   transform: translateX(2px);
 }
+
+/* Scrimmage report, printed ("Download PDF"): the page as it looks on screen,
+   on A4, without the site header, footer or the report's own buttons. The
+   print layout itself is still to be designed. */
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+  body:has(.scrimmage-report) {
+    background: var(--sc-page-bg);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body:has(.scrimmage-report) header:not(.matches-header-shell),
+  body:has(.scrimmage-report) footer,
+  .scrimmage-report-actions {
+    display: none !important;
+  }
+}

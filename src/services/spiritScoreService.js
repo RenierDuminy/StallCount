@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import { latestFinalSpiritRows } from "../utils/spirit";
+import { SPIRIT_DIMENSIONS, SPIRIT_MAX_SCORE, latestFinalSpiritRows } from "../utils/spirit";
 
 /**
  * The spirit scores already submitted for a match: the latest final row per
@@ -38,6 +38,7 @@ export async function submitSpiritScores(matchId, entries, options = {}) {
     fouls_contact: Number(entry.fouls ?? 0),
     positive_attitude: Number(entry.positiveAttitude ?? 0),
     communication: Number(entry.communication ?? 0),
+    // self_control holds Fair-mindedness (see SPIRIT_DIMENSIONS).
     self_control: Number(entry.fairness ?? 0),
     comments: entry.notes?.trim() ? entry.notes.trim() : null,
     submitted_by: submittedBy,
@@ -102,7 +103,7 @@ function normalizeSpiritCategoryScore(value) {
     return null;
   }
 
-  return Math.max(0, Math.min(5, Math.round(score)));
+  return Math.max(0, Math.min(SPIRIT_MAX_SCORE, Math.round(score)));
 }
 
 export async function saveTournamentDirectorSpiritScores(matchId, entries = []) {
@@ -142,12 +143,11 @@ export async function saveTournamentDirectorSpiritScores(matchId, entries = []) 
 
   const savedRows = [];
   for (const entry of normalizedEntries) {
+    // `scores` is keyed by column (the match edit form uses SPIRIT_DIMENSIONS).
     const payload = {
-      rules_knowledge: normalizeSpiritCategoryScore(entry.scores.rulesKnowledge),
-      fouls_contact: normalizeSpiritCategoryScore(entry.scores.foulsContact),
-      positive_attitude: normalizeSpiritCategoryScore(entry.scores.positiveAttitude),
-      communication: normalizeSpiritCategoryScore(entry.scores.communication),
-      self_control: normalizeSpiritCategoryScore(entry.scores.selfControl),
+      ...Object.fromEntries(
+        SPIRIT_DIMENSIONS.map(({ key }) => [key, normalizeSpiritCategoryScore(entry.scores[key])]),
+      ),
       is_final: true,
     };
     const existing = existingByTeam.get(entry.ratedTeamId);

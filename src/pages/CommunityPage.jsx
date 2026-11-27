@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { SectionShell } from "../components/ui/primitives";
+import { Card, SectionShell } from "../components/ui/primitives";
 
 // A plain reference page: headings, paragraphs, row lists and underlined text
 // links, laid out like a traditional article with a contents list beside it.
@@ -14,7 +14,6 @@ const SECTIONS = [
   { id: "season", title: "The season" },
   { id: "start", title: "Getting started" },
   { id: "follow", title: "Follow and watch" },
-  { id: "scrimmage", title: "Scoring a pickup game" },
 ];
 
 const ORGANISATIONS = [
@@ -244,6 +243,20 @@ export default function CommunityPage() {
           </p>
         </header>
 
+        <Card as="section" aria-labelledby="scrimmage-heading" className="mt-8 max-w-3xl p-5 sm:p-6">
+          <h2 id="scrimmage-heading" className="text-xl font-semibold text-ink">
+            Scoring a pickup game
+          </h2>
+          <p className="mt-2 text-base leading-relaxed text-ink/85">
+            Want match statistics for an unofficial match? StallCount&rsquo;s scrimmage console scores a game without any event setup. Enter the two rosters, set
+            the rules, and track points, timeouts and halftime. It works offline on the field and produces a PDF
+            match report and a match data file at the end.
+          </p>
+          <Link to="/admin/scrimmage" className="sc-button mt-4 inline-flex">
+            Open the scrimmage console
+          </Link>
+        </Card>
+
         <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[13rem_minmax(0,48rem)] lg:gap-12">
           <nav aria-label="On this page" className="hidden lg:sticky lg:top-24 lg:block lg:self-start">
             <h2 className="text-sm font-semibold text-ink">On this page</h2>
@@ -408,19 +421,6 @@ export default function CommunityPage() {
                   </li>
                 ))}
               </ul>
-            </Section>
-
-            <Section id="scrimmage" title="Scoring a pickup game" blurb="Use StallCount for your own game">
-              <p>
-                StallCount&rsquo;s scrimmage console scores a game without any event setup. Enter the two rosters,
-                set the rules, and track points, timeouts and halftime. It works offline on the field and produces
-                a PDF match report and a match data file at the end.
-              </p>
-              <p>
-                <Link to="/admin/scrimmage" className={LINK_CLASS}>
-                  Open the scrimmage console
-                </Link>
-              </p>
             </Section>
           </article>
         </div>

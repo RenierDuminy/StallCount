@@ -9,8 +9,9 @@ import {
   loadSpiritScoresSession,
   saveSpiritScoresSession,
 } from "../services/spiritScoreSessionStore";
-import { Card, Field, Input, SectionHeader, SectionShell, Select, Textarea } from "../components/ui/primitives";
-import SpiritScoreBlocks from "../components/SpiritScoreBlocks";
+import { Card, Field, SectionHeader, SectionShell, Select, Textarea } from "../components/ui/primitives";
+import SpiritScoreBlocks, { SpiritScaleLegend } from "../components/SpiritScoreBlocks";
+import { SPIRIT_DIMENSIONS, SPIRIT_MAX_SCORE } from "../utils/spirit";
 import {
   ADMIN_OVERRIDE_PERMISSIONS,
   SPIRIT_SCORES_ACCESS_ROLES,
@@ -18,14 +19,25 @@ import {
   userHasAnyRole,
 } from "../utils/accessControl";
 import { MODULAR_SCOREKEEPER_MENU_PATH } from "./scorekeeper/scorekeeperConstants";
+import { MATCH_STATUS } from "../constants/statusCodes";
 
-const SPIRIT_CATEGORIES = [
-  { key: "rulesKnowledge", label: "Rules knowledge & use" },
-  { key: "fouls", label: "Fouls & body contact" },
-  { key: "fairness", label: "Fair-mindedness" },
-  { key: "positiveAttitude", label: "Positive attitude" },
-  { key: "communication", label: "Communication" },
-];
+// The form's own keys (kept: saved drafts use them) for each spirit_scores
+// column. Order, labels and descriptions come from SPIRIT_DIMENSIONS, so this
+// form reads exactly like the captain portal and the pages that show the score.
+const FORM_KEY_BY_COLUMN = {
+  rules_knowledge: "rulesKnowledge",
+  fouls_contact: "fouls",
+  self_control: "fairness",
+  positive_attitude: "positiveAttitude",
+  communication: "communication",
+};
+const SPIRIT_CATEGORIES = SPIRIT_DIMENSIONS.map((dimension) => ({
+  ...dimension,
+  column: dimension.key,
+  key: FORM_KEY_BY_COLUMN[dimension.key],
+}));
+
+const SPIRIT_MATCH_STATUSES = new Set([MATCH_STATUS.LIVE, MATCH_STATUS.FINISHED, MATCH_STATUS.COMPLETED]);
 
 const createDefaultScores = () => ({
   rulesKnowledge: 2,
@@ -210,7 +222,11 @@ export default function SpiritScoresPage() {
       setMatchError(null);
       try {
         const rows = await getMatchesByEvent(eventId, null, { includeFinished: true });
-        const nextMatches = rows ?? [];
+        // Spirit scores are entered once a match is under way or over, so
+        // scheduled, postponed and cancelled matches are left out.
+        const nextMatches = (rows ?? []).filter((match) =>
+          SPIRIT_MATCH_STATUSES.has(String(match?.status || "").toLowerCase()),
+        );
         setMatches(nextMatches);
 
         const targetMatchId = preferredMatchId || selectedMatchId;
@@ -268,6 +284,10 @@ export default function SpiritScoresPage() {
 
         setMatches((current) => {
           if (current.some((entry) => entry.id === match.id)) {
+            return current;
+          }
+          // Same rule as the list: only matches under way or over.
+          if (!SPIRIT_MATCH_STATUSES.has(String(match.status || "").toLowerCase())) {
             return current;
           }
           return [...current, match].sort(compareMatchesByStartTime);
@@ -536,7 +556,7 @@ export default function SpiritScoresPage() {
       ...prev,
       [teamKey]: {
         ...prev[teamKey],
-        [field]: Math.min(4, Math.max(0, Number(value) || 0)),
+        [field]: Math.min(SPIRIT_MAX_SCORE, Math.max(0, Number(value) || 0)),
       },
     }));
   };
@@ -667,7 +687,7 @@ export default function SpiritScoresPage() {
               </p>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2">
               <Field label="Event" className="is-light">
                 {eventsLoading ? (
                   <div className="rounded-xl border border-[var(--sc-surface-light-border)] bg-white/80 px-3 py-2 text-xs text-[var(--sc-surface-light-ink)]">
@@ -717,7 +737,7 @@ export default function SpiritScoresPage() {
                         ? "Select an event first..."
                         : matches.length
                           ? "Select a match..."
-                          : "No matches available for this event"}
+                          : "No live or finished matches in this event"}
                     </option>
                     {matches.map((match) => (
                       <option key={match.id} value={match.id}>
@@ -726,16 +746,6 @@ export default function SpiritScoresPage() {
                     ))}
                   </Select>
                 )}
-              </Field>
-
-              <Field label="Match ID" htmlFor="spirit-match-id" className="is-light">
-                <Input
-                  className="is-light"
-                  id="spirit-match-id"
-                  value={selectedMatchId}
-                  readOnly
-                  placeholder="Select or load a match"
-                />
               </Field>
             </div>
 
@@ -747,10 +757,11 @@ export default function SpiritScoresPage() {
                       Loaded match
                     </p>
                     <h3 className="text-lg font-semibold text-[var(--sc-surface-light-ink)]">
-                      {teamLabels.teamA} vs {teamLabels.teamB}
+                      {teamLabels.teamA} {formatScoreLabel(selectedMatch)} {teamLabels.teamB}
                     </h3>
                     <p className="text-xs text-[var(--sc-surface-light-ink)]/75 sm:text-sm">
-                      {selectedEvent?.name || selectedMatch.event?.name || "Event not assigned"}
+                      {selectedEvent?.name || selectedMatch.event?.name || "Event not assigned"} ·{" "}
+                      {formatKickoff(selectedMatch.start_time)}
                     </p>
                   </div>
                   <div className="rounded-full border border-light-edge/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/70">
@@ -758,12 +769,23 @@ export default function SpiritScoresPage() {
                   </div>
                 </div>
 
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <MatchDetail label="Match ID" value={selectedMatch.id} mono />
-                  <MatchDetail label="Match start"value={formatKickoff(selectedMatch.start_time)} />
-                  <MatchDetail label="Venue" value={formatVenueLabel(selectedMatch)} />
-                  <MatchDetail label="Score" value={formatScoreLabel(selectedMatch)} />
-                </div>
+                {/* The one place the scale and the categories are explained; the team
+                    cards below show only the category names. Each team is scored by
+                    its opponent: a team's card holds the score that team RECEIVES. */}
+                <section className="mt-3 space-y-2 border-t border-light-edge/15 pt-3 text-sm text-[var(--sc-surface-light-ink)]/75">
+                  <p>
+                    Enter the score each team received from its opponent, 0 to {SPIRIT_MAX_SCORE} in each category.
+                  </p>
+                  <SpiritScaleLegend className="text-[var(--sc-surface-light-ink)]/75" />
+                  <dl className="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-[auto_1fr]">
+                    {SPIRIT_CATEGORIES.map((category) => (
+                      <div key={category.key} className="contents">
+                        <dt className="font-semibold text-[var(--sc-surface-light-ink)]">{category.label}</dt>
+                        <dd className="mb-1 sm:mb-0">{category.description}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
 
                 {matchError ? <div className="mt-3 sc-alert is-error">{matchError}</div> : null}
                 {matchDetailLoading ? (
@@ -797,6 +819,7 @@ export default function SpiritScoresPage() {
             <div className="sc-alert is-error">{submitted.error}</div>
           ) : null}
 
+
           <div className="grid gap-2 md:grid-cols-2">
             {["teamA", "teamB"].map((teamKey) => (
               <section
@@ -805,12 +828,15 @@ export default function SpiritScoresPage() {
               >
                 <div>
                   <h3 className="text-base font-semibold text-[var(--sc-surface-light-ink)]">
-                    Score for {teamKey === "teamA" ? teamLabels.teamA : teamLabels.teamB}:
+                    Spirit score for {teamKey === "teamA" ? teamLabels.teamA : teamLabels.teamB}:
                     {/* The WFDF total is what gets reported, so it belongs in the
                         heading. The selected block already shows each category's
                         own score. */}
                     <span className="ml-2 text-lg font-bold">{spiritTotals[teamKey]}</span>
                   </h3>
+                  <p className="text-xs text-[var(--sc-surface-light-ink)]/75">
+                    Given by {teamKey === "teamA" ? teamLabels.teamB : teamLabels.teamA}
+                  </p>
                 </div>
                 {SPIRIT_CATEGORIES.map((category) => (
                   // Three quarters of the screen on a phone, centred, so the row
@@ -858,17 +884,6 @@ export default function SpiritScoresPage() {
           </div>
         </form>
       </SectionShell>
-    </div>
-  );
-}
-
-function MatchDetail({ label, value, mono = false }) {
-  return (
-    <div className="space-y-1 rounded-xl border border-light-edge/10 bg-white/70 px-3 py-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sc-surface-light-ink)]/55">{label}</p>
-      <p className={`text-sm text-[var(--sc-surface-light-ink)] ${mono ? "font-mono break-all" : "font-semibold"}`}>
-        {value || "TBD"}
-      </p>
     </div>
   );
 }
@@ -978,7 +993,7 @@ function formatEventLabel(event) {
 function formatMatchLabel(match) {
   const teamA = match.team_a?.short_name || match.team_a?.name || "Team A";
   const teamB = match.team_b?.short_name || match.team_b?.name || "Team B";
-  return `${formatKickoff(match.start_time)} - ${teamA} vs ${teamB}`;
+  return `${formatKickoff(match.start_time)} – ${teamA} ${formatScoreLabel(match)} ${teamB}`;
 }
 
 function formatKickoff(timestamp) {
@@ -992,17 +1007,8 @@ function formatKickoff(timestamp) {
   });
 }
 
-function formatVenueLabel(match) {
-  if (!match?.venue) return "Venue TBD";
-  const city = typeof match.venue.city === "string" ? match.venue.city.trim() : "";
-  const location = typeof match.venue.location === "string" ? match.venue.location.trim() : "";
-  const name = typeof match.venue.name === "string" ? match.venue.name.trim() : "";
-  const lead = [city, location].filter(Boolean).join(", ");
-  return [lead, name].filter(Boolean).join(" - ") || "Venue TBD";
-}
-
 function formatScoreLabel(match) {
   const scoreA = Number.isFinite(match?.score_a) ? match.score_a : 0;
   const scoreB = Number.isFinite(match?.score_b) ? match.score_b : 0;
-  return `${scoreA} - ${scoreB}`;
+  return `${scoreA} – ${scoreB}`;
 }

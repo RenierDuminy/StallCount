@@ -21,6 +21,7 @@ import { EVENT_SECTIONS } from "./pages/eventWorkspaces";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
+const AuthConfirmPage = lazy(() => import("./pages/AuthConfirmPage"));
 const Players = lazy(() => import("./pages/PlayersPage"));
 const EventPlayersPage = lazy(() =>
   import("./pages/PlayersPage").then((module) => ({ default: module.EventPlayersPage })),
@@ -116,6 +117,8 @@ export default function AppRoutes() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<Guarded name="Home"><HomePage /></Guarded>} />
           <Route path="/login" element={<Guarded name="Login"><LoginPage /></Guarded>} />
+          {/* Every auth email (invite, reset, confirm, email change) links here. */}
+          <Route path="/auth/confirm" element={<Guarded name="Account link"><AuthConfirmPage /></Guarded>} />
           <Route path="/players" element={<Guarded name="Players"><Players /></Guarded>} />
           <Route path="/players/:playerId" element={<Guarded name="Player profile"><PlayerProfilePage /></Guarded>} />
           <Route path="/teams" element={<Guarded name="Teams"><Teams /></Guarded>} />

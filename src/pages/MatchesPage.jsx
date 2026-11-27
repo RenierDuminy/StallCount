@@ -685,103 +685,124 @@ export default function MatchesPage() {
             {isUnloggedFinishedMatch ? (
               <UnloggedMatchCard match={selectedMatch} />
             ) : (
-              <>
-                {derived.insights && (
-                  <section className="sc-card-base space-y-3 p-4 sm:p-6">
-                    <h2 className="text-lg font-semibold text-ink">Match analytics</h2>
-                    <div className="grid gap-3 lg:grid-cols-2">
-                      <InsightTable title="Match insight" rows={derived.insights.match} />
-                      <InsightTable title="Tempo insight" rows={derived.insights.tempo} />
+              <MatchReportBody
+                match={selectedMatch}
+                derived={derived}
+                spiritSection={
+                    spiritReport?.entries?.length ? (
+                  <section className="sc-card-base space-y-2 px-4 py-2 sm:px-6">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <h2 className="text-lg font-semibold text-ink">Spirit score report</h2>
+                      {spiritReport.totalLabel && (
+                        <span className="text-sm text-ink-muted">
+                          {spiritReport.totalLabel}
+                        </span>
+                      )}
+                    </div>
+                    {/* The radar is square and scales with its card, so each card
+                        is capped at 40rem; side by side when they fit, centred. */}
+                    <div className="grid justify-center gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),40rem))]">
+                      {spiritReport.entries.map((entry) => (
+                        <SpiritRadarCard
+                          key={entry.teamId}
+                          title={entry.teamName}
+                          data={entry}
+                          tone={entry.tone}
+                        />
+                      ))}
                     </div>
                   </section>
-                )}
-
-                <section className="sc-card-base space-y-2 p-4 sm:p-6">
-                  <div className="flex items-center justify-between gap-2">
-                    <h2 className="text-lg font-semibold text-ink">Score progression</h2>
-                    <FullscreenChartToggle
-                      title="Score progression"
-                      render={(isFullscreen) => (
-                        <TimelineChart
-                          match={selectedMatch}
-                          timeline={derived.timeline}
-                          possessionTimeline={derived.possessionTimeline}
-                          fullscreen={isFullscreen}
-                        />
-                      )}
-                    />
-                  </div>
-                  <TimelineChart match={selectedMatch} timeline={derived.timeline} possessionTimeline={derived.possessionTimeline} />
-                </section>
-
-                {derived.summaries && (
-                  <>
-                    <section className="sc-card-base space-y-3 p-4 sm:p-6">
-                      <h2 className="text-lg font-semibold text-ink">
-                        {`${selectedMatch?.team_a?.name || "Team A"} overview`}
-                      </h2>
-                      <TeamOverviewCard stats={derived.summaries.teamA} />
-                    </section>
-                    <section className="sc-card-base space-y-3 p-4 sm:p-6">
-                      <h2 className="text-lg font-semibold text-ink">
-                        {`${selectedMatch?.team_b?.name || "Team B"} overview`}
-                      </h2>
-                      <TeamOverviewCard stats={derived.summaries.teamB} />
-                    </section>
-                  </>
-                )}
-              </>
-            )}
-
-            {isUnloggedFinishedMatch ? null : spiritReport?.entries?.length ? (
-              <section className="sc-card-base space-y-2 px-4 py-2 sm:px-6">
-                <div className="flex flex-wrap items-baseline gap-2">
-                  <h2 className="text-lg font-semibold text-ink">Spirit score report</h2>
-                  {spiritReport.totalLabel && (
-                    <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                      {spiritReport.totalLabel}
-                    </span>
-                  )}
-                </div>
-                {/* The radar is square and scales with its card, so each card
-                    is capped at 40rem; side by side when they fit, centred. */}
-                <div className="grid justify-center gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),40rem))]">
-                  {spiritReport.entries.map((entry) => (
-                    <SpiritRadarCard
-                      key={entry.teamId}
-                      title={entry.teamName}
-                      data={entry}
-                      tone={entry.tone}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : spiritLoading ? (
-              <section className="sc-card-base space-y-2 p-4 sm:p-6">
-                <h2 className="text-lg font-semibold text-ink">Spirit score report</h2>
-                <div className="sc-card-muted p-4 text-center text-sm text-ink-muted">
-                  Loading spirit scores...
-                </div>
-              </section>
-            ) : spiritError ? (
-              <section className="sc-card-base space-y-2 p-4 sm:p-6">
-                <h2 className="text-lg font-semibold text-ink">Spirit score report</h2>
-                <div className="sc-card-muted p-4 text-center text-sm text-rose-600">
-                  {spiritError}
-                </div>
-              </section>
-            ) : null}
-
-            {!isUnloggedFinishedMatch && (
-              <section className="sc-card-base space-y-3 p-4 sm:p-6">
-                <h2 className="text-lg font-semibold text-ink">Point-by-point log</h2>
-                <PointLogTable rows={derived.logRows} />
-              </section>
+                ) : spiritLoading ? (
+                  <section className="sc-card-base space-y-2 p-4 sm:p-6">
+                    <h2 className="text-lg font-semibold text-ink">Spirit score report</h2>
+                    <div className="sc-card-muted p-4 text-center text-sm text-ink-muted">
+                      Loading spirit scores...
+                    </div>
+                  </section>
+                ) : spiritError ? (
+                  <section className="sc-card-base space-y-2 p-4 sm:p-6">
+                    <h2 className="text-lg font-semibold text-ink">Spirit score report</h2>
+                    <div className="sc-card-muted p-4 text-center text-sm text-rose-600">
+                      {spiritError}
+                    </div>
+                  </section>
+                ) : null
+                }
+              />
             )}
           </>
         )}
       </main>
     </div>
+  );
+}
+
+/**
+ * The match report: analytics, score progression, team overviews and the
+ * point-by-point log, from a match row and its `match_logs` rows (with their
+ * `event` / `actor` embeds). Shared with the scrimmage report, which has no
+ * spirit scores; this page passes its spirit section in `spiritSection`.
+ * Pass `derived` when it is already worked out, or `logs` to derive it here.
+ */
+export function MatchReportBody({ match, logs = null, derived: derivedProp = null, spiritSection = null }) {
+  const ownDerived = useMemo(
+    () => (derivedProp ? null : deriveMatchInsights(match, logs || [])),
+    [derivedProp, match, logs],
+  );
+  const derived = derivedProp || ownDerived;
+  if (!derived) return null;
+  return (
+    <>
+      {derived.insights && (
+        <section className="sc-card-base space-y-3 p-4 sm:p-6">
+          <h2 className="text-lg font-semibold text-ink">Match analytics</h2>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <InsightTable title="Match insight" rows={derived.insights.match} />
+            <InsightTable title="Tempo insight" rows={derived.insights.tempo} />
+          </div>
+        </section>
+      )}
+
+      <section className="sc-card-base space-y-2 p-4 sm:p-6">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-ink">Score progression</h2>
+          <FullscreenChartToggle
+            title="Score progression"
+            render={(isFullscreen) => (
+              <TimelineChart
+                match={match}
+                timeline={derived.timeline}
+                possessionTimeline={derived.possessionTimeline}
+                fullscreen={isFullscreen}
+              />
+            )}
+          />
+        </div>
+        <TimelineChart match={match} timeline={derived.timeline} possessionTimeline={derived.possessionTimeline} />
+      </section>
+
+      {derived.summaries && (
+        <>
+          <section className="sc-card-base space-y-3 p-4 sm:p-6">
+            <h2 className="text-lg font-semibold text-ink">
+              {`${match?.team_a?.name || "Team A"} overview`}
+            </h2>
+            <TeamOverviewCard stats={derived.summaries.teamA} />
+          </section>
+          <section className="sc-card-base space-y-3 p-4 sm:p-6">
+            <h2 className="text-lg font-semibold text-ink">
+              {`${match?.team_b?.name || "Team B"} overview`}
+            </h2>
+            <TeamOverviewCard stats={derived.summaries.teamB} />
+          </section>
+        </>
+      )}
+      {spiritSection}
+      <section className="sc-card-base space-y-3 p-4 sm:p-6">
+        <h2 className="text-lg font-semibold text-ink">Point-by-point log</h2>
+        <PointLogTable rows={derived.logRows} />
+      </section>
+    </>
   );
 }
 
@@ -1782,7 +1803,8 @@ function buildSpiritReport(scores, match) {
 
   return {
     entries,
-    totalLabel: "Spirit scores received",
+    // Each chart is keyed by rated team: what that team RECEIVED from its opponent.
+    totalLabel: "Score each team received from its opponent",
   };
 }
 

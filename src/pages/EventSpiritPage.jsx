@@ -6,6 +6,7 @@ import { getSpiritScoresByEvent } from "../services/teamService";
 import {
   SPIRIT_DIMENSIONS,
   SPIRIT_MAX_SCORE,
+  SPIRIT_MAX_TOTAL,
   buildSpiritRanking,
   formatSpiritScore,
   summariseSpiritRanking,
@@ -16,7 +17,7 @@ import { useEventSectionRoute } from "./eventRouteHooks";
 import { usePageMeta, withSiteName } from "../utils/pageMeta";
 import { teamPath } from "../utils/links";
 
-const MAX_TOTAL = SPIRIT_MAX_SCORE * SPIRIT_DIMENSIONS.length;
+const MAX_TOTAL = SPIRIT_MAX_TOTAL;
 
 /**
  * Orders a division's teams by spirit total (best first); teams with no final
@@ -151,7 +152,7 @@ export default function EventSpiritPage() {
         <SectionShell as="header" className="w-full max-w-none space-y-3 py-4 sm:py-5">
           <SectionHeader
             title={event?.name ? `${event.name} – Spirit` : "Event spirit"}
-            description={`Average WFDF spirit scores received (0–${SPIRIT_MAX_SCORE} per category, ${MAX_TOTAL} total). Final submissions only.`}
+            description={`The average spirit score each team received from its opponents: 0 to ${SPIRIT_MAX_SCORE} in each WFDF category, ${MAX_TOTAL} in total.`}
           />
           {error ? <div className="sc-alert is-error">{error}</div> : null}
         </SectionShell>

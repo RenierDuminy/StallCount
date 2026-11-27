@@ -1,8 +1,5 @@
 import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { initialiseMatch, updateMatchStatus } from "../../services/matchService";
-import { removeOfflineQueueItem } from "../../services/offlineQueue";
-import { updateScore } from "../../services/realtimeService";
 import { describeError } from "../../utils/errorMessages";
 import {
   MATCH_STATUS,
@@ -12,11 +9,6 @@ import {
 import {
   MATCH_LOG_EVENT_CODES,
   createMatchLogOptimisticId,
-  deleteMatchLogEntry,
-  findMatchLogByOptimisticId,
-  updateMatchLogEntry,
-  updateMatchLogEntryByOptimisticId,
-  updateMatchLogEntryByTimestamp,
 } from "../../services/matchLogService";
 import { SECONDARY_TIMER_KINDS } from "./secondaryTimerPhases";
 import {
@@ -38,6 +30,9 @@ import {
 
 export function useScoreKeeperActions(controller) {
   const navigate = useNavigate();
+  // Where writes go: the database, or this device for a scrimmage
+  // (scorekeeperBackend.js).
+  const backend = controller.backend;
   const DB_WRITES_DISABLED = false;
   const scoreSubmitInFlightRef = useRef(false);
   const submittedScoreKeysRef = useRef(new Set());
@@ -125,7 +120,7 @@ export function useScoreKeeperActions(controller) {
         scorekeeper: controller.userId,
       };
 
-      const updated = await initialiseMatch(controller.selectedMatch.id, payload);
+      const updated = await backend.initialiseMatch(controller.selectedMatch.id, payload);
 
       // Capture the configured rules as this match's override so they survive
       // reloads instead of being re-derived from the event defaults.
@@ -245,7 +240,7 @@ export function useScoreKeeperActions(controller) {
         prev.map((match) => (match.id === optimisticMatch.id ? { ...match, status: "live" } : match))
       );
       try {
-        const updated = await updateMatchStatus(matchToStart.id, "live");
+        const updated = await backend.updateMatchStatus(matchToStart.id, "live");
         if (updated) {
           controller.setActiveMatch(updated);
           controller.setMatches((prev) =>
@@ -407,7 +402,7 @@ export function useScoreKeeperActions(controller) {
     );
     if (!matchId) return;
     try {
-      await updateScore(matchId, nextScore.a, nextScore.b);
+      await backend.updateScore(matchId, nextScore.a, nextScore.b);
     } catch (err) {
       console.error("Failed to sync score:", err);
       if (typeof controller.queueScoreUpdate === "function") {
@@ -655,7 +650,7 @@ export function useScoreKeeperActions(controller) {
           targetLog.id
         );
       if (isUuid) {
-        await updateMatchLogEntry(targetLog.id, payload);
+        await backend.updateMatchLogEntry(targetLog.id, payload);
       } else {
         const matchId = controller.matchLogMatchId;
         if (!matchId) {
@@ -664,13 +659,13 @@ export function useScoreKeeperActions(controller) {
         // Prefer the optimistic id: it is unique per entry, whereas a timestamp
         // can be shared by several events recorded in the same millisecond.
         if (targetLog.optimisticId) {
-          await updateMatchLogEntryByOptimisticId(matchId, targetLog.optimisticId, payload);
+          await backend.updateMatchLogEntryByOptimisticId(matchId, targetLog.optimisticId, payload);
         } else {
           const createdAt = targetLog.timestamp;
           if (!createdAt) {
             throw new Error("Match log is still syncing. Please try again.");
           }
-          await updateMatchLogEntryByTimestamp(matchId, createdAt, payload);
+          await backend.updateMatchLogEntryByTimestamp(matchId, createdAt, payload);
         }
       }
       const totals = await controller.refreshMatchLogs(controller.matchLogMatchId);
@@ -817,12 +812,12 @@ export function useScoreKeeperActions(controller) {
           );
         }
         for (const queueId of queueIdsToRemove) {
-          await removeOfflineQueueItem(queueId);
+          await backend.removeOfflineQueueItem(queueId);
         }
       }
 
       for (const id of serverIds) {
-        await deleteMatchLogEntry(id);
+        await backend.deleteMatchLogEntry(id);
       }
 
       // An optimistic entry may already have been inserted server-side (the write
@@ -833,9 +828,9 @@ export function useScoreKeeperActions(controller) {
       if (matchIdForCleanup) {
         for (const optimisticId of optimisticIds) {
           try {
-            const existing = await findMatchLogByOptimisticId(matchIdForCleanup, optimisticId);
+            const existing = await backend.findMatchLogByOptimisticId(matchIdForCleanup, optimisticId);
             if (existing?.id) {
-              await deleteMatchLogEntry(existing.id);
+              await backend.deleteMatchLogEntry(existing.id);
             }
           } catch (err) {
             console.error("[ScoreKeeper] Failed to clean up synced optimistic log:", err);
@@ -1002,7 +997,7 @@ export function useScoreKeeperActions(controller) {
       // spirit outstanding" and "fully done". Casual has no spirit step and
       // writes `completed` here.
       const endStatus = controller.format?.endMatchStatus || MATCH_STATUS.FINISHED;
-      const updated = await updateMatchStatus(controller.activeMatch.id, endStatus);
+      const updated = await backend.updateMatchStatus(controller.activeMatch.id, endStatus);
       if (updated) {
         controller.setActiveMatch(updated);
         controller.setMatches((prev) =>
@@ -1013,7 +1008,10 @@ export function useScoreKeeperActions(controller) {
       // no spirit score to submit, so handing it to the spirit form would strand
       // the operator on something they cannot complete; it returns to the menu
       // with a completion banner instead.
-      if (controller.capabilities?.spiritScores) {
+      // A console that owns what follows (the scrimmage report) says so here.
+      if (controller.afterMatchEnd) {
+        controller.afterMatchEnd();
+      } else if (controller.capabilities?.spiritScores) {
         const spiritParams = new URLSearchParams();
         const spiritMatchId = controller.activeMatch?.id || "";
         const spiritEventId =

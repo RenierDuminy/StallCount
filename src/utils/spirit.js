@@ -1,19 +1,63 @@
+/**
+ * The five WFDF Spirit of the Game categories, in scoresheet order. This is the
+ * ONLY definition: every form that takes a spirit score and every page that
+ * shows one reads its keys, order and wording from here.
+ *
+ * `key` is the spirit_scores column. Two column names do not match the WFDF
+ * category they hold, and must never be relabelled from the column name:
+ *   - `self_control` holds category 3, FAIR-MINDEDNESS;
+ *   - `positive_attitude` holds category 4, POSITIVE ATTITUDE & SELF-CONTROL.
+ * (The tournament director's editor once labelled `self_control` as
+ * "Self-control", so its edits landed in the Fair-mindedness score.)
+ *
+ * `label` is the full WFDF name, `short` the column heading on narrow tables,
+ * `description` the scoresheet's guidance, shown where a score is entered.
+ */
 export const SPIRIT_DIMENSIONS = [
-  { key: "rules_knowledge", label: "Rules knowledge & use", short: "Rules" },
-  { key: "fouls_contact", label: "Fouls & body contact", short: "Fouls" },
-  { key: "self_control", label: "Fair-mindedness", short: "Fair" },
-  { key: "positive_attitude", label: "Positive attitude", short: "Attitude" },
-  { key: "communication", label: "Communication", short: "Comms" },
+  {
+    key: "rules_knowledge",
+    label: "Rules knowledge & use",
+    short: "Rules",
+    description:
+      "They did not purposefully misinterpret the rules, kept to time limits, and when they did not know a rule they were willing to learn.",
+  },
+  {
+    key: "fouls_contact",
+    label: "Fouls & body contact",
+    short: "Fouls",
+    description: "They avoided fouling, body contact and dangerous plays.",
+  },
+  {
+    key: "self_control",
+    label: "Fair-mindedness",
+    short: "Fair",
+    description:
+      "They apologised when appropriate, told teammates when a call was wrong or unnecessary, and only made significant calls.",
+  },
+  {
+    key: "positive_attitude",
+    label: "Positive attitude & self-control",
+    short: "Attitude",
+    description:
+      "They were polite, played with appropriate intensity whatever the score, and left a positive impression during and after the game.",
+  },
+  {
+    key: "communication",
+    label: "Communication",
+    short: "Comms",
+    description: "They communicated respectfully, listened, and kept to discussion time limits.",
+  },
 ];
 
 // WFDF scale: 0-4 per category, 0-20 total. The DB CHECK allows 0-5, so values
-// are clamped here rather than trusted.
+// are clamped here rather than trusted, and no form accepts more than 4.
 export const SPIRIT_MAX_SCORE = 4;
+export const SPIRIT_MAX_TOTAL = SPIRIT_MAX_SCORE * SPIRIT_DIMENSIONS.length;
 
 /** WFDF Spirit of the Game scoresheet wording for each value. */
 export const SPIRIT_SCALE = [
   { value: 0, label: "Poor" },
-  { value: 1, label: "Not good" },
+  { value: 1, label: "Not so good" },
   { value: 2, label: "Good" },
   { value: 3, label: "Very good" },
   { value: 4, label: "Excellent" },
@@ -24,6 +68,25 @@ const clampScore = (value) => {
   if (!Number.isFinite(num)) return null;
   return Math.min(SPIRIT_MAX_SCORE, Math.max(0, num));
 };
+
+/**
+ * Total of one spirit row on the WFDF scale: each category clamped to 0-4, a
+ * missing category left out. Null when no category is set.
+ */
+export function spiritRowTotal(row) {
+  if (!row) return null;
+  let total = 0;
+  let scored = 0;
+  SPIRIT_DIMENSIONS.forEach(({ key }) => {
+    const raw = row[key];
+    if (raw === null || raw === undefined || raw === "") return;
+    const score = clampScore(raw);
+    if (score === null) return;
+    total += score;
+    scored += 1;
+  });
+  return scored ? total : null;
+}
 
 /**
  * Aggregates finalised spirit rows into one entry per rated team.

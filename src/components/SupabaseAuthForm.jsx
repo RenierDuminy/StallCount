@@ -58,8 +58,11 @@ export default function SupabaseAuthForm({ redirectTo }) {
 
     try {
       if (mode === "reset") {
+        // The reset email links to /auth/confirm (see the email template), which
+        // asks for the new password. Without that page the link only signed
+        // the person in, so the password was never actually changed.
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo,
+          redirectTo: `${window.location.origin}/auth/confirm`,
         });
         if (resetError) throw resetError;
         setNotice("Check your inbox for a password reset link.");
@@ -177,7 +180,7 @@ export default function SupabaseAuthForm({ redirectTo }) {
               value={password}
               autoComplete={mode === "signUp" ? "new-password" : "current-password"}
               required
-              minLength={mode === "signUp" ? 6 : undefined}
+              minLength={mode === "signUp" ? 8 : undefined}
               onChange={(changeEvent) => setPassword(changeEvent.target.value)}
             />
           </Field>

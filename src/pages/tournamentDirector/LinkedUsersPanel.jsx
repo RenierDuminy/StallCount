@@ -4,6 +4,7 @@ import usePersistentState from "../../hooks/usePersistentState";
 import useAccessScope from "../../hooks/useAccessScope";
 import { Card, Panel, SectionHeader, Chip } from "../../components/ui/primitives";
 import { getEventLinkedUsers, getTeamLinkedUsers } from "../../services/userService";
+import { getTeamsLinkedToEvent } from "../../services/teamService";
 import {
   normaliseRoleList,
   TOURNAMENT_DIRECTOR_ACCESS_PERMISSIONS,
@@ -92,6 +93,9 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
+  // Every team in the event, so the Captains card can list teams with no
+  // captain linked yet.
+  const [eventTeams, setEventTeams] = useState([]);
 
   // Team grants carry their parent event, so resolveAccessScope widens event
   // access to cover them (see roleScope.js).
@@ -160,6 +164,24 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
       active = false;
     };
   }, [eventOptionsReady, selectedEvent, selectedEventId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedEventId) {
+      setEventTeams([]);
+      return undefined;
+    }
+    getTeamsLinkedToEvent(selectedEventId)
+      .then((rows) => {
+        if (active) setEventTeams(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (active) setEventTeams([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedEventId]);
 
   function refreshUsers() {
     if (!selectedEventId) return;
@@ -263,6 +285,23 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
       }),
     [users],
   );
+
+  // Teams in the event with no captain linked, alphabetical.
+  const teamsWithoutCaptain = useMemo(() => {
+    const captains = groupedUsers.find((group) => group.key === "captain");
+    const coveredIds = new Set();
+    const coveredNames = new Set();
+    (captains?.users ?? []).forEach((entry) => {
+      (entry.matchingAssignments ?? []).forEach((assignment) => {
+        if (assignment?.teamId) coveredIds.add(String(assignment.teamId));
+      });
+      if (entry.teamName) coveredNames.add(entry.teamName);
+    });
+    return eventTeams
+      .filter((team) => !coveredIds.has(String(team.id)) && !coveredNames.has(team.name))
+      .map((team) => team.name || "Unnamed team")
+      .sort(compareAlphabetical);
+  }, [groupedUsers, eventTeams]);
 
   // The small groups (tournament directors, field assistants, team managers,
   // media) share the first grid cell, stacked, instead of each taking a column
@@ -374,11 +413,11 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
 
               {loading && totalLinkedUsers === 0 ? (
                 <p className="text-sm text-[var(--sc-surface-light-ink)]/70">Loading users...</p>
-              ) : group.users.length === 0 ? (
+              ) : group.users.length === 0 && !(group.key === "captain" && teamsWithoutCaptain.length) ? (
                 <Panel variant="light" className="border border-dashed border-[var(--sc-surface-light-border)] bg-white/80 p-2.5 text-sm text-[var(--sc-surface-light-ink)]/70">
                   No linked users in this role for the selected event.
                 </Panel>
-              ) : (
+              ) : group.users.length === 0 ? null : (
                 <div className="overflow-hidden rounded-xl border border-[var(--sc-surface-light-border)] bg-white">
                   {group.users.map((entry, index) => {
                     // Rows are pre-sorted by team; print a heading whenever the
@@ -405,6 +444,17 @@ export default function LinkedUsersPanel({ eventsList = [], eventsReady = true }
                   })}
                 </div>
               )}
+
+              {group.key === "captain" && !(loading && totalLinkedUsers === 0) && teamsWithoutCaptain.length ? (
+                <div className="rounded-xl border border-[var(--sc-surface-light-border)] bg-white px-3 py-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--sc-surface-light-ink)]/80">
+                    No captain yet ({teamsWithoutCaptain.length})
+                  </p>
+                  <p className="mt-1 text-sm text-[var(--sc-surface-light-ink)]/70">
+                    {teamsWithoutCaptain.join(", ")}
+                  </p>
+                </div>
+              ) : null}
             </Card>
             ))}
           </div>

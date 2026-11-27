@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Field, Textarea } from "../../components/ui/primitives";
-import SpiritScoreBlocks from "../../components/SpiritScoreBlocks";
+import SpiritScoreBlocks, { SpiritScaleLegend } from "../../components/SpiritScoreBlocks";
 import { SPIRIT_DIMENSIONS, SPIRIT_MAX_SCORE, SPIRIT_SCALE } from "../../utils/spirit";
 
 // WFDF neutral default: 2 ("good") in every category.
@@ -54,6 +54,10 @@ export default function CaptainSpiritEditor({ opponentName, existing, saving, on
         </p>
       </div>
 
+      {/* The desktop header row names each value; on a phone it is hidden, so
+          the scale is spelled out here instead. */}
+      <SpiritScaleLegend className="text-ink-muted sm:hidden" />
+
       <div className="border-y border-border">
         <div className="hidden grid-cols-[1fr_20rem] items-center gap-3 border-b border-border py-1.5 sm:grid">
           <span className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Category</span>
@@ -65,9 +69,12 @@ export default function CaptainSpiritEditor({ opponentName, existing, saving, on
         </div>
 
         <div className="divide-y divide-border">
-          {SPIRIT_DIMENSIONS.map(({ key, label }) => (
+          {SPIRIT_DIMENSIONS.map(({ key, label, description }) => (
             <div key={key} className="grid items-center gap-2 py-2.5 sm:grid-cols-[1fr_20rem] sm:gap-3">
-              <span className="text-sm text-ink">{label}</span>
+              <span className="min-w-0">
+                <span className="block text-sm text-ink">{label}</span>
+                <span className="block text-xs text-ink-muted">{description}</span>
+              </span>
               <SpiritScoreBlocks
                 label={label}
                 value={scores[key]}

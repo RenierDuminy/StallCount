@@ -130,7 +130,7 @@ export default function BulkRoleAssignmentPanel({ eventId, onAssigned }) {
   function addUserToBuilder(user) {
     setBuilderRows((prev) => {
       if (prev.some((row) => row.userId === user.id)) return prev;
-      return [...prev, { userId: user.id, fullName: user.fullName, email: user.email, roleGrants: [] }];
+      return [{ userId: user.id, fullName: user.fullName, email: user.email, roleGrants: [] }, ...prev];
     });
     setSearchQuery("");
     setSearchResults([]);
@@ -348,31 +348,31 @@ export default function BulkRoleAssignmentPanel({ eventId, onAssigned }) {
                   </div>
                   <button
                     type="button"
-                    className="text-xs uppercase tracking-wide text-rose-500 hover:text-rose-600"
+                    className="border-0! bg-transparent p-0 text-xs uppercase tracking-wide text-rose-500 hover:text-rose-600"
                     onClick={() => removeUserFromBuilder(row.userId)}
                     disabled={saving}
                   >
-                    Remove
+                    Remove user
                   </button>
                 </div>
 
                 {row.roleGrants.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {row.roleGrants.map((grant) => (
-                      <div key={grantKey(grant)} className="flex items-center gap-1">
-                        <Chip variant="tag" className="text-xs">
-                          {grant.roleName}
-                          {grant.teamName ? ` - ${grant.teamName}` : ""}
-                        </Chip>
+                      <Chip key={grantKey(grant)} variant="tag" className="inline-flex items-center gap-1.5 text-xs">
+                        {grant.roleName}
+                        {grant.teamName ? ` - ${grant.teamName}` : ""}
                         <button
                           type="button"
-                          className="text-xs uppercase tracking-wide text-rose-500 hover:text-rose-600"
+                          className="inline-flex items-center border-0! bg-transparent p-0 text-[var(--sc-button-danger-bg)] shadow-none hover:text-[var(--sc-button-danger-bg-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label={`Remove ${grant.roleName}`}
+                          title="Remove role"
                           onClick={() => removeRoleGrant(row.userId, grant)}
                           disabled={saving}
                         >
-                          x
+                          <TrashIcon />
                         </button>
-                      </div>
+                      </Chip>
                     ))}
                   </div>
                 ) : null}
@@ -434,7 +434,7 @@ export default function BulkRoleAssignmentPanel({ eventId, onAssigned }) {
 
                   <button
                     type="button"
-                    className="sc-button is-ghost text-xs"
+                    className="sc-button text-xs"
                     onClick={() => addRoleGrant(row.userId)}
                     disabled={
                       saving ||
@@ -478,5 +478,26 @@ export default function BulkRoleAssignmentPanel({ eventId, onAssigned }) {
         </div>
       ) : null}
     </Card>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
   );
 }

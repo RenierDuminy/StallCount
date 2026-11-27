@@ -18,6 +18,23 @@ const TONES = {
 };
 
 /**
+ * What each value means on the WFDF scoresheet ("0 Poor · 1 Not so good ...").
+ * The blocks show only the number, so every form that uses them shows this.
+ */
+export function SpiritScaleLegend({ className = "" }) {
+  return (
+    <p className={`text-xs ${className}`}>
+      {SPIRIT_SCALE.map(({ value, label }, index) => (
+        <span key={value} className="whitespace-nowrap">
+          {index ? " · " : ""}
+          <span className="font-semibold tabular-nums">{value}</span> {label}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/**
  * 0–4 segmented control for one WFDF spirit category: a tap target per value,
  * which is easier on a phone at the side of a field than a slider, and cannot
  * be nudged by a scroll that starts on it.

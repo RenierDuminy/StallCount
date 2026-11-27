@@ -239,15 +239,6 @@ const ROLE_LIBRARY = {
   },
 };
 
-function formatDate(value) {
-  if (!value) return "Unknown";
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
-}
-
 function resolveAccessLevel(user) {
   if (!user) return { role: "Unknown", level: "Unknown" };
 
@@ -644,7 +635,6 @@ export default function UserPage() {
         groups: accessLevelGroups,
         isAccessGroupedList: true,
       },
-      { label: "Created", value: formatDate(user.created_at) },
     ];
   }, [user, accessLevelGroups, profile]);
 
@@ -652,7 +642,8 @@ export default function UserPage() {
     <div className="pb-16 text-ink">
       <SectionShell className="space-y-3 sm:space-y-6">
         <Card className="space-y-3 p-4 sm:space-y-5 sm:p-7">
-          <SectionHeader
+          <SectionHeader
+
             title={displayName}
             action={
               user ? (
